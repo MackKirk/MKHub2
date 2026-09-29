@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api, withFileAccessToken } from '@/lib/api';
+import { putFile, rejectOversizedBatch } from '@/lib/fileUploadBatch';
 import { sortByLabel } from '@/lib/sortOptions';
 import { useConfirm } from '@/components/ConfirmProvider';
 import {
@@ -10,6 +11,7 @@ import {
   FileOfficePreviewModal,
   FILE_LIBRARY_ACCEPT,
   FILE_LIBRARY_UPLOAD_HINT,
+  UploadProgressPanel,
   useFileImageGallery,
 } from '@/components/files';
 import {
@@ -286,6 +288,7 @@ export default function UserDocumentsTabEnhanced({
 
   const runQueuedUploads = async (pairs: { file: File; folder_id: string | null }[]) => {
     if (!pairs.length || !canEdit) return;
+    if (rejectOversizedBatch(pairs)) return;
 
     const newQueue = pairs.map((pair, idx) => ({
       id: `${Date.now()}-${idx}-${Math.random().toString(36).slice(2)}`,
@@ -299,7 +302,7 @@ export default function UserDocumentsTabEnhanced({
       const item = newQueue[i];
       const folderId = pairs[i].folder_id;
       try {
-        setUploadQueue((prev) => prev.map((u) => (u.id === item.id ? { ...u, status: 'uploading' } : u)));
+        setUploadQueue((prev) => prev.map((u) => (u.id === item.id ? { ...u, status: 'uploading', progress: 0 } : u)));
         const type = item.file.type || 'application/octet-stream';
         const up = await api<{ upload_url: string; key: string }>('POST', '/files/upload', {
           original_name: item.file.name,
@@ -309,10 +312,8 @@ export default function UserDocumentsTabEnhanced({
           client_id: null,
           category_id: userId,
         });
-        await fetch(up.upload_url, {
-          method: 'PUT',
-          headers: { 'Content-Type': type, 'x-ms-blob-type': 'BlockBlob' },
-          body: item.file,
+        await putFile(up.upload_url, item.file, type, (percent) => {
+          setUploadQueue((prev) => prev.map((u) => (u.id === item.id ? { ...u, progress: percent } : u)));
         });
         const conf = await api<{ id: string }>('POST', '/files/confirm', {
           key: up.key,
@@ -1114,52 +1115,17 @@ export default function UserDocumentsTabEnhanced({
         </AppFormModal>
       )}
 
-      {uploadQueue.length > 0 && (
-        <AppCard
-          className={uiCx('fixed bottom-4 right-4 z-50 w-80 max-h-96 overflow-hidden shadow-2xl', uiBorders.subtle, uiRadius.card)}
-          bodyClassName="p-0"
-        >
-          <div className={uiCx('flex items-center justify-between border-b px-2.5 py-2', uiBorders.subtle, uiColors.surfaceSubtle)}>
-            <div className={uiCx(uiTypography.sectionTitle, 'text-xs')}>Upload Progress</div>
-            <AppButton variant="ghost" size="sm" type="button" onClick={() => setUploadQueue([])}>
-              Clear
-            </AppButton>
-          </div>
-          <div className="max-h-80 overflow-y-auto">
-            {uploadQueue.map((u) => (
-              <div key={u.id} className={uiCx('border-b px-2.5 py-2', uiBorders.subtle)}>
-                <div className="mb-1 flex items-start gap-2">
-                  <div className="min-w-0 flex-1">
-                    <div className={uiCx(uiTypography.body, 'truncate text-xs font-medium')} title={u.file.name}>
-                      {u.file.name}
-                    </div>
-                    <div className={uiTypography.helper}>{(u.file.size / 1024 / 1024).toFixed(2)} MB</div>
-                  </div>
-                  <div className="text-xs">
-                    {u.status === 'pending' && '…'}
-                    {u.status === 'uploading' && '…'}
-                    {u.status === 'success' && '✓'}
-                    {u.status === 'error' && '✕'}
-                  </div>
-                </div>
-                {u.status === 'uploading' && (
-                  <div className={uiCx('mt-1 h-1.5 w-full overflow-hidden', uiRadius.badge, uiColors.surfaceSubtle)}>
-                    <div
-                      className={uiCx('h-full bg-blue-600 transition-all', uiRadius.badge)}
-                      style={{ width: `${u.progress}%` }}
-                    />
-                  </div>
-                )}
-                {u.status === 'error' && (
-                  <div className={uiCx(uiTypography.helper, 'mt-1 text-red-600')} title={u.error}>
-                    {u.error || 'Upload failed'}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </AppCard>
-      )}
+      <UploadProgressPanel
+        items={uploadQueue.map((u) => ({
+          id: u.id,
+          name: u.file.name,
+          size: u.file.size,
+          progress: u.progress,
+          status: u.status,
+          error: u.error,
+        }))}
+        onClear={() => setUploadQueue([])}
+      />
 
       <FileImagePreviewModal
         open={imageGallery.open}

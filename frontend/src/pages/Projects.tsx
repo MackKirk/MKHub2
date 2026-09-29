@@ -1,4 +1,4 @@
-import { keepPreviousData, useQuery, useQueries } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { api, withFileAccessTokenIfNeeded } from '@/lib/api';
 import { useMemo, useState, useEffect, lazy, Suspense } from 'react';
 import type { ReactNode } from 'react';
@@ -137,81 +137,6 @@ const ProjectMapLoading = lazy(() => import('@/features/projects/components/map/
 const ProjectCalendarView = lazy(() => import('@/features/projects/components/calendar/ProjectCalendarView'));
 type ClientFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string };
 
-// Base pricing Value: sum of approved items (value × qty), without PST/GST
-function calculateProposalTotal(proposalData: any): number {
-  if (!proposalData) return 0;
-  
-  const data = proposalData?.data || proposalData || {};
-  const additionalCosts = (data.additional_costs || []).filter(
-    (item: any) => item && item.approved !== false,
-  );
-  
-  return additionalCosts.reduce((sum: number, item: any) => {
-    const value = Number(item.value || 0);
-    const quantity = Number(item.quantity || 1);
-    return sum + (value * quantity);
-  }, 0);
-}
-
-// Helper function to calculate total from all proposals (original + change orders)
-function useProposalsTotal(projectId: string): number {
-  // Fetch all proposals for the project
-  const { data: proposals } = useQuery({ 
-    queryKey: ['projectProposals', projectId], 
-    queryFn: () => api<any[]>('GET', `/proposals?project_id=${encodeURIComponent(projectId)}`),
-    enabled: !!projectId
-  });
-  
-  // Organize proposals: original first, then Change Orders sorted by number
-  const organizedProposals = useMemo(() => {
-    if (!proposals || proposals.length === 0) return { original: null, changeOrders: [] };
-    
-    const original = proposals.find(p => !p.is_change_order);
-    const changeOrders = proposals
-      .filter(p => p.is_change_order)
-      .sort((a, b) => (a.change_order_number || 0) - (b.change_order_number || 0));
-    
-    return {
-      original: original || null,
-      changeOrders: changeOrders
-    };
-  }, [proposals]);
-  
-  // Fetch full proposal data for original proposal
-  const { data: originalProposalData } = useQuery({ 
-    queryKey: ['proposal', organizedProposals.original?.id], 
-    queryFn: () => organizedProposals.original?.id ? api<any>('GET', `/proposals/${organizedProposals.original.id}`) : Promise.resolve(null),
-    enabled: !!organizedProposals.original?.id
-  });
-  
-  // Fetch full proposal data for all change orders using useQueries
-  const changeOrderQueries = useQueries({
-    queries: organizedProposals.changeOrders.map(co => ({
-      queryKey: ['proposal', co.id],
-      queryFn: () => api<any>('GET', `/proposals/${co.id}`),
-      enabled: !!co.id
-    }))
-  });
-  
-  // Calculate totals
-  const total = useMemo(() => {
-    // Calculate original total
-    const originalTotal = calculateProposalTotal(originalProposalData || organizedProposals.original);
-    
-    // Calculate change orders totals
-    const changeOrderTotals = organizedProposals.changeOrders.map((co, idx) => {
-      const queryResult = changeOrderQueries[idx];
-      const dataToUse = queryResult?.data || co;
-      return calculateProposalTotal(dataToUse);
-    });
-    
-    // Sum all totals
-    return originalTotal + changeOrderTotals.reduce((sum, coTotal) => sum + coTotal, 0);
-  }, [originalProposalData, organizedProposals, changeOrderQueries]);
-  
-  return total;
-}
-
 // Helper functions for currency formatting (CAD)
 const formatCurrency = (value: string): string => {
   if (!value) return '';
@@ -243,6 +168,12 @@ const parseCurrency = (value: string): string => {
 };
 
 // Helper: Convert filter rules to URL parameters
+function appendChoice(params: URLSearchParams, rule: FilterRule, isKey: string, notKey: string) {
+  if (typeof rule.value !== 'string' || !rule.value) return;
+  if (rule.operator === 'is') params.append(isKey, rule.value);
+  else if (rule.operator === 'is_not') params.append(notKey, rule.value);
+}
+
 function convertRulesToParams(rules: FilterRule[]): URLSearchParams {
   const params = new URLSearchParams();
   
@@ -268,43 +199,19 @@ function convertRulesToParams(rules: FilterRule[]): URLSearchParams {
     
     switch (rule.field) {
       case 'status':
-        if (typeof rule.value === 'string') {
-          if (rule.operator === 'is') {
-            params.set('status', rule.value);
-          } else if (rule.operator === 'is_not') {
-            params.set('status_not', rule.value);
-          }
-        }
+        appendChoice(params, rule, 'status', 'status_not');
         break;
       
       case 'division':
-        if (typeof rule.value === 'string') {
-          if (rule.operator === 'is') {
-            params.set('division_id', rule.value);
-          } else if (rule.operator === 'is_not') {
-            params.set('division_id_not', rule.value);
-          }
-        }
+        appendChoice(params, rule, 'division_id', 'division_id_not');
         break;
       
       case 'client':
-        if (typeof rule.value === 'string') {
-          if (rule.operator === 'is') {
-            params.set('client_id', rule.value);
-          } else if (rule.operator === 'is_not') {
-            params.set('client_id_not', rule.value);
-          }
-        }
+        appendChoice(params, rule, 'client_id', 'client_id_not');
         break;
       
       case 'estimator':
-        if (typeof rule.value === 'string') {
-          if (rule.operator === 'is') {
-            params.set('estimator_id', rule.value);
-          } else if (rule.operator === 'is_not') {
-            params.set('estimator_id_not', rule.value);
-          }
-        }
+        appendChoice(params, rule, 'estimator_id', 'estimator_id_not');
         break;
       
       case 'start_date':
@@ -365,41 +272,21 @@ function convertParamsToRules(params: URLSearchParams): FilterRule[] {
   const rules: FilterRule[] = [];
   let idCounter = 1;
   
-  // Status
-  const status = params.get('status');
-  const statusNot = params.get('status_not');
-  if (status) {
-    rules.push({ id: `rule-${idCounter++}`, field: 'status', operator: 'is', value: status });
-  } else if (statusNot) {
-    rules.push({ id: `rule-${idCounter++}`, field: 'status', operator: 'is_not', value: statusNot });
-  }
-  
-  // Division
-  const division = params.get('division_id');
-  const divisionNot = params.get('division_id_not');
-  if (division) {
-    rules.push({ id: `rule-${idCounter++}`, field: 'division', operator: 'is', value: division });
-  } else if (divisionNot) {
-    rules.push({ id: `rule-${idCounter++}`, field: 'division', operator: 'is_not', value: divisionNot });
-  }
-  
-  // Client
-  const client = params.get('client_id');
-  const clientNot = params.get('client_id_not');
-  if (client) {
-    rules.push({ id: `rule-${idCounter++}`, field: 'client', operator: 'is', value: client });
-  } else if (clientNot) {
-    rules.push({ id: `rule-${idCounter++}`, field: 'client', operator: 'is_not', value: clientNot });
-  }
-  
-  // Estimator
-  const estimator = params.get('estimator_id');
-  const estimatorNot = params.get('estimator_id_not');
-  if (estimator) {
-    rules.push({ id: `rule-${idCounter++}`, field: 'estimator', operator: 'is', value: estimator });
-  } else if (estimatorNot) {
-    rules.push({ id: `rule-${idCounter++}`, field: 'estimator', operator: 'is_not', value: estimatorNot });
-  }
+  const pushChoices = (isKey: string, notKey: string, field: FilterRule['field']) => {
+    for (const value of params.getAll(isKey)) {
+      if (!value) continue;
+      rules.push({ id: `rule-${idCounter++}`, field, operator: 'is', value });
+    }
+    for (const value of params.getAll(notKey)) {
+      if (!value) continue;
+      rules.push({ id: `rule-${idCounter++}`, field, operator: 'is_not', value });
+    }
+  };
+
+  pushChoices('status', 'status_not', 'status');
+  pushChoices('division_id', 'division_id_not', 'division');
+  pushChoices('client_id', 'client_id_not', 'client');
+  pushChoices('estimator_id', 'estimator_id_not', 'estimator');
   
   // Date range (start_date)
   const dateStart = params.get('date_start');
@@ -645,15 +532,13 @@ export default function Projects(){
       type: 'select',
       operators: ['is', 'is_not'],
       getGroupedOptions: () => {
-        const groups: Array<{ label: string; options: Array<{ value: string; label: string }> }> = [];
+        const groups: Array<{ label: string; value: string; options: Array<{ value: string; label: string }> }> = [];
         divisionsForLine?.forEach((div: any) => {
-          const options: Array<{ value: string; label: string }> = [
-            { value: div.id, label: div.label }
-          ];
+          const options: Array<{ value: string; label: string }> = [];
           div.subdivisions?.forEach((sub: any) => {
             options.push({ value: sub.id, label: sub.label });
           });
-          groups.push({ label: div.label, options });
+          groups.push({ label: div.label, value: String(div.id), options });
         });
         return groups;
       },
@@ -1183,11 +1068,14 @@ export function ProjectListItem({ project, projectDivisions, projectStatuses, va
     { key: 'dispatch', icon: '👷', label: 'Dispatch', tab: 'dispatch' },
   ];
 
+  const projectName = project.name || 'Project';
   const col1 = (
     <div className="min-w-0">
-      <div className="text-sm font-bold text-gray-900 group-hover:text-[#7f1010] transition-colors truncate">
-        {project.name || 'Project'}
-      </div>
+      <AppTooltip content={projectName} wrap constrain>
+        <span className="block min-w-0 max-w-full truncate text-sm font-bold text-gray-900 group-hover:text-[#7f1010] transition-colors">
+          {projectName}
+        </span>
+      </AppTooltip>
       <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-600">
         <span className="truncate">{project.code || '—'}</span>
         {clientName && (
@@ -1201,7 +1089,13 @@ export function ProjectListItem({ project, projectDivisions, projectStatuses, va
   );
   const colAddress = (
     <div className="min-w-0 flex items-center">
-      <span className="text-xs font-semibold text-gray-900 truncate">{heroAddress || '—'}</span>
+      {heroAddress ? (
+        <AppTooltip content={heroAddress} wrap constrain>
+          <span className="block min-w-0 max-w-full truncate text-xs font-semibold text-gray-900">{heroAddress}</span>
+        </AppTooltip>
+      ) : (
+        <span className="text-xs font-semibold text-gray-900 truncate">—</span>
+      )}
     </div>
   );
   const col2 = (
@@ -1249,14 +1143,14 @@ export function ProjectListItem({ project, projectDivisions, projectStatuses, va
       {divisionIcons.length > 0 ? (
         <div className="flex items-center gap-1.5 flex-wrap">
           {divisionIcons.map((div) => (
-            <AppTooltip key={div.id} content={div.label} placement="bottom">
+            <AppTooltip key={div.id} content={div.label}>
               <div className="flex items-center justify-center cursor-pointer hover:scale-110 transition-transform">
                 {div.icon}
               </div>
             </AppTooltip>
           ))}
           {projectDivIds.length > 5 && (
-            <AppTooltip content={`${projectDivIds.length - 5} more divisions`} placement="bottom">
+            <AppTooltip content={`${projectDivIds.length - 5} more divisions`}>
               <div className="text-xs text-gray-400 cursor-pointer">+{projectDivIds.length - 5}</div>
             </AppTooltip>
           )}
@@ -1353,8 +1247,7 @@ function ProjectListCard({ project, projectDivisions, projectStatuses, projectBa
   const projectAdminId = project.project_admin_id || null;
   const actualValue = project.cost_actual || 0;
   
-  // Calculate total from proposals (original + change orders)
-  const proposalsTotal = useProposalsTotal(project.id);
+  const proposalsTotal = Number((project as any).proposal_card_total || 0);
   const estimatedValue = proposalsTotal > 0 ? proposalsTotal : (project.service_value || 0);
   
   const projectDivIds = project.project_division_ids || [];
@@ -1381,61 +1274,14 @@ function ProjectListCard({ project, projectDivisions, projectStatuses, projectBa
     ? { name: listAdminName, profile_photo_file_id: listAdminAvatarFileId, first_name: listAdminName }
     : null);
   
-  // Fetch proposals to get pricing items for percentage calculation
-  const { data:proposals } = useQuery({ 
-    queryKey:['projectProposals', project.id], 
-    queryFn: ()=>api<any[]>('GET', `/proposals?project_id=${encodeURIComponent(String(project.id||''))}`) 
-  });
-  
-  // Fetch full proposal data if proposal exists
-  const proposal = proposals && proposals.length > 0 ? proposals[0] : null;
-  const { data:proposalData } = useQuery({ 
-    queryKey: ['proposal', proposal?.id],
-    queryFn: () => proposal?.id ? api<any>('GET', `/proposals/${proposal.id}`) : Promise.resolve(null),
-    enabled: !!proposal?.id
-  });
-  
-  // Calculate percentages from pricing items
+  const divisionValuePcts = ((project as any).division_value_pcts || {}) as Record<string, number>;
   const calculatedPercentages = useMemo(() => {
-    if (projectDivIds.length === 0) return {};
-    
-    // Initialize all divisions to 0%
     const result: { [key: string]: number } = {};
-    projectDivIds.forEach(id => {
-      result[String(id)] = 0;
+    projectDivIds.forEach((id) => {
+      result[String(id)] = Number(divisionValuePcts[String(id)] || 0);
     });
-    
-    // Get pricing items from proposal (data is nested in proposalData.data)
-    const pricingItems = proposalData?.data?.additional_costs || [];
-    
-    // If no pricing items, return 0% for all divisions
-    if (pricingItems.length === 0) {
-      return result;
-    }
-    
-    // Group by division_id and sum values
-    const divisionTotals: { [key: string]: number } = {};
-    pricingItems.forEach((item: any) => {
-      if (item.division_id) {
-        const divId = String(item.division_id);
-        const value = (item.value || 0) * (parseInt(item.quantity || '1', 10) || 1);
-        divisionTotals[divId] = (divisionTotals[divId] || 0) + value;
-      }
-    });
-    
-    // Calculate total
-    const total = Object.values(divisionTotals).reduce((a, b) => a + b, 0);
-    
-    // Calculate percentages only if total > 0
-    if (total > 0) {
-      projectDivIds.forEach(id => {
-        const idStr = String(id);
-        result[idStr] = divisionTotals[idStr] ? (divisionTotals[idStr] / total) * 100 : 0;
-      });
-    }
-    
     return result;
-  }, [projectDivIds, proposalData]);
+  }, [projectDivIds, divisionValuePcts]);
   
   // Get division icons and labels with percentages (only if projectDivisions is already loaded)
   const divisionIcons = useMemo(() => {

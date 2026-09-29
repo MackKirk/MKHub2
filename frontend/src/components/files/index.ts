@@ -1,3 +1,4 @@
+export { UploadProgressPanel, type UploadProgressItem } from './UploadProgressPanel';
 export { default as FileImagePreviewModal } from './FileImagePreviewModal';
 export { FilePdfPreviewModal } from './FilePdfPreviewModal';
 export { FileOfficePreviewModal } from './FileOfficePreviewModal';

@@ -3,6 +3,8 @@ import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { Paperclip, X } from 'lucide-react';
 import { api, withFileAccessToken } from '@/lib/api';
+import { putFile, rejectOversizedBatch } from '@/lib/fileUploadBatch';
+import { UploadProgressPanel } from '@/components/files';
 import {
   AppButton,
   AppFileUpload,
@@ -142,6 +144,9 @@ export function UserImmigrationStatusDocumentSection({
 }) {
   const [stagingFiles, setStagingFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [uploadQueue, setUploadQueue] = useState<
+    { id: string; file: File; progress: number; status: 'pending' | 'uploading' | 'success' | 'error'; error?: string }[]
+  >([]);
   const queryClient = useQueryClient();
   const profilePath = selfProfile ? '/auth/me/profile' : `/auth/users/${encodeURIComponent(userId)}/profile`;
   const { data: permitFile, refetch } = useQuery({
@@ -150,7 +155,7 @@ export function UserImmigrationStatusDocumentSection({
   });
   const permitFileId = permitFile?.profile?.permit_file_id;
 
-  const uploadFile = async (f: File): Promise<boolean> => {
+  const uploadFile = async (f: File, onProgress?: (percent: number) => void): Promise<boolean> => {
     const isPDF = f.type === 'application/pdf';
     const isImage = f.type.startsWith('image/');
     if (!isPDF && !isImage) {
@@ -159,20 +164,16 @@ export function UserImmigrationStatusDocumentSection({
     }
 
     try {
+      const contentType = f.type || 'application/pdf';
       const up: any = await api('POST', '/files/upload', {
         project_id: null,
         client_id: null,
         employee_id: userId,
         category_id: 'permit',
         original_name: f.name,
-        content_type: f.type || 'application/pdf',
+        content_type: contentType,
       });
-      const put = await fetch(up.upload_url, {
-        method: 'PUT',
-        headers: { 'Content-Type': f.type || 'application/pdf', 'x-ms-blob-type': 'BlockBlob' },
-        body: f,
-      });
-      if (!put.ok) throw new Error('upload failed');
+      await putFile(up.upload_url, f, contentType, onProgress);
       const conf: any = await api('POST', '/files/confirm', {
         key: up.key,
         size_bytes: f.size,
@@ -211,20 +212,43 @@ export function UserImmigrationStatusDocumentSection({
   const handleStagingChange = (next: File[]) => {
     const prevKeys = new Set(stagingFiles.map(immigrationFileIdentity));
     const added = next.filter((f) => !prevKeys.has(immigrationFileIdentity(f)));
+    if (!added.length) {
+      setStagingFiles(next);
+      return;
+    }
+    if (rejectOversizedBatch(added)) return;
+
+    const queue = added.map((file, idx) => ({
+      id: `${Date.now()}-${idx}`,
+      file,
+      progress: 0,
+      status: 'pending' as const,
+    }));
+    setUploadQueue(queue);
     setStagingFiles(next);
-    if (!added.length) return;
 
     void (async () => {
       setUploading(true);
       try {
-        for (const f of added) {
-          const ok = await uploadFile(f);
+        for (const item of queue) {
+          setUploadQueue((prev) => prev.map((u) => (u.id === item.id ? { ...u, status: 'uploading', progress: 0 } : u)));
+          const ok = await uploadFile(item.file, (percent) => {
+            setUploadQueue((prev) => prev.map((u) => (u.id === item.id ? { ...u, progress: percent } : u)));
+          });
           if (ok) {
-            setStagingFiles((prev) => prev.filter((x) => immigrationFileIdentity(x) !== immigrationFileIdentity(f)));
+            setStagingFiles((prev) => prev.filter((x) => immigrationFileIdentity(x) !== immigrationFileIdentity(item.file)));
+            setUploadQueue((prev) => prev.map((u) => (u.id === item.id ? { ...u, status: 'success', progress: 100 } : u)));
+          } else {
+            setUploadQueue((prev) =>
+              prev.map((u) => (u.id === item.id ? { ...u, status: 'error', error: 'Upload failed' } : u)),
+            );
           }
         }
       } finally {
         setUploading(false);
+        setTimeout(() => {
+          setUploadQueue((prev) => prev.filter((u) => u.status === 'error'));
+        }, 2000);
       }
     })();
   };
@@ -246,6 +270,7 @@ export function UserImmigrationStatusDocumentSection({
   };
 
   return (
+    <>
     <div>
       <div className={uiTypography.controlLabel}>
         Immigration Status Document
@@ -275,5 +300,17 @@ export function UserImmigrationStatusDocumentSection({
         ) : null}
       </div>
     </div>
+    <UploadProgressPanel
+      items={uploadQueue.map((u) => ({
+        id: u.id,
+        name: u.file.name,
+        size: u.file.size,
+        progress: u.progress,
+        status: u.status,
+        error: u.error,
+      }))}
+      onClear={() => setUploadQueue([])}
+    />
+    </>
   );
 }

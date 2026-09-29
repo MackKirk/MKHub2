@@ -26,6 +26,11 @@ export type AppTooltipProps = {
   disabled?: boolean;
   /** Wrap long copy instead of single-line `whitespace-nowrap` (disabled actions, hints). */
   wrap?: boolean;
+  /**
+   * Stretch to the parent width and allow children to shrink.
+   * Use around truncated grid/list text so `truncate` still clips.
+   */
+  constrain?: boolean;
   className?: string;
 };
 
@@ -81,6 +86,7 @@ export function AppTooltip({
   placement = 'top',
   disabled = false,
   wrap = false,
+  constrain = false,
   className,
 }: AppTooltipProps) {
   const tipId = useId();
@@ -159,13 +165,16 @@ export function AppTooltip({
     <>
       <span
         ref={anchorRef}
-        className={uiCx('inline-flex', className)}
+        className={uiCx(constrain ? 'flex w-full min-w-0 max-w-full' : 'inline-flex', className)}
         onMouseEnter={show}
         onMouseLeave={hide}
         onFocus={show}
         onBlur={hide}
       >
-        <span className="inline-flex" aria-describedby={open ? tipId : undefined}>
+        <span
+          className={constrain ? 'block min-w-0 max-w-full w-full' : 'inline-flex'}
+          aria-describedby={open ? tipId : undefined}
+        >
           {children}
         </span>
       </span>

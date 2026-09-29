@@ -122,6 +122,9 @@ type Opportunity = {
   estimator_name?: string;
   estimator_avatar_file_id?: string;
   cost_estimated?: number;
+  proposal_card_total?: number;
+  division_value_pcts?: Record<string, number>;
+  site_id?: string | null;
   site_address_line1?: string;
   site_address_line2?: string;
   site_city?: string;
@@ -425,12 +428,10 @@ export default function Opportunities() {
       )
       .map((div: { id: unknown; label: string; subdivisions?: { id: unknown; label: string }[] }) => ({
         label: div.label,
-        options: [
-          { value: String(div.id), label: div.label },
-          ...[...(div.subdivisions || [])]
-            .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }))
-            .map((sub) => ({ value: String(sub.id), label: sub.label })),
-        ],
+        value: String(div.id),
+        options: [...(div.subdivisions || [])]
+          .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }))
+          .map((sub) => ({ value: String(sub.id), label: sub.label })),
       }));
 
     const clientOptions = [...clients]
@@ -1113,11 +1114,14 @@ export function OpportunityListItem({ opportunity, onOpenReportModal, projectSta
     [projectDivIds, projectDivisions],
   );
 
+  const opportunityName = opportunity.name || 'Opportunity';
   const col1 = (
     <div className="min-w-0">
-      <div className="text-sm font-bold text-gray-900 group-hover:text-[#7f1010] transition-colors truncate">
-        {opportunity.name || 'Opportunity'}
-      </div>
+      <AppTooltip content={opportunityName} wrap constrain>
+        <span className="block min-w-0 max-w-full truncate text-sm font-bold text-gray-900 group-hover:text-[#7f1010] transition-colors">
+          {opportunityName}
+        </span>
+      </AppTooltip>
       <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-600">
         <span className="truncate">{opportunity.code || '—'}</span>
         {clientName && (
@@ -1131,7 +1135,13 @@ export function OpportunityListItem({ opportunity, onOpenReportModal, projectSta
   );
   const colAddress = (
     <div className="min-w-0 flex items-center">
-      <span className="text-xs font-semibold text-gray-900 truncate">{heroAddress || '—'}</span>
+      {heroAddress ? (
+        <AppTooltip content={heroAddress} wrap constrain>
+          <span className="block min-w-0 max-w-full truncate text-xs font-semibold text-gray-900">{heroAddress}</span>
+        </AppTooltip>
+      ) : (
+        <span className="text-xs font-semibold text-gray-900 truncate">—</span>
+      )}
     </div>
   );
   const createdDate = (opportunity.created_at || '').slice(0, 10);
@@ -1175,14 +1185,14 @@ export function OpportunityListItem({ opportunity, onOpenReportModal, projectSta
       {divisionIcons.length > 0 ? (
         <div className="flex items-center gap-1.5 flex-wrap">
           {divisionIcons.map((div) => (
-            <AppTooltip key={div.id} content={div.label} placement="bottom">
+            <AppTooltip key={div.id} content={div.label}>
               <div className="flex items-center justify-center cursor-pointer hover:scale-110 transition-transform">
                 {div.icon}
               </div>
             </AppTooltip>
           ))}
           {projectDivIds.length > 5 && (
-            <AppTooltip content={`${projectDivIds.length - 5} more divisions`} placement="bottom">
+            <AppTooltip content={`${projectDivIds.length - 5} more divisions`}>
               <div className="text-xs text-gray-400 cursor-pointer">+{projectDivIds.length - 5}</div>
             </AppTooltip>
           )}
@@ -1267,17 +1277,16 @@ function OpportunityListCard({ opportunity, onOpenReportModal, projectStatuses, 
   const navigate = useNavigate();
   // Card cover should match General Information; API returns /files/... without JWT
   const src = withFileAccessTokenIfNeeded(opportunity.cover_image_url) || '/ui/assets/placeholders/project.png';
-  const { data:details } = useQuery({ queryKey:['opportunity-detail-card', opportunity.id], queryFn: ()=> api<any>('GET', `/projects/${encodeURIComponent(String(opportunity.id))}`), staleTime: 60_000 });
-  const { data:client } = useQuery({ queryKey:['opportunity-client', opportunity.client_id], queryFn: ()=> opportunity.client_id? api<any>('GET', `/clients/${encodeURIComponent(String(opportunity.client_id||''))}`): Promise.resolve(null), enabled: !!opportunity.client_id, staleTime: 300_000 });
   const { data:projectDivisions } = useQuery({ queryKey:PROJECT_DIVISIONS_QUERY_KEY, queryFn: ()=> api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
-  const status = (opportunity as any).status_label || details?.status_label || '';
+  const status = opportunity.status_label || '';
   const statusLabel = String(status || '').trim();
-  const start = (opportunity.date_start || details?.date_start || opportunity.created_at || '').slice(0,10);
-  const eta = (opportunity.date_eta || details?.date_eta || '').slice(0, 10);
-  const estimatedValue = (opportunity as any).cost_estimated || details?.cost_estimated || 0;
-  const estimatorIds = (opportunity as any).estimator_ids || details?.estimator_ids || ((opportunity as any).estimator_id || details?.estimator_id ? [(opportunity as any).estimator_id || details?.estimator_id] : []);
-  const clientName = client?.display_name || client?.name || '';
-  const projectDivIds = (opportunity as any).project_division_ids || details?.project_division_ids || [];
+  const start = (opportunity.date_start || opportunity.created_at || '').slice(0,10);
+  const eta = (opportunity.date_eta || '').slice(0, 10);
+  const proposalsTotal = Number(opportunity.proposal_card_total || 0);
+  const estimatedValue = proposalsTotal > 0 ? proposalsTotal : (opportunity.cost_estimated || 0);
+  const estimatorIds = opportunity.estimator_ids || (opportunity.estimator_id ? [opportunity.estimator_id] : []);
+  const clientName = opportunity.client_display_name || opportunity.client_name || '';
+  const projectDivIds = opportunity.project_division_ids || [];
   
   // Get employees data for avatars
   const { data: employeesData } = useQuery({ 
@@ -1302,78 +1311,25 @@ function OpportunityListCard({ opportunity, onOpenReportModal, projectStatuses, 
     ? { name: listEstimatorName, profile_photo_file_id: listEstimatorAvatarFileId, first_name: listEstimatorName }
     : null);
   
-  // Fetch proposals to get pricing items for percentage calculation
-  const { data:proposals } = useQuery({ 
-    queryKey:['opportunityProposals', opportunity.id], 
-    queryFn: ()=>api<any[]>('GET', `/proposals?project_id=${encodeURIComponent(String(opportunity.id||''))}`) 
-  });
-  
-  // Fetch full proposal data if proposal exists
-  const proposal = proposals && proposals.length > 0 ? proposals[0] : null;
-  const { data:proposalData } = useQuery({ 
-    queryKey: ['proposal', proposal?.id],
-    queryFn: () => proposal?.id ? api<any>('GET', `/proposals/${proposal.id}`) : Promise.resolve(null),
-    enabled: !!proposal?.id
-  });
-  
-  // Check for pending data (mobile-created opportunities may be missing key fields)
   const missingFields = useMemo(() => {
     const missing: string[] = [];
-    // Use details if available, otherwise fallback to opportunity data
-    const siteId = details?.site_id;
     const hasDivisions = Array.isArray(projectDivIds) && projectDivIds.length > 0;
     const hasEstimators = estimatorIds.length > 0;
-    
     if (!hasEstimators) missing.push('Estimator');
-    if (!siteId) missing.push('Site');
+    if (!opportunity.site_id) missing.push('Site');
     if (!hasDivisions) missing.push('Division');
-    
     return missing;
-  }, [details, projectDivIds, estimatorIds]);
-  
+  }, [opportunity.site_id, projectDivIds, estimatorIds]);
   const hasPendingData = missingFields.length > 0;
-  
-  // Calculate percentages from pricing items
+
+  const divisionValuePcts = opportunity.division_value_pcts || {};
   const calculatedPercentages = useMemo(() => {
-    if (projectDivIds.length === 0) return {};
-    
-    // Initialize all divisions to 0%
     const result: { [key: string]: number } = {};
-    projectDivIds.forEach(id => {
-      result[String(id)] = 0;
+    projectDivIds.forEach((id) => {
+      result[String(id)] = Number(divisionValuePcts[String(id)] || 0);
     });
-    
-    // Get pricing items from proposal (data is nested in proposalData.data)
-    const pricingItems = proposalData?.data?.additional_costs || [];
-    
-    // If no pricing items, return 0% for all divisions
-    if (pricingItems.length === 0) {
-      return result;
-    }
-    
-    // Group by division_id and sum values
-    const divisionTotals: { [key: string]: number } = {};
-    pricingItems.forEach((item: any) => {
-      if (item.division_id) {
-        const divId = String(item.division_id);
-        const value = (item.value || 0) * (parseInt(item.quantity || '1', 10) || 1);
-        divisionTotals[divId] = (divisionTotals[divId] || 0) + value;
-      }
-    });
-    
-    // Calculate total
-    const total = Object.values(divisionTotals).reduce((a, b) => a + b, 0);
-    
-    // Calculate percentages only if total > 0
-    if (total > 0) {
-      projectDivIds.forEach(id => {
-        const idStr = String(id);
-        result[idStr] = divisionTotals[idStr] ? (divisionTotals[idStr] / total) * 100 : 0;
-      });
-    }
-    
     return result;
-  }, [projectDivIds, proposalData]);
+  }, [projectDivIds, divisionValuePcts]);
   
   // Get division icons and labels with percentages
   const divisionIcons = useMemo(() => {

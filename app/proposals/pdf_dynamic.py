@@ -19,7 +19,6 @@ from reportlab.lib import colors
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfbase.pdfmetrics import stringWidth
-from .pdf_image_optimizer import optimize_image_bytes
 from .pdf_fixed import HEADER_TITLE_MAX_WIDTH, HEADER_TITLE_BASE_SIZE, HEADER_TITLE_MIN_SIZE
 
 
@@ -1013,47 +1012,10 @@ def build_dynamic_pages(data, output_path):
 
             for i, img in enumerate(sec.get("images", [])):
                 flow = []
-                # Prefer direct path from uploaded temp; future: support direct blob fetch for file_object_id
+                # Path is already the once-optimized JPEG from the route. Embed it as-is.
                 original_img_path = img.get("path", "")
                 if original_img_path and os.path.exists(original_img_path):
-                    optimized_path = None
                     try:
-                        # Optimize image before processing
-                        try:
-                            with open(original_img_path, "rb") as f:
-                                image_bytes = f.read()
-                            
-                            optimized_bytes = optimize_image_bytes(image_bytes, preset="section")
-                            
-                            # Create temporary file for optimized image
-                            optimized_path = os.path.join(BASE_DIR, f"tmp_img_opt_{uuid.uuid4().hex}.jpg")
-                            with open(optimized_path, "wb") as f:
-                                f.write(optimized_bytes)
-                            
-                            # Use optimized image for PDF generation
-                            img_path = optimized_path
-                        except Exception:
-                            # Fallback to original if optimization fails
-                            img_path = original_img_path
-                            optimized_path = None
-                        
-                        # Use optimized JPEG directly if available, otherwise process original
-                        if optimized_path and os.path.exists(optimized_path):
-                            # Already optimized JPEG - use directly without re-saving to preserve optimization
-                            tmp_path = optimized_path
-                            # Mark that we shouldn't delete this file yet (it's in temp_images)
-                            temp_images.append(tmp_path)
-                        else:
-                            # Fallback: process original image
-                            with PILImage.open(img_path) as im:
-                                # Ensure RGB mode
-                                if im.mode != "RGB":
-                                    im = im.convert("RGB")
-                                # Save as JPEG
-                                tmp_path = os.path.join(BASE_DIR, f"tmp_img_{uuid.uuid4().hex}.jpg")
-                                im.save(tmp_path, format="JPEG", quality=85, optimize=True)
-                                temp_images.append(tmp_path)
-
                         orientation = img.get("orientation", "landscape")
                         if orientation == "portrait":
                             img_w = SECTION_IMAGE_PDF_PORTRAIT_W
@@ -1061,10 +1023,9 @@ def build_dynamic_pages(data, output_path):
                         else:
                             img_w = SECTION_IMAGE_PDF_LANDSCAPE_W
                             img_h = SECTION_IMAGE_PDF_LANDSCAPE_H
-                        flow.append(Image(tmp_path, width=img_w, height=img_h))
+                        flow.append(Image(original_img_path, width=img_w, height=img_h))
                     except Exception:
                         pass
-                    # Note: optimized_path is now in temp_images list and will be cleaned up at end of PDF generation
                 caption = img.get("caption", "")
                 caption_text = caption_text_for_pdf(caption) if caption else None
 

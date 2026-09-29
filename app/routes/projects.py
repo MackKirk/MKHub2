@@ -1071,7 +1071,7 @@ def _paginate_projects_by_display_value(
     offset = (page - 1) * limit
     rows = query.all()
     filtered = filter_projects_with_section_access(user, rows)
-    values_map, _ = _load_latest_proposals_by_project(db, [p.id for p in filtered])
+    values_map, _, _, _ = _load_latest_proposals_by_project(db, [p.id for p in filtered])
 
     def sort_key(p: Project):
         return (
@@ -1444,6 +1444,7 @@ def list_projects(
             "progress": getattr(p, 'progress', None),
             "status_label": getattr(p, 'status_label', None),
             "status_changed_at": getattr(p, 'status_changed_at', None).isoformat() if getattr(p, 'status_changed_at', None) else None,
+            "sent_to_customer_at": getattr(p, 'sent_to_customer_at', None).isoformat() if getattr(p, 'sent_to_customer_at', None) else None,
             "division_ids": getattr(p, 'division_ids', None),  # Legacy
             "project_division_ids": getattr(p, 'project_division_ids', None),
             "project_division_percentages": getattr(p, 'project_division_percentages', None),
@@ -1545,6 +1546,7 @@ def get_project(
         "division_id": getattr(p, 'division_id', None),
         "status_label": getattr(p, 'status_label', None),
         "status_changed_at": getattr(p, 'status_changed_at', None).isoformat() if getattr(p, 'status_changed_at', None) else None,
+        "sent_to_customer_at": getattr(p, 'sent_to_customer_at', None).isoformat() if getattr(p, 'sent_to_customer_at', None) else None,
         "division_ids": getattr(p, 'division_ids', None),  # Legacy
         "project_division_ids": getattr(p, 'project_division_ids', None),
         "project_division_percentages": getattr(p, 'project_division_percentages', None),
@@ -1596,6 +1598,10 @@ def get_project(
     }
 
 
+def _is_sent_to_customer_label(label: Optional[str]) -> bool:
+    return (label or "").strip().lower() == "sent to customer"
+
+
 @router.patch("/{project_id}")
 def update_project(project_id: str, payload: dict, db: Session = Depends(get_db), user=Depends(get_current_user)):
     p = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
@@ -1606,6 +1612,7 @@ def update_project(project_id: str, payload: dict, db: Session = Depends(get_db)
         payload.pop("business_line", None)
     payload.pop("is_bidding", None)
     payload.pop("related_leak_investigation_id", None)
+    payload.pop("sent_to_customer_at", None)
     # Owner changes must go through POST /{project_id}/change-owner (folders/files/validation).
     payload.pop("client_id", None)
 
@@ -1650,6 +1657,14 @@ def update_project(project_id: str, payload: dict, db: Session = Depends(get_db)
     # If status is changing, update status_changed_at timestamp
     if new_status_label and new_status_label != old_status_label:
         payload["status_changed_at"] = datetime.now(timezone.utc)
+        # First transition into Sent to Customer starts the 30/60/90 follow-up clock.
+        # Later returns do not move it.
+        if (
+            _is_sent_to_customer_label(new_status_label)
+            and not _is_sent_to_customer_label(old_status_label)
+            and not getattr(p, "sent_to_customer_at", None)
+        ):
+            payload["sent_to_customer_at"] = datetime.now(timezone.utc)
     
     # If status is changing, check if we need to update dates
     if new_status_label and new_status_label != old_status_label:
@@ -2671,14 +2686,17 @@ def list_project_files(
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found")
     _assert_project_line_read(user, proj)
-    cfiles = (
-        db.query(ClientFile)
+    rows = (
+        db.query(ClientFile, FileObject)
+        .join(FileObject, FileObject.id == ClientFile.file_object_id)
         .filter(ClientFile.client_id == proj.client_id, ClientFile.deleted_at.is_(None))
         .order_by(ClientFile.uploaded_at.desc())
         .all()
     )
     out = []
-    for cf in cfiles:
+    for cf, fo in rows:
+        if str(getattr(fo, "project_id", "") or "") != str(project_id):
+            continue
         # Category-level permission filter (default allow-all if config not set)
         cat = getattr(cf, "category", None)
         if not has_project_files_category_permission(user, cat, action="read", project=proj):
@@ -2690,11 +2708,6 @@ def list_project_files(
                 )
             ):
                 continue
-        fo = db.query(FileObject).filter(FileObject.id == cf.file_object_id).first()
-        if not fo:
-            continue
-        if str(getattr(fo, 'project_id', '') or '') != str(project_id):
-            continue
         ct = getattr(fo, 'content_type', None)
         name = cf.original_name or cf.key or ''
         ext = (name.rsplit('.', 1)[-1] if '.' in name else '').lower()
@@ -2726,16 +2739,16 @@ def list_deleted_project_files(
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found")
     _assert_project_line_read(user, proj)
-    cfiles = (
-        db.query(ClientFile)
+    rows = (
+        db.query(ClientFile, FileObject)
+        .join(FileObject, FileObject.id == ClientFile.file_object_id)
         .filter(ClientFile.client_id == proj.client_id, ClientFile.deleted_at.isnot(None))
         .order_by(ClientFile.deleted_at.desc())
         .all()
     )
     out = []
-    for cf in cfiles:
-        fo = db.query(FileObject).filter(FileObject.id == cf.file_object_id).first()
-        if not fo or str(getattr(fo, "project_id", "") or "") != str(project_id):
+    for cf, fo in rows:
+        if str(getattr(fo, "project_id", "") or "") != str(project_id):
             continue
         ct = getattr(fo, "content_type", None)
         name = cf.original_name or cf.key or ""
@@ -6830,17 +6843,17 @@ def _apply_business_opportunity_list_filters(
     db: Session,
     user: User,
     related_to_me: bool,
-    division_id: Optional[str],
-    division_id_not: Optional[str],
+    division_id: Optional[List[str]],
+    division_id_not: Optional[List[str]],
     subdivision_id: Optional[str],
-    status: Optional[str],
-    status_not: Optional[str],
-    client_id: Optional[str],
-    client_id_not: Optional[str],
+    status: Optional[List[str]],
+    status_not: Optional[List[str]],
+    client_id: Optional[List[str]],
+    client_id_not: Optional[List[str]],
     date_start: Optional[str],
     date_end: Optional[str],
-    estimator_id: Optional[str],
-    estimator_id_not: Optional[str],
+    estimator_id: Optional[List[str]],
+    estimator_id_not: Optional[List[str]],
     eta_start: Optional[str],
     eta_end: Optional[str],
     value_min: Optional[int],
@@ -6850,21 +6863,10 @@ def _apply_business_opportunity_list_filters(
     if related_to_me:
         query = query.filter(_project_related_to_user_filter(user.id))
 
-    # Filter by client
-    if client_id:
-        try:
-            client_uuid = uuid.UUID(client_id)
-            query = query.filter(Project.client_id == client_uuid)
-        except ValueError:
-            pass
-    
-    # Filter by client (exclusion)
-    if client_id_not:
-        try:
-            client_uuid = uuid.UUID(client_id_not)
-            query = query.filter(Project.client_id != client_uuid)
-        except ValueError:
-            pass
+    from ..services.project_list_filters import apply_any_clients, apply_excluded_clients
+
+    query = apply_any_clients(query, client_id)
+    query = apply_excluded_clients(query, client_id_not)
     
     # Filter by date range (Start Date shown on cards)
     # The UI displays: (project.date_start || project.created_at).slice(0,10)
@@ -6901,192 +6903,18 @@ def _apply_business_opportunity_list_filters(
         except ValueError:
             pass
     elif division_id:
-        # Filter by main division (includes all its subdivisions) - same logic as dashboard
-        try:
-            div_uuid = uuid.UUID(division_id)
-            # Get all subdivision IDs for this division
-            from ..models.models import SettingList, SettingItem
-            divisions_list = db.query(SettingList).filter(SettingList.name == "project_divisions").first()
-        
-            all_conditions = []
-        
-            if divisions_list:
-                # Get division and all its subdivisions
-                division_items = db.query(SettingItem).filter(
-                    SettingItem.list_id == divisions_list.id,
-                    or_(
-                        SettingItem.id == div_uuid,
-                        SettingItem.parent_id == div_uuid
-                    )
-                ).all()
-                division_ids_list = [str(item.id) for item in division_items]
-            
-                # Build filter condition for any of these IDs
-                conditions = []
-                for div_id_str in division_ids_list:
-                    conditions.append(cast(Project.project_division_ids, String).like(f'%{div_id_str}%'))
-            
-                if conditions:
-                    all_conditions.append(or_(*conditions))
-        
-            # Legacy support - combine with OR so it works with both old and new format
-            all_conditions.append(
-                or_(
-                    Project.division_id == div_uuid,
-                    cast(Project.division_ids, String).like(f'%{division_id}%')
-                )
-            )
-        
-            # Apply all conditions with OR (project matches if it has division in any format)
-            if all_conditions:
-                query = query.filter(or_(*all_conditions))
-        except ValueError:
-            pass
-    
-    # Filter by division (exclusion)
-    if division_id_not and not subdivision_id:
-        # For exclusion, we need to exclude projects that have this division or any of its subdivisions
-        try:
-            div_uuid = uuid.UUID(division_id_not)
-            from ..models.models import SettingList, SettingItem
-            divisions_list = db.query(SettingList).filter(SettingList.name == "project_divisions").first()
-        
-            excluded_division_ids = []
-        
-            if divisions_list:
-                # Get division and all its subdivisions
-                division_items = db.query(SettingItem).filter(
-                    SettingItem.list_id == divisions_list.id,
-                    or_(
-                        SettingItem.id == div_uuid,
-                        SettingItem.parent_id == div_uuid
-                    )
-                ).all()
-                excluded_division_ids = [str(item.id) for item in division_items]
-        
-            # Always include the main division_id in the exclusion list
-            if str(div_uuid) not in excluded_division_ids:
-                excluded_division_ids.append(str(div_uuid))
-        
-            # Build exclusion: project is excluded if it has ANY of these divisions
-            # We'll use NOT to exclude projects that match the inclusion pattern
-            exclusion_or_conditions = []
-            for div_id_str in excluded_division_ids:
-                try:
-                    div_id_uuid = uuid.UUID(div_id_str)
-                    # Project HAS this division if any of these conditions are true:
-                    has_division = or_(
-                        Project.division_id == div_id_uuid,
-                        cast(Project.project_division_ids, String).like(f'%{div_id_str}%'),
-                        cast(Project.division_ids, String).like(f'%{div_id_str}%')
-                    )
-                    exclusion_or_conditions.append(has_division)
-                except ValueError:
-                    pass
-        
-            # Exclude projects that have ANY of the excluded divisions
-            # Using De Morgan: NOT (A OR B) = (NOT A) AND (NOT B)
-            # So we need: project does NOT have div1 AND does NOT have div2 AND ...
-            exclusion_and_conditions = []
-            for div_id_str in excluded_division_ids:
-                try:
-                    div_id_uuid = uuid.UUID(div_id_str)
-                    # Project does NOT have this division if ALL of these are true:
-                    not_has_division = and_(
-                        or_(
-                            Project.division_id != div_id_uuid,
-                            Project.division_id.is_(None)
-                        ),
-                        or_(
-                            cast(Project.project_division_ids, String).notlike(f'%{div_id_str}%'),
-                            Project.project_division_ids.is_(None)
-                        ),
-                        or_(
-                            cast(Project.division_ids, String).notlike(f'%{div_id_str}%'),
-                            Project.division_ids.is_(None)
-                        )
-                    )
-                    exclusion_and_conditions.append(not_has_division)
-                except ValueError:
-                    pass
-        
-            # Apply exclusion: project must NOT have ANY of the excluded divisions
-            # Combine with AND: project must not have div1 AND not have div2 AND ...
-            if exclusion_and_conditions:
-                query = query.filter(and_(*exclusion_and_conditions))
-        except ValueError:
-            pass
-    
-    # Filter by status - support both UUID and string label
-    if status:
-        try:
-            status_uuid = uuid.UUID(str(status))
-            # Get the label from SettingItem to also match by status_label
-            from ..models.models import SettingItem
-            status_item = db.query(SettingItem).filter(SettingItem.id == status_uuid).first()
-            status_label = status_item.label if status_item else None
-        
-            # Match by status_id OR (if status_id is null, match by status_label)
-            if status_label:
-                query = query.filter(or_(
-                    Project.status_id == status_uuid,
-                    (Project.status_id.is_(None)) & (Project.status_label == status_label)
-                ))
-            else:
-                # If we can't find the SettingItem, just try status_id
-                query = query.filter(Project.status_id == status_uuid)
-        except (ValueError, AttributeError):
-            # If status is not a valid UUID, try matching by status_label string
-            query = query.filter(Project.status_label == status)
-    
-    # Filter by status (exclusion)
-    if status_not:
-        try:
-            status_uuid = uuid.UUID(str(status_not))
-            # Get the label from SettingItem to also match by status_label
-            from ..models.models import SettingItem
-            status_item = db.query(SettingItem).filter(SettingItem.id == status_uuid).first()
-            status_label = status_item.label if status_item else None
-        
-            # Exclude: NOT ((status_id == status_uuid) OR (status_id is None AND status_label == status_label))
-            # Using De Morgan: (status_id != status_uuid) AND (status_id is not None OR status_label != status_label)
-            if status_label:
-                # Case 1: status_id is not None -> exclude if status_id != status_uuid
-                # Case 2: status_id is None -> exclude if status_label != status_label
-                query = query.filter(
-                    or_(
-                        and_(
-                            Project.status_id.isnot(None),
-                            Project.status_id != status_uuid
-                        ),
-                        and_(
-                            Project.status_id.is_(None),
-                            Project.status_label != status_label
-                        )
-                    )
-                )
-            else:
-                # If we can't find the SettingItem, just exclude by status_id
-                query = query.filter(Project.status_id != status_uuid)
-        except (ValueError, AttributeError):
-            # If status is not a valid UUID, try excluding by status_label string
-            query = query.filter(Project.status_label != status_not)
-    
-    # Filter by estimator
-    if estimator_id:
-        try:
-            estimator_uuid = uuid.UUID(estimator_id)
-            query = query.filter(Project.estimator_id == estimator_uuid)
-        except ValueError:
-            pass
-    
-    # Filter by estimator (exclusion)
-    if estimator_id_not:
-        try:
-            estimator_uuid = uuid.UUID(estimator_id_not)
-            query = query.filter(Project.estimator_id != estimator_uuid)
-        except ValueError:
-            pass
+        from ..services.project_list_filters import apply_any_divisions
+        query = apply_any_divisions(query, db, division_id)
+
+    from ..services.project_list_filters import apply_excluded_divisions, apply_any_statuses, apply_excluded_statuses
+    query = apply_excluded_divisions(query, db, division_id_not)
+    query = apply_any_statuses(query, db, status)
+    query = apply_excluded_statuses(query, db, status_not)
+
+    from ..services.project_list_filters import apply_any_estimators, apply_excluded_estimators
+
+    query = apply_any_estimators(query, estimator_id)
+    query = apply_excluded_estimators(query, estimator_id_not)
     
     # Filter by ETA date range
     if eta_start:
@@ -7241,7 +7069,7 @@ def _resolve_project_cover_url(db: Session, p, *, width: int = 400) -> str:
         return f"/files/{cover_file.file_object_id}/thumbnail?w={width}{timestamp_param}"
     if getattr(p, "image_file_object_id", None):
         return f"/files/{str(p.image_file_object_id)}/thumbnail?w={width}"
-    _, proposal_cover_by_project = _load_latest_proposals_by_project(db, [p.id])
+    _, proposal_cover_by_project, _, _ = _load_latest_proposals_by_project(db, [p.id])
     if pid in proposal_cover_by_project:
         return f"/files/{proposal_cover_by_project[pid]}/thumbnail?w={width}"
     return "/ui/assets/placeholders/project.png"
@@ -7288,11 +7116,64 @@ def _load_legacy_cover_images(db: Session, project_ids: list) -> dict[str, Clien
     return cover_images
 
 
-def _load_latest_proposals_by_project(db: Session, project_ids: list) -> tuple[dict[str, float], dict[str, str]]:
+def _proposal_division_pcts(proposal_data: dict) -> dict[str, float]:
+    """Match the list cards: share of newest proposal pricing by division, including unapproved lines."""
+    items = (proposal_data or {}).get("additional_costs") or []
+    if not isinstance(items, list):
+        return {}
+    totals: dict[str, float] = {}
+    for item in items:
+        if not isinstance(item, dict) or not item.get("division_id"):
+            continue
+        raw_qty = item.get("quantity", 1)
+        try:
+            qty = int(float(raw_qty if raw_qty not in (None, "") else 1))
+        except (TypeError, ValueError):
+            qty = 1
+        if qty == 0:
+            qty = 1
+        totals[str(item["division_id"])] = totals.get(str(item["division_id"]), 0.0) + float(item.get("value") or 0) * qty
+    grand = sum(totals.values())
+    if grand <= 0:
+        return {}
+    return {key: (value / grand) * 100 for key, value in totals.items()}
+
+
+def _proposal_card_total(proposals: list) -> float:
+    """Newest non-change-order plus every change order. Same sum the project card shows."""
+
+    def line_sum(proposal_data: dict) -> float:
+        items = (proposal_data or {}).get("additional_costs") or []
+        if not isinstance(items, list):
+            return 0.0
+        total = 0.0
+        for item in items:
+            if not isinstance(item, dict) or item.get("approved") is False:
+                continue
+            try:
+                qty = float(item.get("quantity") or 1)
+            except (TypeError, ValueError):
+                qty = 1.0
+            if qty == 0:
+                qty = 1.0
+            total += float(item.get("value") or 0) * qty
+        return total
+
+    original = next((prop for prop in proposals if not getattr(prop, "is_change_order", False)), None)
+    total = line_sum((original.data if original else None) or {})
+    for prop in proposals:
+        if getattr(prop, "is_change_order", False):
+            total += line_sum(prop.data or {})
+    return total
+
+
+def _load_latest_proposals_by_project(db: Session, project_ids: list) -> tuple[dict[str, float], dict[str, str], dict[str, float], dict[str, dict]]:
     estimated_values_map: dict[str, float] = {}
     proposal_cover_by_project: dict[str, str] = {}
+    proposal_card_totals: dict[str, float] = {}
+    proposal_division_pcts: dict[str, dict] = {}
     if not project_ids:
-        return estimated_values_map, proposal_cover_by_project
+        return estimated_values_map, proposal_cover_by_project, proposal_card_totals, proposal_division_pcts
 
     rows = (
         db.query(Proposal)
@@ -7300,25 +7181,33 @@ def _load_latest_proposals_by_project(db: Session, project_ids: list) -> tuple[d
         .order_by(Proposal.created_at.desc())
         .all()
     )
+    grouped: dict[str, list] = {}
     for prop in rows:
         pid = str(prop.project_id) if prop.project_id else None
         if not pid:
             continue
-        if pid not in estimated_values_map:
-            try:
-                proposal_data = prop.data or {}
-                grand_total = calculate_proposal_grand_total(proposal_data)
-                if grand_total > 0:
-                    estimated_values_map[pid] = grand_total
-            except Exception:
-                pass
-        if pid not in proposal_cover_by_project:
-            data = prop.data or {}
-            if isinstance(data, dict):
-                foid = data.get("cover_file_object_id")
-                if foid:
-                    proposal_cover_by_project[pid] = str(foid)
-    return estimated_values_map, proposal_cover_by_project
+        grouped.setdefault(pid, []).append(prop)
+
+    for pid, props in grouped.items():
+        newest = props[0]
+        try:
+            grand_total = calculate_proposal_grand_total(newest.data or {})
+            if grand_total > 0:
+                estimated_values_map[pid] = grand_total
+        except Exception:
+            pass
+        data = newest.data or {}
+        if isinstance(data, dict):
+            foid = data.get("cover_file_object_id")
+            if foid:
+                proposal_cover_by_project[pid] = str(foid)
+        try:
+            proposal_card_totals[pid] = _proposal_card_total(props)
+            proposal_division_pcts[pid] = _proposal_division_pcts(data if isinstance(data, dict) else {})
+        except Exception:
+            proposal_card_totals[pid] = 0
+            proposal_division_pcts[pid] = {}
+    return estimated_values_map, proposal_cover_by_project, proposal_card_totals, proposal_division_pcts
 
 
 def _count_with_status_filter(query, status_id: uuid.UUID, status_label: Optional[str]) -> int:
@@ -7339,15 +7228,15 @@ def _business_list_tab_counts(
     is_bidding: bool,
     business_line: Optional[str],
     status_specs: tuple[tuple[str, tuple[str, ...]], ...],
-    division_id: Optional[str] = None,
-    division_id_not: Optional[str] = None,
+    division_id: Optional[List[str]] = None,
+    division_id_not: Optional[List[str]] = None,
     subdivision_id: Optional[str] = None,
-    client_id: Optional[str] = None,
-    client_id_not: Optional[str] = None,
+    client_id: Optional[List[str]] = None,
+    client_id_not: Optional[List[str]] = None,
     date_start: Optional[str] = None,
     date_end: Optional[str] = None,
-    estimator_id: Optional[str] = None,
-    estimator_id_not: Optional[str] = None,
+    estimator_id: Optional[List[str]] = None,
+    estimator_id_not: Optional[List[str]] = None,
     eta_start: Optional[str] = None,
     eta_end: Optional[str] = None,
     value_min: Optional[int] = None,
@@ -7441,7 +7330,7 @@ def _paginate_and_serialize_business_opportunity_style(
             sites_map[str(site.id)] = site
 
     cover_images = _load_legacy_cover_images(db, project_ids)
-    estimated_values_map, proposal_cover_by_project = _load_latest_proposals_by_project(db, project_ids)
+    estimated_values_map, proposal_cover_by_project, proposal_card_totals, proposal_division_pcts = _load_latest_proposals_by_project(db, project_ids)
     clients_map = _build_clients_map(db, client_ids)
     leak_div_id = get_leak_investigation_division_id(db)
 
@@ -7490,6 +7379,9 @@ def _paginate_and_serialize_business_opportunity_style(
             "division_ids": getattr(p, 'division_ids', None),  # Legacy
             "project_division_ids": getattr(p, 'project_division_ids', None),
             "cost_estimated": getattr(p, 'cost_estimated', None),
+            "proposal_card_total": proposal_card_totals.get(pid, 0),
+            "division_value_pcts": proposal_division_pcts.get(pid) or {},
+            "site_id": str(getattr(p, "site_id", None)) if getattr(p, "site_id", None) else None,
             "is_bidding": list_kind == "opportunity",
             "has_leak_investigation_division": project_has_leak_investigation_division(db, p, leak_div_id=leak_div_id),
             "cover_image_url": cover_url,
@@ -7539,17 +7431,17 @@ def _paginate_and_serialize_business_opportunity_style(
 
 @router.get("/business/opportunities")
 def business_opportunities(
-    division_id: Optional[str] = None,
-    division_id_not: Optional[str] = None,
+    division_id: Optional[List[str]] = Query(None),
+    division_id_not: Optional[List[str]] = Query(None),
     subdivision_id: Optional[str] = None,
-    status: Optional[str] = None,
-    status_not: Optional[str] = None,
-    client_id: Optional[str] = None,
-    client_id_not: Optional[str] = None,
+    status: Optional[List[str]] = Query(None),
+    status_not: Optional[List[str]] = Query(None),
+    client_id: Optional[List[str]] = Query(None),
+    client_id_not: Optional[List[str]] = Query(None),
     date_start: Optional[str] = None,
     date_end: Optional[str] = None,
-    estimator_id: Optional[str] = None,
-    estimator_id_not: Optional[str] = None,
+    estimator_id: Optional[List[str]] = Query(None),
+    estimator_id_not: Optional[List[str]] = Query(None),
     eta_start: Optional[str] = None,
     eta_end: Optional[str] = None,
     value_min: Optional[int] = None,
@@ -7584,15 +7476,15 @@ def business_opportunities(
 
 @router.get("/business/opportunities/tab-counts")
 def business_opportunities_tab_counts(
-    division_id: Optional[str] = None,
-    division_id_not: Optional[str] = None,
+    division_id: Optional[List[str]] = Query(None),
+    division_id_not: Optional[List[str]] = Query(None),
     subdivision_id: Optional[str] = None,
-    client_id: Optional[str] = None,
-    client_id_not: Optional[str] = None,
+    client_id: Optional[List[str]] = Query(None),
+    client_id_not: Optional[List[str]] = Query(None),
     date_start: Optional[str] = None,
     date_end: Optional[str] = None,
-    estimator_id: Optional[str] = None,
-    estimator_id_not: Optional[str] = None,
+    estimator_id: Optional[List[str]] = Query(None),
+    estimator_id_not: Optional[List[str]] = Query(None),
     eta_start: Optional[str] = None,
     eta_end: Optional[str] = None,
     value_min: Optional[int] = None,
@@ -7628,17 +7520,17 @@ def business_opportunities_tab_counts(
 
 @router.get("/business/leak-investigations")
 def business_leak_investigations(
-    division_id: Optional[str] = None,
-    division_id_not: Optional[str] = None,
+    division_id: Optional[List[str]] = Query(None),
+    division_id_not: Optional[List[str]] = Query(None),
     subdivision_id: Optional[str] = None,
-    status: Optional[str] = None,
-    status_not: Optional[str] = None,
-    client_id: Optional[str] = None,
-    client_id_not: Optional[str] = None,
+    status: Optional[List[str]] = Query(None),
+    status_not: Optional[List[str]] = Query(None),
+    client_id: Optional[List[str]] = Query(None),
+    client_id_not: Optional[List[str]] = Query(None),
     date_start: Optional[str] = None,
     date_end: Optional[str] = None,
-    estimator_id: Optional[str] = None,
-    estimator_id_not: Optional[str] = None,
+    estimator_id: Optional[List[str]] = Query(None),
+    estimator_id_not: Optional[List[str]] = Query(None),
     eta_start: Optional[str] = None,
     eta_end: Optional[str] = None,
     value_min: Optional[int] = None,
@@ -7701,19 +7593,19 @@ def business_leak_investigations(
 
 @router.get("/business/projects")
 def business_projects(
-    division_id: Optional[str] = None,
-    division_id_not: Optional[str] = None,
+    division_id: Optional[List[str]] = Query(None),
+    division_id_not: Optional[List[str]] = Query(None),
     subdivision_id: Optional[str] = None,
-    status: Optional[str] = None,
-    status_not: Optional[str] = None,
+    status: Optional[List[str]] = Query(None),
+    status_not: Optional[List[str]] = Query(None),
     q: Optional[str] = None,
     min_value: Optional[float] = None,
-    client_id: Optional[str] = None,
-    client_id_not: Optional[str] = None,
+    client_id: Optional[List[str]] = Query(None),
+    client_id_not: Optional[List[str]] = Query(None),
     date_start: Optional[str] = None,
     date_end: Optional[str] = None,
-    estimator_id: Optional[str] = None,
-    estimator_id_not: Optional[str] = None,
+    estimator_id: Optional[List[str]] = Query(None),
+    estimator_id_not: Optional[List[str]] = Query(None),
     eta_start: Optional[str] = None,
     eta_end: Optional[str] = None,
     value_min: Optional[int] = None,
@@ -7742,21 +7634,10 @@ def business_projects(
     if related_to_me:
         query = query.filter(_project_related_to_user_filter(user.id))
 
-    # Filter by client
-    if client_id:
-        try:
-            client_uuid = uuid.UUID(client_id)
-            query = query.filter(Project.client_id == client_uuid)
-        except ValueError:
-            pass
-    
-    # Filter by client (exclusion)
-    if client_id_not:
-        try:
-            client_uuid = uuid.UUID(client_id_not)
-            query = query.filter(Project.client_id != client_uuid)
-        except ValueError:
-            pass
+    from ..services.project_list_filters import apply_any_clients, apply_excluded_clients
+
+    query = apply_any_clients(query, client_id)
+    query = apply_excluded_clients(query, client_id_not)
     
     # Filter by date range (Start Date shown on cards)
     # The UI displays: (project.date_start || project.created_at).slice(0,10)
@@ -7793,139 +7674,18 @@ def business_projects(
         except ValueError:
             pass
     elif division_id:
-        # Filter by main division (includes all its subdivisions) - same logic as dashboard
-        try:
-            div_uuid = uuid.UUID(division_id)
-            # Get all subdivision IDs for this division
-            from ..models.models import SettingList, SettingItem
-            divisions_list = db.query(SettingList).filter(SettingList.name == "project_divisions").first()
-            
-            all_conditions = []
-            
-            if divisions_list:
-                # Get division and all its subdivisions
-                division_items = db.query(SettingItem).filter(
-                    SettingItem.list_id == divisions_list.id,
-                    or_(
-                        SettingItem.id == div_uuid,
-                        SettingItem.parent_id == div_uuid
-                    )
-                ).all()
-                division_ids_list = [str(item.id) for item in division_items]
-                
-                # Build filter condition for any of these IDs
-                conditions = []
-                for div_id_str in division_ids_list:
-                    conditions.append(cast(Project.project_division_ids, String).like(f'%{div_id_str}%'))
-                
-                if conditions:
-                    all_conditions.append(or_(*conditions))
-            
-            # Legacy support - combine with OR so it works with both old and new format
-            all_conditions.append(
-                or_(
-                    Project.division_id == div_uuid,
-                    cast(Project.division_ids, String).like(f'%{division_id}%')
-                )
-            )
-            
-            # Apply all conditions with OR (project matches if it has division in any format)
-            if all_conditions:
-                query = query.filter(or_(*all_conditions))
-        except ValueError:
-            pass
-    
-    # Filter by division (exclusion)
-    if division_id_not:
-        try:
-            div_uuid = uuid.UUID(division_id_not)
-            from ..models.models import SettingList, SettingItem
-            divisions_list = db.query(SettingList).filter(SettingList.name == "project_divisions").first()
-            
-            exclusion_and_conditions = []
-            
-            if divisions_list:
-                division_items = db.query(SettingItem).filter(
-                    SettingItem.list_id == divisions_list.id,
-                    or_(
-                        SettingItem.id == div_uuid,
-                        SettingItem.parent_id == div_uuid
-                    )
-                ).all()
-                division_ids_to_exclude = [str(item.id) for item in division_items]
-                
-                for ex_div_id_str in division_ids_to_exclude:
-                    try:
-                        # NOT (has division in any format)
-                        not_has_division = and_(
-                            Project.division_id != uuid.UUID(ex_div_id_str),
-                            or_(
-                                cast(Project.project_division_ids, String).notlike(f'%{ex_div_id_str}%'),
-                                Project.project_division_ids.is_(None)
-                            ),
-                            or_(
-                                cast(Project.division_ids, String).notlike(f'%{ex_div_id_str}%'),
-                                Project.division_ids.is_(None)
-                            )
-                        )
-                        exclusion_and_conditions.append(not_has_division)
-                    except ValueError:
-                        pass
-            
-            if exclusion_and_conditions:
-                query = query.filter(and_(*exclusion_and_conditions))
-        except ValueError:
-            pass
-    
-    # Filter by status
-    if status:
-        try:
-            status_uuid = uuid.UUID(str(status))
-            query = query.filter(Project.status_id == status_uuid)
-        except ValueError:
-            query = query.filter(Project.status_label == status)
-    
-    # Filter by status (exclusion)
-    if status_not:
-        try:
-            status_uuid = uuid.UUID(str(status_not))
-            from ..models.models import SettingItem
-            status_item = db.query(SettingItem).filter(SettingItem.id == status_uuid).first()
-            status_label = status_item.label if status_item else None
-            
-            if status_label:
-                query = query.filter(
-                    or_(
-                        and_(
-                            Project.status_id.isnot(None),
-                            Project.status_id != status_uuid
-                        ),
-                        and_(
-                            Project.status_id.is_(None),
-                            Project.status_label != status_label
-                        )
-                    )
-                )
-            else:
-                query = query.filter(Project.status_id != status_uuid)
-        except (ValueError, AttributeError):
-            query = query.filter(Project.status_label != status_not)
-    
-    # Filter by estimator
-    if estimator_id:
-        try:
-            estimator_uuid = uuid.UUID(estimator_id)
-            query = query.filter(Project.estimator_id == estimator_uuid)
-        except ValueError:
-            pass
-    
-    # Filter by estimator (exclusion)
-    if estimator_id_not:
-        try:
-            estimator_uuid = uuid.UUID(estimator_id_not)
-            query = query.filter(Project.estimator_id != estimator_uuid)
-        except ValueError:
-            pass
+        from ..services.project_list_filters import apply_any_divisions
+        query = apply_any_divisions(query, db, division_id)
+
+    from ..services.project_list_filters import apply_excluded_divisions, apply_any_statuses, apply_excluded_statuses
+    query = apply_excluded_divisions(query, db, division_id_not)
+    query = apply_any_statuses(query, db, status)
+    query = apply_excluded_statuses(query, db, status_not)
+
+    from ..services.project_list_filters import apply_any_estimators, apply_excluded_estimators
+
+    query = apply_any_estimators(query, estimator_id)
+    query = apply_excluded_estimators(query, estimator_id_not)
     
     # Filter by ETA date range
     if eta_start:
@@ -8127,7 +7887,7 @@ def business_projects(
     # Fetch legacy cover images in one query (ONLY explicit cover categories; do NOT fall back to any image)
     cover_images = _load_legacy_cover_images(db, project_ids)
     clients_map = _build_clients_map(db, client_ids)
-    estimated_values_map, proposal_cover_by_project = _load_latest_proposals_by_project(db, project_ids)
+    estimated_values_map, proposal_cover_by_project, proposal_card_totals, proposal_division_pcts = _load_latest_proposals_by_project(db, project_ids)
 
     # Fetch estimator, onsite lead and project_admin names/avatars in batch (so UI does not wait for /employees)
     estimator_ids = list(set([getattr(p, 'estimator_id', None) for p in projects[:limit] if getattr(p, 'estimator_id', None)]))
@@ -8167,6 +7927,8 @@ def business_projects(
             "project_division_percentages": percentages_payload,
             "cost_actual": getattr(p, 'cost_actual', None),
             "service_value": getattr(p, 'service_value', None),
+            "proposal_card_total": proposal_card_totals.get(str(p.id), 0),
+            "division_value_pcts": proposal_division_pcts.get(str(p.id)) or {},
             "is_bidding": False,
             "cover_image_url": None,
             "client_name": None,
@@ -8249,19 +8011,19 @@ def business_projects(
 
 @router.get("/business/projects/map-points")
 def business_projects_map_points(
-    division_id: Optional[str] = None,
-    division_id_not: Optional[str] = None,
+    division_id: Optional[List[str]] = Query(None),
+    division_id_not: Optional[List[str]] = Query(None),
     subdivision_id: Optional[str] = None,
-    status: Optional[str] = None,
-    status_not: Optional[str] = None,
+    status: Optional[List[str]] = Query(None),
+    status_not: Optional[List[str]] = Query(None),
     q: Optional[str] = None,
     min_value: Optional[float] = None,
-    client_id: Optional[str] = None,
-    client_id_not: Optional[str] = None,
+    client_id: Optional[List[str]] = Query(None),
+    client_id_not: Optional[List[str]] = Query(None),
     date_start: Optional[str] = None,
     date_end: Optional[str] = None,
-    estimator_id: Optional[str] = None,
-    estimator_id_not: Optional[str] = None,
+    estimator_id: Optional[List[str]] = Query(None),
+    estimator_id_not: Optional[List[str]] = Query(None),
     eta_start: Optional[str] = None,
     eta_end: Optional[str] = None,
     value_min: Optional[int] = None,
@@ -8318,19 +8080,19 @@ def business_projects_map_points(
 def business_projects_calendar(
     start: str,
     end: str,
-    division_id: Optional[str] = None,
-    division_id_not: Optional[str] = None,
+    division_id: Optional[List[str]] = Query(None),
+    division_id_not: Optional[List[str]] = Query(None),
     subdivision_id: Optional[str] = None,
-    status: Optional[str] = None,
-    status_not: Optional[str] = None,
+    status: Optional[List[str]] = Query(None),
+    status_not: Optional[List[str]] = Query(None),
     q: Optional[str] = None,
     min_value: Optional[float] = None,
-    client_id: Optional[str] = None,
-    client_id_not: Optional[str] = None,
+    client_id: Optional[List[str]] = Query(None),
+    client_id_not: Optional[List[str]] = Query(None),
     date_start: Optional[str] = None,
     date_end: Optional[str] = None,
-    estimator_id: Optional[str] = None,
-    estimator_id_not: Optional[str] = None,
+    estimator_id: Optional[List[str]] = Query(None),
+    estimator_id_not: Optional[List[str]] = Query(None),
     eta_start: Optional[str] = None,
     eta_end: Optional[str] = None,
     value_min: Optional[int] = None,
@@ -8382,18 +8144,18 @@ def business_projects_calendar(
 
 @router.get("/business/opportunities/map-points")
 def business_opportunities_map_points(
-    division_id: Optional[str] = None,
-    division_id_not: Optional[str] = None,
+    division_id: Optional[List[str]] = Query(None),
+    division_id_not: Optional[List[str]] = Query(None),
     subdivision_id: Optional[str] = None,
-    status: Optional[str] = None,
-    status_not: Optional[str] = None,
+    status: Optional[List[str]] = Query(None),
+    status_not: Optional[List[str]] = Query(None),
     q: Optional[str] = None,
-    client_id: Optional[str] = None,
-    client_id_not: Optional[str] = None,
+    client_id: Optional[List[str]] = Query(None),
+    client_id_not: Optional[List[str]] = Query(None),
     date_start: Optional[str] = None,
     date_end: Optional[str] = None,
-    estimator_id: Optional[str] = None,
-    estimator_id_not: Optional[str] = None,
+    estimator_id: Optional[List[str]] = Query(None),
+    estimator_id_not: Optional[List[str]] = Query(None),
     eta_start: Optional[str] = None,
     eta_end: Optional[str] = None,
     value_min: Optional[int] = None,
@@ -8447,15 +8209,15 @@ def business_opportunities_map_points(
 
 @router.get("/business/projects/tab-counts")
 def business_projects_tab_counts(
-    division_id: Optional[str] = None,
-    division_id_not: Optional[str] = None,
+    division_id: Optional[List[str]] = Query(None),
+    division_id_not: Optional[List[str]] = Query(None),
     subdivision_id: Optional[str] = None,
-    client_id: Optional[str] = None,
-    client_id_not: Optional[str] = None,
+    client_id: Optional[List[str]] = Query(None),
+    client_id_not: Optional[List[str]] = Query(None),
     date_start: Optional[str] = None,
     date_end: Optional[str] = None,
-    estimator_id: Optional[str] = None,
-    estimator_id_not: Optional[str] = None,
+    estimator_id: Optional[List[str]] = Query(None),
+    estimator_id_not: Optional[List[str]] = Query(None),
     eta_start: Optional[str] = None,
     eta_end: Optional[str] = None,
     value_min: Optional[int] = None,

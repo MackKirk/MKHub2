@@ -3,6 +3,7 @@ import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Search } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api, withFileAccessToken } from '@/lib/api';
+import { putFile, rejectOversizedBatch } from '@/lib/fileUploadBatch';
 import { downloadStoredFiles } from '@/lib/downloadFile';
 import { useConfirm } from '@/components/ConfirmProvider';
 import {
@@ -12,6 +13,7 @@ import {
   FileListSelectionBar,
   FileMoveLocationModal,
   FileListDropHint,
+  UploadProgressPanel,
   dropTargetClass,
   buildFolderFileCounts,
   fileDropTargetProps,
@@ -847,7 +849,12 @@ export default function CompanyFilesTabEnhanced() {
     }
   };
 
-  const uploadSingleFile = async (file: File, customTitle?: string, folderId?: string) => {
+  const uploadSingleFile = async (
+    file: File,
+    customTitle?: string,
+    folderId?: string,
+    onProgress?: (percent: number) => void,
+  ) => {
     const targetFolderId = folderId || effectiveFolderId;
     if (!targetFolderId) throw new Error('Select a file category first');
     const name = file.name;
@@ -866,15 +873,7 @@ export default function CompanyFilesTabEnhanced() {
 
     let conf: { id?: string };
     try {
-      const putResp = await fetch(up.upload_url, {
-        method: 'PUT',
-        headers: { 'Content-Type': type, 'x-ms-blob-type': 'BlockBlob' },
-        body: file,
-      });
-      if (!putResp.ok) {
-        const errorText = await putResp.text().catch(() => 'Unknown error');
-        throw new Error(`Azure upload failed: ${putResp.status} - ${errorText}`);
-      }
+      await putFile(up.upload_url, file, type, onProgress);
       conf = await api<{ id?: string }>('POST', '/files/confirm', {
         key: up.key,
         size_bytes: file.size,
@@ -920,6 +919,7 @@ export default function CompanyFilesTabEnhanced() {
     }
 
     const fileArray = Array.from(files);
+    if (rejectOversizedBatch(fileArray)) return;
     const uploads = fileArray.map((file, idx) => ({
       id: `upload-${Date.now()}-${idx}-${Math.random()}`,
       file,
@@ -930,8 +930,10 @@ export default function CompanyFilesTabEnhanced() {
 
     for (const upload of uploads) {
       try {
-        setUploadQueue((prev) => prev.map((u) => (u.id === upload.id ? { ...u, status: 'uploading', progress: 50 } : u)));
-        await uploadSingleFile(upload.file, undefined, targetFolderId);
+        setUploadQueue((prev) => prev.map((u) => (u.id === upload.id ? { ...u, status: 'uploading', progress: 0 } : u)));
+        await uploadSingleFile(upload.file, undefined, targetFolderId, (percent) => {
+          setUploadQueue((prev) => prev.map((u) => (u.id === upload.id ? { ...u, progress: percent } : u)));
+        });
         setUploadQueue((prev) => prev.map((u) => (u.id === upload.id ? { ...u, status: 'success', progress: 100 } : u)));
       } catch (e: unknown) {
         const errorMsg = e instanceof Error ? e.message : 'Upload failed';
@@ -2278,52 +2280,17 @@ export default function CompanyFilesTabEnhanced() {
         </AppFormModal>
       ) : null}
 
-      {uploadQueue.length > 0 ? (
-        <AppCard
-          className={uiCx('fixed bottom-4 right-4 z-50 max-h-96 w-80 overflow-hidden shadow-2xl', uiBorders.subtle, uiRadius.card)}
-          bodyClassName="p-0"
-        >
-          <div className={uiCx('flex items-center justify-between border-b px-2.5 py-2', uiBorders.subtle, uiColors.surfaceSubtle)}>
-            <div className={uiCx(uiTypography.sectionTitle, 'text-xs')}>Upload Progress</div>
-            <AppButton variant="ghost" size="sm" type="button" onClick={() => setUploadQueue([])}>
-              Clear
-            </AppButton>
-          </div>
-          <div className="max-h-80 overflow-y-auto">
-            {uploadQueue.map((u) => (
-              <div key={u.id} className={uiCx('border-b px-2.5 py-2', uiBorders.subtle)}>
-                <div className="mb-1 flex items-start gap-2">
-                  <div className="min-w-0 flex-1">
-                    <div className={uiCx(uiTypography.body, 'truncate text-xs font-medium')} title={u.file.name}>
-                      {u.file.name}
-                    </div>
-                    <div className={uiTypography.helper}>{(u.file.size / 1024 / 1024).toFixed(2)} MB</div>
-                  </div>
-                  <div className="text-xs">
-                    {u.status === 'pending' && '…'}
-                    {u.status === 'uploading' && '…'}
-                    {u.status === 'success' && '✓'}
-                    {u.status === 'error' && '✕'}
-                  </div>
-                </div>
-                {u.status === 'uploading' ? (
-                  <div className={uiCx('mt-1 h-1.5 w-full overflow-hidden', uiRadius.badge, uiColors.surfaceSubtle)}>
-                    <div
-                      className={uiCx('h-full bg-blue-600 transition-all', uiRadius.badge)}
-                      style={{ width: `${u.progress}%` }}
-                    />
-                  </div>
-                ) : null}
-                {u.status === 'error' ? (
-                  <div className={uiCx(uiTypography.helper, 'mt-1 text-red-600')} title={u.error}>
-                    {u.error || 'Upload failed'}
-                  </div>
-                ) : null}
-              </div>
-            ))}
-          </div>
-        </AppCard>
-      ) : null}
+      <UploadProgressPanel
+        items={uploadQueue.map((u) => ({
+          id: u.id,
+          name: u.file.name,
+          size: u.file.size,
+          progress: u.progress,
+          status: u.status,
+          error: u.error,
+        }))}
+        onClear={() => setUploadQueue([])}
+      />
 
       <FileImagePreviewModal
         open={imageGallery.open}

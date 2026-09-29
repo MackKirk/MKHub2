@@ -103,6 +103,12 @@ export function resolveOpportunityQuickStatusFilters(statuses: unknown[] | undef
   ]);
 }
 
+function appendChoice(params: URLSearchParams, rule: FilterRule, isKey: string, notKey: string) {
+  if (typeof rule.value !== 'string' || !rule.value) return;
+  if (rule.operator === 'is') params.append(isKey, rule.value);
+  else if (rule.operator === 'is_not') params.append(notKey, rule.value);
+}
+
 export function convertRulesToParams(rules: FilterRule[]): URLSearchParams {
   const params = new URLSearchParams();
 
@@ -126,43 +132,19 @@ export function convertRulesToParams(rules: FilterRule[]): URLSearchParams {
 
     switch (rule.field) {
       case 'status':
-        if (typeof rule.value === 'string') {
-          if (rule.operator === 'is') {
-            params.set('status', rule.value);
-          } else if (rule.operator === 'is_not') {
-            params.set('status_not', rule.value);
-          }
-        }
+        appendChoice(params, rule, 'status', 'status_not');
         break;
 
       case 'division':
-        if (typeof rule.value === 'string') {
-          if (rule.operator === 'is') {
-            params.set('division_id', rule.value);
-          } else if (rule.operator === 'is_not') {
-            params.set('division_id_not', rule.value);
-          }
-        }
+        appendChoice(params, rule, 'division_id', 'division_id_not');
         break;
 
       case 'client':
-        if (typeof rule.value === 'string') {
-          if (rule.operator === 'is') {
-            params.set('client_id', rule.value);
-          } else if (rule.operator === 'is_not') {
-            params.set('client_id_not', rule.value);
-          }
-        }
+        appendChoice(params, rule, 'client_id', 'client_id_not');
         break;
 
       case 'estimator':
-        if (typeof rule.value === 'string') {
-          if (rule.operator === 'is') {
-            params.set('estimator_id', rule.value);
-          } else if (rule.operator === 'is_not') {
-            params.set('estimator_id_not', rule.value);
-          }
-        }
+        appendChoice(params, rule, 'estimator_id', 'estimator_id_not');
         break;
 
       case 'start_date':
@@ -222,37 +204,21 @@ export function convertParamsToRules(params: URLSearchParams): FilterRule[] {
   const rules: FilterRule[] = [];
   let idCounter = 1;
 
-  const status = params.get('status');
-  const statusNot = params.get('status_not');
-  if (status) {
-    rules.push({ id: `rule-${idCounter++}`, field: 'status', operator: 'is', value: status });
-  } else if (statusNot) {
-    rules.push({ id: `rule-${idCounter++}`, field: 'status', operator: 'is_not', value: statusNot });
-  }
+  const pushChoices = (isKey: string, notKey: string, field: FilterRule['field']) => {
+    for (const value of params.getAll(isKey)) {
+      if (!value) continue;
+      rules.push({ id: `rule-${idCounter++}`, field, operator: 'is', value });
+    }
+    for (const value of params.getAll(notKey)) {
+      if (!value) continue;
+      rules.push({ id: `rule-${idCounter++}`, field, operator: 'is_not', value });
+    }
+  };
 
-  const division = params.get('division_id');
-  const divisionNot = params.get('division_id_not');
-  if (division) {
-    rules.push({ id: `rule-${idCounter++}`, field: 'division', operator: 'is', value: division });
-  } else if (divisionNot) {
-    rules.push({ id: `rule-${idCounter++}`, field: 'division', operator: 'is_not', value: divisionNot });
-  }
-
-  const client = params.get('client_id');
-  const clientNot = params.get('client_id_not');
-  if (client) {
-    rules.push({ id: `rule-${idCounter++}`, field: 'client', operator: 'is', value: client });
-  } else if (clientNot) {
-    rules.push({ id: `rule-${idCounter++}`, field: 'client', operator: 'is_not', value: clientNot });
-  }
-
-  const estimator = params.get('estimator_id');
-  const estimatorNot = params.get('estimator_id_not');
-  if (estimator) {
-    rules.push({ id: `rule-${idCounter++}`, field: 'estimator', operator: 'is', value: estimator });
-  } else if (estimatorNot) {
-    rules.push({ id: `rule-${idCounter++}`, field: 'estimator', operator: 'is_not', value: estimatorNot });
-  }
+  pushChoices('status', 'status_not', 'status');
+  pushChoices('division_id', 'division_id_not', 'division');
+  pushChoices('client_id', 'client_id_not', 'client');
+  pushChoices('estimator_id', 'estimator_id_not', 'estimator');
 
   const dateStart = params.get('date_start');
   const dateEnd = params.get('date_end');

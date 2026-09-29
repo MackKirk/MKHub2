@@ -11,6 +11,7 @@ import {
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessToken } from '@/lib/api';
+import { putFile } from '@/lib/fileUploadBatch';
 import { formatDateLocal, getTodayLocal } from '@/lib/dateUtils';
 import { PROJECT_DIVISIONS_QUERY_KEY } from '@/lib/businessLine';
 import toast from 'react-hot-toast';
@@ -321,6 +322,30 @@ function AreaPopover({ value, unit, onSave, onClose }: { value?: number; unit: A
       </div>
     </div>
   );
+}
+
+async function uploadProposalJpeg(opts: {
+  blob: Blob;
+  originalName: string;
+  clientId?: string;
+  categoryId: string;
+}): Promise<string> {
+  const up: any = await api('POST', '/files/upload', {
+    project_id: null,
+    client_id: opts.clientId || null,
+    employee_id: null,
+    category_id: opts.categoryId,
+    original_name: opts.originalName,
+    content_type: 'image/jpeg',
+  });
+  await putFile(up.upload_url, opts.blob, 'image/jpeg');
+  const conf: any = await api('POST', '/files/confirm', {
+    key: up.key,
+    size_bytes: opts.blob.size,
+    checksum_sha256: 'na',
+    content_type: 'image/jpeg',
+  });
+  return String(conf.id);
 }
 
 export default function ProposalForm({
@@ -1605,9 +1630,6 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
       queryClient.invalidateQueries({ queryKey: ['proposals'] });
       if (projectId) {
         queryClient.invalidateQueries({ queryKey: ['projectProposals', projectId] });
-      }
-      if (savedId) {
-        queryClient.invalidateQueries({ queryKey: ['proposal', savedId] });
       }
       
       setLastSavedHash(computeFingerprint());
@@ -4467,18 +4489,14 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
             if (!blob){ toast.error('No image'); setPickerFor(null); return; }
             const cat = pickerFor==='cover'? 'proposal-cover-derived' : 'proposal-page2-derived';
             const uniqueName = `${cat}_${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
-            // Use upload-proxy to avoid CORS issues
-            const formData = new FormData();
-            formData.append('file', blob, uniqueName);
-            formData.append('original_name', uniqueName);
-            formData.append('content_type', 'image/jpeg');
-            formData.append('project_id', '');
-            formData.append('client_id', clientId||'');
-            formData.append('employee_id', '');
-            formData.append('category_id', cat);
-            const conf:any = await api('POST','/files/upload-proxy', formData);
-            if (pickerFor==='cover'){ setCoverBlob(blob); setCoverFoId(conf.id); }
-            else { setPage2Blob(blob); setPage2FoId(conf.id); }
+            const fileId = await uploadProposalJpeg({
+              blob,
+              originalName: uniqueName,
+              clientId: clientId || undefined,
+              categoryId: cat,
+            });
+            if (pickerFor==='cover'){ setCoverBlob(blob); setCoverFoId(fileId); }
+            else { setPage2Blob(blob); setPage2FoId(fileId); }
           }catch(e){ toast.error('Upload failed'); }
           setPickerFor(null);
         }} />
@@ -4489,17 +4507,12 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
             if (!blob){ toast.error('No image'); return; }
             const orientation = meta?.orientation ?? 'landscape';
             const uniqueName = `section_${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
-            // Use upload-proxy to avoid CORS issues
-            const formData = new FormData();
-            formData.append('file', blob, uniqueName);
-            formData.append('original_name', uniqueName);
-            formData.append('content_type', 'image/jpeg');
-            formData.append('project_id', '');
-            formData.append('client_id', clientId||'');
-            formData.append('employee_id', '');
-            formData.append('category_id', 'proposal-section-derived');
-            const conf:any = await api('POST','/files/upload-proxy', formData);
-            const fileObjectId = conf.id;
+            const fileObjectId = await uploadProposalJpeg({
+              blob,
+              originalName: uniqueName,
+              clientId: clientId || undefined,
+              categoryId: 'proposal-section-derived',
+            });
             setSections(arr=> arr.map((x:any, i:number)=>{ 
               const isTarget = (String(x.id||'')===String(sectionPicker.secId||'')) || (String(sectionPicker.secId||'')===String(i));
               if (!isTarget) return x;

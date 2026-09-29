@@ -26,7 +26,12 @@ export type FieldConfig = {
   type: 'select' | 'select_search' | 'date' | 'number' | 'text' | 'user';
   operators: FilterOperator[];
   getOptions?: () => Array<{ value: string; label: string }>;
-  getGroupedOptions?: () => Array<{ label: string; options: Array<{ value: string; label: string }> }>; // For optgroup support
+  getGroupedOptions?: () => Array<{
+    label: string;
+    /** Selects this group header. Child options stay separate scopes. */
+    value?: string;
+    options: Array<{ value: string; label: string }>;
+  }>;
   /** User picker with avatars (design-system AppUserSelect / Assign to user). */
   getUsers?: () => AppUserSelectUser[];
   getValueLabel?: (value: string) => string;

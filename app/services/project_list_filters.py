@@ -34,6 +34,23 @@ class BusinessProjectListFilters:
     related_to_me: bool = False
 
 
+def as_str_list(value: Any) -> list[str]:
+    """Accept a single query value or repeated query values."""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        text = value.strip()
+        return [text] if text else []
+    out: list[str] = []
+    for item in value:
+        if item is None:
+            continue
+        text = str(item).strip()
+        if text:
+            out.append(text)
+    return out
+
+
 def filters_from_query_params(**kwargs: Any) -> BusinessProjectListFilters:
     related = kwargs.get("related_to_me")
     if isinstance(related, str):
@@ -88,19 +105,8 @@ def build_business_projects_query(
     if filters.related_to_me:
         query = query.filter(_project_related_to_user_filter(user.id))
 
-    if filters.client_id:
-        try:
-            client_uuid = uuid.UUID(filters.client_id)
-            query = query.filter(Project.client_id == client_uuid)
-        except ValueError:
-            pass
-
-    if filters.client_id_not:
-        try:
-            client_uuid = uuid.UUID(filters.client_id_not)
-            query = query.filter(Project.client_id != client_uuid)
-        except ValueError:
-            pass
+    query = apply_any_clients(query, filters.client_id)
+    query = apply_excluded_clients(query, filters.client_id_not)
 
     effective_start_dt = func.coalesce(Project.date_start, Project.created_at)
     if filters.date_start:
@@ -130,34 +136,22 @@ def build_business_projects_query(
         except ValueError:
             pass
     elif filters.division_id:
-        query = _apply_division_filter(query, db, filters.division_id, exclude=False)
+        query = apply_any_divisions(query, db, filters.division_id)
 
     if filters.division_id_not:
-        query = _apply_division_exclusion(query, db, filters.division_id_not)
+        query = apply_excluded_divisions(query, db, filters.division_id_not)
 
     if filters.status:
-        try:
-            status_uuid = uuid.UUID(str(filters.status))
-            query = query.filter(Project.status_id == status_uuid)
-        except ValueError:
-            query = query.filter(Project.status_label == filters.status)
+        query = apply_any_statuses(query, db, filters.status)
 
     if filters.status_not:
-        query = _apply_status_exclusion(query, db, filters.status_not)
+        query = apply_excluded_statuses(query, db, filters.status_not)
 
     if filters.estimator_id:
-        try:
-            estimator_uuid = uuid.UUID(filters.estimator_id)
-            query = query.filter(Project.estimator_id == estimator_uuid)
-        except ValueError:
-            pass
+        query = apply_any_estimators(query, filters.estimator_id)
 
     if filters.estimator_id_not:
-        try:
-            estimator_uuid = uuid.UUID(filters.estimator_id_not)
-            query = query.filter(Project.estimator_id != estimator_uuid)
-        except ValueError:
-            pass
+        query = apply_excluded_estimators(query, filters.estimator_id_not)
 
     if filters.eta_start:
         try:
@@ -213,78 +207,150 @@ def build_business_projects_query(
     return query
 
 
-def _apply_division_filter(query: Query, db: Session, division_id: str, *, exclude: bool) -> Query:
+def _division_family_ids(db: Session, division_id: str) -> list[str]:
     from ..models.models import SettingItem, SettingList
 
+    div_uuid = uuid.UUID(division_id)
+    divisions_list = db.query(SettingList).filter(SettingList.name == "project_divisions").first()
+    family: list[str] = []
+    if divisions_list:
+        division_items = (
+            db.query(SettingItem)
+            .filter(
+                SettingItem.list_id == divisions_list.id,
+                or_(SettingItem.id == div_uuid, SettingItem.parent_id == div_uuid),
+            )
+            .all()
+        )
+        family = [str(item.id) for item in division_items]
+    if str(div_uuid) not in family:
+        family.append(str(div_uuid))
+    return family
+
+
+def division_include_clause(db: Session, division_id: str):
+    """Match a division or any of its subdivisions. Several clauses are meant to be ORed."""
     try:
         div_uuid = uuid.UUID(division_id)
-        divisions_list = db.query(SettingList).filter(SettingList.name == "project_divisions").first()
-        all_conditions = []
-        if divisions_list:
-            division_items = (
-                db.query(SettingItem)
-                .filter(
-                    SettingItem.list_id == divisions_list.id,
-                    or_(SettingItem.id == div_uuid, SettingItem.parent_id == div_uuid),
-                )
-                .all()
-            )
-            conditions = []
-            for item in division_items:
-                div_id_str = str(item.id)
-                conditions.append(cast(Project.project_division_ids, String).like(f"%{div_id_str}%"))
-            if conditions:
-                all_conditions.append(or_(*conditions))
-        all_conditions.append(
-            or_(
-                Project.division_id == div_uuid,
-                cast(Project.division_ids, String).like(f"%{division_id}%"),
+    except ValueError:
+        return None
+    family = _division_family_ids(db, division_id)
+    conditions = [cast(Project.project_division_ids, String).like(f"%{div_id_str}%") for div_id_str in family]
+    conditions.append(
+        or_(
+            Project.division_id == div_uuid,
+            cast(Project.division_ids, String).like(f"%{division_id}%"),
+        )
+    )
+    return or_(*conditions)
+
+
+def division_exclude_clause(db: Session, division_id: str):
+    try:
+        family = _division_family_ids(db, division_id)
+    except ValueError:
+        return None
+    exclusion_and_conditions = []
+    for div_id_str in family:
+        try:
+            div_uuid = uuid.UUID(div_id_str)
+        except ValueError:
+            continue
+        exclusion_and_conditions.append(
+            and_(
+                or_(Project.division_id != div_uuid, Project.division_id.is_(None)),
+                or_(
+                    cast(Project.project_division_ids, String).notlike(f"%{div_id_str}%"),
+                    Project.project_division_ids.is_(None),
+                ),
+                or_(
+                    cast(Project.division_ids, String).notlike(f"%{div_id_str}%"),
+                    Project.division_ids.is_(None),
+                ),
             )
         )
-        if all_conditions:
-            query = query.filter(or_(*all_conditions))
-    except ValueError:
-        pass
+    if not exclusion_and_conditions:
+        return None
+    return and_(*exclusion_and_conditions)
+
+
+def apply_any_divisions(query: Query, db: Session, division_ids: Any) -> Query:
+    clauses = [clause for division_id in as_str_list(division_ids) if (clause := division_include_clause(db, division_id)) is not None]
+    if clauses:
+        query = query.filter(or_(*clauses))
     return query
 
 
-def _apply_division_exclusion(query: Query, db: Session, division_id_not: str) -> Query:
-    from ..models.models import SettingItem, SettingList
+def apply_excluded_divisions(query: Query, db: Session, division_ids: Any) -> Query:
+    clauses = [clause for division_id in as_str_list(division_ids) if (clause := division_exclude_clause(db, division_id)) is not None]
+    if clauses:
+        query = query.filter(and_(*clauses))
+    return query
+
+
+def _status_include_clause(db: Session, status: str):
+    from ..models.models import SettingItem
 
     try:
-        div_uuid = uuid.UUID(division_id_not)
-        divisions_list = db.query(SettingList).filter(SettingList.name == "project_divisions").first()
-        exclusion_and_conditions = []
-        if divisions_list:
-            division_items = (
-                db.query(SettingItem)
-                .filter(
-                    SettingItem.list_id == divisions_list.id,
-                    or_(SettingItem.id == div_uuid, SettingItem.parent_id == div_uuid),
-                )
-                .all()
+        status_uuid = uuid.UUID(str(status))
+        status_item = db.query(SettingItem).filter(SettingItem.id == status_uuid).first()
+        status_label = status_item.label if status_item else None
+        if status_label:
+            return or_(
+                Project.status_id == status_uuid,
+                and_(Project.status_id.is_(None), Project.status_label == status_label),
             )
-            for item in division_items:
-                ex_div_id_str = str(item.id)
-                try:
-                    not_has_division = and_(
-                        Project.division_id != uuid.UUID(ex_div_id_str),
-                        or_(
-                            cast(Project.project_division_ids, String).notlike(f"%{ex_div_id_str}%"),
-                            Project.project_division_ids.is_(None),
-                        ),
-                        or_(
-                            cast(Project.division_ids, String).notlike(f"%{ex_div_id_str}%"),
-                            Project.division_ids.is_(None),
-                        ),
-                    )
-                    exclusion_and_conditions.append(not_has_division)
-                except ValueError:
-                    pass
-        if exclusion_and_conditions:
-            query = query.filter(and_(*exclusion_and_conditions))
-    except ValueError:
-        pass
+        return Project.status_id == status_uuid
+    except (ValueError, AttributeError):
+        return Project.status_label == status
+
+
+def apply_any_statuses(query: Query, db: Session, statuses: Any) -> Query:
+    clauses = [_status_include_clause(db, status) for status in as_str_list(statuses)]
+    if clauses:
+        query = query.filter(or_(*clauses))
+    return query
+
+
+def apply_excluded_statuses(query: Query, db: Session, statuses: Any) -> Query:
+    for status in as_str_list(statuses):
+        query = _apply_status_exclusion(query, db, status)
+    return query
+
+
+def _uuid_list(values: Any) -> list[uuid.UUID]:
+    parsed: list[uuid.UUID] = []
+    for value in as_str_list(values):
+        try:
+            parsed.append(uuid.UUID(value))
+        except ValueError:
+            continue
+    return parsed
+
+
+def apply_any_clients(query: Query, client_ids: Any) -> Query:
+    parsed = _uuid_list(client_ids)
+    if parsed:
+        query = query.filter(Project.client_id.in_(parsed))
+    return query
+
+
+def apply_excluded_clients(query: Query, client_ids: Any) -> Query:
+    for client_uuid in _uuid_list(client_ids):
+        query = query.filter(Project.client_id != client_uuid)
+    return query
+
+
+def apply_any_estimators(query: Query, estimator_ids: Any) -> Query:
+    parsed = _uuid_list(estimator_ids)
+    if parsed:
+        query = query.filter(Project.estimator_id.in_(parsed))
+    return query
+
+
+def apply_excluded_estimators(query: Query, estimator_ids: Any) -> Query:
+    for estimator_uuid in _uuid_list(estimator_ids):
+        query = query.filter(Project.estimator_id != estimator_uuid)
     return query
 
 

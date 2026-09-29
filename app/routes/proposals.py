@@ -1,3 +1,4 @@
+import asyncio
 import os
 import uuid
 import shutil
@@ -168,52 +169,6 @@ async def generate_proposal(
             except Exception:
                 pass
 
-    # If no direct upload, but a file_object_id is provided, download the image from storage
-    storage: StorageProvider = BlobStorageProvider()
-    async def _download_fileobject_to_tmp(file_object_id: str, prefix: str) -> Optional[str]:
-        try:
-            fo = db.query(FileObject).filter(FileObject.id == file_object_id).first()
-            if not fo:
-                return None
-            url = storage.get_download_url(fo.key, expires_s=300)
-            if not url:
-                return None
-            # Download original then optimize
-            in_ext = mimetypes.guess_extension(fo.content_type or "") or ".bin"
-            tmp_in = os.path.join(UPLOAD_DIR, f"{prefix}_in_{file_id}{in_ext}")
-            tmp_path = os.path.join(UPLOAD_DIR, f"{prefix}_{file_id}.jpg")
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                async with client.stream("GET", url) as r:
-                    r.raise_for_status()
-                    with open(tmp_in, "wb") as out:
-                        async for chunk in r.aiter_bytes():
-                            out.write(chunk)
-            # Optimize image before saving
-            try:
-                with open(tmp_in, "rb") as f:
-                    image_bytes = f.read()
-                
-                # Determine preset based on prefix
-                preset = "cover" if prefix == "cover" else "section"
-                optimized_bytes = optimize_image_bytes(image_bytes, preset=preset)
-                
-                # Save optimized image as JPEG (optimizer already converted to JPEG)
-                with open(tmp_path, "wb") as f:
-                    f.write(optimized_bytes)
-            finally:
-                try:
-                    os.remove(tmp_in)
-                except Exception:
-                    pass
-            return tmp_path
-        except Exception:
-            return None
-
-    if (not cover_path) and cover_file_object_id:
-        cover_path = await _download_fileobject_to_tmp(cover_file_object_id, "cover")
-    if (not page2_path) and page2_file_object_id:
-        page2_path = await _download_fileobject_to_tmp(page2_file_object_id, "page2")
-
     try:
         parsed_costs = json.loads(additional_costs)
     except Exception:
@@ -229,6 +184,68 @@ async def generate_proposal(
     except Exception:
         parsed_sections = []
 
+    # Download stored images in parallel, then optimize each once. The PDF embeds these JPEGs.
+    storage: StorageProvider = BlobStorageProvider()
+    image_jobs: list[tuple[str, Optional[dict], str, str, str]] = []
+    if (not cover_path) and cover_file_object_id:
+        image_jobs.append(("cover", None, str(cover_file_object_id), "cover", "cover"))
+    if (not page2_path) and page2_file_object_id:
+        image_jobs.append(("page2", None, str(page2_file_object_id), "page2", "section"))
+    for sec in parsed_sections:
+        if sec.get("type") == "images":
+            for img in sec.get("images", []):
+                if img.get("file_object_id"):
+                    image_jobs.append(
+                        ("section", img, str(img["file_object_id"]), f"secimg_{uuid.uuid4().hex}", "section")
+                    )
+
+    if image_jobs:
+        id_list = []
+        for _, _, fid, _, _ in image_jobs:
+            try:
+                id_list.append(uuid.UUID(fid))
+            except ValueError:
+                pass
+        fo_map = {
+            str(fo.id): fo
+            for fo in db.query(FileObject).filter(FileObject.id.in_(id_list)).all()
+        } if id_list else {}
+        sem = asyncio.Semaphore(4)
+
+        async def _download_optimized(fid: str, prefix: str, preset: str) -> Optional[str]:
+            fo = fo_map.get(fid)
+            if not fo:
+                return None
+            url = storage.get_download_url(fo.key, expires_s=300)
+            if not url:
+                return None
+            try:
+                async with sem:
+                    async with httpx.AsyncClient(timeout=60.0) as client:
+                        response = await client.get(url)
+                        response.raise_for_status()
+                        image_bytes = response.content
+                optimized_bytes = optimize_image_bytes(image_bytes, preset=preset)
+                tmp_path = os.path.join(UPLOAD_DIR, f"{prefix}_{file_id}.jpg")
+                with open(tmp_path, "wb") as out:
+                    out.write(optimized_bytes)
+                return tmp_path
+            except Exception:
+                return None
+
+        downloaded = await asyncio.gather(
+            *[_download_optimized(fid, prefix, preset) for _, _, fid, prefix, preset in image_jobs]
+        )
+        for (kind, ref, _, _, _), path in zip(image_jobs, downloaded):
+            if not path:
+                continue
+            if kind == "cover":
+                cover_path = path
+            elif kind == "page2":
+                page2_path = path
+            elif ref is not None:
+                ref["path"] = path
+
     form_data = await request.form()
 
     def _is_upload(v):
@@ -237,13 +254,10 @@ async def generate_proposal(
     for sec in parsed_sections:
         if sec.get("type") == "images":
             for img in sec.get("images", []):
-                # Prefer site-linked file object if present; fallback to uploaded field
                 if img.get("file_object_id"):
-                    tmp = await _download_fileobject_to_tmp(img["file_object_id"], f"secimg_{uuid.uuid4().hex}")
-                    if tmp:
-                        img["path"] = tmp
-                else:
-                    field_name = img.get("file_field")
+                    continue
+                field_name = img.get("file_field")
+                if field_name:
                     found = None
                     for key, value in form_data.items():
                         if key == field_name and _is_upload(value):
@@ -255,14 +269,9 @@ async def generate_proposal(
                         with open(tmp_in, "wb") as buffer:
                             shutil.copyfileobj(found.file, buffer)
                         try:
-                            # Read image bytes and optimize
                             with open(tmp_in, "rb") as f:
                                 image_bytes = f.read()
-                            
-                            # Optimize image before saving
                             optimized_bytes = optimize_image_bytes(image_bytes, preset="section")
-                            
-                            # Save optimized image as JPEG (optimizer already converted to JPEG)
                             tmp_out = os.path.join(UPLOAD_DIR, f"{field_name}_{uuid.uuid4()}.jpg")
                             with open(tmp_out, "wb") as f:
                                 f.write(optimized_bytes)

@@ -1236,8 +1236,14 @@ export default function ProjectDetail(){
     | 'safety';
   const initialTab = (searchParams.get('tab') as ProjectDetailTab | null) || null;
   const [tab, setTab] = useState<ProjectDetailTab | null>(initialTab);
-  /** Heavy project payloads wait until user leaves the documents tab (or never opened it). */
-  const loadDeferredProjectData = !signOnlySafetySession && tab !== 'documents';
+  /** Primary overview (no tab, or the overview tab). */
+  const onOverview = !signOnlySafetySession && (tab === null || tab === 'overview');
+  const loadFiles = !signOnlySafetySession && (onOverview || tab === 'files' || tab === 'photos' || tab === 'general');
+  const loadReports = !signOnlySafetySession && (onOverview || tab === 'reports');
+  const loadProposals = !signOnlySafetySession && (onOverview || tab === 'proposal' || tab === 'pricing');
+  const loadEstimates = !signOnlySafetySession && (onOverview || tab === 'estimate');
+  const loadClientFiles = !signOnlySafetySession && tab === 'overview';
+  const loadDirectory = !signOnlySafetySession && tab !== 'documents';
 
   const projectQueryKey =
     signOnlySafetySession && safetyInspectionFromUrl
@@ -1266,17 +1272,17 @@ export default function ProjectDetail(){
     isOpportunityDetailRoute || isProjectDetailRoute;
   const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
   const { data:projectDivisions } = useQuery({ queryKey:PROJECT_DIVISIONS_QUERY_KEY, queryFn: ()=>api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
-  const { data:files, refetch: refetchFiles } = useQuery({ queryKey:['projectFiles', id], queryFn: ()=>api<ProjectFile[]>('GET', `/projects/${id}/files`), enabled: !!id && loadDeferredProjectData });
-  const { data:clientFiles } = useQuery({ queryKey:['clientFilesForContacts-project', proj?.client_id||''], queryFn: ()=> proj?.client_id? api<any[]>('GET', `/clients/${encodeURIComponent(String(proj?.client_id||''))}/files`) : Promise.resolve([]), enabled: !!proj?.client_id && loadDeferredProjectData });
-  const { data:updates, refetch: refetchUpdates } = useQuery({ queryKey:['projectUpdates', id], queryFn: ()=>api<Update[]>('GET', `/projects/${id}/updates`), enabled: !!id && loadDeferredProjectData });
-  const { data:reports, refetch: refetchReports } = useQuery({ queryKey:['projectReports', id], queryFn: ()=>api<Report[]>('GET', `/projects/${id}/reports`), enabled: !!id && loadDeferredProjectData });
-  const { data:proposals } = useQuery({ queryKey:['projectProposals', id], queryFn: ()=>api<Proposal[]>('GET', `/proposals?project_id=${encodeURIComponent(String(id||''))}`), enabled: !!id && loadDeferredProjectData });
-  const { data:projectEstimates } = useQuery({ queryKey:['projectEstimates', id], queryFn: ()=>api<any[]>('GET', `/estimate/estimates?project_id=${encodeURIComponent(String(id||''))}`), enabled: !!id && loadDeferredProjectData });
+  const { data:files, refetch: refetchFiles } = useQuery({ queryKey:['projectFiles', id], queryFn: ()=>api<ProjectFile[]>('GET', `/projects/${id}/files`), enabled: !!id && loadFiles });
+  const { data:clientFiles } = useQuery({ queryKey:['clientFilesForContacts-project', proj?.client_id||''], queryFn: ()=> proj?.client_id? api<any[]>('GET', `/clients/${encodeURIComponent(String(proj?.client_id||''))}/files`) : Promise.resolve([]), enabled: !!proj?.client_id && loadClientFiles });
+  const { data:updates, refetch: refetchUpdates } = useQuery({ queryKey:['projectUpdates', id], queryFn: ()=>api<Update[]>('GET', `/projects/${id}/updates`), enabled: false });
+  const { data:reports, refetch: refetchReports } = useQuery({ queryKey:['projectReports', id], queryFn: ()=>api<Report[]>('GET', `/projects/${id}/reports`), enabled: !!id && loadReports });
+  const { data:proposals } = useQuery({ queryKey:['projectProposals', id], queryFn: ()=>api<Proposal[]>('GET', `/proposals?project_id=${encodeURIComponent(String(id||''))}`), enabled: !!id && loadProposals });
+  const { data:projectEstimates } = useQuery({ queryKey:['projectEstimates', id], queryFn: ()=>api<any[]>('GET', `/estimate/estimates?project_id=${encodeURIComponent(String(id||''))}`), enabled: !!id && loadEstimates });
   const primaryCostsEstimateId = projectEstimates?.[0]?.id as number | undefined;
   const { data: costsEstimateDetail } = useQuery({
     queryKey: ['estimate', primaryCostsEstimateId],
     queryFn: () => api<any>('GET', `/estimate/estimates/${primaryCostsEstimateId}`),
-    enabled: !!primaryCostsEstimateId && loadDeferredProjectData && (tab === null || tab === 'overview'),
+    enabled: !!primaryCostsEstimateId && loadEstimates && (tab === null || tab === 'overview'),
   });
   const fieldBriefProj = useMemo(() => {
     const base = proj || {};
@@ -1291,7 +1297,7 @@ export default function ProjectDetail(){
   const { data:employees } = useQuery({
     queryKey: employeesDirectoryQueryKey({ limit: 5000 }),
     queryFn: () => fetchEmployeesDirectory({ limit: 5000 }),
-    enabled: loadDeferredProjectData,
+    enabled: loadDirectory,
   });
   // Live pricing items (from ProposalForm) to update division percentages instantly without reload.
   const [livePricingItems, setLivePricingItems] = useState<any[] | null>(null);

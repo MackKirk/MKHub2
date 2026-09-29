@@ -22,6 +22,8 @@ export type AppSelectOption = {
 export type AppSelectOptionGroup = {
   /** When empty, options render without a section header (e.g. “All” or placeholder row). */
   label: string;
+  /** When set, the section title is selectable and uses the same header style with or without children. */
+  value?: string;
   options: AppSelectOption[];
 };
 
@@ -84,18 +86,25 @@ function filterOptions(options: AppSelectOption[], query: string): AppSelectOpti
   );
 }
 
+function groupHeaderMatches(group: AppSelectOptionGroup, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  if (group.label.toLowerCase().includes(q)) return true;
+  return Boolean(group.value && group.value.toLowerCase().includes(q));
+}
+
 function filterOptionGroups(
   groups: AppSelectOptionGroup[],
   query: string,
 ): AppSelectOptionGroup[] {
   const q = query.trim().toLowerCase();
   if (!q) return groups;
-  return groups
-    .map((group) => ({
-      ...group,
-      options: filterOptions(group.options, query),
-    }))
-    .filter((group) => group.options.length > 0);
+  return groups.flatMap((group) => {
+    if (groupHeaderMatches(group, query)) return [group];
+    const options = filterOptions(group.options, query);
+    if (!options.length) return [];
+    return [{ ...group, options }];
+  });
 }
 
 function sortGroupsInPlace(groups: AppSelectOptionGroup[], sortOptions: boolean): AppSelectOptionGroup[] {
@@ -107,7 +116,10 @@ function sortGroupsInPlace(groups: AppSelectOptionGroup[], sortOptions: boolean)
 }
 
 function flattenOptionGroups(groups: AppSelectOptionGroup[]): AppSelectOption[] {
-  return groups.flatMap((g) => g.options);
+  return groups.flatMap((group) => {
+    const header = group.value ? [{ value: group.value, label: group.label }] : [];
+    return [...header, ...group.options];
+  });
 }
 
 function fireSelectChange(
@@ -271,11 +283,32 @@ export function AppSelect({
       return renderEmptyOptions();
     }
     return filteredGroups.map((group, groupIndex) => (
-      <Fragment key={`${group.label || 'ungrouped'}-${groupIndex}`}>
+      <Fragment key={`${group.value || group.label || 'ungrouped'}-${groupIndex}`}>
         {group.label ? (
-          <li role="presentation">
-            <div className={uiDropdown.optionGroupHeader}>{group.label}</div>
-          </li>
+          group.value ? (
+            <li role="option" aria-selected={currentValue === group.value}>
+              <button
+                type="button"
+                className={uiCx(
+                  uiDropdown.optionGroupHeader,
+                  'w-full cursor-pointer text-left hover:bg-gray-100',
+                  currentValue === group.value && uiDropdown.optionSelected,
+                )}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  setValue(group.value || '');
+                  closeDropdown();
+                  setSearch('');
+                }}
+              >
+                {group.label}
+              </button>
+            </li>
+          ) : (
+            <li role="presentation">
+              <div className={uiDropdown.optionGroupHeader}>{group.label}</div>
+            </li>
+          )
         ) : null}
         {group.options.map((option) => (
           <Fragment key={`${groupIndex}-${option.value}`}>{renderOptionButton(option)}</Fragment>

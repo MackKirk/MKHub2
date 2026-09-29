@@ -434,6 +434,13 @@ def create_app() -> FastAPI:
                 except Exception as _e:
                     print(f"[startup] hours reminder tables create_all (non-critical): {_e}")
 
+                try:
+                    from .models.models import OpportunityAlertEvent
+
+                    Base.metadata.create_all(bind=engine, tables=[OpportunityAlertEvent.__table__])
+                except Exception as _e:
+                    print(f"[startup] opportunity alert tables create_all (non-critical): {_e}")
+
                 if dialect != "postgresql" and "postgresql" not in dialect:
                     print("[startup] Skipping schema migrations (non-PostgreSQL). Production requires PostgreSQL.")
                 else:
@@ -1334,6 +1341,23 @@ def create_app() -> FastAPI:
                         db.execute(text("ALTER TABLE projects ADD COLUMN date_awarded TIMESTAMPTZ NULL"))
                         db.commit()
                         print("[startup] Added date_awarded column to projects table")
+
+                    # First Sent to Customer timestamp for bid follow-up reminders
+                    rows = db.execute(
+                        text(
+                            """
+                            SELECT 1
+                            FROM information_schema.columns
+                            WHERE table_name = 'projects'
+                              AND column_name = 'sent_to_customer_at'
+                            LIMIT 1
+                            """
+                        )
+                    ).fetchall()
+                    if not rows:
+                        db.execute(text("ALTER TABLE projects ADD COLUMN sent_to_customer_at TIMESTAMPTZ NULL"))
+                        db.commit()
+                        print("[startup] Added sent_to_customer_at column to projects table")
 
                     # Awarded related customer (bid winner among related_client_ids)
                     rows = db.execute(
@@ -3559,6 +3583,13 @@ def create_app() -> FastAPI:
             start_fleet_inspection_alerts_scheduler()
         except Exception as e:
             print(f"⚠️  Could not start fleet inspection alerts scheduler: {e}")
+
+        try:
+            from .services.opportunity_alerts_scheduler import start_opportunity_alerts_scheduler
+
+            start_opportunity_alerts_scheduler()
+        except Exception as e:
+            print(f"⚠️  Could not start opportunity alerts scheduler: {e}")
 
         print("[startup] Application startup complete - server ready!")
 

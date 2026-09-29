@@ -79,7 +79,12 @@ export function getProposalSectionImagePreviewSize(
   };
 }
 
-/** Inline file URL for the exact derived JPEG used in the PDF (not a re-cropped thumbnail). */
+/** Full stored JPEG. Used by the lightbox and as the PDF source, not the small grid. */
 export function getProposalSectionImageFileUrl(fileObjectId: string): string {
   return withFileAccessToken(`/files/${fileObjectId}`);
+}
+
+/** Grid slot is ~260px. 520px keeps it sharp on screen without loading the full file through the API. */
+export function getProposalSectionImageGridUrl(fileObjectId: string): string {
+  return withFileAccessToken(`/files/${fileObjectId}/thumbnail?w=520`);
 }

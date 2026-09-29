@@ -11,6 +11,7 @@ import {
   AppSelect,
   AppUserSelect,
   type AppSelectOption,
+  type AppSelectOptionGroup,
   uiCx,
   uiLayout,
   uiTypography,
@@ -28,15 +29,20 @@ interface FilterRuleRowProps {
   getFieldData: (fieldId: string) => any;
 }
 
-function buildValueSelectOptions(fieldConfig: FieldConfig): AppSelectOption[] {
+function sortedOptionGroups(fieldConfig: FieldConfig): AppSelectOptionGroup[] | null {
   const groupedOptions = fieldConfig.getGroupedOptions ? fieldConfig.getGroupedOptions() : null;
+  if (!groupedOptions?.length) return null;
+  return sortOptionsByLabel(groupedOptions).map((group) => ({
+    label: group.label,
+    ...(group.value ? { value: group.value } : {}),
+    options: sortOptionsByLabel(group.options),
+  }));
+}
 
-  if (groupedOptions && groupedOptions.length > 0) {
-    const sortedGroups = sortOptionsByLabel(groupedOptions.map((g) => ({ ...g, label: g.label }))).map((g) => ({
-      label: g.label,
-      options: sortOptionsByLabel(g.options),
-    }));
-    return sortedGroups.flatMap((group) =>
+function buildValueSelectOptions(fieldConfig: FieldConfig): AppSelectOption[] {
+  const groups = sortedOptionGroups(fieldConfig);
+  if (groups) {
+    return groups.flatMap((group) =>
       group.options.map((opt) => ({
         value: opt.value,
         label: `${group.label} — ${opt.label}`,
@@ -79,6 +85,11 @@ export default function FilterRuleRow({
       fieldConfig?.type === 'select' || fieldConfig?.type === 'select_search'
         ? buildValueSelectOptions(fieldConfig)
         : [],
+    [fieldConfig],
+  );
+
+  const valueSelectGroups = useMemo(
+    () => (fieldConfig?.type === 'select' ? sortedOptionGroups(fieldConfig) : null),
     [fieldConfig],
   );
 
@@ -176,7 +187,9 @@ export default function FilterRuleRow({
       return (
         <div className="min-w-0 flex-1">
           <AppSelect
-            options={valueSelectOptions}
+            options={valueSelectGroups ? undefined : valueSelectOptions}
+            optionGroups={valueSelectGroups ?? undefined}
+            sortOptions={valueSelectGroups ? false : undefined}
             value={String(value1 || '')}
             onChange={(e) => handleValueChange(e.target.value)}
             placeholder={`Select ${fieldConfig!.label.toLowerCase()}…`}

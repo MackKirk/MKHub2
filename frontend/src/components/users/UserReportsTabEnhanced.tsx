@@ -2,7 +2,8 @@ import { useState, useMemo, useEffect, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Paperclip } from 'lucide-react';
 import { api, withFileAccessToken } from '@/lib/api';
-import { FILE_LIBRARY_ACCEPT } from '@/components/files';
+import { FILE_LIBRARY_ACCEPT, UploadProgressPanel } from '@/components/files';
+import { putFile, rejectOversizedBatch } from '@/lib/fileUploadBatch';
 import toast from 'react-hot-toast';
 import { formatDateLocal } from '@/lib/dateUtils';
 import { useConfirm } from '@/components/ConfirmProvider';
@@ -676,6 +677,9 @@ function CreateReportModal({
   const [attachments, setAttachments] = useState<Array<{ file_id: string; file_name: string; file_size: number; file_type: string }>>([]);
   const [existingAttachments, setExistingAttachments] = useState<ReportDetail['attachments']>([]);
   const [uploading, setUploading] = useState(false);
+  const [uploadQueue, setUploadQueue] = useState<
+    { id: string; file: File; progress: number; status: 'pending' | 'uploading' | 'success' | 'error'; error?: string }[]
+  >([]);
 
   const [saving, setSaving] = useState(false);
 
@@ -768,23 +772,18 @@ function CreateReportModal({
     setExistingAttachments(report.attachments);
   }, [report, projects, settings]);
 
-  const uploadFileToStorage = async (file: File) => {
+  const uploadFileToStorage = async (file: File, onProgress?: (percent: number) => void) => {
+    const contentType = file.type || 'application/octet-stream';
     const up: any = await api('POST', '/files/upload', {
       project_id: null,
       client_id: null,
       employee_id: fileUploadEmployeeId,
       category_id: 'report-attachment',
       original_name: file.name,
-      content_type: file.type || 'application/octet-stream',
+      content_type: contentType,
     });
 
-    const put = await fetch(up.upload_url, {
-      method: 'PUT',
-      headers: { 'Content-Type': file.type || 'application/octet-stream', 'x-ms-blob-type': 'BlockBlob' },
-      body: file,
-    });
-
-    if (!put.ok) throw new Error('Upload failed');
+    await putFile(up.upload_url, file, contentType, onProgress);
 
     const conf: any = await api('POST', '/files/confirm', {
       key: up.key,
@@ -818,10 +817,21 @@ function CreateReportModal({
 
   const handleFilesSelected = async (added: File[]) => {
     if (!added.length) return;
+    if (rejectOversizedBatch(added)) return;
+    const queue = added.map((file, idx) => ({
+      id: `${Date.now()}-${idx}`,
+      file,
+      progress: 0,
+      status: 'pending' as const,
+    }));
+    setUploadQueue(queue);
     setUploading(true);
     try {
-      for (const file of added) {
-        const meta = await uploadFileToStorage(file);
+      for (const item of queue) {
+        setUploadQueue((prev) => prev.map((u) => (u.id === item.id ? { ...u, status: 'uploading', progress: 0 } : u)));
+        const meta = await uploadFileToStorage(item.file, (percent) => {
+          setUploadQueue((prev) => prev.map((u) => (u.id === item.id ? { ...u, progress: percent } : u)));
+        });
         if (report) {
           const result = await api<{ id: string }>('POST', `${reportsPrefix}/${report.id}/attachments`, meta);
           setExistingAttachments((prev) => [
@@ -839,6 +849,7 @@ function CreateReportModal({
         } else {
           setAttachments((prev) => [...prev, meta]);
         }
+        setUploadQueue((prev) => prev.map((u) => (u.id === item.id ? { ...u, status: 'success', progress: 100 } : u)));
       }
       toast.success(added.length === 1 ? 'File uploaded' : `${added.length} files uploaded`);
       if (report && fileUploadEmployeeId) {
@@ -847,8 +858,12 @@ function CreateReportModal({
       }
     } catch (e: any) {
       toast.error(e?.message || 'Failed to upload file');
+      setUploadQueue((prev) =>
+        prev.map((u) => (u.status === 'uploading' || u.status === 'pending' ? { ...u, status: 'error', error: e?.message || 'Upload failed' } : u)),
+      );
     } finally {
       setUploading(false);
+      setTimeout(() => setUploadQueue((prev) => prev.filter((u) => !queue.find((item) => item.id === u.id && u.status !== 'error'))), 2000);
     }
   };
 
@@ -930,6 +945,7 @@ function CreateReportModal({
   };
 
   return (
+    <>
     <AppFormModal
       open
       onClose={onClose}
@@ -1181,6 +1197,18 @@ function CreateReportModal({
           <p className={uiTypography.helper}>No attachments yet</p>
         )}
     </AppFormModal>
+    <UploadProgressPanel
+      items={uploadQueue.map((u) => ({
+        id: u.id,
+        name: u.file.name,
+        size: u.file.size,
+        progress: u.progress,
+        status: u.status,
+        error: u.error,
+      }))}
+      onClear={() => setUploadQueue([])}
+    />
+    </>
   );
 }
 

@@ -435,13 +435,13 @@ export default function Users(){
         type: 'select',
         operators: ['is', 'is_not'],
         getGroupedOptions: () => {
-          const groups: Array<{ label: string; options: Array<{ value: string; label: string }> }> = [];
+          const groups: Array<{ label: string; value: string; options: Array<{ value: string; label: string }> }> = [];
           (projectDivisions || []).forEach((div: any) => {
-            const options: Array<{ value: string; label: string }> = [{ value: div.id, label: div.label }];
+            const options: Array<{ value: string; label: string }> = [];
             (div.subdivisions || []).forEach((sub: any) => {
               options.push({ value: sub.id, label: sub.label });
             });
-            groups.push({ label: div.label, options });
+            groups.push({ label: div.label, value: String(div.id), options });
           });
           return groups;
         },

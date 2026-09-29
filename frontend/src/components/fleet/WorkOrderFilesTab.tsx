@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Search } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api, withFileAccessToken } from '@/lib/api';
+import { putFile, rejectOversizedBatch } from '@/lib/fileUploadBatch';
 import { downloadStoredFiles } from '@/lib/downloadFile';
 import { useConfirm } from '@/components/ConfirmProvider';
 import {
@@ -12,6 +13,7 @@ import {
   FileListSelectionBar,
   FileMoveLocationModal,
   FileListDropHint,
+  UploadProgressPanel,
   FILE_LIBRARY_ACCEPT,
   FILE_LIBRARY_UPLOAD_HINT,
   dropTargetClass,
@@ -461,7 +463,7 @@ export function WorkOrderFilesTab({ workOrderId, canEdit = true }: Props) {
     setPendingPreviewFileId(null);
   }, [filesLibraryView, pendingPreviewFileId, files]);
 
-  const uploadFileToBlob = async (file: File): Promise<string> => {
+  const uploadFileToBlob = async (file: File, onProgress?: (percent: number) => void): Promise<string> => {
     const type = file.type || 'application/octet-stream';
     const up: any = await api('POST', '/files/upload', {
       original_name: file.name,
@@ -471,11 +473,7 @@ export function WorkOrderFilesTab({ workOrderId, canEdit = true }: Props) {
       client_id: null,
       category_id: 'work-order-files',
     });
-    await fetch(up.upload_url, {
-      method: 'PUT',
-      headers: { 'Content-Type': type, 'x-ms-blob-type': 'BlockBlob' },
-      body: file,
-    });
+    await putFile(up.upload_url, file, type, onProgress);
     const conf: any = await api('POST', '/files/confirm', {
       key: up.key,
       size_bytes: file.size,
@@ -486,6 +484,7 @@ export function WorkOrderFilesTab({ workOrderId, canEdit = true }: Props) {
   };
 
   const uploadMultiple = async (fileList: File[], targetCategory?: string) => {
+    if (rejectOversizedBatch(fileList)) return;
     const category =
       targetCategory !== undefined ? targetCategory : selectedCategory === 'all' ? uploadCategory : selectedCategory;
     const newQueue = Array.from(fileList).map((file, idx) => ({
@@ -498,8 +497,10 @@ export function WorkOrderFilesTab({ workOrderId, canEdit = true }: Props) {
 
     for (const item of newQueue) {
       try {
-        setUploadQueue((prev) => prev.map((u) => (u.id === item.id ? { ...u, status: 'uploading' } : u)));
-        const fileObjectId = await uploadFileToBlob(item.file);
+        setUploadQueue((prev) => prev.map((u) => (u.id === item.id ? { ...u, status: 'uploading', progress: 0 } : u)));
+        const fileObjectId = await uploadFileToBlob(item.file, (percent) => {
+          setUploadQueue((prev) => prev.map((u) => (u.id === item.id ? { ...u, progress: percent } : u)));
+        });
         const params = new URLSearchParams({ file_object_id: fileObjectId, category });
         params.set('original_name', item.file.name);
         await api('POST', `/fleet/work-orders/${workOrderId}/files?${params}`);
@@ -1059,34 +1060,17 @@ export function WorkOrderFilesTab({ workOrderId, canEdit = true }: Props) {
         </div>
       </AppFormModal>
 
-      {uploadQueue.length > 0 && (
-        <AppCard
-          className={uiCx('fixed bottom-4 right-4 z-50 w-80 max-h-96 overflow-hidden', uiShadows.elevated)}
-          bodyClassName="!p-0"
-        >
-          <div className={uiCx(uiLayout.actionsRow, 'justify-between border-b px-3 py-2', uiBorders.subtle, uiColors.surfaceSubtle)}>
-            <span className={uiTypography.sectionTitle}>Upload progress</span>
-            <AppButton type="button" variant="ghost" size="sm" onClick={() => setUploadQueue([])}>
-              Clear
-            </AppButton>
-          </div>
-          <div className="max-h-80 overflow-y-auto">
-            {uploadQueue.map((u) => (
-              <div key={u.id} className={uiCx('border-b px-3 py-2 last:border-0', uiBorders.subtle)}>
-                <div className={uiCx(uiTypography.helper, 'truncate font-medium text-gray-900')} title={u.file.name}>
-                  {u.file.name}
-                </div>
-                <div className={uiTypography.helper}>
-                  {u.status === 'pending' && 'Waiting…'}
-                  {u.status === 'uploading' && 'Uploading…'}
-                  {u.status === 'success' && 'Done'}
-                  {u.status === 'error' && (u.error || 'Error')}
-                </div>
-              </div>
-            ))}
-          </div>
-        </AppCard>
-      )}
+      <UploadProgressPanel
+        items={uploadQueue.map((u) => ({
+          id: u.id,
+          name: u.file.name,
+          size: u.file.size,
+          progress: u.progress,
+          status: u.status,
+          error: u.error,
+        }))}
+        onClear={() => setUploadQueue([])}
+      />
 
       {moveLocationFileId ? (
         <FileMoveLocationModal

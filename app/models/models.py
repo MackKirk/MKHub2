@@ -259,6 +259,8 @@ class Project(Base):
     billing_postal_code: Mapped[Optional[str]] = mapped_column(String(50))
     billing_country: Mapped[Optional[str]] = mapped_column(String(100))
     status_changed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))  # Timestamp when status was last changed
+    # First time an opportunity was marked Sent to Customer. Never overwritten.
+    sent_to_customer_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     image_file_object_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))  # Image for general information card
     image_manually_set: Mapped[bool] = mapped_column(Boolean, default=False)  # True if user manually set the image (prevents auto-update from proposal)
     created_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True)
@@ -682,6 +684,24 @@ class WarrantyAlertEvent(Base):
     __table_args__ = (
         UniqueConstraint("entity_type", "entity_id", "alert_key", name="uq_warranty_alert_event"),
         Index("ix_warranty_alert_events_entity", "entity_type", "entity_id"),
+    )
+
+
+class OpportunityAlertEvent(Base):
+    """Tracks sent opportunity follow-up reminders so each milestone fires once."""
+
+    __tablename__ = "opportunity_alert_events"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    alert_key: Mapped[str] = mapped_column(String(80), nullable=False)
+    sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("project_id", "alert_key", name="uq_opportunity_alert_event"),
+        Index("ix_opportunity_alert_events_project", "project_id"),
     )
 
 

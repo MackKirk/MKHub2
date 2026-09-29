@@ -5,6 +5,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Megaphone, Paperclip, Plus, Minus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '@/lib/api';
+import { UploadProgressPanel, type UploadProgressItem } from '@/components/files';
 import CommunityPostRichTextEditor from '@/components/community/CommunityPostRichTextEditor';
 import { CommunityPostBannerPicker } from '@/components/community/CommunityPostBanner';
 import { CommunityNewPostPreviewModal } from '@/components/community/CommunityNewPostPreviewModal';
@@ -261,6 +262,7 @@ export default function CommunityNewPost() {
   const [bannerFocalY, setBannerFocalY] = useState(50);
   const [bannerUploading, setBannerUploading] = useState(false);
   const [attachments, setAttachments] = useState<CommunityPostLocalAttachment[]>([]);
+  const [attachmentUploadQueue, setAttachmentUploadQueue] = useState<UploadProgressItem[]>([]);
   const [targetType, setTargetType] = useState<AudienceTargetType>('all');
   const [selectedDivisions, setSelectedDivisions] = useState<string[]>([]);
   const [selectedAudienceUserIds, setSelectedAudienceUserIds] = useState<string[]>([]);
@@ -521,36 +523,72 @@ export default function CommunityNewPost() {
     return added;
   };
 
-  const handleAttachmentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
+  const uploadAttachmentBatch = async (files: File[]) => {
     if (files.length === 0) return;
+    if (attachments.length + files.length > MAX_COMMUNITY_ATTACHMENTS) {
+      toast.error(`You can upload up to ${MAX_COMMUNITY_ATTACHMENTS} files at a time.`);
+      return;
+    }
+    const queue: UploadProgressItem[] = files.map((file, idx) => ({
+      id: `${Date.now()}-${idx}`,
+      name: file.name,
+      size: file.size,
+      progress: 0,
+      status: 'pending',
+      indeterminate: true,
+    }));
+    setAttachmentUploadQueue(queue);
     let ok = 0;
     try {
-      for (const file of files) {
-        if (await appendUploadedAttachment(file)) ok += 1;
+      for (let i = 0; i < files.length; i++) {
+        const item = queue[i];
+        setAttachmentUploadQueue((prev) =>
+          prev.map((u) => (u.id === item.id ? { ...u, status: 'uploading' } : u)),
+        );
+        try {
+          if (await appendUploadedAttachment(files[i])) {
+            ok += 1;
+            setAttachmentUploadQueue((prev) =>
+              prev.map((u) => (u.id === item.id ? { ...u, status: 'success', progress: 100, indeterminate: false } : u)),
+            );
+          } else {
+            setAttachmentUploadQueue((prev) =>
+              prev.map((u) => (u.id === item.id ? { ...u, status: 'error', error: 'Upload skipped', indeterminate: false } : u)),
+            );
+          }
+        } catch (error: unknown) {
+          setAttachmentUploadQueue((prev) =>
+            prev.map((u) =>
+              u.id === item.id
+                ? { ...u, status: 'error', error: error instanceof Error ? error.message : 'Upload failed', indeterminate: false }
+                : u,
+            ),
+          );
+          throw error;
+        }
       }
       if (ok > 0) toast.success(ok === 1 ? 'Attachment added' : `${ok} attachments added`);
     } catch (error: unknown) {
       console.error('Failed to upload attachment:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to upload attachment');
+    } finally {
+      setTimeout(() => {
+        setAttachmentUploadQueue((prev) => prev.filter((u) => u.status === 'error'));
+      }, 2000);
     }
+  };
+
+  const handleAttachmentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
     e.target.value = '';
+    await uploadAttachmentBatch(files);
   };
 
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     setDropActive(false);
     const files = Array.from(e.dataTransfer.files || []);
-    if (files.length === 0) return;
-    let ok = 0;
-    try {
-      for (const file of files) {
-        if (await appendUploadedAttachment(file)) ok += 1;
-      }
-      if (ok > 0) toast.success(ok === 1 ? 'Attachment added' : `${ok} attachments added`);
-    } catch (error: unknown) {
-      toast.error(error instanceof Error ? error.message : 'Upload failed');
-    }
+    await uploadAttachmentBatch(files);
   };
 
   const removeAttachment = (fileId: string) => {
@@ -1295,6 +1333,7 @@ export default function CommunityNewPost() {
           </AppButton>
         </div>
       </div>
+      <UploadProgressPanel items={attachmentUploadQueue} onClear={() => setAttachmentUploadQueue([])} />
     </div>
   );
 }

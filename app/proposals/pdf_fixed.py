@@ -15,7 +15,6 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from datetime import datetime
 from reportlab.pdfbase.pdfmetrics import stringWidth
-from .pdf_image_optimizer import optimize_image_bytes
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -145,25 +144,7 @@ def build_cover_page(c, data):
     # Optional: draw dynamic cover image on top of the background, reusing previous behavior
     cover_img_path = data.get("cover_image")
     if cover_img_path and os.path.exists(cover_img_path):
-        # Optimize image before processing
-        optimized_path = None
-        try:
-            with open(cover_img_path, "rb") as f:
-                image_bytes = f.read()
-            
-            optimized_bytes = optimize_image_bytes(image_bytes, preset="cover")
-            
-            # Create temporary file for optimized image
-            optimized_path = os.path.join(BASE_DIR, f"cover_optimized_{uuid.uuid4().hex}.jpg")
-            with open(optimized_path, "wb") as f:
-                f.write(optimized_bytes)
-            
-            # Use optimized image
-            cover_img_path = optimized_path
-        except Exception:
-            # Fallback to original if optimization fails
-            pass
-        
+        # Cover art is already optimized once before PDF assembly. This step only applies the grayscale treatment.
         try:
             # Convert to grayscale for the cover style, but keep it small by saving as JPEG
             bw_path = os.path.join(BASE_DIR, f"cover_bw_{uuid.uuid4().hex}.jpg")
@@ -177,12 +158,6 @@ def build_cover_page(c, data):
             # Position chosen to keep within the white area of the new template
             c.drawImage(img, 14, 285, 566, 537, mask="auto")
         finally:
-            # Cleanup optimized temp file if created
-            if optimized_path and optimized_path != data.get("cover_image") and os.path.exists(optimized_path):
-                try:
-                    os.remove(optimized_path)
-                except Exception:
-                    pass
             try:
                 if "bw_path" in locals() and bw_path and os.path.exists(bw_path):
                     os.remove(bw_path)
@@ -509,35 +484,12 @@ def build_page2(c, data):
 
     page2_img = data.get("page2_image")
     if page2_img and os.path.exists(page2_img):
-        # Optimize image before processing
-        optimized_path = None
-        try:
-            with open(page2_img, "rb") as f:
-                image_bytes = f.read()
-            
-            optimized_bytes = optimize_image_bytes(image_bytes, preset="section")
-            
-            # Create temporary file for optimized image
-            optimized_path = os.path.join(BASE_DIR, f"page2_optimized_{uuid.uuid4().hex}.jpg")
-            with open(optimized_path, "wb") as f:
-                f.write(optimized_bytes)
-            
-            # Use optimized image
-            page2_img = optimized_path
-        except Exception:
-            # Fallback to original if optimization fails
-            pass
-        
+        # Already optimized once before PDF assembly.
         try:
             img = ImageReader(page2_img)
             c.drawImage(img, 28, 380, 540, 340, mask="auto")
-        finally:
-            # Cleanup optimized temp file if created
-            if optimized_path and optimized_path != data.get("page2_image") and os.path.exists(optimized_path):
-                try:
-                    os.remove(optimized_path)
-                except Exception:
-                    pass
+        except Exception:
+            pass
 
 
 def build_fixed_pages(data, output_path):

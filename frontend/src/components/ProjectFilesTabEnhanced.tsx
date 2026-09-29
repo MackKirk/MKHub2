@@ -3,6 +3,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api, withFileAccessToken } from '@/lib/api';
+import { putFile, rejectOversizedBatch } from '@/lib/fileUploadBatch';
+import { UploadProgressPanel } from '@/components/files/UploadProgressPanel';
 import {
   readAllDirectoryEntries,
   getWebkitRelativePath,
@@ -106,6 +108,30 @@ export type ProjectFilesTabEnhancedProps = {
 
 /** Row: category column sets height; file list scrolls inside the same height. */
 const FILES_BROWSER_ROW_CLASS = 'flex w-full items-start';
+
+async function countDroppedFiles(dt: DataTransfer): Promise<number> {
+  if (dt.files?.length) return dt.files.length;
+  const items = Array.from(dt.items || []);
+  const first = items[0] as (DataTransferItem & { webkitGetAsEntry?: () => FileSystemEntry | null }) | undefined;
+  if (!items.length || typeof first?.webkitGetAsEntry !== 'function') return 0;
+
+  const countEntry = async (entry: FileSystemEntry): Promise<number> => {
+    if (entry.isFile) return 1;
+    if (!entry.isDirectory) return 0;
+    const reader = (entry as FileSystemDirectoryEntry).createReader();
+    const entries = await readAllDirectoryEntries(reader);
+    let total = 0;
+    for (const child of entries) total += await countEntry(child);
+    return total;
+  };
+
+  let total = 0;
+  for (const item of items) {
+    const entry = (item as DataTransferItem & { webkitGetAsEntry?: () => FileSystemEntry | null }).webkitGetAsEntry?.();
+    if (entry) total += await countEntry(entry);
+  }
+  return total;
+}
 
 type FilesLibraryView = 'home' | 'browser';
 type UploadModalContext = 'current-location' | 'choose-location';
@@ -767,6 +793,7 @@ export default function ProjectFilesTabEnhanced({
     category: string | null | undefined
   ) => {
     if (pairs.length === 0) return;
+    if (rejectOversizedBatch(pairs)) return;
 
     const categoryIdForCheck =
       category === null || category === undefined || category === ''
@@ -790,25 +817,23 @@ export default function ProjectFilesTabEnhanced({
       const folderId = pairs[i].folder_id;
       try {
         setUploadQueue((prev) =>
-          prev.map((u) => (u.id === item.id ? { ...u, status: 'uploading' } : u))
+          prev.map((u) => (u.id === item.id ? { ...u, status: 'uploading', progress: 0 } : u))
         );
 
+        const contentType = item.file.type || 'application/octet-stream';
         const up: any = await api('POST', '/files/upload', {
           project_id: projectId,
           client_id: project?.client_id || null,
           employee_id: null,
           category_id: 'project-files',
           original_name: item.file.name,
-          content_type: item.file.type || 'application/octet-stream',
+          content_type: contentType,
         });
 
-        await fetch(up.upload_url, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': item.file.type || 'application/octet-stream',
-            'x-ms-blob-type': 'BlockBlob',
-          },
-          body: item.file,
+        await putFile(up.upload_url, item.file, contentType, (percent) => {
+          setUploadQueue((prev) =>
+            prev.map((u) => (u.id === item.id ? { ...u, progress: percent } : u))
+          );
         });
 
         const conf: any = await api('POST', '/files/confirm', {
@@ -888,6 +913,9 @@ export default function ProjectFilesTabEnhanced({
       toast.error('Choose a single file category (not "All files") to import folders');
       return;
     }
+
+    const droppedFileCount = await countDroppedFiles(dt);
+    if (rejectOversizedBatch(droppedFileCount)) return;
 
     const folderCache = new Map<string, string>();
     const cacheKey = (parentId: string | null, name: string) =>
@@ -2674,91 +2702,17 @@ export default function ProjectFilesTabEnhanced({
       ) : null}
 
       {/* Upload Progress */}
-      {uploadQueue.length > 0 && (designSystem ? (
-        <AppCard
-          className={uiCx('fixed bottom-4 right-4 z-50 w-80 max-h-96 overflow-hidden shadow-2xl', uiBorders.subtle, uiRadius.card)}
-          bodyClassName="p-0"
-        >
-          <div className={uiCx('flex items-center justify-between border-b px-2.5 py-2', uiBorders.subtle, uiColors.surfaceSubtle)}>
-            <div className={uiCx(uiTypography.sectionTitle, 'text-xs')}>Upload Progress</div>
-            <AppButton variant="ghost" size="sm" type="button" onClick={() => setUploadQueue([])}>
-              Clear
-            </AppButton>
-          </div>
-          <div className="overflow-y-auto max-h-80">
-            {uploadQueue.map((u) => (
-              <div key={u.id} className={uiCx('border-b px-2.5 py-2', uiBorders.subtle)}>
-                <div className="mb-1 flex items-start gap-2">
-                  <div className="min-w-0 flex-1">
-                    <div className={uiCx(uiTypography.body, 'truncate text-xs font-medium')} title={u.file.name}>{u.file.name}</div>
-                    <div className={uiTypography.helper}>{(u.file.size / 1024 / 1024).toFixed(2)} MB</div>
-                  </div>
-                  <div className="text-xs">
-                    {u.status === 'pending' && '…'}
-                    {u.status === 'uploading' && '…'}
-                    {u.status === 'success' && '✓'}
-                    {u.status === 'error' && '✕'}
-                  </div>
-                </div>
-                {u.status === 'uploading' && (
-                  <div className={uiCx('mt-1 h-1.5 w-full overflow-hidden', uiRadius.badge, uiColors.surfaceSubtle)}>
-                    <div
-                      className={uiCx('h-full bg-blue-600 transition-all', uiRadius.badge)}
-                      style={{ width: `${u.progress}%` }}
-                    />
-                  </div>
-                )}
-                {u.status === 'error' && (
-                  <div className={uiCx(uiTypography.helper, 'mt-1 text-red-600')} title={u.error}>{u.error || 'Upload failed'}</div>
-                )}
-              </div>
-            ))}
-          </div>
-        </AppCard>
-      ) : (
-        <div className="fixed bottom-4 right-4 bg-white rounded-lg shadow-2xl border w-80 max-h-96 overflow-hidden z-50">
-          <div className="p-2.5 border-b bg-gray-50 flex items-center justify-between">
-            <div className="font-semibold text-xs">Upload Progress</div>
-            <button
-              onClick={() => setUploadQueue([])}
-              className="text-gray-500 hover:text-gray-700 text-[10px]"
-            >
-              Clear
-            </button>
-          </div>
-          <div className="overflow-y-auto max-h-80">
-            {uploadQueue.map((u) => (
-              <div key={u.id} className="p-2.5 border-b">
-                <div className="flex items-start gap-2 mb-1">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-xs font-medium truncate" title={u.file.name}>{u.file.name}</div>
-                    <div className="text-[10px] text-gray-500">
-                      {(u.file.size / 1024 / 1024).toFixed(2)} MB
-                    </div>
-                  </div>
-                  <div className="text-xs">
-                    {u.status === 'pending' && '…'}
-                    {u.status === 'uploading' && '…'}
-                    {u.status === 'success' && '✓'}
-                    {u.status === 'error' && '✕'}
-                  </div>
-                </div>
-                {u.status === 'uploading' && (
-                  <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
-                    <div
-                      className="bg-blue-600 h-1.5 rounded-full transition-all"
-                      style={{ width: `${u.progress}%` }}
-                    />
-                  </div>
-                )}
-                {u.status === 'error' && (
-                  <div className="text-[10px] text-red-600 mt-1" title={u.error}>{u.error || 'Upload failed'}</div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
+      <UploadProgressPanel
+        items={uploadQueue.map((u) => ({
+          id: u.id,
+          name: u.file.name,
+          size: u.file.size,
+          progress: u.progress,
+          status: u.status,
+          error: u.error,
+        }))}
+        onClear={() => setUploadQueue([])}
+      />
 
       {showNewFolderModal && designSystem && (
         <AppFormModal

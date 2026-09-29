@@ -84,6 +84,7 @@ def _project_copy_kwargs_with_db(db: Session, src: Project, *, code: str, name: 
     out["slug"] = None
     out["image_manually_set"] = False
     out["date_awarded"] = None
+    out["sent_to_customer_at"] = None
     out["status_changed_at"] = now
 
     if getattr(src, "is_bidding", False):

@@ -1,5 +1,5 @@
 import {
-  getProposalSectionImageFileUrl,
+  getProposalSectionImageGridUrl,
   getProposalSectionImagePreviewSize,
 } from '@/constants/proposalSectionImage';
 
@@ -10,7 +10,7 @@ type Props = {
   className?: string;
 };
 
-/** Section grid preview — same slot size and source file as the PDF. */
+/** Section grid preview — same slot size as the PDF, from a display-size thumbnail. */
 export default function SectionImagePreview({
   fileObjectId,
   orientation,
@@ -24,7 +24,7 @@ export default function SectionImagePreview({
       style={{ width: slot.width, height: slot.height }}
     >
       <img
-        src={getProposalSectionImageFileUrl(fileObjectId)}
+        src={getProposalSectionImageGridUrl(fileObjectId)}
         alt=""
         width={slot.width}
         height={slot.height}

@@ -2,6 +2,7 @@ import type { LucideIcon } from 'lucide-react';
 import {
   AlertTriangle,
   Bell,
+  Briefcase,
   CheckCircle2,
   ClipboardCheck,
   ClipboardList,
@@ -35,6 +36,7 @@ export const NOTIFICATION_ICON: Record<string, { Icon: LucideIcon; className: st
   fleet_inspection: { Icon: ClipboardCheck, className: 'bg-sky-100 text-sky-700' },
   fleet_inspection_approaching: { Icon: ClipboardCheck, className: 'bg-amber-100 text-amber-700' },
   fleet_inspection_overdue: { Icon: AlertTriangle, className: 'bg-red-100 text-red-700' },
+  opportunity: { Icon: Briefcase, className: 'bg-blue-100 text-blue-700' },
 };
 
 export function getNotificationIconMeta(type: string) {

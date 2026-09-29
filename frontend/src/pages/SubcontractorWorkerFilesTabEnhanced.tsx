@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState, type DragEvent } from 'react';
 import toast from 'react-hot-toast';
 import { api, withFileAccessToken } from '@/lib/api';
+import { putFile, rejectOversizedBatch } from '@/lib/fileUploadBatch';
 import ImageEditor from '@/components/ImageEditor';
 import OverlayPortal from '@/components/OverlayPortal';
 import { useConfirm } from '@/components/ConfirmProvider';
@@ -12,6 +13,7 @@ import {
   FileListSelectionBar,
   FileMoveLocationModal,
   FileListDropHint,
+  UploadProgressPanel,
   dropTargetClass,
   fileDropTargetProps,
   invalidateQueriesInBackground,
@@ -467,25 +469,25 @@ export function SubcontractorWorkerFilesTabEnhanced({
   const uploadMultiple = async (fileList: File[], targetCategory?: string) => {
     const category = targetCategory !== undefined ? (targetCategory === 'uncategorized' ? null : targetCategory) : selectedCategory === 'all' || selectedCategory === 'uncategorized' ? undefined : selectedCategory;
     if (!canEditFiles) return;
+    if (rejectOversizedBatch(fileList)) return;
 
     const newQueue = Array.from(fileList).map((file, idx) => ({ id: `${Date.now()}-${idx}`, file, progress: 0, status: 'pending' as const }));
     setUploadQueue((prev) => [...prev, ...newQueue]);
 
     for (const item of newQueue) {
       try {
-        setUploadQueue((prev) => prev.map((u) => (u.id === item.id ? { ...u, status: 'uploading' } : u)));
+        const contentType = item.file.type || 'application/octet-stream';
+        setUploadQueue((prev) => prev.map((u) => (u.id === item.id ? { ...u, status: 'uploading', progress: 0 } : u)));
         const up: any = await api('POST', '/files/upload', {
           project_id: null,
           client_id: null,
           employee_id: null,
           category_id: 'files',
           original_name: item.file.name,
-          content_type: item.file.type || 'application/octet-stream',
+          content_type: contentType,
         });
-        await fetch(up.upload_url, {
-          method: 'PUT',
-          headers: { 'Content-Type': item.file.type || 'application/octet-stream', 'x-ms-blob-type': 'BlockBlob' },
-          body: item.file,
+        await putFile(up.upload_url, item.file, contentType, (percent) => {
+          setUploadQueue((prev) => prev.map((u) => (u.id === item.id ? { ...u, progress: percent } : u)));
         });
         const conf: any = await api('POST', '/files/confirm', {
           key: up.key,
@@ -1227,29 +1229,17 @@ export function SubcontractorWorkerFilesTabEnhanced({
           }}
         />
       ) : null}
-      {uploadQueue.length > 0 && (
-        <div className="fixed bottom-4 right-4 bg-white rounded-lg shadow-2xl border w-80 max-h-96 overflow-hidden z-50">
-          <div className="p-2.5 border-b bg-gray-50 flex items-center justify-between">
-            <div className="font-semibold text-xs">Upload Progress</div>
-            <button onClick={() => setUploadQueue([])} className="text-gray-500 hover:text-gray-700 text-[10px]">Clear</button>
-          </div>
-          <div className="overflow-y-auto max-h-80">
-            {uploadQueue.map((u) => (
-              <div key={u.id} className="p-2.5 border-b">
-                <div className="flex items-start gap-2 mb-1">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-xs font-medium truncate" title={u.file.name}>{u.file.name}</div>
-                    <div className="text-[10px] text-gray-500">{(u.file.size / 1024 / 1024).toFixed(2)} MB</div>
-                  </div>
-                  <div className="text-xs">{u.status === 'pending' && '⏳'}{u.status === 'uploading' && '⏳'}{u.status === 'success' && '✅'}{u.status === 'error' && '❌'}</div>
-                </div>
-                {u.status === 'uploading' && <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1"><div className="bg-blue-600 h-1.5 rounded-full transition-all" style={{ width: `${u.progress}%` }} /></div>}
-                {u.status === 'error' && <div className="text-[10px] text-red-600 mt-1" title={u.error}>{u.error || 'Upload failed'}</div>}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      <UploadProgressPanel
+        items={uploadQueue.map((u) => ({
+          id: u.id,
+          name: u.file.name,
+          size: u.file.size,
+          progress: u.progress,
+          status: u.status,
+          error: u.error,
+        }))}
+        onClear={() => setUploadQueue([])}
+      />
       <FileImagePreviewModal
         open={imageGallery.open}
         items={imageGallery.items}
