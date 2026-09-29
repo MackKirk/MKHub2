@@ -363,6 +363,47 @@ def create_app() -> FastAPI:
             pass
         return await call_next(request)
 
+    def _pg_column_exists(db, table: str, column: str) -> bool:
+        row = db.execute(
+            text(
+                """
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = :table_name
+                  AND column_name = :column_name
+                LIMIT 1
+                """
+            ),
+            {"table_name": table, "column_name": column},
+        ).first()
+        return row is not None
+
+    def _pg_column_is_nullable(db, table: str, column: str) -> bool:
+        row = db.execute(
+            text(
+                """
+                SELECT is_nullable
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = :table_name
+                  AND column_name = :column_name
+                LIMIT 1
+                """
+            ),
+            {"table_name": table, "column_name": column},
+        ).first()
+        if row is None:
+            return False
+        return str(row[0]).upper() == "YES"
+
+    def _add_column_if_missing(db, table: str, column: str, column_ddl: str) -> bool:
+        """ADD COLUMN only when absent. Existing columns must not take AccessExclusiveLock on boot."""
+        if _pg_column_exists(db, table, column):
+            return False
+        db.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {column_ddl}"))
+        return True
+
     @app.on_event("startup")
     def _startup():
         print("[startup] Initializing application...")
@@ -374,15 +415,35 @@ def create_app() -> FastAPI:
             from sqlalchemy import text
             from .db import SessionLocal, Base, engine
             db = SessionLocal()
+            lock_timeout_set = False
             try:
                 dialect = db.bind.dialect.name if getattr(db, "bind", None) is not None else ""
+                is_pg = dialect == "postgresql" or "postgresql" in dialect
+                if is_pg:
+                    # Fail fast if a migration cannot get its lock, instead of queueing every SELECT behind it.
+                    try:
+                        db.execute(text("SET lock_timeout = '3s'"))
+                        db.commit()
+                        lock_timeout_set = True
+                    except Exception as _e:
+                        db.rollback()
+                        print(f"[startup] lock_timeout (non-critical): {_e}")
                 try:
-                    db.execute(
-                        text(
-                            "ALTER TABLE users ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 0"
+                    if is_pg:
+                        if not _pg_column_exists(db, "users", "session_version"):
+                            db.execute(
+                                text(
+                                    "ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0"
+                                )
+                            )
+                            db.commit()
+                    else:
+                        db.execute(
+                            text(
+                                "ALTER TABLE users ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 0"
+                            )
                         )
-                    )
-                    db.commit()
+                        db.commit()
                 except Exception as _e:
                     db.rollback()
                     print(f"[startup] users.session_version (non-critical): {_e}")
@@ -497,11 +558,11 @@ def create_app() -> FastAPI:
 
                     # Ensure required columns exist (schema drift safe-guard)
                     try:
-                        db.execute(text("ALTER TABLE task_log_entries ADD COLUMN IF NOT EXISTS message TEXT NOT NULL DEFAULT ''"))
-                        db.execute(text("ALTER TABLE task_log_entries ADD COLUMN IF NOT EXISTS entry_type VARCHAR(50) NOT NULL DEFAULT 'comment'"))
-                        db.execute(text("ALTER TABLE task_log_entries ADD COLUMN IF NOT EXISTS actor_id UUID NULL"))
-                        db.execute(text("ALTER TABLE task_log_entries ADD COLUMN IF NOT EXISTS actor_name VARCHAR(255) NULL"))
-                        db.execute(text("ALTER TABLE task_log_entries ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()"))
+                        _add_column_if_missing(db, "task_log_entries", "message", "TEXT NOT NULL DEFAULT ''")
+                        _add_column_if_missing(db, "task_log_entries", "entry_type", "VARCHAR(50) NOT NULL DEFAULT 'comment'")
+                        _add_column_if_missing(db, "task_log_entries", "actor_id", "UUID NULL")
+                        _add_column_if_missing(db, "task_log_entries", "actor_name", "VARCHAR(255) NULL")
+                        _add_column_if_missing(db, "task_log_entries", "created_at", "TIMESTAMPTZ NOT NULL DEFAULT NOW()")
 
                         body_exists = db.execute(
                             text(
@@ -514,11 +575,12 @@ def create_app() -> FastAPI:
                                 """
                             )
                         ).fetchall()
-                        if body_exists:
+                        if body_exists and not _pg_column_is_nullable(db, "task_log_entries", "body"):
                             db.execute(text("UPDATE task_log_entries SET message = body WHERE (message IS NULL OR message = '') AND body IS NOT NULL"))
                             db.execute(text("ALTER TABLE task_log_entries ALTER COLUMN body DROP NOT NULL"))
                         db.commit()
                     except Exception as e:
+                        db.rollback()
                         print(f"[startup] task_log_entries schema check error (non-critical): {e}")
 
                     # project_safety_inspections.status (draft | finalized)
@@ -528,31 +590,32 @@ def create_app() -> FastAPI:
                                 "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'project_safety_inspections' LIMIT 1"
                             )
                         ).fetchall():
-                            db.execute(
-                                text(
-                                    "ALTER TABLE project_safety_inspections ADD COLUMN IF NOT EXISTS status VARCHAR(20) NULL"
-                                )
+                            added_status = _add_column_if_missing(
+                                db, "project_safety_inspections", "status", "VARCHAR(20) NULL"
                             )
-                            db.commit()
-                            db.execute(
-                                text(
-                                    "UPDATE project_safety_inspections SET status = 'finalized' WHERE status IS NULL"
+                            if added_status:
+                                db.commit()
+                            if _pg_column_is_nullable(db, "project_safety_inspections", "status"):
+                                db.execute(
+                                    text(
+                                        "UPDATE project_safety_inspections SET status = 'finalized' WHERE status IS NULL"
+                                    )
                                 )
-                            )
-                            db.commit()
-                            db.execute(
-                                text(
-                                    "ALTER TABLE project_safety_inspections ALTER COLUMN status SET DEFAULT 'draft'"
+                                db.commit()
+                                db.execute(
+                                    text(
+                                        "ALTER TABLE project_safety_inspections ALTER COLUMN status SET DEFAULT 'draft'"
+                                    )
                                 )
-                            )
-                            db.execute(
-                                text(
-                                    "ALTER TABLE project_safety_inspections ALTER COLUMN status SET NOT NULL"
+                                db.execute(
+                                    text(
+                                        "ALTER TABLE project_safety_inspections ALTER COLUMN status SET NOT NULL"
+                                    )
                                 )
-                            )
-                            db.commit()
-                            print("[startup] Ensured project_safety_inspections.status")
+                                db.commit()
+                                print("[startup] Ensured project_safety_inspections.status")
                     except Exception as e:
+                        db.rollback()
                         print(f"[startup] project_safety_inspections.status migration (non-critical): {e}")
 
                     # Safety inspection: pending_signatures + sign requests + PDF client_file refs
@@ -562,37 +625,20 @@ def create_app() -> FastAPI:
                                 "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'project_safety_inspections' LIMIT 1"
                             )
                         ).fetchall():
-                            db.execute(
-                                text(
-                                    """
-                                    ALTER TABLE project_safety_inspections
-                                    ADD COLUMN IF NOT EXISTS interim_pdf_client_file_id UUID NULL
-                                    """
-                                )
+                            _add_column_if_missing(
+                                db, "project_safety_inspections", "interim_pdf_client_file_id", "UUID NULL"
                             )
-                            db.execute(
-                                text(
-                                    """
-                                    ALTER TABLE project_safety_inspections
-                                    ADD COLUMN IF NOT EXISTS final_pdf_client_file_id UUID NULL
-                                    """
-                                )
+                            _add_column_if_missing(
+                                db, "project_safety_inspections", "final_pdf_client_file_id", "UUID NULL"
                             )
-                            db.execute(
-                                text(
-                                    """
-                                    ALTER TABLE project_safety_inspections
-                                    ADD COLUMN IF NOT EXISTS first_finalized_at TIMESTAMPTZ NULL
-                                    """
-                                )
+                            _add_column_if_missing(
+                                db, "project_safety_inspections", "first_finalized_at", "TIMESTAMPTZ NULL"
                             )
-                            db.execute(
-                                text(
-                                    """
-                                    ALTER TABLE project_safety_inspections
-                                    ADD COLUMN IF NOT EXISTS first_finalized_by_id UUID NULL REFERENCES users(id) ON DELETE SET NULL
-                                    """
-                                )
+                            _add_column_if_missing(
+                                db,
+                                "project_safety_inspections",
+                                "first_finalized_by_id",
+                                "UUID NULL REFERENCES users(id) ON DELETE SET NULL",
                             )
                             db.commit()
                         if db.execute(
@@ -629,9 +675,11 @@ def create_app() -> FastAPI:
                             db.commit()
                             print("[startup] Created project_safety_inspection_sign_requests")
                     except Exception as e:
+                        db.rollback()
                         print(f"[startup] safety inspection sign requests migration (non-critical): {e}")
 
-                    # Form templates (Safety MVP) — tables + inspection FK columns
+                    # Form templates — assignee column only. form_template_version_id is retired
+                    # and must not be added again (each add/drop burns a Postgres column slot).
                     try:
                         if db.execute(
                             text(
@@ -645,38 +693,10 @@ def create_app() -> FastAPI:
                             Base.metadata.create_all(bind=engine, tables=[FormTemplate.__table__])
                             db.commit()
                             print("[startup] Created form_templates")
-                        db.execute(
-                            text(
-                                "ALTER TABLE project_safety_inspections ADD COLUMN IF NOT EXISTS form_template_version_id UUID NULL"
-                            )
-                        )
-                        db.execute(
-                            text(
-                                "ALTER TABLE project_safety_inspections ADD COLUMN IF NOT EXISTS assigned_user_id UUID NULL"
-                            )
-                        )
-                        db.commit()
-                        try:
-                            db.execute(
-                                text(
-                                    """
-                                    DO $ff$
-                                    BEGIN
-                                        IF NOT EXISTS (
-                                            SELECT 1 FROM pg_constraint WHERE conname = 'fk_project_safety_inspections_form_template_version'
-                                        ) THEN
-                                            ALTER TABLE project_safety_inspections
-                                                ADD CONSTRAINT fk_project_safety_inspections_form_template_version
-                                                FOREIGN KEY (form_template_version_id)
-                                                REFERENCES form_template_versions(id) ON DELETE SET NULL;
-                                        END IF;
-                                    END $ff$;
-                                    """
-                                )
-                            )
+                        if _add_column_if_missing(
+                            db, "project_safety_inspections", "assigned_user_id", "UUID NULL"
+                        ):
                             db.commit()
-                        except Exception:
-                            db.rollback()
                         try:
                             db.execute(
                                 text(
@@ -698,63 +718,68 @@ def create_app() -> FastAPI:
                             db.commit()
                         except Exception:
                             db.rollback()
-                        try:
-                            db.execute(
-                                text(
-                                    "CREATE INDEX IF NOT EXISTS ix_project_safety_inspections_template_version ON project_safety_inspections(form_template_version_id)"
-                                )
+                        assigned_idx = db.execute(
+                            text(
+                                """
+                                SELECT 1 FROM pg_indexes
+                                WHERE schemaname = 'public'
+                                  AND indexname = 'ix_project_safety_inspections_assigned_user'
+                                LIMIT 1
+                                """
                             )
-                            db.execute(
-                                text(
-                                    "CREATE INDEX IF NOT EXISTS ix_project_safety_inspections_assigned_user ON project_safety_inspections(assigned_user_id)"
+                        ).first()
+                        if not assigned_idx:
+                            try:
+                                db.execute(
+                                    text(
+                                        "CREATE INDEX ix_project_safety_inspections_assigned_user ON project_safety_inspections(assigned_user_id)"
+                                    )
                                 )
-                            )
-                            db.commit()
-                        except Exception:
-                            db.rollback()
-                        print("[startup] Ensured form_templates schema / inspection FK columns")
+                                db.commit()
+                            except Exception:
+                                db.rollback()
+                        print("[startup] Ensured form_templates schema / inspection assignee column")
                     except Exception as e:
+                        db.rollback()
                         print(f"[startup] form_templates migration (non-critical): {e}")
 
-                    # Single-definition form templates: migrate from form_template_versions then drop that table
+                    # Single-definition form templates: copy off form_template_versions only while that legacy schema remains.
                     try:
                         if db.execute(
                             text(
                                 "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'form_templates' LIMIT 1"
                             )
                         ).fetchall():
-                            db.execute(
-                                text(
-                                    "ALTER TABLE form_templates ADD COLUMN IF NOT EXISTS definition JSONB DEFAULT '{}'::jsonb"
-                                )
+                            added_definition = _add_column_if_missing(
+                                db, "form_templates", "definition", "JSONB DEFAULT '{}'::jsonb"
                             )
-                            db.execute(
-                                text(
-                                    "ALTER TABLE form_templates ADD COLUMN IF NOT EXISTS version_label VARCHAR(100) DEFAULT ''"
-                                )
+                            added_version_label = _add_column_if_missing(
+                                db, "form_templates", "version_label", "VARCHAR(100) DEFAULT ''"
                             )
-                            db.execute(text("UPDATE form_templates SET definition = '{}'::jsonb WHERE definition IS NULL"))
-                            db.execute(text("ALTER TABLE form_templates ALTER COLUMN definition SET NOT NULL"))
-                            db.execute(text("UPDATE form_templates SET version_label = COALESCE(version_label, '')"))
-                            db.execute(text("ALTER TABLE form_templates ALTER COLUMN version_label SET NOT NULL"))
+                            if added_definition or _pg_column_is_nullable(db, "form_templates", "definition"):
+                                db.execute(text("UPDATE form_templates SET definition = '{}'::jsonb WHERE definition IS NULL"))
+                                db.execute(text("ALTER TABLE form_templates ALTER COLUMN definition SET NOT NULL"))
+                            if added_version_label or _pg_column_is_nullable(db, "form_templates", "version_label"):
+                                db.execute(text("UPDATE form_templates SET version_label = COALESCE(version_label, '')"))
+                                db.execute(text("ALTER TABLE form_templates ALTER COLUMN version_label SET NOT NULL"))
                             db.commit()
-                            db.execute(
-                                text(
-                                    "ALTER TABLE project_safety_inspections ADD COLUMN IF NOT EXISTS form_template_id UUID NULL"
-                                )
-                            )
-                            db.execute(
-                                text(
-                                    "ALTER TABLE project_safety_inspections ADD COLUMN IF NOT EXISTS form_definition_snapshot JSONB NULL"
-                                )
-                            )
-                            db.commit()
-                            ftv_rows = db.execute(
+                            if _add_column_if_missing(
+                                db, "project_safety_inspections", "form_template_id", "UUID NULL"
+                            ):
+                                db.commit()
+                            if _add_column_if_missing(
+                                db, "project_safety_inspections", "form_definition_snapshot", "JSONB NULL"
+                            ):
+                                db.commit()
+                            legacy_versions = db.execute(
                                 text(
                                     "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'form_template_versions' LIMIT 1"
                                 )
                             ).fetchall()
-                            if ftv_rows:
+                            legacy_version_column = _pg_column_exists(
+                                db, "project_safety_inspections", "form_template_version_id"
+                            )
+                            if legacy_versions and legacy_version_column:
                                 db.execute(
                                     text(
                                         """
@@ -807,15 +832,14 @@ def create_app() -> FastAPI:
                                     db.commit()
                                 except Exception:
                                     db.rollback()
-                            try:
-                                db.execute(
-                                    text(
-                                        "ALTER TABLE project_safety_inspections DROP COLUMN IF EXISTS form_template_version_id"
-                                    )
-                                )
-                                db.commit()
-                            except Exception:
-                                db.rollback()
+                                print("[startup] Migrated legacy form_template_versions")
+                            elif legacy_versions:
+                                try:
+                                    db.execute(text("DROP TABLE IF EXISTS form_template_versions CASCADE"))
+                                    db.commit()
+                                    print("[startup] Dropped leftover form_template_versions")
+                                except Exception:
+                                    db.rollback()
                             try:
                                 db.execute(
                                     text(
@@ -836,17 +860,28 @@ def create_app() -> FastAPI:
                                 db.commit()
                             except Exception:
                                 db.rollback()
-                            try:
-                                db.execute(
-                                    text(
-                                        "CREATE INDEX IF NOT EXISTS ix_project_safety_inspections_form_template ON project_safety_inspections(form_template_id)"
-                                    )
+                            template_idx = db.execute(
+                                text(
+                                    """
+                                    SELECT 1 FROM pg_indexes
+                                    WHERE schemaname = 'public'
+                                      AND indexname = 'ix_project_safety_inspections_form_template'
+                                    LIMIT 1
+                                    """
                                 )
-                                db.commit()
-                            except Exception:
-                                db.rollback()
-                            print("[startup] Form templates unversioned migration (if needed)")
+                            ).first()
+                            if not template_idx:
+                                try:
+                                    db.execute(
+                                        text(
+                                            "CREATE INDEX ix_project_safety_inspections_form_template ON project_safety_inspections(form_template_id)"
+                                        )
+                                    )
+                                    db.commit()
+                                except Exception:
+                                    db.rollback()
                     except Exception as e:
+                        db.rollback()
                         print(f"[startup] form_templates unversioned migration (non-critical): {e}")
 
                     # Form custom lists (global dropdown options). create_all only; never drops tables or deletes rows.
@@ -885,12 +920,10 @@ def create_app() -> FastAPI:
 
                     # Employee review: assignment snapshot + review_cycles.form_template_id (additive only)
                     try:
-                        db.execute(
-                            text(
-                                "ALTER TABLE review_assignments ADD COLUMN IF NOT EXISTS form_definition_snapshot JSONB NULL"
-                            )
-                        )
-                        db.commit()
+                        if _add_column_if_missing(
+                            db, "review_assignments", "form_definition_snapshot", "JSONB NULL"
+                        ):
+                            db.commit()
                     except Exception as e:
                         db.rollback()
                         print(f"[startup] review_assignments.form_definition_snapshot (non-critical): {e}")
@@ -906,49 +939,33 @@ def create_app() -> FastAPI:
                             )
                         ).fetchall()
                         if not rows_rc_ft:
-                            db.execute(text("ALTER TABLE review_cycles ADD COLUMN IF NOT EXISTS form_template_id UUID NULL"))
+                            _add_column_if_missing(db, "review_cycles", "form_template_id", "UUID NULL")
                             db.commit()
                             print("[startup] Added review_cycles.form_template_id (populate via scripts/migrate_review_templates_to_form_templates.sql if upgrading)")
                     except Exception as e:
                         db.rollback()
                         print(f"[startup] review_cycles.form_template_id (non-critical): {e}")
                     try:
-                        db.execute(
-                            text(
-                                "ALTER TABLE review_cycles ADD COLUMN IF NOT EXISTS participant_scope JSONB NULL"
-                            )
-                        )
-                        db.commit()
+                        if _add_column_if_missing(db, "review_cycles", "participant_scope", "JSONB NULL"):
+                            db.commit()
                     except Exception as e:
                         db.rollback()
                         print(f"[startup] review_cycles.participant_scope (non-critical): {e}")
                     try:
-                        db.execute(
-                            text(
-                                "ALTER TABLE review_cycles ADD COLUMN IF NOT EXISTS template_by_department JSONB NULL"
-                            )
-                        )
-                        db.commit()
+                        if _add_column_if_missing(db, "review_cycles", "template_by_department", "JSONB NULL"):
+                            db.commit()
                     except Exception as e:
                         db.rollback()
                         print(f"[startup] review_cycles.template_by_department (non-critical): {e}")
                     try:
-                        db.execute(
-                            text(
-                                "ALTER TABLE review_cycles ADD COLUMN IF NOT EXISTS director_1on1_schedule JSONB NULL"
-                            )
-                        )
-                        db.commit()
+                        if _add_column_if_missing(db, "review_cycles", "director_1on1_schedule", "JSONB NULL"):
+                            db.commit()
                     except Exception as e:
                         db.rollback()
                         print(f"[startup] review_cycles.director_1on1_schedule (non-critical): {e}")
                     try:
-                        db.execute(
-                            text(
-                                "ALTER TABLE review_cycles ADD COLUMN IF NOT EXISTS director_1on1_slot_config JSONB NULL"
-                            )
-                        )
-                        db.commit()
+                        if _add_column_if_missing(db, "review_cycles", "director_1on1_slot_config", "JSONB NULL"):
+                            db.commit()
                     except Exception as e:
                         db.rollback()
                         print(f"[startup] review_cycles.director_1on1_slot_config (non-critical): {e}")
@@ -1053,12 +1070,8 @@ def create_app() -> FastAPI:
                         ("external_ref", "VARCHAR(80) NULL"),
                     ):
                         try:
-                            db.execute(
-                                text(
-                                    f"ALTER TABLE attendance ADD COLUMN IF NOT EXISTS {_col} {_ddl}"
-                                )
-                            )
-                            db.commit()
+                            if _add_column_if_missing(db, "attendance", _col, _ddl):
+                                db.commit()
                         except Exception as _e:
                             db.rollback()
                             print(f"[startup] attendance.{_col} (non-critical): {_e}")
@@ -1516,6 +1529,38 @@ def create_app() -> FastAPI:
                             print("[startup] Added related_leak_investigation_id column to projects table")
                     except Exception as e:
                         print(f"[startup] leak investigation columns (non-critical): {e}")
+                        db.rollback()
+
+                    try:
+                        rows_src = db.execute(
+                            text(
+                                """
+                                SELECT 1
+                                FROM information_schema.columns
+                                WHERE table_name = 'projects'
+                                  AND column_name = 'source_production_project_id'
+                                LIMIT 1
+                                """
+                            )
+                        ).fetchall()
+                        if not rows_src:
+                            db.execute(
+                                text(
+                                    "ALTER TABLE projects ADD COLUMN source_production_project_id UUID NULL REFERENCES projects(id) ON DELETE SET NULL"
+                                )
+                            )
+                            try:
+                                db.execute(
+                                    text(
+                                        "CREATE INDEX IF NOT EXISTS idx_projects_source_production_project_id ON projects(source_production_project_id)"
+                                    )
+                                )
+                            except Exception:
+                                pass
+                            db.commit()
+                            print("[startup] Added source_production_project_id column to projects table")
+                    except Exception as e:
+                        print(f"[startup] source_production_project_id migration (non-critical): {e}")
                         db.rollback()
 
                     # Project geocoding metadata columns
@@ -2550,13 +2595,10 @@ def create_app() -> FastAPI:
                             "site_address_line3",
                             "site_address_line3_complement",
                         ):
-                            db.execute(
-                                text(
-                                    f"ALTER TABLE client_sites ADD COLUMN IF NOT EXISTS {_col} VARCHAR(255) NULL"
-                                )
-                            )
+                            _add_column_if_missing(db, "client_sites", _col, "VARCHAR(255) NULL")
                         db.commit()
                     except Exception as _e:
+                        db.rollback()
                         print(f"[startup] client_sites address line3/complements (non-critical): {_e}")
 
                     # Soft-delete columns for company file documents (ClientDocument rows)
@@ -2758,74 +2800,25 @@ def create_app() -> FastAPI:
                                 "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'training_courses' LIMIT 1"
                             )
                         ).fetchall():
-                            db.execute(
-                                text(
-                                    """
-                                    ALTER TABLE training_courses
-                                    ADD COLUMN IF NOT EXISTS certificate_background_file_id UUID NULL
-                                    REFERENCES file_objects(id) ON DELETE SET NULL
-                                    """
-                                )
+                            cert_cols = (
+                                ("certificate_background_file_id", "UUID NULL REFERENCES file_objects(id) ON DELETE SET NULL"),
+                                ("certificate_background_setting_item_id", "UUID NULL REFERENCES setting_items(id) ON DELETE SET NULL"),
+                                ("certificate_logo_file_id", "UUID NULL REFERENCES file_objects(id) ON DELETE SET NULL"),
+                                ("certificate_logo_setting_item_id", "UUID NULL REFERENCES setting_items(id) ON DELETE SET NULL"),
+                                ("certificate_heading_primary", "VARCHAR(200) NULL"),
+                                ("certificate_heading_secondary", "VARCHAR(200) NULL"),
+                                ("certificate_body_template", "TEXT NULL"),
+                                ("certificate_instructor_name", "VARCHAR(255) NULL"),
+                                ("certificate_background_preset_key", "VARCHAR(64) NULL"),
+                                ("certificate_layout", "JSON NULL"),
                             )
-                            db.execute(
-                                text(
-                                    """
-                                    ALTER TABLE training_courses
-                                    ADD COLUMN IF NOT EXISTS certificate_background_setting_item_id UUID NULL
-                                    REFERENCES setting_items(id) ON DELETE SET NULL
-                                    """
-                                )
-                            )
-                            db.execute(
-                                text(
-                                    """
-                                    ALTER TABLE training_courses
-                                    ADD COLUMN IF NOT EXISTS certificate_logo_file_id UUID NULL
-                                    REFERENCES file_objects(id) ON DELETE SET NULL
-                                    """
-                                )
-                            )
-                            db.execute(
-                                text(
-                                    """
-                                    ALTER TABLE training_courses
-                                    ADD COLUMN IF NOT EXISTS certificate_logo_setting_item_id UUID NULL
-                                    REFERENCES setting_items(id) ON DELETE SET NULL
-                                    """
-                                )
-                            )
-                            db.execute(
-                                text(
-                                    "ALTER TABLE training_courses ADD COLUMN IF NOT EXISTS certificate_heading_primary VARCHAR(200) NULL"
-                                )
-                            )
-                            db.execute(
-                                text(
-                                    "ALTER TABLE training_courses ADD COLUMN IF NOT EXISTS certificate_heading_secondary VARCHAR(200) NULL"
-                                )
-                            )
-                            db.execute(
-                                text(
-                                    "ALTER TABLE training_courses ADD COLUMN IF NOT EXISTS certificate_body_template TEXT NULL"
-                                )
-                            )
-                            db.execute(
-                                text(
-                                    "ALTER TABLE training_courses ADD COLUMN IF NOT EXISTS certificate_instructor_name VARCHAR(255) NULL"
-                                )
-                            )
-                            db.execute(
-                                text(
-                                    "ALTER TABLE training_courses ADD COLUMN IF NOT EXISTS certificate_background_preset_key VARCHAR(64) NULL"
-                                )
-                            )
-                            db.execute(
-                                text(
-                                    "ALTER TABLE training_courses ADD COLUMN IF NOT EXISTS certificate_layout JSON NULL"
-                                )
-                            )
-                            db.commit()
-                            print("[startup] Ensured training_courses certificate design/wording columns")
+                            added_cert = False
+                            for _col, _ddl in cert_cols:
+                                if _add_column_if_missing(db, "training_courses", _col, _ddl):
+                                    added_cert = True
+                            if added_cert:
+                                db.commit()
+                                print("[startup] Ensured training_courses certificate design/wording columns")
                     except Exception as e:
                         db.rollback()
                         print(f"[startup] training_courses certificate columns migration (non-critical): {e}")
@@ -2842,14 +2835,7 @@ def create_app() -> FastAPI:
                             )
                         ).fetchall()
                         if tq:
-                            db.execute(
-                                text(
-                                    """
-                                    ALTER TABLE training_quizzes
-                                    ADD COLUMN IF NOT EXISTS max_attempts INTEGER NULL
-                                    """
-                                )
-                            )
+                            _add_column_if_missing(db, "training_quizzes", "max_attempts", "INTEGER NULL")
                             db.execute(
                                 text(
                                     """
@@ -2919,14 +2905,19 @@ def create_app() -> FastAPI:
                     else:
                         # Ensure newer fuel card columns exist
                         try:
-                            db.execute(text("ALTER TABLE fuel_cards ADD COLUMN IF NOT EXISTS crew VARCHAR(100)"))
-                            db.execute(text("ALTER TABLE fuel_cards ALTER COLUMN date_issued DROP NOT NULL"))
-                            db.execute(text("ALTER TABLE fuel_card_assignments ADD COLUMN IF NOT EXISTS notes_in TEXT"))
-                            db.execute(text("ALTER TABLE fuel_card_assignments ADD COLUMN IF NOT EXISTS reason_out VARCHAR(255)"))
-                            db.execute(text("ALTER TABLE fuel_card_assignments ADD COLUMN IF NOT EXISTS reason_in VARCHAR(255)"))
-                            db.execute(text("ALTER TABLE fuel_card_assignments ADD COLUMN IF NOT EXISTS attachments_out JSONB"))
-                            db.execute(text("ALTER TABLE fuel_card_assignments ADD COLUMN IF NOT EXISTS attachments_in JSONB"))
-                            db.commit()
+                            changed_fuel = _add_column_if_missing(db, "fuel_cards", "crew", "VARCHAR(100)")
+                            if _pg_column_exists(db, "fuel_cards", "date_issued") and not _pg_column_is_nullable(
+                                db, "fuel_cards", "date_issued"
+                            ):
+                                db.execute(text("ALTER TABLE fuel_cards ALTER COLUMN date_issued DROP NOT NULL"))
+                                changed_fuel = True
+                            changed_fuel = _add_column_if_missing(db, "fuel_card_assignments", "notes_in", "TEXT") or changed_fuel
+                            changed_fuel = _add_column_if_missing(db, "fuel_card_assignments", "reason_out", "VARCHAR(255)") or changed_fuel
+                            changed_fuel = _add_column_if_missing(db, "fuel_card_assignments", "reason_in", "VARCHAR(255)") or changed_fuel
+                            changed_fuel = _add_column_if_missing(db, "fuel_card_assignments", "attachments_out", "JSONB") or changed_fuel
+                            changed_fuel = _add_column_if_missing(db, "fuel_card_assignments", "attachments_in", "JSONB") or changed_fuel
+                            if changed_fuel:
+                                db.commit()
                         except Exception as e:
                             db.rollback()
                             print(f"[startup] fuel_cards column migrate (non-critical): {e}")
@@ -3489,6 +3480,16 @@ def create_app() -> FastAPI:
             except Exception as e:
                 print(f"[startup] Schema migrations check error (non-critical): {e}")
             finally:
+                if lock_timeout_set:
+                    try:
+                        db.rollback()
+                        db.execute(text("RESET lock_timeout"))
+                        db.commit()
+                    except Exception:
+                        try:
+                            db.rollback()
+                        except Exception:
+                            pass
                 db.close()
         except Exception as e:
             print(f"[startup] Could not run schema migrations check (non-critical): {e}")

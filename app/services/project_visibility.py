@@ -164,7 +164,11 @@ def is_project_visible_to_user(db: Session, user: User, project: Project) -> boo
 
     Being a project member (or estimator/onsite lead) is not enough without section permissions.
     """
+    from .warranty_review import user_can_warranty_review_read
+
     if _is_admin(user):
+        return True
+    if user_can_warranty_review_read(user, project):
         return True
     if not can_access_business_line(user, getattr(project, "business_line", None)):
         return False

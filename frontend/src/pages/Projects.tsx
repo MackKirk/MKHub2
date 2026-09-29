@@ -1033,8 +1033,14 @@ export default function Projects(){
   );
 }
 
-export function ProjectListItem({ project, projectDivisions, projectStatuses, variant = 'card', projectBasePath = '/projects' }: { project: Project, projectDivisions?: any[], projectStatuses: any[]; variant?: 'card' | 'row'; projectBasePath?: string }){
+export function ProjectListItem({ project, projectDivisions, projectStatuses, variant = 'card', projectBasePath = '/projects', detailQuery = '' }: { project: Project, projectDivisions?: any[], projectStatuses: any[]; variant?: 'card' | 'row'; projectBasePath?: string; detailQuery?: string }){
   const navigate = useNavigate();
+  const projectHref = (tab?: string) => {
+    const params = new URLSearchParams(detailQuery);
+    if (tab) params.set('tab', tab);
+    const qs = params.toString();
+    return `${projectBasePath}/${encodeURIComponent(String(project.id))}${qs ? `?${qs}` : ''}`;
+  };
 
   const clientName = project.client_display_name || project.client_name || '';
   const status = project.status_label || '';
@@ -1169,7 +1175,7 @@ export function ProjectListItem({ project, projectDivisions, projectStatuses, va
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            navigate(`${projectBasePath}/${encodeURIComponent(String(project.id))}?tab=${btn.tab}`);
+            navigate(projectHref(btn.tab));
           }}
           className="relative group/btn w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 border border-gray-200 hover:border-gray-300 flex items-center justify-center text-sm transition-all hover:scale-[1.05]"
           title={btn.label}
@@ -1187,7 +1193,7 @@ export function ProjectListItem({ project, projectDivisions, projectStatuses, va
   if (variant === 'row') {
     return (
       <tr
-        onClick={() => navigate(`${projectBasePath}/${encodeURIComponent(String(project.id))}`)}
+        onClick={() => navigate(projectHref())}
         className="group hover:bg-gray-50 cursor-pointer transition-colors"
       >
         <td className="px-3 py-2 align-middle">{col1}</td>
@@ -1205,7 +1211,7 @@ export function ProjectListItem({ project, projectDivisions, projectStatuses, va
 
   return (
     <Link
-      to={`${projectBasePath}/${encodeURIComponent(String(project.id))}`}
+      to={projectHref()}
       className={uiCx('group block p-4 transition-all duration-200 hover:border-gray-300', PROJECT_LIST_MIN_WIDTH, uiBorders.subtle, uiRadius.card, uiColors.surface, 'hover:shadow-md')}
     >
       <div className={uiCx('grid gap-2 sm:gap-3 lg:gap-4 items-center overflow-hidden', PROJECT_LIST_GRID_CLASS)}>

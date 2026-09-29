@@ -244,6 +244,10 @@ class Project(Base):
     related_leak_investigation_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    # R&M opportunity created from a Finished Production project (Warranty Review).
+    source_production_project_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     # construction | repairs_maintenance — separates Commercial/Construction vs Repairs & Maintenance workflows
     business_line: Mapped[str] = mapped_column(String(50), default="construction", index=True)
     # Billing snapshot (copied from Customer at project create / convert; independent thereafter)

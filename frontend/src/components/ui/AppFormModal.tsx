@@ -74,6 +74,8 @@ export type AppFormModalProps = {
   dialogClassNameExpanded?: string;
   /** `wide` = 880px dialog + quick-info aside. `comfortable` = between default and wide (contacts). */
   formWidth?: 'default' | 'wide' | 'comfortable';
+  /** Overrides the form column width (e.g. a bit wider than `comfortable`). */
+  formColumnClassName?: string;
   /** Overrides default body wrapper classes on AppModal. */
   bodyClassName?: string;
   /** When false, modal body height follows content instead of filling the dialog shell. */
@@ -106,6 +108,7 @@ export function AppFormModal({
   dialogClassName: dialogClassNameProp,
   dialogClassNameExpanded: dialogClassNameExpandedProp,
   formWidth = 'default',
+  formColumnClassName,
   bodyClassName: bodyClassNameProp,
   overlayClassName,
   scrollBody = true,
@@ -221,11 +224,13 @@ export function AppFormModal({
       </aside>
     ) : null;
 
-  const formInnerWidthClass = isWideForm
-    ? FORM_MODAL_WIDE_FORM_COLUMN
-    : isComfortableForm
-      ? FORM_MODAL_COMFORTABLE_FORM_INNER
-      : FORM_MODAL_FORM_INNER;
+  const formInnerWidthClass =
+    formColumnClassName ||
+    (isWideForm
+      ? FORM_MODAL_WIDE_FORM_COLUMN
+      : isComfortableForm
+        ? FORM_MODAL_COMFORTABLE_FORM_INNER
+        : FORM_MODAL_FORM_INNER);
 
   const useFormBodySplit = !isDetailLayout && !!footer && scrollBody;
   const useFormBodyFill = !isDetailLayout && !!footer && !scrollBody;

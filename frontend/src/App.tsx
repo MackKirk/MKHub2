@@ -57,6 +57,7 @@ import QuoteNew from './pages/QuoteNew';
 import QuoteDetail from './pages/QuoteDetail';
 import SiteDetail from './pages/SiteDetail';
 import Projects from './pages/Projects';
+import WarrantyReview from './pages/WarrantyReview';
 import ProjectNew from './pages/ProjectNew';
 import Opportunities from './pages/Opportunities';
 import OpportunityDetail from './pages/OpportunityDetail';
@@ -239,6 +240,7 @@ export default function App(){
           <Route path="/rm-leak-investigations" element={<RmLeakInvestigationsListRedirect />} />
           <Route path="/rm-leak-investigations/:id" element={<RmLeakInvestigationDetailRedirect />} />
           <Route path="/rm-projects" element={<AppShell><BusinessLineProvider line={BUSINESS_LINE_REPAIRS_MAINTENANCE}><Projects /></BusinessLineProvider></AppShell>} />
+          <Route path="/rm-warranty-review" element={<AppShell><WarrantyReview /></AppShell>} />
           <Route path="/rm-projects/new" element={<AppShell><BusinessLineProvider line={BUSINESS_LINE_REPAIRS_MAINTENANCE}><ProjectNew /></BusinessLineProvider></AppShell>} />
           <Route path="/rm-projects/:id" element={<AppShell><RmProjectDetail /></AppShell>} />
           <Route path="/rm-business" element={<AppShell><BusinessLineProvider line={BUSINESS_LINE_REPAIRS_MAINTENANCE}><BusinessDashboard /></BusinessLineProvider></AppShell>} />

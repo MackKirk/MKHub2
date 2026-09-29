@@ -451,6 +451,10 @@ def _user_is_related_to_project(db: Session, user: User, project: Project) -> bo
 
 
 def _assert_project_line_read(user: User, proj: Project) -> None:
+    from ..services.warranty_review import user_can_warranty_review_read
+
+    if user_can_warranty_review_read(user, proj):
+        return
     if not can_access_business_line(user, getattr(proj, "business_line", None)):
         raise HTTPException(status_code=403, detail="Forbidden")
     db = object_session(proj)
@@ -475,10 +479,17 @@ def _assert_project_visible(user: User, proj: Project) -> None:
 
 
 def _assert_project_reports_read(user: User, proj: Project) -> None:
+    from ..services.warranty_review import user_can_warranty_review_read
+
     _assert_project_visible(user, proj)
     line = getattr(proj, "business_line", None)
-    if not _has_project_feature_permission(user, line, "reports", "read"):
-        raise HTTPException(status_code=403, detail="Forbidden")
+    if _has_project_feature_permission(user, line, "reports", "read"):
+        return
+    if user_can_warranty_review_read(user, proj) and _has_project_feature_permission(
+        user, BUSINESS_LINE_REPAIRS_MAINTENANCE, "reports", "read"
+    ):
+        return
+    raise HTTPException(status_code=403, detail="Forbidden")
 
 
 def _assert_project_reports_write(user: User, proj: Project) -> None:
@@ -1009,6 +1020,7 @@ def _paginate_projects_with_section_access(
     page: int,
     limit: int,
     business_line: Optional[str] = None,
+    apply_section_access: bool = True,
 ):
     """
     Apply section-permission gate after ACL SQL, then paginate.
@@ -1017,6 +1029,10 @@ def _paginate_projects_with_section_access(
     (set is small). read:all users: SQL offset/limit then drop rows without sections.
     """
     offset = (page - 1) * limit
+    if not apply_section_access:
+        total = query.count()
+        rows = query.order_by(*order_parts).offset(offset).limit(limit).all()
+        return rows, total
     related_only = True
     if any((getattr(r, "name", None) or "").lower() == "admin" for r in user.roles):
         related_only = False
@@ -1062,6 +1078,7 @@ def _paginate_projects_by_display_value(
     *,
     opportunities: bool,
     business_line: Optional[str] = None,
+    apply_section_access: bool = True,
 ):
     """
     Sort/paginate by the same proposal-derived Value shown on list cards.
@@ -1070,7 +1087,7 @@ def _paginate_projects_by_display_value(
     asc = (sort_dir or "asc").lower() != "desc"
     offset = (page - 1) * limit
     rows = query.all()
-    filtered = filter_projects_with_section_access(user, rows)
+    filtered = rows if not apply_section_access else filter_projects_with_section_access(user, rows)
     values_map, _, _, _ = _load_latest_proposals_by_project(db, [p.id for p in filtered])
 
     def sort_key(p: Project):
@@ -1162,6 +1179,7 @@ def create_project(payload: dict, db: Session = Depends(get_db), user=Depends(ge
     is_bidding = bool(payload.get("is_bidding"))
     payload["is_bidding"] = is_bidding
     payload.pop("related_leak_investigation_id", None)
+    payload.pop("source_production_project_id", None)
 
     creating_leak_investigation = False
     if bl == BUSINESS_LINE_REPAIRS_MAINTENANCE:
@@ -1479,6 +1497,209 @@ def list_projects(
     ]
 
 
+def _source_production_project_summary(db: Session, project: Project) -> Optional[dict]:
+    source_id = getattr(project, "source_production_project_id", None)
+    if not source_id:
+        return None
+    source = db.query(Project).filter(Project.id == source_id, Project.deleted_at.is_(None)).first()
+    if source is None:
+        return None
+    return {"id": str(source.id), "name": source.name, "code": source.code}
+
+
+def _related_rm_opportunities(db: Session, project_id) -> list[dict]:
+    rows = (
+        db.query(Project)
+        .filter(
+            Project.source_production_project_id == project_id,
+            Project.deleted_at.is_(None),
+            Project.is_bidding == True,
+            Project.business_line == BUSINESS_LINE_REPAIRS_MAINTENANCE,
+        )
+        .order_by(Project.created_at.desc())
+        .all()
+    )
+    return [
+        {
+            "id": str(row.id),
+            "name": row.name,
+            "code": row.code,
+            "status_label": getattr(row, "status_label", None),
+        }
+        for row in rows
+    ]
+
+
+def _serialize_project_list_rows(db: Session, projects: list) -> list[dict]:
+    project_ids = [p.id for p in projects]
+    client_ids = list({p.client_id for p in projects if getattr(p, "client_id", None)})
+    site_ids = list({getattr(p, "site_id", None) for p in projects if getattr(p, "site_id", None)})
+    sites_map = {}
+    if site_ids:
+        for site in db.query(ClientSite).filter(ClientSite.id.in_(site_ids)).all():
+            sites_map[str(site.id)] = site
+    cover_images = _load_legacy_cover_images(db, project_ids)
+    clients_map = _build_clients_map(db, client_ids)
+    estimated_values_map, proposal_cover_by_project, proposal_card_totals, proposal_division_pcts = (
+        _load_latest_proposals_by_project(db, project_ids)
+    )
+    admin_ids = [getattr(p, "project_admin_id", None) for p in projects if getattr(p, "project_admin_id", None)]
+    estimator_ids = [getattr(p, "estimator_id", None) for p in projects if getattr(p, "estimator_id", None)]
+    users_map = _build_users_display_map(db, list(set(admin_ids + estimator_ids)))
+    result = []
+    for p in projects:
+        raw_percentages = getattr(p, "project_division_percentages", None)
+        percentages_payload = None
+        if isinstance(raw_percentages, dict):
+            percentages_payload = {str(k): v for k, v in raw_percentages.items()}
+        project_dict = {
+            "id": str(p.id),
+            "code": p.code,
+            "name": p.name,
+            "business_line": getattr(p, "business_line", None) or BUSINESS_LINE_CONSTRUCTION,
+            "slug": p.slug,
+            "client_id": str(p.client_id) if getattr(p, "client_id", None) else None,
+            "created_at": p.created_at.isoformat() if getattr(p, "created_at", None) else None,
+            "date_start": p.date_start.isoformat() if getattr(p, "date_start", None) else None,
+            "date_eta": getattr(p, "date_eta", None).isoformat() if getattr(p, "date_eta", None) else None,
+            "date_end": p.date_end.isoformat() if getattr(p, "date_end", None) else None,
+            "status_label": getattr(p, "status_label", None),
+            "division_ids": getattr(p, "division_ids", None),
+            "project_division_ids": getattr(p, "project_division_ids", None),
+            "project_division_percentages": percentages_payload,
+            "service_value": getattr(p, "service_value", None),
+            "proposal_card_total": proposal_card_totals.get(str(p.id), 0),
+            "division_value_pcts": proposal_division_pcts.get(str(p.id)) or {},
+            "is_bidding": False,
+            "cover_image_url": None,
+            "client_name": None,
+            "client_display_name": None,
+            "project_admin_id": str(p.project_admin_id) if getattr(p, "project_admin_id", None) else None,
+        }
+        pid = str(p.id)
+        if getattr(p, "image_manually_set", False) and getattr(p, "image_file_object_id", None):
+            project_dict["cover_image_url"] = f"/files/{str(p.image_file_object_id)}/thumbnail?w=400"
+        if (not project_dict["cover_image_url"]) and pid in cover_images:
+            cover_file = cover_images[pid]
+            timestamp = cover_file.uploaded_at.isoformat() if cover_file.uploaded_at else None
+            timestamp_param = f"&t={timestamp}" if timestamp else ""
+            project_dict["cover_image_url"] = f"/files/{cover_file.file_object_id}/thumbnail?w=400{timestamp_param}"
+        if (not project_dict["cover_image_url"]) and getattr(p, "image_file_object_id", None):
+            project_dict["cover_image_url"] = f"/files/{str(p.image_file_object_id)}/thumbnail?w=400"
+        if (not project_dict["cover_image_url"]) and pid in proposal_cover_by_project:
+            project_dict["cover_image_url"] = f"/files/{proposal_cover_by_project[pid]}/thumbnail?w=400"
+        if not project_dict["cover_image_url"]:
+            project_dict["cover_image_url"] = "/ui/assets/placeholders/project.png"
+        client_id_str = str(p.client_id) if getattr(p, "client_id", None) else None
+        if client_id_str and client_id_str in clients_map:
+            client_info = clients_map[client_id_str]
+            project_dict["client_name"] = client_info.get("name")
+            project_dict["client_display_name"] = client_info.get("display_name")
+        admin_id = str(p.project_admin_id) if getattr(p, "project_admin_id", None) else None
+        if admin_id and admin_id in users_map:
+            user_row = users_map[admin_id]
+            if isinstance(user_row, dict):
+                project_dict["project_admin_name"] = user_row.get("name")
+                if user_row.get("profile_photo_file_id"):
+                    project_dict["project_admin_avatar_file_id"] = user_row["profile_photo_file_id"]
+            else:
+                project_dict["project_admin_name"] = user_row
+        if pid in estimated_values_map:
+            project_dict["service_value"] = estimated_values_map[pid]
+        site = sites_map.get(str(getattr(p, "site_id", None))) if getattr(p, "site_id", None) else None
+        project_dict.update(project_site_address_payload(p, site))
+        result.append(project_dict)
+    return result
+
+
+@router.get("/rm/warranty-review")
+def warranty_review_projects(
+    q: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    limit: int = Query(25, ge=1, le=200),
+    sort: Optional[str] = None,
+    sort_dir: Optional[str] = Query("asc", alias="dir"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Finished Production projects for the R&M Warranty Review list. Ignores Construction ACL."""
+    if not can_access_business_line(user, BUSINESS_LINE_REPAIRS_MAINTENANCE):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    finished_id = None
+    status_list = db.query(SettingList).filter(SettingList.name == "project_statuses").first()
+    if status_list:
+        finished = (
+            db.query(SettingItem)
+            .filter(SettingItem.list_id == status_list.id, func.lower(SettingItem.label) == "finished")
+            .first()
+        )
+        if finished:
+            finished_id = finished.id
+    query = db.query(Project).filter(
+        Project.deleted_at.is_(None),
+        Project.is_bidding == False,
+        Project.business_line == BUSINESS_LINE_CONSTRUCTION,
+    )
+    finished_label = func.lower(func.trim(Project.status_label)) == "finished"
+    if finished_id is not None:
+        query = query.filter(or_(finished_label, Project.status_id == finished_id))
+    else:
+        query = query.filter(finished_label)
+    query = _apply_business_opportunity_list_filters(
+        query,
+        db,
+        user,
+        False,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        q,
+    )
+    if _business_list_sort_key(sort, opportunities=False) == "value":
+        projects, total = _paginate_projects_by_display_value(
+            db,
+            user,
+            query,
+            page,
+            limit,
+            sort_dir,
+            opportunities=False,
+            business_line=BUSINESS_LINE_CONSTRUCTION,
+            apply_section_access=False,
+        )
+    else:
+        query, order_parts = _apply_business_list_sort(
+            query, sort, sort_dir, opportunities=False, db=db
+        )
+        projects, total = _paginate_projects_with_section_access(
+            user,
+            query,
+            order_parts,
+            page,
+            limit,
+            business_line=BUSINESS_LINE_CONSTRUCTION,
+            apply_section_access=False,
+        )
+    return {
+        "items": _serialize_project_list_rows(db, projects),
+        "total": total,
+        "page": page,
+        "limit": limit,
+    }
+
+
 @router.get("/{project_id}")
 def get_project(
     project_id: str,
@@ -1610,7 +1831,135 @@ def get_project(
         "created_at": p.created_at.isoformat() if getattr(p, 'created_at', None) else None,
         **project_billing_response_fields(p),
         "billing_differs_from_customer": _billing_differs_from_customer(p, client),
+        "related_rm_opportunities": _related_rm_opportunities(db, p.id),
+        "source_production_project": _source_production_project_summary(db, p),
     }
+
+
+def _optional_rm_opportunity_fields(db: Session, source: Project, body: Optional[dict]) -> dict:
+    """Optional name, R&M divisions, and estimator from the Warranty Review modal."""
+    from ..services.business_line import repairs_maintenance_division_ids
+
+    raw = body if isinstance(body, dict) else {}
+    name = str(raw.get("name") or "").strip() or str(getattr(source, "name", None) or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+
+    out: dict = {"name": name}
+    raw_divs = raw.get("project_division_ids")
+    if raw_divs not in (None, "", []):
+        if not isinstance(raw_divs, list):
+            raise HTTPException(status_code=400, detail="project_division_ids must be a list")
+        cleaned: list[str] = []
+        seen: set[str] = set()
+        for item in raw_divs:
+            text = str(item or "").strip()
+            if not text:
+                continue
+            try:
+                division_id = str(uuid.UUID(text))
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid division id")
+            if division_id in seen:
+                continue
+            seen.add(division_id)
+            cleaned.append(division_id)
+        if cleaned:
+            allowed = repairs_maintenance_division_ids(db)
+            if any(division_id not in allowed for division_id in cleaned):
+                raise HTTPException(status_code=400, detail="Division must belong to Repairs & Maintenance")
+            leak_div_id = get_leak_investigation_division_id(db)
+            if leak_div_id and str(leak_div_id) in seen:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Leak Investigations are created as projects, not opportunities",
+                )
+            count = len(cleaned)
+            base = 100 // count
+            remainder = 100 - (base * count)
+            out["project_division_ids"] = cleaned
+            out["project_division_percentages"] = {
+                division_id: base + (remainder if index == count - 1 else 0)
+                for index, division_id in enumerate(cleaned)
+            }
+
+    estimator_raw = raw.get("estimator_id")
+    if estimator_raw not in (None, ""):
+        try:
+            estimator_uuid = uuid.UUID(str(estimator_raw))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid estimator_id")
+        if db.query(User.id).filter(User.id == estimator_uuid).first() is None:
+            raise HTTPException(status_code=400, detail="Estimator not found")
+        estimator_id = str(estimator_uuid)
+        out["estimator_id"] = estimator_id
+        out["estimator_ids"] = [estimator_id]
+    return out
+
+
+@router.post("/{project_id}/rm-opportunity")
+def create_rm_opportunity_from_project(
+    project_id: str,
+    body: Optional[dict] = Body(default=None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Create an R&M opportunity linked to a Finished Production project."""
+    if not can_write_business_line(user, BUSINESS_LINE_REPAIRS_MAINTENANCE):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    try:
+        source_uuid = uuid.UUID(str(project_id))
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Not found")
+    source = db.query(Project).filter(Project.id == source_uuid, Project.deleted_at.is_(None)).first()
+    if not source:
+        raise HTTPException(status_code=404, detail="Not found")
+    from ..services.warranty_review import is_finished_construction_project
+
+    finished = is_finished_construction_project(source)
+    if not finished and getattr(source, "status_id", None):
+        status_item = db.query(SettingItem).filter(SettingItem.id == source.status_id).first()
+        finished = bool(
+            status_item
+            and (status_item.label or "").strip().lower() == "finished"
+            and normalize_business_line(getattr(source, "business_line", None)) == BUSINESS_LINE_CONSTRUCTION
+            and not bool(getattr(source, "is_bidding", False))
+        )
+    if not finished:
+        raise HTTPException(status_code=400, detail="Only Finished Production projects can create an R&M opportunity")
+    if not getattr(source, "client_id", None):
+        raise HTTPException(status_code=400, detail="Project owner is required")
+
+    optional = _optional_rm_opportunity_fields(db, source, body)
+    payload = {
+        "name": optional["name"],
+        "client_id": str(source.client_id),
+        "business_line": BUSINESS_LINE_REPAIRS_MAINTENANCE,
+        "is_bidding": True,
+    }
+    if optional.get("project_division_ids"):
+        payload["project_division_ids"] = optional["project_division_ids"]
+        payload["project_division_percentages"] = optional["project_division_percentages"]
+    if optional.get("estimator_id"):
+        payload["estimator_id"] = optional["estimator_id"]
+        payload["estimator_ids"] = optional["estimator_ids"]
+    if getattr(source, "contact_id", None):
+        payload["contact_id"] = str(source.contact_id)
+    if getattr(source, "site_id", None):
+        payload["site_id"] = str(source.site_id)
+    for key in ("address", "address_city", "address_province", "address_country", "lat", "lng"):
+        value = getattr(source, key, None)
+        if value is not None:
+            payload[key] = value
+
+    created = create_project(payload, db, user)
+    created_id = created.get("id")
+    opp = db.query(Project).filter(Project.id == created_id).first()
+    if opp is None:
+        raise HTTPException(status_code=500, detail="Opportunity was not created")
+    opp.source_production_project_id = source.id
+    db.commit()
+    return {"id": str(opp.id)}
 
 
 def _is_sent_to_customer_label(label: Optional[str]) -> bool:
@@ -1625,6 +1974,7 @@ def update_project(project_id: str, payload: dict, db: Session = Depends(get_db)
     _assert_project_line_write(user, p)
     if "business_line" in payload:
         payload.pop("business_line", None)
+    payload.pop("source_production_project_id", None)
     payload.pop("is_bidding", None)
     payload.pop("related_leak_investigation_id", None)
     payload.pop("sent_to_customer_at", None)
@@ -2697,6 +3047,8 @@ def list_project_files(
     user: User = Depends(get_current_user),
     _=Depends(require_permissions("business:projects:files:read", "business:projects:files:write")),
 ):
+    from ..services.warranty_review import user_can_warranty_review_read
+
     proj = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -2718,8 +3070,16 @@ def list_project_files(
             # Document Creator gallery originals/edited use document-creator* categories.
             if not (
                 str(cat or "").strip().lower().startswith("document-creator")
-                and _has_project_feature_permission(
-                    user, getattr(proj, "business_line", None), "documents", "read"
+                and (
+                    _has_project_feature_permission(
+                        user, getattr(proj, "business_line", None), "documents", "read"
+                    )
+                    or (
+                        user_can_warranty_review_read(user, proj)
+                        and _has_project_feature_permission(
+                            user, BUSINESS_LINE_REPAIRS_MAINTENANCE, "documents", "read"
+                        )
+                    )
                 )
             ):
                 continue

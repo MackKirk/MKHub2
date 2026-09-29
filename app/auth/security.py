@@ -1249,10 +1249,11 @@ def assert_project_workload_permission(
         if not is_project_visible_to_user(db, user, project):
             raise _forbidden("project not visible to user")
     line = getattr(project, "business_line", None)
-    if not can_access_business_line(user, line):
+    effective_line, allowed = _line_for_project_permission(user, project, line, action)
+    if not allowed:
         raise _forbidden(f"no access to business line ({line or 'unknown'})")
-    if not _has_project_feature_permission(user, line, "workload", action):
-        prefix = _project_line_perm_prefix(line)
+    if not _has_project_feature_permission(user, effective_line, "workload", action):
+        prefix = _project_line_perm_prefix(effective_line)
         raise _forbidden(f"missing {prefix}:workload:{action}")
 
 
@@ -1311,6 +1312,23 @@ def _project_category_allow_list(
     return None
 
 
+def _line_for_project_permission(user: User, project: Any, line: Optional[str], action: str) -> tuple[Optional[str], bool]:
+    """
+    Business line used for a feature check, plus whether the line check passed.
+
+    Finished Production projects are readable with R&M feature permissions.
+    Writes stay on the project's own line.
+    """
+    if project is None or can_access_business_line(user, line):
+        return line, True
+    if action == "read":
+        from ..services.warranty_review import user_can_warranty_review_read
+
+        if user_can_warranty_review_read(user, project):
+            return BUSINESS_LINE_REPAIRS_MAINTENANCE, True
+    return line, False
+
+
 def has_project_files_category_permission(
     user: User,
     category_id: Optional[str],
@@ -1332,7 +1350,8 @@ def has_project_files_category_permission(
     if _user_is_admin(user):
         return True
     line = getattr(project, "business_line", None) if project is not None else None
-    if project is not None and not can_access_business_line(user, line):
+    line, allowed = _line_for_project_permission(user, project, line, action)
+    if not allowed:
         return False
     if action not in ("read", "write"):
         return False
@@ -1377,7 +1396,8 @@ def has_project_reports_category_permission(
     if _user_is_admin(user):
         return True
     line = getattr(project, "business_line", None) if project is not None else None
-    if project is not None and not can_access_business_line(user, line):
+    line, allowed = _line_for_project_permission(user, project, line, action)
+    if not allowed:
         return False
     if action not in ("read", "write"):
         return False

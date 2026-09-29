@@ -813,6 +813,7 @@ export default function AppShell({ children }: PropsWithChildren){
         { id: 'rm-business-dashboard', label: 'Dashboard', path: '/rm-business', icon: <IconDashboard />, requiredPermission: 'business:rm:projects:read' },
         { id: 'rm-opportunities', label: 'Opportunities', path: '/rm-opportunities', icon: <IconOpportunities />, requiredPermission: 'business:rm:projects:read' },
         { id: 'rm-projects', label: 'Projects', path: '/rm-projects', icon: <IconProjects />, requiredPermission: 'business:rm:projects:read' },
+        { id: 'rm-warranty-review', label: 'Warranty Review', path: '/rm-warranty-review', icon: <IconClipboard />, requiredPermission: 'business:rm:projects:read' },
       ]
     },
     {
@@ -1108,6 +1109,13 @@ export default function AppShell({ children }: PropsWithChildren){
         return false; // Explicitly return false and don't check items
       }
     }
+    const fromWarrantyReview =
+      new URLSearchParams(location.search).get('from') === 'warranty-review' &&
+      /^\/projects\/[^/]+$/.test(location.pathname);
+    if (fromWarrantyReview) {
+      if (category.id === 'repairs_maintenance') return true;
+      if (category.id === 'services') return false;
+    }
     if (category.id === 'services' && isViewingOpportunity) {
       const opportunitiesItem = category.items.find(item => item.id === 'opportunities');
       const projectsItem = category.items.find(item => item.id === 'projects');
@@ -1142,6 +1150,12 @@ export default function AppShell({ children }: PropsWithChildren){
       }
       if (item.id === 'rm-projects' && isViewingOpportunity && onRmOpp) {
         return false;
+      }
+      if (item.id === 'projects' && fromWarrantyReview) {
+        return false;
+      }
+      if (item.id === 'rm-warranty-review' && fromWarrantyReview) {
+        return true;
       }
       // Special handling for system-settings: exclude /settings/attendance
       if (item.id === 'system-settings' && item.path === '/settings') {
@@ -1600,6 +1614,18 @@ export default function AppShell({ children }: PropsWithChildren){
                           isItemActive = location.pathname === '/business';
                         } else if (item.id === 'rm-business-dashboard' && item.path === '/rm-business') {
                           isItemActive = location.pathname === '/rm-business';
+                        } else if (item.id === 'rm-warranty-review') {
+                          isItemActive =
+                            location.pathname === '/rm-warranty-review' ||
+                            location.pathname.startsWith('/rm-warranty-review/') ||
+                            (location.pathname.startsWith('/projects/') &&
+                              new URLSearchParams(location.search).get('from') === 'warranty-review');
+                        } else if (
+                          item.id === 'projects' &&
+                          location.pathname.startsWith('/projects/') &&
+                          new URLSearchParams(location.search).get('from') === 'warranty-review'
+                        ) {
+                          isItemActive = false;
                         } else if (item.id === 'fleet-assets') {
                           isItemActive = ['/fleet/assets', '/fleet/vehicles', '/fleet/heavy-machinery', '/fleet/other-assets'].some(
                             (p) => location.pathname === p || location.pathname.startsWith(p + '/'),

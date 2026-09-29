@@ -30,6 +30,7 @@ import { useNavigateBack } from '@/hooks/useNavigateBack';
 import { useUnsavedChanges } from '@/components/UnsavedChangesProvider';
 import CalendarMock from '@/components/CalendarMock';
 import { ProjectConvertToProjectModalDsForm } from '@/components/ProjectConvertToProjectModalDsForm';
+import { RmOpportunityFromProjectModal } from '@/components/RmOpportunityFromProjectModal';
 import { ProjectReportsTabDs } from '@/components/ProjectReportsTabDs';
 import DispatchTab from '@/components/DispatchTab';
 import ProjectTimesheetTab from '@/components/ProjectTimesheetTab';
@@ -1028,7 +1029,7 @@ function UserAvatar({ user, size = 'w-8 h-8', showTooltip = true, tooltipText }:
   );
 }
 
-type Project = { id:string, code?:string, project_number?:string|null, name?:string, client_id?:string, client_display_name?:string, client_name?:string, related_client_ids?:string[], related_client_display_names?:string[], awarded_related_client_ids?:string[], awarded_related_client_id?:string|null, address?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, scope_of_work?:string|null, job_completion_estimate?:string|null, crew_material_list?:{ id: string; name: string; quantity?: string|null; unit?: string|null; notes?: string|null }[]|null, status_id?:string, division_id?:string, division_ids?:string[], project_division_ids?:string[], estimator_id?:string, estimator_ids?:string[], project_admin_id?:string, onsite_lead_id?:string, division_onsite_leads?:Record<string, string>, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, created_at?:string, date_start?:string, date_eta?:string, date_awarded?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_address_line2?:string, site_address_line3?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string, status_changed_at?:string, is_bidding?:boolean, lead_source?:string, business_line?: string, purchase_order_number?:string|null, billing_contact?:string|null, invoice_to?:string|null, billing_email?:string|null, po_required?:boolean, billing_address_line1?:string|null, billing_address_line2?:string|null, billing_country?:string|null, billing_province?:string|null, billing_city?:string|null, billing_postal_code?:string|null, billing_differs_from_customer?:boolean, invoice_blocked_reason?:string|null };
+type Project = { id:string, code?:string, project_number?:string|null, name?:string, client_id?:string, client_display_name?:string, client_name?:string, related_client_ids?:string[], related_client_display_names?:string[], awarded_related_client_ids?:string[], awarded_related_client_id?:string|null, address?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, scope_of_work?:string|null, job_completion_estimate?:string|null, crew_material_list?:{ id: string; name: string; quantity?: string|null; unit?: string|null; notes?: string|null }[]|null, status_id?:string, division_id?:string, division_ids?:string[], project_division_ids?:string[], estimator_id?:string, estimator_ids?:string[], project_admin_id?:string, onsite_lead_id?:string, division_onsite_leads?:Record<string, string>, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, created_at?:string, date_start?:string, date_eta?:string, date_awarded?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_address_line2?:string, site_address_line3?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string, status_changed_at?:string, is_bidding?:boolean, lead_source?:string, business_line?: string, purchase_order_number?:string|null, billing_contact?:string|null, invoice_to?:string|null, billing_email?:string|null, po_required?:boolean, billing_address_line1?:string|null, billing_address_line2?:string|null, billing_country?:string|null, billing_province?:string|null, billing_city?:string|null, billing_postal_code?:string|null, billing_differs_from_customer?:boolean, invoice_blocked_reason?:string|null, related_rm_opportunities?:{ id:string, name?:string, code?:string, status_label?:string|null }[], source_production_project?:{ id:string, name?:string, code?:string }|null };
 
 function projectAwardedRelatedIdsSet(proj: Project | null | undefined): Set<string> {
   const raw = proj?.awarded_related_client_ids;
@@ -1352,10 +1353,19 @@ export default function ProjectDetail(){
     location.pathname
   );
 
+  const fromWarrantyReview = new URLSearchParams(location.search).get('from') === 'warranty-review';
+  const [showRmOpportunityModal, setShowRmOpportunityModal] = useState(false);
+  const canOpenViaWarrantyReview =
+    fromWarrantyReview &&
+    (isAdmin ||
+      permissions.has('business:rm:projects:read') ||
+      permissions.has('business:rm:projects:write') ||
+      hasAnyProjectSectionPermission(permissions, BUSINESS_LINE_REPAIRS_MAINTENANCE, isAdmin));
   const canOpenProjectSections =
     signOnlySafetySession ||
     me === undefined ||
-    hasAnyProjectSectionPermission(permissions, projectBusinessLine, isAdmin, location.pathname);
+    hasAnyProjectSectionPermission(permissions, projectBusinessLine, isAdmin, location.pathname) ||
+    canOpenViaWarrantyReview;
 
   const projectAccessBlocked =
     !signOnlySafetySession &&
@@ -1381,9 +1391,13 @@ export default function ProjectDetail(){
     return (tabKey: string): boolean => {
       const feature = featureByTab[tabKey];
       if (!feature) return true;
-      return hasProjectFeaturePermission(permissions, bl, feature, isAdmin, location.pathname);
+      if (hasProjectFeaturePermission(permissions, bl, feature, isAdmin, location.pathname)) return true;
+      if (fromWarrantyReview) {
+        return hasProjectFeaturePermission(permissions, BUSINESS_LINE_REPAIRS_MAINTENANCE, feature, isAdmin);
+      }
+      return false;
     };
-  }, [isAdmin, permissions, projectBusinessLine, location.pathname]);
+  }, [fromWarrantyReview, isAdmin, permissions, projectBusinessLine, location.pathname]);
   
   // Update tab when URL search params change
   useEffect(() => {
@@ -1647,15 +1661,16 @@ export default function ProjectDetail(){
 
   const doTabSwitch = useCallback((newTab: typeof availableTabs[number] | 'estimate' | null) => {
     setTab(newTab);
-    if (newTab === null) {
-      nav(location.pathname, { replace: true });
-      if (!useDesignSystem) setIsHeroCollapsed(false);
-    } else {
-      nav(`${location.pathname}?tab=${newTab}`, { replace: true });
-      if (!useDesignSystem) setIsHeroCollapsed(newTab !== 'overview');
-      invalidateQueriesForTab(newTab);
+    const params = new URLSearchParams();
+    if (new URLSearchParams(location.search).get('from') === 'warranty-review') {
+      params.set('from', 'warranty-review');
     }
-  }, [location.pathname, nav, invalidateQueriesForTab, useDesignSystem]);
+    if (newTab) params.set('tab', newTab);
+    const qs = params.toString();
+    nav(qs ? `${location.pathname}?${qs}` : location.pathname, { replace: true });
+    if (!useDesignSystem) setIsHeroCollapsed(newTab !== null && newTab !== 'overview');
+    if (newTab) invalidateQueriesForTab(newTab);
+  }, [location.pathname, location.search, nav, invalidateQueriesForTab, useDesignSystem]);
 
   const handleTabClick = async (newTab: typeof availableTabs[number] | 'estimate' | null) => {
     if (signOnlySafetySession) {
@@ -1921,6 +1936,49 @@ export default function ProjectDetail(){
 
     return convertButton;
   }, [isOpportunityDetailRoute, proj, hasEditPermission]);
+
+  const warrantyReviewHeaderAction = useMemo(() => {
+    if (
+      !fromWarrantyReview ||
+      proj?.is_bidding ||
+      proj?.business_line === BUSINESS_LINE_REPAIRS_MAINTENANCE ||
+      String(proj?.status_label || '').trim().toLowerCase() !== 'finished'
+    ) {
+      return null;
+    }
+    const canCreate = hasProjectLineWritePermission(
+      permissions,
+      BUSINESS_LINE_REPAIRS_MAINTENANCE,
+      isAdmin,
+    );
+    const related = proj?.related_rm_opportunities || [];
+    if (!canCreate && related.length === 0) return null;
+    return (
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {related.map((opp) => (
+          <AppButton
+            key={opp.id}
+            type="button"
+            size="sm"
+            variant="secondary"
+            onClick={() => nav(`/rm-opportunities/${encodeURIComponent(opp.id)}`)}
+          >
+            {opp.code || opp.name || 'Related opportunity'}
+          </AppButton>
+        ))}
+        {canCreate ? (
+          <AppButton
+            type="button"
+            size="sm"
+            variant="secondary"
+            onClick={() => setShowRmOpportunityModal(true)}
+          >
+            Create Opportunity related to this Project
+          </AppButton>
+        ) : null}
+      </div>
+    );
+  }, [fromWarrantyReview, isAdmin, nav, permissions, proj]);
 
   const PageShell = useDesignSystem ? 'main' : 'div';
 
@@ -2209,6 +2267,17 @@ export default function ProjectDetail(){
                         </svg>
                       </button>
                     ))}
+                  {proj?.source_production_project ? (
+                    <div className="text-xs text-gray-500">
+                      Inherited from{' '}
+                      <Link
+                        to={`/projects/${encodeURIComponent(proj.source_production_project.id)}?from=warranty-review`}
+                        className="font-semibold text-[#7f1010] hover:underline"
+                      >
+                        {proj.source_production_project.code || proj.source_production_project.name || 'Project'}
+                      </Link>
+                    </div>
+                  ) : null}
                 </div>
               </div>
               
@@ -2888,7 +2957,7 @@ export default function ProjectDetail(){
             headerEnd={
               isOpportunityDetailRoute && proj?.is_bidding
                 ? opportunityConvertHeaderAction
-                : undefined
+                : warrantyReviewHeaderAction || undefined
             }
           />
         );
@@ -3897,6 +3966,17 @@ export default function ProjectDetail(){
           }}
         />
       )}
+
+      <RmOpportunityFromProjectModal
+        open={showRmOpportunityModal}
+        project={proj}
+        onClose={() => setShowRmOpportunityModal(false)}
+        onCreated={(opportunityId) => {
+          setShowRmOpportunityModal(false);
+          toast.success('Opportunity created');
+          nav(`/rm-opportunities/${encodeURIComponent(opportunityId)}`);
+        }}
+      />
 
       {showConvertModal && proj?.is_bidding && (
         <ConvertToProjectModal
