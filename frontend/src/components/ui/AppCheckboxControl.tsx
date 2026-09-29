@@ -13,7 +13,10 @@ export type AppCheckboxControlProps = {
   onPointerDown?: (event: PointerEvent<HTMLButtonElement | HTMLLabelElement>) => void;
 };
 
-/** Icon-only checkbox — same visual as AppCheckbox / AppMultiSelect option rows (lists, tables). */
+/**
+ * Icon-only checkbox — same visual as AppCheckbox / AppMultiSelect option rows (lists, tables).
+ * Always uses a <button> (never a focusable hidden input) so toggling does not scroll the page.
+ */
 export function AppCheckboxControl({
   checked,
   onChange,
@@ -25,63 +28,31 @@ export function AppCheckboxControl({
 }: AppCheckboxControlProps) {
   const interactive = Boolean(onChange || onClick) && !disabled;
 
-  const boxClassName = uiCx(
-    'inline-flex shrink-0 items-center justify-center',
-    interactive ? 'cursor-pointer' : 'cursor-default',
-    disabled && 'cursor-not-allowed opacity-50',
-    className,
-  );
-
-  const stopDrag = (event: { stopPropagation: () => void }) => {
-    if (interactive) event.stopPropagation();
-  };
-
-  // Button avoids hidden-input focus scroll (breaks draggable table rows).
-  if (onClick && !onChange) {
-    return (
-      <button
-        type="button"
-        role="checkbox"
-        aria-checked={checked}
-        aria-label={ariaLabel}
-        disabled={disabled}
-        className={boxClassName}
-        onPointerDown={(event) => {
-          stopDrag(event);
-          onPointerDown?.(event);
-        }}
-        onClick={(event) => {
-          event.stopPropagation();
-          if (disabled) return;
-          onClick(event);
-        }}
-      >
-        <SelectDropdownCheckbox checked={checked} />
-      </button>
-    );
-  }
-
   return (
-    <label
-      className={boxClassName}
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={checked}
+      aria-label={ariaLabel}
+      disabled={disabled}
+      className={uiCx(
+        'inline-flex shrink-0 items-center justify-center',
+        interactive ? 'cursor-pointer' : 'cursor-default',
+        disabled && 'cursor-not-allowed opacity-50',
+        className,
+      )}
       onPointerDown={(event) => {
-        stopDrag(event);
+        if (interactive) event.stopPropagation();
         onPointerDown?.(event);
       }}
+      onClick={(event) => {
+        event.stopPropagation();
+        if (disabled) return;
+        onClick?.(event);
+        onChange?.(!checked);
+      }}
     >
-      <input
-        type="checkbox"
-        className="sr-only"
-        checked={checked}
-        disabled={disabled}
-        readOnly={!onChange}
-        tabIndex={-1}
-        aria-label={ariaLabel}
-        onFocus={(event) => event.currentTarget.blur()}
-        onChange={onChange ? (event) => onChange(event.target.checked) : undefined}
-        onClick={(event) => event.stopPropagation()}
-      />
       <SelectDropdownCheckbox checked={checked} />
-    </label>
+    </button>
   );
 }

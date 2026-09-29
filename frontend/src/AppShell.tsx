@@ -71,10 +71,10 @@ function pathnameIsLearnerTraining(pathname: string): boolean {
   return true;
 }
 
-function menuChildMatchesLocation(child: MenuItem, pathname: string, _search: string): boolean {
+function menuChildMatchesLocation(child: MenuItem, pathname: string, search: string): boolean {
   if (child.id === 'fleet-assets') {
     return ['/fleet/assets', '/fleet/vehicles', '/fleet/heavy-machinery', '/fleet/other-assets'].some(
-      (p) => pathname === p || pathname.startsWith(p + '/')
+      (p) => pathname === p || pathname.startsWith(p + '/'),
     );
   }
   if (child.id === 'employee-review-cycles') {
@@ -85,12 +85,33 @@ function menuChildMatchesLocation(child: MenuItem, pathname: string, _search: st
       pathname.startsWith(child.path + '/')
     );
   }
-  return pathname === child.path || pathname.startsWith(child.path + '/');
+
+  const qIndex = child.path.indexOf('?');
+  const childPath = qIndex >= 0 ? child.path.slice(0, qIndex) : child.path;
+  const childQuery = qIndex >= 0 ? child.path.slice(qIndex + 1) : '';
+
+  if (childQuery) {
+    if (pathname !== childPath) return false;
+    const want = new URLSearchParams(childQuery);
+    const have = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
+    for (const [key, value] of want.entries()) {
+      if (have.get(key) !== value) return false;
+    }
+    return true;
+  }
+
+  return pathname === childPath || pathname.startsWith(`${childPath}/`);
 }
 
 const IconHome = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+  </svg>
+);
+
+const IconMegaphone = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" />
   </svg>
 );
 
@@ -115,6 +136,18 @@ const IconCalendar = () => (
 const IconClock = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+  </svg>
+);
+
+const IconSun = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v2m0 14v2m9-9h-2M5 12H3m15.364 6.364l-1.414-1.414M7.05 7.05L5.636 5.636m12.728 0L16.95 7.05M7.05 16.95l-1.414 1.414M12 8a4 4 0 100 8 4 4 0 000-8z" />
+  </svg>
+);
+
+const IconMedkit = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-3-3v6m8 5H4a2 2 0 01-2-2V8a2 2 0 012-2h3.172a2 2 0 001.414-.586l.828-.828A2 2 0 0110.828 4h2.344a2 2 0 011.414.586l.828.828A2 2 0 0016.828 6H20a2 2 0 012 2v11a2 2 0 01-2 2z" />
   </svg>
 );
 
@@ -734,14 +767,22 @@ export default function AppShell({ children }: PropsWithChildren){
       ]
     },
     {
+      id: 'announcements',
+      label: 'Announcements',
+      icon: <IconMegaphone />,
+      items: [
+        { id: 'announcements', label: 'Announcements', path: '/announcements', icon: <IconMegaphone /> },
+      ]
+    },
+    {
       id: 'personal',
       label: 'Personal',
       icon: <IconUser />,
       items: [
-        { id: 'overview', label: 'Overview', path: '/overview', icon: <IconOverview /> },
         { id: 'schedule', label: 'Schedule', path: '/schedule', icon: <IconCalendar /> },
-        { id: 'clock-in-out', label: 'Clock In/Out', path: '/clock-in-out', icon: <IconClock /> },
-        { id: 'task-requests', label: 'Requests', path: '/task-requests', icon: <IconRequest /> },
+        { id: 'time-off', label: 'Time Off', path: '/home?open=time-off', icon: <IconSun /> },
+        { id: 'sick-leave', label: 'Sick Leave', path: '/home?open=sick', icon: <IconMedkit /> },
+        { id: 'clock-in-out', label: 'Clock In/Out', path: '/home?open=hours', icon: <IconClock /> },
         { id: 'tasks', label: 'Tasks', path: '/tasks', icon: <IconClipboard /> },
         { id: 'my-reviews', label: 'My Reviews', path: '/reviews/my', icon: <IconStar /> },
         { id: 'my-training', label: 'My Training', path: '/training', icon: <IconAcademic /> },
@@ -1148,6 +1189,13 @@ export default function AppShell({ children }: PropsWithChildren){
         if (menuChildMatchesLocation(item, location.pathname, location.search)) {
           return true;
         }
+      }
+      if (item.path.includes('?')) {
+        return menuChildMatchesLocation(item, location.pathname, location.search);
+      }
+      if (item.id === 'home' && (item.path === '/home' || item.path.startsWith('/home?'))) {
+        const open = new URLSearchParams(location.search).get('open');
+        return location.pathname === '/home' && !open;
       }
       const isSelfActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
       if (isSelfActive) return true;
@@ -1560,6 +1608,11 @@ export default function AppShell({ children }: PropsWithChildren){
                           isItemActive = pathnameIsLearnerTraining(location.pathname);
                         } else if (item.id === 'employee-review-cycles') {
                           isItemActive = menuChildMatchesLocation(item, location.pathname, location.search);
+                        } else if (item.path.includes('?')) {
+                          isItemActive = menuChildMatchesLocation(item, location.pathname, location.search);
+                        } else if (item.id === 'home') {
+                          const open = new URLSearchParams(location.search).get('open');
+                          isItemActive = location.pathname === '/home' && !open;
                         } else {
                           isItemActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
                         }
@@ -1632,10 +1685,13 @@ export default function AppShell({ children }: PropsWithChildren){
                           );
                         }
 
-                        const leafLinkActive = (navActive: boolean) =>
-                          item.id === 'my-training'
-                            ? pathnameIsLearnerTraining(location.pathname)
-                            : isItemActive || navActive;
+                        const leafLinkActive = (navActive: boolean) => {
+                          if (item.id === 'my-training') return pathnameIsLearnerTraining(location.pathname);
+                          // Query-param destinations (and Home) use custom active matching — NavLink
+                          // would otherwise mark every /home?* link active on /home.
+                          if (item.path.includes('?') || item.id === 'home') return isItemActive;
+                          return isItemActive || navActive;
+                        };
 
                         return (
                           <NavLink
@@ -1759,12 +1815,24 @@ export default function AppShell({ children }: PropsWithChildren){
             {children}
           </div>
         ) : (
-          <div className="flex-1 min-h-0 overflow-auto">
-            <div className="p-5 min-h-full min-w-0">
+          <div
+            className={
+              location.pathname === '/announcements'
+                ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
+                : 'flex-1 min-h-0 overflow-auto'
+            }
+          >
+            <div
+              className={
+                location.pathname === '/announcements'
+                  ? 'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-5'
+                  : 'min-h-full min-w-0 p-5'
+              }
+            >
               {signatureStatus?.has_pending &&
                 !signatureStatus?.blocked &&
                 location.pathname !== '/personal/signatures' && (
-                  <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 flex flex-wrap items-center justify-between gap-2">
+                  <div className="mb-4 shrink-0 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 flex flex-wrap items-center justify-between gap-2">
                     <span>
                       You have {signatureStatus.pending_count} document
                       {signatureStatus.pending_count !== 1 ? 's' : ''} to sign
@@ -1785,9 +1853,13 @@ export default function AppShell({ children }: PropsWithChildren){
               {hubAccessBlocked &&
                 location.pathname !== '/personal/signatures' &&
                 location.pathname !== '/profile' && (
-                  <HubAccessRestrictedBanner className="mb-4" showSignNow />
+                  <HubAccessRestrictedBanner className="mb-4 shrink-0" showSignNow />
                 )}
-              {children}
+              {location.pathname === '/announcements' ? (
+                <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">{children}</div>
+              ) : (
+                children
+              )}
             </div>
           </div>
         )}

@@ -10,7 +10,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   View
@@ -152,9 +151,6 @@ export const ClockActionModal: React.FC<ClockActionModalProps> = ({
   const [endAmPm, setEndAmPm] = useState<"AM" | "PM">(initial12.amPm);
   const [expandedPanel, setExpandedPanel] = useState<"start" | "end" | null>("start");
 
-  const [insertBreak, setInsertBreak] = useState(false);
-  const [breakHours, setBreakHours] = useState("0");
-  const [breakMinutes, setBreakMinutes] = useState("0");
   const [gps, setGps] = useState<AttendanceGpsPayload | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [note, setNote] = useState("");
@@ -265,10 +261,7 @@ export const ClockActionModal: React.FC<ClockActionModalProps> = ({
     const endHHMM = from12hParts(endHour12, endMinute, endAmPm);
     const [hours, mins] = endHHMM.split(":").map(Number);
     const endMs = new Date(year, month - 1, day, hours, mins, 0).getTime();
-    const breakMins = insertBreak
-      ? parseInt(breakHours, 10) * 60 + parseInt(breakMinutes, 10)
-      : 0;
-    const net = Math.max(0, Math.floor((endMs - startMs) / 60000) - breakMins);
+    const net = Math.max(0, Math.floor((endMs - startMs) / 60000));
     return formatMinutesLabel(net);
   }, [
     clockType,
@@ -280,10 +273,7 @@ export const ClockActionModal: React.FC<ClockActionModalProps> = ({
     endHour12,
     endMinute,
     endAmPm,
-    entryDate,
-    insertBreak,
-    breakHours,
-    breakMinutes
+    entryDate
   ]);
 
   const resetForm = useCallback(() => {
@@ -300,9 +290,6 @@ export const ClockActionModal: React.FC<ClockActionModalProps> = ({
     setEndMinute(now12.minute);
     setEndAmPm(now12.amPm);
     setExpandedPanel("start");
-    setInsertBreak(false);
-    setBreakHours("0");
-    setBreakMinutes("0");
     setGps(null);
     setNote("");
     setNoteOpen(false);
@@ -357,12 +344,6 @@ export const ClockActionModal: React.FC<ClockActionModalProps> = ({
         setEndHour12(end12.hour12);
         setEndMinute(end12.minute);
         setEndAmPm(end12.amPm);
-      }
-      const breakMins = editingAttendance.break_minutes || 0;
-      if (breakMins > 0) {
-        setInsertBreak(true);
-        setBreakHours(String(Math.floor(breakMins / 60)));
-        setBreakMinutes(String(breakMins % 60).padStart(2, "0"));
       }
       const job =
         getJobTypeFromAttendance(editingAttendance) || lockedJobType || "0";
@@ -542,24 +523,6 @@ export const ClockActionModal: React.FC<ClockActionModalProps> = ({
       }
     }
 
-    const periodStart =
-      clockType === "out" && openAttendance?.clock_in_time
-        ? new Date(openAttendance.clock_in_time)
-        : startDateTime;
-    const totalMinutes = Math.floor(
-      (endDateTime.getTime() - periodStart.getTime()) / (1000 * 60)
-    );
-    const breakTotal = insertBreak
-      ? parseInt(breakHours, 10) * 60 + parseInt(breakMinutes, 10)
-      : undefined;
-    if (insertBreak && (breakTotal || 0) >= totalMinutes) {
-      Alert.alert(
-        "Invalid break",
-        "Break time cannot be greater than or equal to the total attendance time."
-      );
-      return;
-    }
-
     let targetShiftId: string | null = null;
     if (clockType === "in" && !isEditing) {
       if (entryDate > todayStr) {
@@ -584,24 +547,20 @@ export const ClockActionModal: React.FC<ClockActionModalProps> = ({
     const startLocal = buildTimeSelectedLocal(entryDate, startHHMM);
     const endLocal = buildTimeSelectedLocal(entryDate, endHHMM);
     const noteText = note.trim() || undefined;
-    const breakLabel =
-      insertBreak && breakTotal
-        ? ` with ${Math.floor(breakTotal / 60)}h ${String(breakTotal % 60).padStart(2, "0")}m break`
-        : "";
     const confirmTitle = isEditing
       ? "Save changes"
       : clockType === "in"
         ? "Confirm hours"
         : "Confirm Clock Out";
     const confirmLabel = isEditing
-      ? `Save changes to hours on ${formatShortDate(entryDate)} from ${formatTime12h(startHHMM)} to ${formatTime12h(endHHMM)}${breakLabel}${
+      ? `Save changes to hours on ${formatShortDate(entryDate)} from ${formatTime12h(startHHMM)} to ${formatTime12h(endHHMM)}${
           selectedJobLabel && selectedJob ? ` for ${selectedJobLabel}` : ""
         }?`
       : clockType === "in"
-        ? `Log hours on ${formatShortDate(entryDate)} from ${formatTime12h(startHHMM)} to ${formatTime12h(endHHMM)}${breakLabel}${
+        ? `Log hours on ${formatShortDate(entryDate)} from ${formatTime12h(startHHMM)} to ${formatTime12h(endHHMM)}${
             selectedJobLabel && selectedJob ? ` for ${selectedJobLabel}` : ""
           }?`
-        : `Clock out on ${formatShortDate(entryDate)} at ${formatTime12h(endHHMM)}${breakLabel}?`;
+        : `Clock out on ${formatShortDate(entryDate)} at ${formatTime12h(endHHMM)}?`;
 
     Alert.alert(
       confirmTitle,
@@ -618,7 +577,6 @@ export const ClockActionModal: React.FC<ClockActionModalProps> = ({
                 await updateAttendance(editingAttendance.id, {
                   clock_in_time: startDateTime.toISOString(),
                   clock_out_time: endDateTime.toISOString(),
-                  manual_break_minutes: breakTotal ?? 0,
                   reason_text: composeAttendanceReasonText({
                     jobType: selectedJob,
                     serviceItem: selectedServiceItem,
@@ -635,7 +593,6 @@ export const ClockActionModal: React.FC<ClockActionModalProps> = ({
                     shift_id: openAttendance.shift_id,
                     type: "out",
                     time_selected_local: endLocal,
-                    manual_break_minutes: breakTotal,
                     gps: gpsPayload,
                     reason_text: noteText,
                     service_item: selectedServiceItem
@@ -647,7 +604,6 @@ export const ClockActionModal: React.FC<ClockActionModalProps> = ({
                     type: "out",
                     time_selected_local: endLocal,
                     job_type: jobType,
-                    manual_break_minutes: breakTotal,
                     gps: gpsPayload,
                     reason_text: noteText,
                     service_item: selectedServiceItem
@@ -659,7 +615,6 @@ export const ClockActionModal: React.FC<ClockActionModalProps> = ({
                   type: "in",
                   time_selected_local: startLocal,
                   clock_out_time_local: endLocal,
-                  manual_break_minutes: breakTotal,
                   gps: gpsPayload,
                   reason_text: noteText,
                   service_item: selectedServiceItem
@@ -670,7 +625,6 @@ export const ClockActionModal: React.FC<ClockActionModalProps> = ({
                   time_selected_local: startLocal,
                   clock_out_time_local: endLocal,
                   job_type: selectedJob,
-                  manual_break_minutes: breakTotal,
                   gps: gpsPayload,
                   reason_text: noteText,
                   service_item: selectedServiceItem
@@ -763,9 +717,9 @@ export const ClockActionModal: React.FC<ClockActionModalProps> = ({
               <View style={styles.headerCopy}>
                 <Text style={styles.headerKicker}>
                   {isEditing
-                    ? "Update start, end and break"
+                    ? "Update start and end"
                     : clockType === "in"
-                      ? "Start, end and break"
+                      ? "Start and end time"
                       : "End shift"}
                 </Text>
                 <View style={styles.headerTitleRow}>
@@ -861,54 +815,6 @@ export const ClockActionModal: React.FC<ClockActionModalProps> = ({
                   setEndAmPm(now12.amPm);
                 }}
               />
-
-              <View style={styles.detailCard}>
-                  <View style={styles.detailRow}>
-                    <View style={styles.detailIcon}>
-                      <Ionicons name="cafe-outline" size={18} color={ACCENT} />
-                    </View>
-                    <View style={styles.detailCopy}>
-                      <Text style={styles.detailLabel}>Insert break time</Text>
-                      <Text style={styles.detailValue}>
-                        {insertBreak
-                          ? `${breakHours}h ${String(breakMinutes).padStart(2, "0")}m`
-                          : "Off"}
-                      </Text>
-                    </View>
-                    <Switch
-                      value={insertBreak}
-                      onValueChange={setInsertBreak}
-                      trackColor={{ true: ACCENT, false: "#d1d5db" }}
-                      thumbColor="#fff"
-                    />
-                  </View>
-                  {insertBreak ? (
-                    <View style={styles.breakSteppers}>
-                      <StepperField
-                        label="Hours"
-                        value={breakHours}
-                        onDecrement={() =>
-                          setBreakHours(String(Math.max(0, parseInt(breakHours, 10) - 1)))
-                        }
-                        onIncrement={() =>
-                          setBreakHours(String(Math.min(2, parseInt(breakHours, 10) + 1)))
-                        }
-                      />
-                      <StepperField
-                        label="Minutes"
-                        value={breakMinutes}
-                        onDecrement={() => {
-                          const m = parseInt(breakMinutes, 10);
-                          setBreakMinutes(String(m <= 0 ? 55 : m - 5).padStart(2, "0"));
-                        }}
-                        onIncrement={() => {
-                          const m = parseInt(breakMinutes, 10);
-                          setBreakMinutes(String(m >= 55 ? 0 : m + 5).padStart(2, "0"));
-                        }}
-                      />
-                    </View>
-                  ) : null}
-                </View>
 
               <DetailCard
                 icon="briefcase-outline"
@@ -1689,11 +1595,6 @@ const styles = StyleSheet.create({
     minHeight: 64,
     ...typography.bodySmall,
     color: colors.textPrimary
-  },
-  breakSteppers: {
-    flexDirection: "row",
-    gap: spacing.md,
-    marginTop: spacing.md
   },
   footer: {
     flexDirection: "row",

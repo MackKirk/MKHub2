@@ -44,7 +44,7 @@ export function AppCard({
       {hasHeader ? (
         <header
           className={uiCx(
-            'flex items-center justify-between gap-3',
+            'flex shrink-0 items-center justify-between gap-3',
             hasBody && 'border-b border-gray-100',
             uiSpacing.cardPadding,
           )}

@@ -1,13 +1,12 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { Clock3 } from 'lucide-react';
 import { api } from '@/lib/api';
-import toast from 'react-hot-toast';
-import { formatDateLocal, getTodayLocal } from '@/lib/dateUtils';
+import { getTodayLocal } from '@/lib/dateUtils';
 import FadeInOnMount from '@/components/FadeInOnMount';
 import LoadingOverlay from '@/components/LoadingOverlay';
-import { useConfirm } from '@/components/ConfirmProvider';
+import { ClockInOutModalLayer } from '@/components/ClockInOutModalLayer';
 import { useAnimationReady } from '@/contexts/AnimationReadyContext';
 import { uiCx, uiRadius, uiTypography } from '@/components/ui';
 
@@ -46,25 +45,14 @@ function isHoursWorked(a: Attendance): boolean {
   return !!a.reason_text && a.reason_text.includes('HOURS_WORKED:');
 }
 
-function getJobTypeFromAttendance(a: Attendance): string | null {
-  if (a.job_type) return a.job_type;
-  if (a.reason_text?.startsWith('JOB_TYPE:')) {
-    const part = a.reason_text.split('|')[0] ?? '';
-    return part.replace('JOB_TYPE:', '') || null;
-  }
-  return null;
-}
-
 type ClockInOutWidgetProps = {
   config?: Record<string, unknown>;
 };
 
 export function ClockInOutWidget({ config: _config }: ClockInOutWidgetProps) {
   const { ready } = useAnimationReady();
-  const queryClient = useQueryClient();
-  const confirm = useConfirm();
   const todayStr = getTodayLocal();
-  const [currentTime, setCurrentTime] = useState(new Date());
+  const [clockModal, setClockModal] = useState<'in' | 'out' | null>(null);
 
   const { data: currentUser } = useQuery({
     queryKey: ['me'],
@@ -88,7 +76,7 @@ export function ClockInOutWidget({ config: _config }: ClockInOutWidgetProps) {
     [shiftsForDate]
   );
 
-  const { data: allAttendancesData, isLoading: loadingAttendances, refetch: refetchAllAttendances } = useQuery({
+  const { data: allAttendancesData, isLoading: loadingAttendances } = useQuery({
     queryKey: ['clock-in-out-all-attendances', todayStr, currentUser?.id],
     queryFn: async () => {
       if (!currentUser?.id) return { attendances: [], shifts: [] };
@@ -162,104 +150,7 @@ export function ClockInOutWidget({ config: _config }: ClockInOutWidgetProps) {
   }, [scheduledShifts, shiftCompletionById]);
 
   const canClockIn = !hasOpenClockIn;
-  const canClockOut = hasOpenClockIn && openClockIn;
-
-  const clockInJobType = useMemo(() => {
-    if (!openClockIn) return null;
-    return getJobTypeFromAttendance(openClockIn);
-  }, [openClockIn]);
-
-  const workingDurationLive = useMemo(() => {
-    if (!hasOpenClockIn || !openClockIn?.clock_in_time) return null;
-    const clockInDate = new Date(openClockIn.clock_in_time);
-    const diffMs = currentTime.getTime() - clockInDate.getTime();
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-    return diffHours > 0 ? `${diffHours}h ${diffMinutes}m` : `${diffMinutes}m`;
-  }, [hasOpenClockIn, openClockIn, currentTime]);
-
-  useEffect(() => {
-    if (!hasOpenClockIn) return;
-    const interval = setInterval(() => setCurrentTime(new Date()), 60_000);
-    return () => clearInterval(interval);
-  }, [hasOpenClockIn]);
-
-  const mutateClock = useMutation({
-    mutationFn: async (params: { type: 'in' | 'out' }) => {
-      const now = new Date();
-      const dateStr = formatDateLocal(now);
-      const hours = now.getHours();
-      const minutes = Math.floor(now.getMinutes() / 5) * 5;
-      const timeStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
-      const timeSelectedLocal = `${dateStr}T${timeStr}:00`;
-
-      if (params.type === 'out') {
-        if (!openClockIn) throw new Error('No open clock-in to close');
-        if (openClockIn.shift_id) {
-          return api('POST', '/dispatch/attendance', {
-            type: 'out',
-            time_selected_local: timeSelectedLocal,
-            shift_id: openClockIn.shift_id,
-          });
-        }
-        const jobType = clockInJobType ?? '0';
-        return api('POST', '/dispatch/attendance/direct', {
-          type: 'out',
-          time_selected_local: timeSelectedLocal,
-          job_type: jobType,
-        });
-      }
-
-      if (nextPendingShift?.id) {
-        return api('POST', '/dispatch/attendance', {
-          type: 'in',
-          time_selected_local: timeSelectedLocal,
-          shift_id: nextPendingShift.id,
-        });
-      }
-      return api('POST', '/dispatch/attendance/direct', {
-        type: 'in',
-        time_selected_local: timeSelectedLocal,
-        job_type: '0',
-      });
-    },
-    onSuccess: (_data: { status?: string }, variables) => {
-      const status = _data?.status ?? 'pending';
-      if (status === 'approved') toast.success(`Clock-${variables.type} approved`);
-      else toast.success(`Clock-${variables.type} submitted for approval`);
-      queryClient.invalidateQueries({ queryKey: ['clock-in-out-all-attendances', todayStr, currentUser?.id] });
-      queryClient.invalidateQueries({ queryKey: ['clock-in-out-shifts'] });
-      queryClient.invalidateQueries({ queryKey: ['schedule-shifts'] });
-      refetchAllAttendances();
-    },
-    onError: (err: { response?: { data?: { detail?: string } }; message?: string }) => {
-      const msg = err?.response?.data?.detail || err?.message || 'Failed to submit';
-      toast.error(msg);
-    },
-  });
-
-  const handleClockIn = async () => {
-    if (!canClockIn) return;
-    const result = await confirm({
-      title: 'Clock In',
-      message: 'Clock in now with current time?',
-      confirmText: 'Clock In',
-      cancelText: 'Cancel',
-    });
-    if (result === 'confirm') mutateClock.mutate({ type: 'in' });
-  };
-
-  const handleClockOut = async () => {
-    if (!canClockOut) return;
-    const result = await confirm({
-      title: 'Clock Out',
-      message: 'Clock out now with current time?',
-      confirmText: 'Clock Out',
-      cancelText: 'Cancel',
-    });
-    if (result === 'confirm') mutateClock.mutate({ type: 'out' });
-  };
-
+  const canClockOut = hasOpenClockIn && !!openClockIn && (openClockIn.status === 'approved' || openClockIn.status === 'pending');
   const showSummary = !loadingAttendances;
 
   if (!currentUser?.id) {
@@ -272,10 +163,16 @@ export function ClockInOutWidget({ config: _config }: ClockInOutWidgetProps) {
     );
   }
 
-  const submitting = mutateClock.isPending;
-
   return (
     <FadeInOnMount enabled={ready} className="flex h-full min-h-0 w-full flex-col">
+      {clockModal ? (
+        <ClockInOutModalLayer
+          selectedDate={todayStr}
+          clockType={clockModal}
+          onClose={() => setClockModal(null)}
+        />
+      ) : null}
+
       <div className="mb-2.5 shrink-0">
         <div className={uiCx(uiTypography.overline, 'flex items-center gap-1.5')}>
           <Clock3 className="h-3 w-3" aria-hidden />
@@ -289,27 +186,27 @@ export function ClockInOutWidget({ config: _config }: ClockInOutWidgetProps) {
       <div className="mb-3 flex shrink-0 gap-2">
         <button
           type="button"
-          onClick={handleClockIn}
-          disabled={!canClockIn || submitting}
+          onClick={() => canClockIn && setClockModal('in')}
+          disabled={!canClockIn}
           className={uiCx(
             'flex-1 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors',
             uiRadius.control,
             'bg-green-600 hover:bg-green-700 disabled:pointer-events-none disabled:opacity-50',
           )}
         >
-          Clock In
+          Log hours
         </button>
         <button
           type="button"
-          onClick={handleClockOut}
-          disabled={!canClockOut || submitting}
+          onClick={() => canClockOut && setClockModal('out')}
+          disabled={!canClockOut}
           className={uiCx(
             'flex-1 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors',
             uiRadius.control,
             'bg-amber-600 hover:bg-amber-700 disabled:pointer-events-none disabled:opacity-50',
           )}
         >
-          Clock Out
+          Clock out
         </button>
       </div>
 
@@ -321,24 +218,24 @@ export function ClockInOutWidget({ config: _config }: ClockInOutWidgetProps) {
 
       {showSummary && (
         <div className="min-h-0 flex-1 space-y-2 overflow-y-auto text-xs">
-          {hasOpenClockIn && workingDurationLive && (
+          {hasOpenClockIn ? (
             <div
               className={uiCx(
                 'border border-amber-200/80 bg-amber-50/70 px-2.5 py-2',
                 uiRadius.control,
               )}
             >
-              <span className="font-medium text-amber-900">Working for {workingDurationLive}</span>
+              <span className="font-medium text-amber-900">Entry is missing an end time</span>
             </div>
-          )}
-          {!hasOpenClockIn && nextPendingShift && (
+          ) : null}
+          {!hasOpenClockIn && nextPendingShift ? (
             <div className={uiCx('bg-gray-50 px-2.5 py-2 text-gray-700', uiRadius.control)}>
               <span className="font-medium">Next:</span>{' '}
               {nextPendingShift.project_name || 'Shift'} ({formatTime12h(nextPendingShift.start_time)} –{' '}
               {formatTime12h(nextPendingShift.end_time)})
             </div>
-          )}
-          {allAttendancesForDate.length > 0 && (
+          ) : null}
+          {allAttendancesForDate.length > 0 ? (
             <div className="divide-y divide-gray-100 text-gray-600">
               {allAttendancesForDate
                 .filter((a) => a.clock_in_time || a.clock_out_time)
@@ -355,7 +252,7 @@ export function ClockInOutWidget({ config: _config }: ClockInOutWidgetProps) {
                   </div>
                 ))}
             </div>
-          )}
+          ) : null}
         </div>
       )}
 

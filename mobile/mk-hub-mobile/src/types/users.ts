@@ -64,6 +64,7 @@ export interface HubUserProfile {
   pay_rate?: string | number | null;
   pay_type?: string | null;
   employment_type?: string | null;
+  needs_register_hours?: boolean | null;
   profile_photo_file_id?: string | null;
   emergency_contact_name?: string | null;
   emergency_contact_relationship?: string | null;

@@ -1403,7 +1403,22 @@ def list_projects(
         # site link via custom field if present later; for now stored in slug or notes? Keeping placeholder
         pass
     if status:
-        query = query.filter(Project.status_id == status)
+        # Accept status UUID or label (e.g. "In Progress") — same idea as business list filters.
+        try:
+            status_uuid = uuid.UUID(str(status))
+            status_item = db.query(SettingItem).filter(SettingItem.id == status_uuid).first()
+            status_label = status_item.label if status_item else None
+            if status_label:
+                query = query.filter(
+                    or_(
+                        Project.status_id == status_uuid,
+                        and_(Project.status_id.is_(None), Project.status_label == status_label),
+                    )
+                )
+            else:
+                query = query.filter(Project.status_id == status_uuid)
+        except (ValueError, AttributeError, TypeError):
+            query = query.filter(Project.status_label == status)
     if q:
         qn = f"%{q}%"
         query = query.filter(

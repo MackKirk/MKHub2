@@ -303,7 +303,13 @@ export const uiLayout = {
   /** Overview: tall left card + Description / Workload stacked on the right. */
   overviewContextColumn:
     'grid min-w-0 grid-cols-1 items-stretch gap-2 lg:grid-cols-[3fr_2fr] lg:grid-rows-[auto_auto]',
-  /** Overview: community feed + fixed-width utility sidebar. */
+  /**
+   * Announcements: feed + inbox side-by-side.
+   * Inbox stays lateral and shrinks with the viewport; only hides when very narrow.
+   */
   pageOverview:
-    'grid min-w-0 grid-cols-1 items-stretch gap-2 xl:grid-cols-[minmax(0,1fr)_360px] 2xl:grid-cols-[minmax(0,1fr)_400px]',
+    'flex min-h-0 min-w-0 flex-1 items-stretch gap-2 overflow-hidden',
+  /** Pair with pageOverview — hide when the pane can no longer stay useful sideways. */
+  pageOverviewInbox:
+    'hidden min-h-0 w-[clamp(11rem,28vw,25rem)] shrink-0 flex-col min-[560px]:flex',
 } as const;

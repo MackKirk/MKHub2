@@ -40,9 +40,9 @@ const PropertyDetail = lazy(() => import('./pages/PropertyDetail'));
 const PropertyApprovalsBoard = lazy(() => import('./pages/PropertyApprovalsBoard'));
 const PropertiesCalendar = lazy(() => import('./pages/PropertiesCalendar'));
 
+import Announcements from './pages/Announcements';
 import Profile from './pages/Profile';
 import HomePage from './pages/Home';
-import Overview from './pages/Overview';
 import Customers from './pages/Customers';
 import CustomerNew from './pages/CustomerNew';
 import Inventory from './pages/Inventory';
@@ -193,10 +193,14 @@ export default function App(){
           <Route path="/onboarding/documents" element={<OnboardingDocuments />} />
           <Route path="/onboarding/admin" element={<AppShell><OnboardingAdmin/></AppShell>} />
           <Route path="/home" element={<AppShell><HomePage/></AppShell>} />
-          <Route path="/overview" element={<AppShell><Overview/></AppShell>} />
+          <Route path="/home/dashboard" element={<Navigate to="/home" replace />} />
+          <Route path="/overview" element={<Navigate to="/announcements" replace />} />
+          <Route path="/announcements" element={<AppShell><Announcements/></AppShell>} />
           <Route path="/profile" element={<AppShell><Profile/></AppShell>} />
           <Route path="/schedule" element={<AppShell><Schedule/></AppShell>} />
           <Route path="/clock-in-out" element={<AppShell><ClockInOut/></AppShell>} />
+          <Route path="/time-off" element={<AppShell><ClockInOut/></AppShell>} />
+          <Route path="/sick-leave" element={<AppShell><ClockInOut/></AppShell>} />
           <Route path="/task-requests" element={<AppShell><TaskRequests/></AppShell>} />
           <Route path="/tasks" element={<AppShell><Tasks/></AppShell>} />
           <Route path="/print-shop" element={<AppShell><PrintShopList/></AppShell>} />

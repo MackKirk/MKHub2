@@ -1367,6 +1367,8 @@ class EmployeeProfile(Base):
     pay_rate: Mapped[Optional[str]] = mapped_column(String(100))
     pay_type: Mapped[Optional[str]] = mapped_column(String(50))  # hourly|salary|contract
     employment_type: Mapped[Optional[str]] = mapped_column(String(50))  # full-time|part-time|contract
+    # Salary staff skip hours by default; set True when a salary role still must clock in.
+    needs_register_hours: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     # Documentos & Legal
     profile_photo_file_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="SET NULL"))

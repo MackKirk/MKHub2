@@ -2507,6 +2507,51 @@ def get_direct_attendances_for_date(
     return result
 
 
+@router.get("/attendance/needs-attention")
+def get_my_attendance_needs_attention(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Past open clock-ins for the current user that still need an end time."""
+    now_utc = datetime.now(timezone.utc)
+    today_local = utc_to_local(now_utc, settings.tz_default).date()
+    today_start_utc = local_to_utc(datetime.combine(today_local, time.min), settings.tz_default)
+
+    # Only incomplete entries (started, never clocked out). Do not flag
+    # completed hours that are merely awaiting approval (status=pending).
+    rows = (
+        db.query(Attendance)
+        .filter(
+            Attendance.worker_id == user.id,
+            Attendance.clock_in_time.isnot(None),
+            Attendance.clock_in_time < today_start_utc,
+            Attendance.clock_out_time.is_(None),
+            Attendance.status != "rejected",
+        )
+        .order_by(Attendance.clock_in_time.asc())
+        .all()
+    )
+
+    items = []
+    seen_dates: set[str] = set()
+    for att in rows:
+        local_dt = utc_to_local(att.clock_in_time, settings.tz_default)
+        date_str = local_dt.date().isoformat()
+        if date_str in seen_dates:
+            continue
+        seen_dates.add(date_str)
+        items.append(
+            {
+                "date": date_str,
+                "attendance_id": str(att.id),
+                "status": att.status,
+                "missing_clock_out": True,
+            }
+        )
+
+    return {"count": len(items), "items": items}
+
+
 @router.get("/attendance/weekly-summary")
 def get_weekly_attendance_summary(
     week_start: Optional[str] = None,  # YYYY-MM-DD format, defaults to current week (Sunday)

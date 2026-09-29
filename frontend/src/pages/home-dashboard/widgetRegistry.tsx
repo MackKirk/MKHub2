@@ -99,7 +99,7 @@ const registry: WidgetRegistryEntry[] = [
   },
   {
     id: 'clock_in_out',
-    label: 'Clock in/out',
+    label: 'Log hours',
     category: 'Calendar',
     defaultSize: { w: 3, h: 2 },
     defaultConfig: {},

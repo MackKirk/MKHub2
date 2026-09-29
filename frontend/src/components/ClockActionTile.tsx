@@ -32,8 +32,12 @@ function ClockActionIcon({ kind, enabled }: { kind: 'in' | 'out'; enabled: boole
 export function ClockActionTile({ kind, enabled, disabled = false, onClick, title, subtitle }: ClockActionTileProps) {
   const interactive = enabled && !disabled;
   const isIn = kind === 'in';
+  const heading = isIn ? 'Log hours' : 'Clock out';
   const description =
-    subtitle ?? (isIn ? 'Start tracking your work time' : 'End your current work session');
+    subtitle ??
+    (isIn
+      ? 'Enter start and end time (15-minute steps)'
+      : 'Close an entry that has no end time yet');
 
   return (
     <button
@@ -53,7 +57,7 @@ export function ClockActionTile({ kind, enabled, disabled = false, onClick, titl
         <ClockActionIcon kind={kind} enabled={interactive} />
         <div className="min-w-0 flex-1">
           <div className={`mb-1 text-base font-semibold ${interactive ? 'text-gray-900' : 'text-gray-400'}`}>
-            {isIn ? 'Clock In' : 'Clock Out'}
+            {heading}
           </div>
           <div className={`text-xs ${interactive ? 'text-gray-600' : 'text-gray-400'}`}>{description}</div>
         </div>

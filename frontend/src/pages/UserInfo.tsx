@@ -506,6 +506,7 @@ export default function UserInfo(){
   }, [me]);
   const canViewAssets = useMemo(() => {
     if (!me) return false;
+    if (userId && String(me.id) === String(userId)) return true;
     const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
     if (isAdmin) return true;
     const perms = me?.permissions || [];
@@ -516,7 +517,7 @@ export default function UserInfo(){
       perms.includes('fleet:equipment:read') ||
       perms.includes('equipment:read')
     );
-  }, [me]);
+  }, [me, userId]);
 
   /** Activity tab: explicit HR permission or system admin (matches backend). */
   const canViewActivity = useMemo(() => {
@@ -3786,35 +3787,72 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
 
 
 function SalarySection({ p, editable, userId, collectChanges, settings, canEdit, embedded }: { p:any, editable:boolean, userId:string, collectChanges?: (kv:Record<string,any>)=>void, settings?: any, canEdit:boolean, embedded?: boolean }){
+  const queryClient = useQueryClient();
   const [showAddEntry, setShowAddEntry] = useState(false);
   const isEditable = !!editable;
   const showFieldHints = !!embedded;
   const [form, setForm] = useState<any>(()=>({
     pay_rate: p.pay_rate||'',
     pay_type: p.pay_type||'',
+    needs_register_hours: !!p.needs_register_hours,
   }));
   const [showPayRate, setShowPayRate] = useState(false);
+  const [savingHoursFlag, setSavingHoursFlag] = useState(false);
   const prevEditableRef = useRef(editable);
   
   useEffect(() => {
     // When entering edit mode, initialize form with current p values
     if (editable && !prevEditableRef.current) {
-      setForm({ pay_rate: p.pay_rate||'', pay_type: p.pay_type||'' });
+      setForm({ pay_rate: p.pay_rate||'', pay_type: p.pay_type||'', needs_register_hours: !!p.needs_register_hours });
     }
     // When exiting edit mode, update form with latest p values
     if (!editable && prevEditableRef.current) {
-      setForm({ pay_rate: p.pay_rate||'', pay_type: p.pay_type||'' });
+      setForm({ pay_rate: p.pay_rate||'', pay_type: p.pay_type||'', needs_register_hours: !!p.needs_register_hours });
     }
     prevEditableRef.current = editable;
-  }, [editable, p.pay_rate, p.pay_type]);
+  }, [editable, p.pay_rate, p.pay_type, p.needs_register_hours]);
+
+  useEffect(() => {
+    if (!editable) {
+      setForm((s: any) => ({
+        ...s,
+        pay_rate: p.pay_rate || '',
+        pay_type: p.pay_type || '',
+        needs_register_hours: !!p.needs_register_hours,
+      }));
+    }
+  }, [editable, p.pay_rate, p.pay_type, p.needs_register_hours]);
   
   const onField = (key:string, value:any)=>{ 
     setForm((s:any)=>({ ...s, [key]: value })); 
     collectChanges?.({ [key]: value }); 
   };
 
+  const payTypeValue = String(isEditable ? form.pay_type : p.pay_type || '').trim();
+  const isSalaryPay = payTypeValue.toLowerCase().includes('salary');
+
+  const saveNeedsRegisterHours = async (checked: boolean) => {
+    onField('needs_register_hours', checked);
+    if (collectChanges) return;
+    if (!canEdit) return;
+    try {
+      setSavingHoursFlag(true);
+      await api('PUT', `/auth/users/${encodeURIComponent(String(userId))}/profile`, {
+        needs_register_hours: checked,
+      });
+      toast.success(checked ? 'Hours registration enabled' : 'Hours registration disabled');
+      await queryClient.invalidateQueries({ queryKey: ['userProfile', userId] });
+    } catch (e: any) {
+      onField('needs_register_hours', !checked);
+      toast.error(e?.message || 'Failed to update');
+    } finally {
+      setSavingHoursFlag(false);
+    }
+  };
+
   const fields = (
-    <div className="grid gap-4 md:grid-cols-2">
+    <div className="space-y-4">
+      <div className="grid gap-4 md:grid-cols-2">
         <AppCard bodyClassName={uiSpacing.cardPadding}>
           <div className={uiCx(uiLayout.actionsRow, 'mb-2')}>
             <span className={uiTypography.overline}>Pay Rate</span>
@@ -3875,6 +3913,30 @@ function SalarySection({ p, editable, userId, collectChanges, settings, canEdit,
           </div>
         </AppCard>
       </div>
+      {isSalaryPay ? (
+        <AppCard bodyClassName={uiSpacing.cardPadding}>
+          {canEdit || isEditable ? (
+            <AppCheckbox
+              label="Needs to register hours"
+              checked={!!form.needs_register_hours}
+              disabled={savingHoursFlag}
+              onChange={(checked) => void saveNeedsRegisterHours(checked)}
+              fieldHint={userProfileFieldHint('needs_register_hours')}
+            />
+          ) : (
+            <div>
+              <div className={uiTypography.overline}>Needs to register hours</div>
+              <div className={uiCx(uiTypography.sectionTitle, 'mt-1')}>
+                {p.needs_register_hours ? 'Yes' : 'No'}
+              </div>
+              <p className={uiCx(uiTypography.helper, 'mt-1')}>
+                Salary roles skip hour logging and reminders unless this is enabled.
+              </p>
+            </div>
+          )}
+        </AppCard>
+      ) : null}
+    </div>
   );
 
   if (embedded) return fields;

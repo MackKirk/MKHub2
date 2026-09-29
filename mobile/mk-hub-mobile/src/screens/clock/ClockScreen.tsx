@@ -301,7 +301,7 @@ export const ClockScreen: React.FC = () => {
     ? "You have an open clock-in. Clock out to close this period."
     : nextShift
       ? `Next scheduled shift: ${nextShift.project_name || "Unknown"} (${formatTime12h(nextShift.start_time)} – ${formatTime12h(nextShift.end_time)})`
-      : "At the end of the day, log your start time, end time, and any break.";
+      : "At the end of the day, log your start time and end time.";
 
   const header = (
     <View style={styles.topHeader}>

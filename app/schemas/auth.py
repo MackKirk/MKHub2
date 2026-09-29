@@ -138,6 +138,7 @@ class EmployeeProfileInput(BaseModel):
     pay_rate: Optional[str] = None
     pay_type: Optional[str] = None
     employment_type: Optional[str] = None
+    needs_register_hours: Optional[bool] = None
     # legal
     profile_photo_file_id: Optional[str] = None
     sin_number: Optional[str] = None

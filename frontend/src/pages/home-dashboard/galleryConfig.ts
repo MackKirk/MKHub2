@@ -159,7 +159,7 @@ export const GALLERY_ITEMS: GalleryItem[] = [
   { id: 'shortcut_schedule', type: 'shortcuts', label: 'Schedule', description: 'Quick link to Schedule', category: 'Shortcuts', config: { items: ['schedule'] } },
   { id: 'shortcut_opportunities', type: 'shortcuts', label: 'Opportunities', description: 'Quick link to Opportunities', category: 'Shortcuts', config: { items: ['opportunities'] } },
   { id: 'shortcut_customers', type: 'shortcuts', label: 'Customers', description: 'Quick link to Customers', category: 'Shortcuts', config: { items: ['customers'] } },
-  { id: 'shortcut_clock', type: 'shortcuts', label: 'Clock in/out', description: 'Quick link to Clock in/out', category: 'Shortcuts', config: { items: ['clock'] } },
+  { id: 'shortcut_clock', type: 'shortcuts', label: 'Log hours', description: 'Quick link to log hours', category: 'Shortcuts', config: { items: ['clock'] } },
   { id: 'shortcut_business', type: 'shortcuts', label: 'Dashboard', description: 'Quick link to Business Dashboard', category: 'Shortcuts', config: { items: ['business'] } },
   {
     id: 'calendar',

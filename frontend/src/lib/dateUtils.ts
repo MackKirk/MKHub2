@@ -66,6 +66,11 @@ export function getTodayLocal(): string {
   return formatDateLocal(new Date());
 }
 
+/** YYYY-MM-DD of now + 24 hours, in local timezone — vacation / day-off lead time. */
+export function earliestTimeOffDate(from = new Date()): string {
+  return formatDateLocal(new Date(from.getTime() + 24 * 60 * 60 * 1000));
+}
+
 /**
  * Convert a date-only input (YYYY-MM-DD) to ISO UTC using local noon.
  * `new Date('YYYY-MM-DD')` is UTC midnight and shifts back a calendar day in Americas timezones.

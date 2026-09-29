@@ -67,7 +67,11 @@ export function JobSearchCombobox({
   const { data: projects = [], isLoading } = useQuery({
     queryKey: ['job-search-combobox-projects', debouncedQ],
     queryFn: async () => {
-      const qs = new URLSearchParams({ limit: '100', is_bidding: 'false' });
+      const qs = new URLSearchParams({
+        limit: '100',
+        is_bidding: 'false',
+        status: 'In Progress',
+      });
       if (debouncedQ) qs.set('q', debouncedQ);
       const result = await api<ProjectPickerItem[]>('GET', `/projects?${qs.toString()}`);
       return Array.isArray(result) ? result : [];
@@ -118,10 +122,15 @@ export function JobSearchCombobox({
     );
   }, [projects]);
 
+  // Non-project jobs (Shop, No Project Assigned, …) always lead; projects follow.
+  // Do not re-sort the merged list — that buried projects between predefined names.
   const combinedOptions = useMemo(
-    () => sortByLabel([...staticJobs, ...projectJobs], (j) => formatJobPickerLine(j)),
+    () => [...staticJobs, ...projectJobs],
     [staticJobs, projectJobs],
   );
+
+  const showPredefinedHeader = staticJobs.length > 0 && projectJobs.length > 0;
+  const showProjectsHeader = projectJobs.length > 0 && staticJobs.length > 0;
 
   useEffect(() => {
     if (!value) {
@@ -187,27 +196,61 @@ export function JobSearchCombobox({
         ) : combinedOptions.length === 0 ? (
           <li className={uiDropdown.optionEmpty}>No jobs match. Try another search.</li>
         ) : (
-          combinedOptions.map((job) => {
-            const addr = job.kind === 'project' ? formatProjectAddressLine(job) : '';
-            return (
-              <li key={`${job.kind}-${job.id}`} role="option">
-                <button
-                  type="button"
-                  className={uiCx(uiDropdown.option, value === job.id && uiDropdown.optionSelected)}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => {
-                    onChange(job.id);
-                    setLastPicked(job);
-                    setText(formatJobPickerLine(job));
-                    setOpen(false);
-                  }}
-                >
-                  <JobNameWithCode job={job} selected={value === job.id} />
-                  {addr ? <div className="mt-0.5 truncate text-xs text-gray-500">{addr}</div> : null}
-                </button>
+          <>
+            {showPredefinedHeader ? (
+              <li className={uiDropdown.optionMuted} role="presentation">
+                Non-project
               </li>
-            );
-          })
+            ) : null}
+            {staticJobs.map((job) => {
+              return (
+                <li key={`${job.kind}-${job.id}`} role="option">
+                  <button
+                    type="button"
+                    className={uiCx(uiDropdown.option, value === job.id && uiDropdown.optionSelected)}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      onChange(job.id);
+                      setLastPicked(job);
+                      setText(formatJobPickerLine(job));
+                      setOpen(false);
+                    }}
+                  >
+                    <JobNameWithCode job={job} selected={value === job.id} />
+                  </button>
+                </li>
+              );
+            })}
+            {showProjectsHeader ? (
+              <li className={uiDropdown.optionMuted} role="presentation">
+                Projects
+              </li>
+            ) : null}
+            {isLoading && projectJobs.length === 0 ? (
+              <li className={uiDropdown.optionMuted}>Loading projects…</li>
+            ) : null}
+            {projectJobs.map((job) => {
+              const addr = formatProjectAddressLine(job);
+              return (
+                <li key={`${job.kind}-${job.id}`} role="option">
+                  <button
+                    type="button"
+                    className={uiCx(uiDropdown.option, value === job.id && uiDropdown.optionSelected)}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      onChange(job.id);
+                      setLastPicked(job);
+                      setText(formatJobPickerLine(job));
+                      setOpen(false);
+                    }}
+                  >
+                    <JobNameWithCode job={job} selected={value === job.id} />
+                    {addr ? <div className="mt-0.5 truncate text-xs text-gray-500">{addr}</div> : null}
+                  </button>
+                </li>
+              );
+            })}
+          </>
         )}
       </ul>
     ) : null;
@@ -246,8 +289,10 @@ export function JobSearchCombobox({
             setOpen(true);
           }}
           onFocus={() => {
+            // Open with empty search so the full list shows (predefined first, then projects).
+            // Using the selected label as the query filtered projects away.
+            setText('');
             setOpen(true);
-            if (value && displayClosed) setText(displayClosed);
           }}
           onBlur={() => {
             window.setTimeout(() => {

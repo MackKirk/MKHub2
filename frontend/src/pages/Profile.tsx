@@ -8,7 +8,7 @@ import { useConfirm } from '@/components/ConfirmProvider';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
 import UserLoans from '@/components/UserLoans';
 import UserReports from '@/components/UserReports';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useNavigateBack } from '@/hooks/useNavigateBack';
 import OverlayPortal from '@/components/OverlayPortal';
 import { UserInfoHero, UserInfoHeroSkeleton } from '@/components/users/UserInfoHero';
@@ -106,7 +106,7 @@ export default function Profile(){
   const navigate = useNavigate();
   const location = useLocation();
   const fromHome = location.state?.fromHome === true;
-  const navigateBackToOverview = useNavigateBack('/overview');
+  const navigateBackToOverview = useNavigateBack('/announcements');
   const { data, isLoading } = useQuery({ queryKey:['meProfile'], queryFn: ()=>api<ProfileResp>('GET','/auth/me/profile') });
   const p = data?.profile || {};
   const u = (data?.user ?? {}) as ProfileResp['user'];
@@ -1059,14 +1059,29 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
               </svg>
               Upcoming Time Off
             </h5>
-            {canEdit && availablePolicies.length > 0 && (
+            {canEdit && availablePolicies.length > 0 ? (
               <button
               onClick={() => setShowRequestForm(true)}
               className="px-2 py-1 rounded bg-brand-red text-white text-xs hover:bg-red-700"
             >
               Request Time Off
             </button>
-            )}
+            ) : !canEdit ? (
+              <div className="flex gap-2">
+                <Link
+                  to="/time-off"
+                  className="rounded bg-orange-600 px-2 py-1 text-xs font-medium text-white hover:bg-orange-700"
+                >
+                  Request time off
+                </Link>
+                <Link
+                  to="/sick-leave"
+                  className="rounded bg-red-600 px-2 py-1 text-xs font-medium text-white hover:bg-red-700"
+                >
+                  Report sick leave
+                </Link>
+              </div>
+            ) : null}
           </div>
           {upcomingRequests.length > 0 || pendingRequests.length > 0 ? (
             <div className="space-y-2 max-h-64 overflow-y-auto">
