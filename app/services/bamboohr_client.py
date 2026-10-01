@@ -64,6 +64,14 @@ def coerce_time_off_requests_payload(result: Any) -> List[Dict[str, Any]]:
 def filter_time_off_requests_for_employee(
     requests: List[Dict[str, Any]], employee_id: str
 ) -> List[Dict[str, Any]]:
+    """
+    Keep only rows belonging to employee_id.
+
+    BambooHR's /time_off/requests is company-wide; employeeId on the URL is
+    optional and often ignored. Callers MUST filter. Rows without a resolvable
+    employee id are dropped (fail-closed) so another person's leave is never
+    attributed to the user being synced.
+    """
     target = str(employee_id or "").strip()
     if not target:
         return []
@@ -71,6 +79,109 @@ def filter_time_off_requests_for_employee(
         req for req in requests
         if extract_time_off_request_employee_id(req) == target
     ]
+
+
+def normalize_time_off_policy_name(raw: Any) -> str:
+    """
+    Map Bamboo policy/type labels onto MKHub conventions.
+    Sick → Sick Leave; vacation/day off/PTO/holiday → Vacation; else keep trimmed text.
+    """
+    if isinstance(raw, dict):
+        raw = (
+            raw.get("name")
+            or raw.get("policyName")
+            or raw.get("type")
+            or raw.get("_text")
+            or ""
+        )
+    name = str(raw or "").strip()
+    if not name:
+        return "Time Off"
+    lower = name.lower()
+    if "sick" in lower:
+        return "Sick Leave"
+    if any(token in lower for token in ("vacation", "holiday", "pto", "day off", "dayoff", "annual")):
+        return "Vacation"
+    if lower in {"time off", "timeoff", "leave"}:
+        return "Vacation"
+    return name
+
+
+def parse_time_off_request_notes(req: Dict[str, Any]) -> str:
+    notes_raw = req.get("notes") or req.get("note") or req.get("comment") or ""
+    try:
+        if isinstance(notes_raw, dict):
+            return str(
+                notes_raw.get("note")
+                or notes_raw.get("notes")
+                or notes_raw.get("comment")
+                or notes_raw.get("reason")
+                or ""
+            ).strip()
+        if isinstance(notes_raw, str):
+            return notes_raw.strip()
+        return str(notes_raw).strip() if notes_raw else ""
+    except Exception:
+        return str(notes_raw).strip() if notes_raw else ""
+
+
+def parse_time_off_request_days(req: Dict[str, Any]) -> float:
+    """Best-effort days used for a Bamboo time-off request (always >= 0)."""
+    if not isinstance(req, dict):
+        return 0.0
+
+    unit_raw = req.get("unit", "")
+    if isinstance(unit_raw, dict):
+        unit_raw = unit_raw.get("name") or unit_raw.get("_text") or ""
+    unit = str(unit_raw or "").lower()
+
+    amount_raw = req.get("amount")
+    # Bamboo often returns amount as {"unit": "days", "amount": "1"}
+    if isinstance(amount_raw, dict):
+        unit_from_amt = amount_raw.get("unit") or amount_raw.get("name") or ""
+        if unit_from_amt:
+            unit = str(unit_from_amt).lower()
+        amount_raw = (
+            amount_raw.get("amount")
+            or amount_raw.get("value")
+            or amount_raw.get("days")
+            or amount_raw.get("hours")
+        )
+
+    if req.get("hours") is not None and not isinstance(req.get("hours"), dict):
+        try:
+            return abs(float(req["hours"])) / 8.0
+        except (ValueError, TypeError):
+            pass
+
+    if amount_raw is not None:
+        try:
+            amount = abs(float(amount_raw))
+            if unit == "hours" or "hour" in unit:
+                return amount / 8.0
+            return amount
+        except (ValueError, TypeError):
+            pass
+
+    if req.get("days") is not None:
+        try:
+            return abs(float(req["days"]))
+        except (ValueError, TypeError):
+            pass
+
+    start_date = req.get("start") or req.get("startDate")
+    end_date = req.get("end") or req.get("endDate")
+    if start_date and end_date:
+        try:
+            from datetime import datetime
+            start = datetime.strptime(str(start_date).split("T")[0], "%Y-%m-%d").date()
+            end = datetime.strptime(str(end_date).split("T")[0], "%Y-%m-%d").date()
+            delta = (end - start).days + 1
+            if delta > 0:
+                return float(delta)
+        except Exception:
+            pass
+    return 0.0
 
 
 class BambooHRClient:
@@ -557,6 +668,74 @@ class BambooHRClient:
     def get_time_off_policies(self) -> List[Dict[str, Any]]:
         """Get time off policies"""
         return self._request("GET", "/time_off/policies")
+
+    def _normalize_calculator_balances(self, calc: Any) -> List[Dict[str, Any]]:
+        """
+        Normalize /employees/{id}/time_off/calculator into Hub policy rows.
+
+        Example payload:
+          [{"timeOffType":"85","name":"Sick Leave","units":"days",
+            "balance":"5.00","usedYearToDate":"0.00","policyType":"accruing",...}]
+        """
+        rows: List[Dict[str, Any]] = []
+        if isinstance(calc, dict):
+            for key in ("balances", "data", "policies", "types"):
+                if isinstance(calc.get(key), list):
+                    calc = calc[key]
+                    break
+            else:
+                calc = [calc]
+        if not isinstance(calc, list):
+            return []
+
+        for item in calc:
+            if not isinstance(item, dict):
+                continue
+            name = normalize_time_off_policy_name(
+                item.get("name") or item.get("policyName") or item.get("timeOffType")
+            )
+            units = str(item.get("units") or item.get("unit") or "days").lower()
+
+            def _num(val: Any) -> Optional[float]:
+                try:
+                    if val is None or val == "":
+                        return None
+                    return float(val)
+                except (TypeError, ValueError):
+                    return None
+
+            balance = _num(item.get("balance") or item.get("balanceInDays") or item.get("available"))
+            used = _num(
+                item.get("usedYearToDate")
+                or item.get("used")
+                or item.get("usedYtd")
+                or item.get("usedToDate")
+            ) or 0.0
+            if balance is None:
+                continue
+
+            if "hour" in units:
+                balance_hours = balance
+                used_hours = used
+            else:
+                balance_hours = balance * 8.0
+                used_hours = used * 8.0
+
+            accrued_hours = balance_hours + used_hours
+            rows.append(
+                {
+                    "name": name,
+                    "balance": balance if "hour" not in units else balance / 8.0,
+                    "balanceHours": balance_hours,
+                    "used": used_hours,
+                    "usedHours": used_hours,
+                    "accrued": accrued_hours / 8.0,
+                    "accruedHours": accrued_hours,
+                    "timeOffTypeId": item.get("timeOffType") or item.get("timeOffTypeId"),
+                    "units": units,
+                }
+            )
+        return rows
     
     def get_time_off_balance(self, employee_id: str, year: Optional[int] = None) -> Optional[Dict[str, Any]]:
         """Get time off balance for an employee"""
@@ -568,6 +747,23 @@ class BambooHRClient:
             year = datetime.now().year
         
         try:
+            # This Bamboo tenant exposes balances via calculator (days), not /balances.
+            try:
+                calc = self._request(
+                    "GET",
+                    f"/employees/{employee_id}/time_off/calculator",
+                    headers={"Accept": "application/json"},
+                )
+                policies = self._normalize_calculator_balances(calc)
+                if policies:
+                    logger.info(
+                        f"Successfully retrieved time off balance from calculator "
+                        f"for employee {employee_id} ({len(policies)} policies)"
+                    )
+                    return {"policies": policies, "_source": "calculator"}
+            except Exception as e:
+                logger.debug(f"Calculator balance endpoint failed: {e}")
+
             # Try different possible endpoints (including plural forms and with year parameter)
             endpoints = [
                 f"/employees/{employee_id}/time_off/balances",  # Most common format
@@ -939,21 +1135,62 @@ class BambooHRClient:
             endpoint += "?" + "&".join(params)
         return self._request("GET", endpoint)
     
+    def get_time_off_calculator(
+        self, employee_id: str, end: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Point-in-time balances from /employees/{id}/time_off/calculator.
+
+        Optional ``end=YYYY-MM-DD`` returns the balance as of that date. Bamboo's
+        public API has no Balance History GET; this is how we reconstruct ledger
+        mutations (accruals / adjustments / carryover) over time.
+        """
+        import time
+
+        endpoint = f"/employees/{employee_id}/time_off/calculator?precision=2"
+        if end:
+            endpoint += f"&end={end}"
+
+        last_exc: Optional[Exception] = None
+        for attempt in range(4):
+            try:
+                result = self._request(
+                    "GET", endpoint, headers={"Accept": "application/json"}
+                )
+                if isinstance(result, list):
+                    return result
+                if isinstance(result, dict):
+                    for key in ("balances", "data", "policies", "types"):
+                        if isinstance(result.get(key), list):
+                            return result[key]
+                    return [result]
+                return []
+            except Exception as exc:
+                last_exc = exc
+                msg = str(exc)
+                retryable = any(code in msg for code in ("502", "503", "504", "429"))
+                if not retryable or attempt == 3:
+                    raise
+                time.sleep(1.5 * (attempt + 1))
+        if last_exc:
+            raise last_exc
+        return []
+
     def get_time_off_balance_history(self, employee_id: str, policy_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
-        """Get time off balance history/transactions for an employee"""
+        """Get time off balance history/transactions for an employee (often unavailable)."""
         try:
-            # Try different possible endpoints for balance history
+            # Bamboo documents POST/PUT history items but no public Balance History GET.
+            # Keep a short probe for tenants that expose one; callers fall back to calculator.
             endpoints = [
                 f"/time_off/balance/history?employeeId={employee_id}",
                 f"/employees/{employee_id}/time_off/balance/history",
                 f"/time_off/balances/history?employeeId={employee_id}",
-                f"/time_off/balance?employeeId={employee_id}&includeHistory=true",
             ]
-            
             if policy_id:
-                # Try with policy ID
-                endpoints.insert(0, f"/time_off/balance/history?employeeId={employee_id}&policyId={policy_id}")
-            
+                endpoints.insert(
+                    0,
+                    f"/time_off/balance/history?employeeId={employee_id}&policyId={policy_id}",
+                )
             for endpoint in endpoints:
                 try:
                     result = self._request("GET", endpoint)
@@ -961,7 +1198,6 @@ class BambooHRClient:
                         return result
                 except Exception:
                     continue
-            
             return None
         except Exception:
             return None

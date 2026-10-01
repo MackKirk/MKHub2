@@ -6,6 +6,12 @@ import { mapEmployeeToAppUserSelect } from '@/lib/clientUi';
 import { sortByLabel } from '@/lib/sortOptions';
 import { PROJECT_DIVISIONS_QUERY_KEY } from '@/lib/businessLine';
 import { attendanceWorkDate, formatDateLocal, getCurrentMonthLocal } from '@/lib/dateUtils';
+import {
+  formatTimeOffDate,
+  formatTimeOffDateRange,
+  hoursToDays as hoursToDaysShared,
+  isTimeOffEndOnOrAfterToday,
+} from '@/lib/timeOff';
 import toast from 'react-hot-toast';
 import GeoSelect from '@/components/GeoSelect';
 import { useConfirm } from '@/components/ConfirmProvider';
@@ -5018,19 +5024,15 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
   const pendingRequests = requests?.filter((r: any) => r.status === 'pending') || [];
   const upcomingRequests = requests?.filter((r: any) => {
     if (r.status !== 'approved') return false;
-    const endDate = new Date(r.end_date);
-    return endDate >= new Date();
+    return isTimeOffEndOnOrAfterToday(String(r.end_date || ''));
   }) || [];
   const historyRequests = requests?.filter((r: any) => {
     if (r.status === 'pending') return false;
-    const endDate = new Date(r.end_date);
-    return endDate < new Date() || r.status !== 'approved';
+    return !isTimeOffEndOnOrAfterToday(String(r.end_date || '')) || r.status !== 'approved';
   }) || [];
   
   // Convert hours to days (assuming 8 hours per day)
-  const hoursToDays = (hours: number) => {
-    return (hours / 8).toFixed(1);
-  };
+  const hoursToDays = (hours: number) => hoursToDaysShared(hours).toFixed(1);
   
   return (
     <UserInfoSectionCard preset="timesheet" title="Time Off">
@@ -5138,7 +5140,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                     <div>
                       <div className="font-medium">{r.policy_name}</div>
                       <div className="text-xs text-gray-600">
-                        {new Date(r.start_date).toLocaleDateString()} - {new Date(r.end_date).toLocaleDateString()}
+                        {formatTimeOffDateRange(r.start_date, r.end_date)}
                       </div>
                     </div>
                     <span className={`px-2 py-0.5 rounded text-xs ${getStatusColor(r.status)}`}>
@@ -5196,7 +5198,18 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
           
           return (
             <div className="space-y-4">
-              {Object.entries(groupedHistory).map(([policyName, entries]: [string, any]) => (
+              {Object.entries(groupedHistory)
+                .sort(([a], [b]) => {
+                  const rank = (name: string) => {
+                    const n = name.toLowerCase();
+                    if (n.includes('sick')) return 0;
+                    if (n.includes('vacation') || n.includes('holiday') || n.includes('pto')) return 1;
+                    return 2;
+                  };
+                  const d = rank(a) - rank(b);
+                  return d !== 0 ? d : a.localeCompare(b);
+                })
+                .map(([policyName, entries]: [string, any]) => (
                 <div key={policyName} className="border rounded-lg overflow-hidden">
                   <div className="bg-gray-50 px-4 py-2 border-b">
                     <h6 className="font-semibold text-sm text-gray-900">{policyName}</h6>
@@ -5219,12 +5232,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                           return (
                             <tr key={h.id} className={`border-b ${isAdjustment ? 'bg-blue-50' : ''}`}>
                               <td className="py-2 px-3">
-                                {new Date(h.transaction_date).toLocaleDateString(undefined, { 
-                                  year: 'numeric',
-                                  month: 'short',
-                                  day: 'numeric',
-                                  timeZone: 'UTC' 
-                                })}
+                                {formatTimeOffDate(h.transaction_date)}
                               </td>
                               <td className="py-2 px-3">
                                 <div className="flex items-center gap-2">

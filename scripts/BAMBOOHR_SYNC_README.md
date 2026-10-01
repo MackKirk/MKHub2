@@ -103,7 +103,41 @@ python scripts/sync_bamboohr_documents.py --limit 10
 - Cria registros de documentos (EmployeeDocument)
 - Sincroniza fotos de perfil dos funcionários
 
-### 4. `sync_bamboohr_all.py` (Script Master)
+### 4. `sync_bamboohr_time_off.py`
+
+Sincroniza day off / vacation / sick leave (balances, pedidos e histórico).
+
+**Uso:**
+```bash
+# Dry run
+python scripts/sync_bamboohr_time_off.py --dry-run --limit 5
+
+# Sincronizar todos
+python scripts/sync_bamboohr_time_off.py
+
+# Um utilizador
+python scripts/sync_bamboohr_time_off.py --email pessoa@mackkirk.com
+```
+
+**O que faz:**
+- Resolve Bamboo employee id pelo email do utilizador no Hub
+- Filtra `/time_off/requests` (company-wide) por esse id — fail-closed
+- Upsert em `time_off_balances`, `time_off_requests` e `time_off_history`
+- Normaliza policies Bamboo → `Vacation` / `Sick Leave`
+
+**Cleanup (dados corrompidos do sync antigo):**
+```bash
+# Ver o que seria apagado
+python scripts/sync_bamboohr_time_off.py --clean-only --dry-run
+
+# Limpar imports Bamboo (mantém "Adjusted by …") e re-sincronizar
+python scripts/sync_bamboohr_time_off.py --clean
+
+# Apagar tudo de time-off de um user (inclui ajustes manuais)
+python scripts/sync_bamboohr_time_off.py --clean-only --clean-all --email pessoa@mackkirk.com
+```
+
+### 5. `sync_bamboohr_all.py` (Script Master)
 
 Executa todas as sincronizações em sequência.
 
@@ -115,11 +149,8 @@ python scripts/sync_bamboohr_all.py --dry-run
 # Sincronizar tudo
 python scripts/sync_bamboohr_all.py
 
-# Pular sincronização de treinamentos
-python scripts/sync_bamboohr_all.py --skip-training
-
-# Sincronizar apenas funcionários e documentos
-python scripts/sync_bamboohr_all.py --skip-training
+# Pular sincronização de treinamentos / time-off
+python scripts/sync_bamboohr_all.py --skip-training --skip-time-off
 
 # Limitar a 10 funcionários
 python scripts/sync_bamboohr_all.py --limit 10
@@ -130,6 +161,7 @@ python scripts/sync_bamboohr_all.py --limit 10
 - `--skip-employees`: Pula sincronização de funcionários
 - `--skip-training`: Pula sincronização de treinamentos
 - `--skip-documents`: Pula sincronização de documentos
+- `--skip-time-off`: Pula sincronização de day off / sick leave
 - `--no-photos`: Não sincroniza fotos de perfil
 - `--limit N`: Limita a N funcionários (útil para testes)
 

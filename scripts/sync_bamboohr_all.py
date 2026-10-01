@@ -40,6 +40,14 @@ sync_documents_mod = importlib.util.module_from_spec(spec_docs)
 spec_docs.loader.exec_module(sync_documents_mod)
 sync_all_documents = sync_documents_mod.sync_all_documents
 
+# Import time-off sync
+spec_to = importlib.util.spec_from_file_location(
+    "sync_time_off", os.path.join(script_dir, "sync_bamboohr_time_off.py")
+)
+sync_time_off_mod = importlib.util.module_from_spec(spec_to)
+spec_to.loader.exec_module(sync_time_off_mod)
+sync_all_time_off = sync_time_off_mod.sync_all_time_off
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -54,7 +62,7 @@ Examples:
   python scripts/sync_bamboohr_all.py
   
   # Sync only employees and documents
-  python scripts/sync_bamboohr_all.py --skip-training
+  python scripts/sync_bamboohr_all.py --skip-training --skip-time-off
   
   # Sync first 10 employees only
   python scripts/sync_bamboohr_all.py --limit 10
@@ -64,6 +72,7 @@ Examples:
     parser.add_argument("--skip-employees", action="store_true", help="Skip employee synchronization")
     parser.add_argument("--skip-training", action="store_true", help="Skip training synchronization")
     parser.add_argument("--skip-documents", action="store_true", help="Skip document synchronization")
+    parser.add_argument("--skip-time-off", action="store_true", help="Skip time-off / sick leave synchronization")
     parser.add_argument("--limit", type=int, help="Limit number of employees to process")
     parser.add_argument("--no-photos", dest="include_photos", action="store_false", help="Skip profile photos in document sync")
     parser.add_argument("--force-update-photos", action="store_true", help="Update profile photos even if they already exist")
@@ -135,8 +144,27 @@ Examples:
             print(f"\n[ERROR] Error syncing documents: {e}")
             import traceback
             traceback.print_exc()
+            if not args.dry_run:
+                print("\n[WARN]  Continuing with other syncs...")
     else:
         print("\n[Skipping document synchronization]")
+
+    # 4. Sync Time Off (vacation / sick leave + history)
+    if not args.skip_time_off:
+        print("\n" + "="*70)
+        print("STEP 4: Syncing Time Off (balances, requests, history)")
+        print("="*70)
+        try:
+            sync_all_time_off(
+                dry_run=args.dry_run,
+                limit=args.limit,
+            )
+        except Exception as e:
+            print(f"\n[ERROR] Error syncing time off: {e}")
+            import traceback
+            traceback.print_exc()
+    else:
+        print("\n[Skipping time-off synchronization]")
     
     print("\n" + "="*70)
     print("Synchronization Complete!")

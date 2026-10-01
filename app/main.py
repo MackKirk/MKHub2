@@ -437,6 +437,7 @@ def create_app() -> FastAPI:
                                 )
                             )
                             db.commit()
+                            print("[startup] added users.session_version")
                     else:
                         db.execute(
                             text(

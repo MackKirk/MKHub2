@@ -2,8 +2,8 @@
 // Version: 1.0.2 — do not cache per-URL HTML navigations (stale shell breaks F5 on deep routes after deploy).
 // Cache static assets only - DO NOT cache API responses
 
-const CACHE_NAME = 'mkhub-v3';
-const STATIC_CACHE_NAME = 'mkhub-static-v3';
+const CACHE_NAME = 'mkhub-v4';
+const STATIC_CACHE_NAME = 'mkhub-static-v4';
 const OFFLINE_PAGE = '/offline.html';
 const INDEX_SHELL = '/index.html';
 
