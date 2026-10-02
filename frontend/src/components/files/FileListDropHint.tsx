@@ -6,7 +6,7 @@ export function FileListDropHint({ dropTarget }: { dropTarget: FileDropTarget | 
 
   return (
     <div
-      className="border-b border-brand-red/20 bg-brand-red/5 px-3 py-1.5 text-xs font-medium text-brand-red"
+      className="border-b border-brand-red/20 bg-brand-red/5 px-3 py-1.5 text-sm font-semibold text-brand-red"
       aria-live="polite"
     >
       {`Drop into: ${dropTarget.label}`}

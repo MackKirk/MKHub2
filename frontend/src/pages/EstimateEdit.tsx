@@ -23,7 +23,7 @@ export default function EstimateEdit(){
         <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
           <div>
             <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Edit Estimate</div>
-            <div className="text-sm text-gray-500 font-medium">Loading...</div>
+            <div className="text-sm text-gray-600 font-semibold">Loading...</div>
           </div>
         </div>
       </div>
@@ -36,7 +36,7 @@ export default function EstimateEdit(){
         <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
           <div>
             <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Edit Estimate</div>
-            <div className="text-sm text-gray-500 font-medium">Estimate not found</div>
+            <div className="text-sm text-gray-600 font-semibold">Estimate not found</div>
           </div>
         </div>
       </div>
@@ -48,7 +48,7 @@ export default function EstimateEdit(){
       <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
         <div>
           <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Edit Estimate</div>
-          <div className="text-sm text-gray-500 font-medium">Continue editing your estimate.</div>
+          <div className="text-sm text-gray-600 font-semibold">Continue editing your estimate.</div>
         </div>
       </div>
       <div className="rounded-xl border bg-white p-4">

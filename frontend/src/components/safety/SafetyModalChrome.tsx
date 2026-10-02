@@ -31,13 +31,13 @@ export const SAFETY_MODAL_OVERLAY =
   'fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4';
 
 export const SAFETY_MODAL_BTN_CANCEL =
-  'px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50';
+  'px-3 py-1.5 rounded-lg text-sm font-semibold text-gray-700 border border-gray-200 hover:bg-gray-50';
 
 export const SAFETY_MODAL_BTN_PRIMARY =
-  'px-3 py-1.5 rounded-lg text-sm font-medium text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed';
+  'px-3 py-1.5 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed';
 
 export const SAFETY_MODAL_FIELD_LABEL =
-  'text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1';
+  'text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1';
 
 export function ModalCloseChevron({ onClose, label = 'Close' }: { onClose: () => void; label?: string }) {
   return (
@@ -102,7 +102,7 @@ export function SafetyFormModalLayout({
               <div id={titleId} className="text-sm font-semibold text-gray-900">
                 {title}
               </div>
-              {subtitle != null && subtitle !== '' && <div className="text-xs text-gray-500 mt-0.5">{subtitle}</div>}
+              {subtitle != null && subtitle !== '' && <div className="text-sm text-gray-600 mt-0.5">{subtitle}</div>}
             </div>
           </div>
         </div>
@@ -157,7 +157,7 @@ export function SafetyFormPdfPreviewShell({
               href={url}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-xs px-2 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 shrink-0"
+              className="text-sm px-2 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 shrink-0"
               title="Open in new tab"
             >
               🔗

@@ -222,7 +222,7 @@ function MetaChip({
 }) {
   return (
     <div className="flex min-w-0 items-start gap-2.5 rounded-lg border border-gray-200/80 bg-white px-3 py-2.5">
-      <span className="mt-0.5 text-gray-400">{icon}</span>
+      <span className="mt-0.5 text-gray-600">{icon}</span>
       <div className="min-w-0">
         <div className={uiCx(uiTypography.helper, 'leading-none')}>{label}</div>
         <div className={uiCx(uiTypography.body, uiColors.textStrong, 'mt-1 break-words')}>{value}</div>
@@ -833,13 +833,13 @@ export default function PrintShopDetail() {
                       <div>{row.requester_name}</div>
                       {isNotifiableRequesterEmail(row.requester_email) ? (
                         <a
-                          className="text-brand-red underline text-xs"
+                          className="text-brand-red underline text-sm"
                           href={`mailto:${row.requester_email}`}
                         >
                           {row.requester_email}
                         </a>
                       ) : (
-                        <div className="text-xs text-gray-500">No email</div>
+                        <div className="text-sm text-gray-600">No email</div>
                       )}
                     </div>
                   }
@@ -858,7 +858,7 @@ export default function PrintShopDetail() {
                   icon={<Mail className="h-4 w-4" />}
                   label="Emails"
                   value={
-                    <div className="space-y-0.5 text-xs">
+                    <div className="space-y-0.5 text-sm">
                       <div>
                         Received:{' '}
                         {row.received_emailed_at
@@ -983,7 +983,7 @@ export default function PrintShopDetail() {
                                 </button>
                                 <div className="flex items-center justify-between gap-2 border-t border-gray-100 bg-white px-2 py-1.5">
                                   <p
-                                    className="truncate text-[11px] text-gray-600"
+                                    className="truncate text-xs text-gray-600"
                                     title={f.original_name || ''}
                                   >
                                     {f.original_name || f.id}
@@ -991,7 +991,7 @@ export default function PrintShopDetail() {
                                   <button
                                     type="button"
                                     onClick={() => downloadFile(f.id)}
-                                    className="inline-flex shrink-0 items-center gap-1 text-xs text-brand-red hover:underline"
+                                    className="inline-flex shrink-0 items-center gap-1 text-sm text-brand-red hover:underline"
                                     title="Download"
                                   >
                                     <Download className="h-3.5 w-3.5" />
@@ -1156,7 +1156,7 @@ function EditItemCard({
           <button
             type="button"
             onClick={onDuplicate}
-            className="rounded p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-800"
+            className="rounded p-1.5 text-gray-600 hover:bg-gray-100 hover:text-gray-800"
             title="Duplicate item"
           >
             <Copy className="h-4 w-4" />
@@ -1165,7 +1165,7 @@ function EditItemCard({
             <button
               type="button"
               onClick={onRemove}
-              className="rounded p-1.5 text-gray-500 hover:bg-red-50 hover:text-red-700"
+              className="rounded p-1.5 text-gray-600 hover:bg-red-50 hover:text-red-700"
               title="Remove item"
             >
               <Trash2 className="h-4 w-4" />
@@ -1291,7 +1291,7 @@ function EditItemCard({
                     >
                       <X className="h-3.5 w-3.5" />
                     </button>
-                    <p className="truncate px-1.5 py-1 text-[11px] text-gray-600">
+                    <p className="truncate px-1.5 py-1 text-xs text-gray-600">
                       {f.original_name || f.id}
                     </p>
                   </li>
@@ -1314,7 +1314,7 @@ function EditItemCard({
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
-                  <p className="truncate px-1.5 py-1 text-[11px] text-emerald-700">{f.file.name}</p>
+                  <p className="truncate px-1.5 py-1 text-xs text-emerald-700">{f.file.name}</p>
                 </li>
               ))}
             </ul>

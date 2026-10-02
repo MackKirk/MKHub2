@@ -47,7 +47,7 @@ export default function EquipmentCheckoutForm({ equipmentId, onSuccess, onCancel
       {mode === 'checkout' && (
         <>
           <div>
-            <label className="block text-sm font-medium mb-1">Checked Out By (User ID)</label>
+            <label className="block text-sm font-semibold mb-1">Checked Out By (User ID)</label>
             <input
               type="text"
               value={checkedOutBy}
@@ -57,7 +57,7 @@ export default function EquipmentCheckoutForm({ equipmentId, onSuccess, onCancel
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Expected Return Date</label>
+            <label className="block text-sm font-semibold mb-1">Expected Return Date</label>
             <input
               type="date"
               value={expectedReturnDate}
@@ -68,7 +68,7 @@ export default function EquipmentCheckoutForm({ equipmentId, onSuccess, onCancel
         </>
       )}
       <div>
-        <label className="block text-sm font-medium mb-1">
+        <label className="block text-sm font-semibold mb-1">
           Condition {mode === 'checkout' ? 'Out' : 'In'}
         </label>
         <select
@@ -84,7 +84,7 @@ export default function EquipmentCheckoutForm({ equipmentId, onSuccess, onCancel
         </select>
       </div>
       <div>
-        <label className="block text-sm font-medium mb-1">Notes</label>
+        <label className="block text-sm font-semibold mb-1">Notes</label>
         <textarea
           value={notes}
           onChange={e => setNotes(e.target.value)}

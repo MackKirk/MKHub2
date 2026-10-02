@@ -112,7 +112,7 @@ function ProposalInlineInput({
       <ProposalInlineLabelRow label={label} fieldHint={fieldHint} />
       <input
         className={uiCx(
-          'box-border w-full bg-white text-xs text-gray-900 outline-none transition-colors placeholder:text-gray-400 focus:border-gray-400 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-gray-400/35 disabled:cursor-not-allowed disabled:bg-gray-100',
+          'box-border w-full bg-white text-sm text-gray-900 outline-none transition-colors placeholder:text-gray-400 focus:border-gray-400 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-gray-400/35 disabled:cursor-not-allowed disabled:bg-gray-100',
           uiSpacing.controlX,
           QUOTE_INLINE_CONTROL_H,
           'py-0',
@@ -1563,7 +1563,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
       {/* Restriction Warning - appears before blocks */}
       {showRestrictionWarning && restrictionMessage && (
         <div className="mb-4">
-          <div className={uiCx(uiRadius.card, 'border border-yellow-200 bg-yellow-50 p-3 text-xs text-yellow-800')}>
+          <div className={uiCx(uiRadius.card, 'border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-800')}>
             <strong>Editing Restricted:</strong> {restrictionMessage}
           </div>
         </div>
@@ -1830,7 +1830,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                   </div>
                   {!disabled && (
                     <div className="flex items-center gap-1">
-                      <button className="px-2 py-1 rounded text-gray-500 hover:text-gray-700" title="Duplicate section" onClick={()=>{
+                      <button className="px-2 py-1 rounded text-gray-600 hover:text-gray-700" title="Duplicate section" onClick={()=>{
                         setSections(arr=>{
                           const copy = JSON.parse(JSON.stringify(arr[idx]||{}));
                           copy.id = 'sec_'+Math.random().toString(36).slice(2);
@@ -1842,7 +1842,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                       }}>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 7h10v10H7V7Zm-2 2v10h10v2H5a2 2 0 0 1-2-2V9h2Zm6-6h8a2 2 0 0 1 2 2v8h-2V5H11V3Z"></path></svg>
                       </button>
-                      <button className="px-2 py-1 rounded text-gray-500 hover:text-red-600" title="Remove section" onClick={async()=>{
+                      <button className="px-2 py-1 rounded text-gray-600 hover:text-red-600" title="Remove section" onClick={async()=>{
                         const result = await confirm({ title:'Remove section', message:'Are you sure you want to remove this section?' });
                         if (result !== 'confirm') return;
                         setSections(arr=> arr.filter((_,i)=> i!==idx));
@@ -1939,7 +1939,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                                 >
                                   Duplicate
                                 </AppButton>
-                                <button className="px-2 py-1 rounded text-gray-500 hover:text-red-600" title="Remove image" onClick={async()=>{
+                                <button className="px-2 py-1 rounded text-gray-600 hover:text-red-600" title="Remove image" onClick={async()=>{
                                   const result = await confirm({ title:'Remove image', message:'Are you sure you want to remove this image?' });
                                   if (result !== 'confirm') return;
                                   setSections(arr=> arr.map((x,i)=> i===idx? { ...x, images: (x.images||[]).filter((_:any,k:number)=> k!==j) }: x));
@@ -2137,7 +2137,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                               setPricingSections(arr => arr.filter((_, idx) => idx !== sectionIndex));
                             }
                           }}
-                          className="px-2 py-1 rounded text-gray-500 hover:text-red-600"
+                          className="px-2 py-1 rounded text-gray-600 hover:text-red-600"
                           title="Remove section"
                         >
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
@@ -2197,7 +2197,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                             <button
                               type="button"
                               onClick={() => setProductSearchModalOpen({ sectionIndex, itemIndex: i })}
-                              className="absolute right-0 top-[calc(100%-1.75rem)] p-1 text-gray-500 hover:text-gray-700"
+                              className="absolute right-0 top-[calc(100%-1.75rem)] p-1 text-gray-600 hover:text-gray-700"
                               title="Browse Products by Supplier"
                             >
                               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -2244,7 +2244,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                               min={1}
                               step={1}
                               className={uiCx(
-                                'min-w-0 flex-1 appearance-none border-0 bg-transparent px-2 text-xs text-gray-900 [-moz-appearance:textfield] focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none',
+                                'min-w-0 flex-1 appearance-none border-0 bg-transparent px-2 text-sm text-gray-900 [-moz-appearance:textfield] focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none',
                                 disabled && 'cursor-not-allowed bg-gray-100',
                                 QUOTE_INLINE_CONTROL_H,
                                 'py-0',
@@ -2306,7 +2306,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                           </div>
                         </div>
                         <ProposalInlineControlSpacer className="min-w-[100px] max-w-[140px]" label="Line total" fieldHint={QUOTE_FIELD_HINTS.pricingLineTotal}>
-                          <div className="overflow-hidden whitespace-nowrap text-right text-xs font-medium text-gray-700">
+                          <div className="overflow-hidden whitespace-nowrap text-right text-sm font-semibold text-gray-700">
                             ${formatAccounting(lineTotal)}
                           </div>
                         </ProposalInlineControlSpacer>
@@ -2427,7 +2427,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                 {/* Total with Show in PDF checkbox */}
                 <div className="mt-3 space-y-2">
                   <div className="flex items-center gap-2">
-                    <div className="text-xs font-semibold">Total: <span className="text-gray-600">${formatAccounting(sectionTotals.grandTotal)}</span></div>
+                    <div className="text-sm font-semibold">Total: <span className="text-gray-600">${formatAccounting(sectionTotals.grandTotal)}</span></div>
                     <AppCheckbox
                       label="Show Total in PDF"
                       checked={section.showTotalInPdf}
@@ -2438,7 +2438,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                       }
                       disabled={disabled}
                       fieldHint={QUOTE_FIELD_HINTS.showTotalInPdf}
-                      className="text-xs"
+                      className="text-sm"
                     />
                   </div>
                 </div>
@@ -2466,7 +2466,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
           </div>
           {sectionsExpanded.optionalServices && (
           <div className={dsSectionBodyPad}>
-          <div className="text-[10px] text-gray-600 mb-2">If no services are added, the "Optional Services" section will be hidden in the PDF.</div>
+          <div className="text-xs text-gray-600 mb-2">If no services are added, the "Optional Services" section will be hidden in the PDF.</div>
             <div className="space-y-2">
               {optionalServices.map((s, i)=> (
                 <div key={i} className={uiCx('grid grid-cols-5 gap-2', 'items-start')}>
@@ -2613,7 +2613,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
         >
           {/* Arrow indicator when footer is hidden */}
           {!footerVisible && (
-            <div className="absolute bottom-0 left-1/2 -translate-x-1/2 flex items-center justify-center gap-1 px-3 py-1 bg-white/90 backdrop-blur-sm border-t border-x rounded-t-lg shadow-sm text-xs text-gray-600 font-medium">
+            <div className="absolute bottom-0 left-1/2 -translate-x-1/2 flex items-center justify-center gap-1 px-3 py-1 bg-white/90 backdrop-blur-sm border-t border-x rounded-t-lg shadow-sm text-sm text-gray-600 font-semibold">
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
               </svg>
@@ -2641,11 +2641,11 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
             )}>
             {/* Left: Status indicator */}
             {hasUnsavedChanges ? (
-              <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2.5 py-1 font-medium">
+              <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2.5 py-1 font-semibold">
                 Unsaved changes
               </div>
             ) : (
-              <div className="text-xs text-green-700 bg-green-50 border border-green-200 rounded-full px-2.5 py-1 font-medium">
+              <div className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-full px-2.5 py-1 font-semibold">
                 All changes saved
               </div>
             )}
@@ -3133,7 +3133,7 @@ function AddProductModalForQuote({ open, onClose, onSelect }: { open: boolean, o
                     selection?.id === p.id && 'ring-2 ring-brand-red ring-inset',
                   )}
                 >
-                  <div className="font-medium">{p.name}</div>
+                  <div className="font-semibold">{p.name}</div>
                   <div className={uiTypography.helper}>
                     {p.supplier_name || ''} · {p.unit || ''} · ${Number(p.price || 0).toFixed(2)}
                   </div>
@@ -3185,7 +3185,7 @@ function AddProductModalForQuote({ open, onClose, onSelect }: { open: boolean, o
                 </div>
                 <div className="flex-1 space-y-2">
                   <div className="flex items-center justify-between">
-                    <div className="font-medium">{selection.name}</div>
+                    <div className="font-semibold">{selection.name}</div>
                     <AppButton type="button" variant="secondary" size="sm" onClick={() => setCompareModalOpen(true)}>
                       Compare
                     </AppButton>
@@ -3518,7 +3518,7 @@ function NewProductModalForQuote({ open, onClose, onProductCreated, initialSuppl
               />
             </div>
             {supplierError && !newSupplier.trim() && (
-              <div className="mt-1 text-[11px] text-red-600">This field is required</div>
+              <div className="mt-1 text-xs text-red-600">This field is required</div>
             )}
           </div>
           <AppInput label="Category" value={newCategory} onChange={(e) => setNewCategory(e.target.value)} />
@@ -3571,10 +3571,10 @@ function NewProductModalForQuote({ open, onClose, onProductCreated, initialSuppl
               <div className="mt-1.5 flex items-center gap-2">
                 <AppInput placeholder="0" value={covSqs} onChange={(e) => onCoverageChange('sqs', e.target.value)} />
                 <span className={uiTypography.helper}>SQS</span>
-                <span className="text-gray-400">=</span>
+                <span className="text-gray-600">=</span>
                 <AppInput placeholder="0" value={covFt2} onChange={(e) => onCoverageChange('ft2', e.target.value)} />
                 <span className={uiTypography.helper}>ft²</span>
-                <span className="text-gray-400">=</span>
+                <span className="text-gray-600">=</span>
                 <AppInput placeholder="0" value={covM2} onChange={(e) => onCoverageChange('m2', e.target.value)} />
                 <span className={uiTypography.helper}>m²</span>
               </div>
@@ -3718,7 +3718,7 @@ function SupplierProductModalForQuote({ open, onClose, onSelect }: { open: boole
       </div>
       <div className="flex-1 overflow-y-auto p-3 sm:p-4">
         {!selectedSupplier ? (
-          <div className="flex h-full items-center justify-center text-gray-500">Select a supplier to view products</div>
+          <div className="flex h-full items-center justify-center text-gray-600">Select a supplier to view products</div>
         ) : (
           <div>
             <div className={uiCx(uiTypography.sectionTitle, 'mb-4')}>
@@ -3735,8 +3735,8 @@ function SupplierProductModalForQuote({ open, onClose, onSelect }: { open: boole
                       uiBorders.subtle,
                     )}
                   >
-                    <div className="mb-2 text-4xl text-gray-400">+</div>
-                    <div className="text-sm font-medium text-gray-700">New Product</div>
+                    <div className="mb-2 text-4xl text-gray-600">+</div>
+                    <div className="text-sm font-semibold text-gray-700">New Product</div>
                     <div className={uiCx(uiTypography.helper, 'mt-1')}>
                       Add new product to {suppliers?.find((s) => s.id === selectedSupplier)?.name || 'supplier'}
                     </div>
@@ -3771,7 +3771,7 @@ function SupplierProductModalForQuote({ open, onClose, onSelect }: { open: boole
                           style={{ display: product.image_base64 ? 'none' : 'block' }}
                         />
                       </div>
-                      <div className="mb-1 line-clamp-2 text-sm font-medium">{product.name}</div>
+                      <div className="mb-1 line-clamp-2 text-sm font-semibold">{product.name}</div>
                       {product.category && <div className={uiTypography.helper}>{product.category}</div>}
                       <div className="text-sm font-semibold text-brand-red">${Number(product.price || 0).toFixed(2)}</div>
                     </button>
@@ -3785,7 +3785,7 @@ function SupplierProductModalForQuote({ open, onClose, onSelect }: { open: boole
               </>
             ) : (
               <div className="py-8 text-center">
-                <div className="mb-4 text-gray-500">No products found for this supplier</div>
+                <div className="mb-4 text-gray-600">No products found for this supplier</div>
                 <AppButton type="button" variant="secondary" onClick={() => setNewProductModalOpen(true)}>
                   + New Product
                 </AppButton>
@@ -3837,7 +3837,7 @@ function CompareProductsModalForQuote({ open, onClose, selectedProduct, onSelect
     <AppModal open={open} onClose={onClose} title="Compare Products" size="md">
       <div className="space-y-3">
         <div className={uiCx('rounded border bg-gray-50 p-3', uiBorders.subtle)}>
-          <div className="mb-2 font-medium">Selected: {selectedProduct.name}</div>
+          <div className="mb-2 font-semibold">Selected: {selectedProduct.name}</div>
           <div className={uiTypography.helper}>
             ${Number(selectedProduct.price || 0).toFixed(2)} · {selectedProduct.supplier_name || 'N/A'}
           </div>
@@ -3848,7 +3848,7 @@ function CompareProductsModalForQuote({ open, onClose, selectedProduct, onSelect
             <div className={uiCx('max-h-64 divide-y overflow-auto rounded border', uiBorders.subtle)}>
               {(similarProducts || []).map((p) => (
                 <button key={p.id} type="button" onClick={() => onSelect(p)} className="w-full bg-white px-3 py-2 text-left hover:bg-gray-50">
-                  <div className="font-medium">{p.name}</div>
+                  <div className="font-semibold">{p.name}</div>
                   <div className={uiTypography.helper}>
                     {p.supplier_name || ''} · ${Number(p.price || 0).toFixed(2)}
                   </div>

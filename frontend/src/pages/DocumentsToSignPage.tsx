@@ -103,7 +103,7 @@ export default function DocumentsToSignPage() {
             {pending.map((row) => (
               <li key={row.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate">{row.display_name || 'Document'}</p>
+                  <p className="text-sm font-semibold text-gray-900 truncate">{row.display_name || 'Document'}</p>
                   <p className={uiTypography.helper}>
                     From {row.requested_by_name || 'Someone'}
                     {row.my_role_label ? ` · ${row.my_role_label}` : ''} · {formatWhen(row.created_at)}
@@ -129,7 +129,7 @@ export default function DocumentsToSignPage() {
             {signed.map((row) => (
               <li key={row.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate">{row.display_name || 'Document'}</p>
+                  <p className="text-sm font-semibold text-gray-900 truncate">{row.display_name || 'Document'}</p>
                   <p className={uiTypography.helper}>
                     {row.signed_file_id
                       ? `Completed ${formatWhen(row.signed_at)}`

@@ -219,7 +219,7 @@ export default function ProjectBillingSection({
     <>
       <div className="mt-6 rounded-xl border border-gray-200/90 bg-white shadow-md overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 px-3 py-2">
-          <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Billing Information</div>
+          <div className="text-[10px] font-bold text-gray-600 uppercase tracking-wide">Billing Information</div>
           {headerActions}
         </div>
         <div className="p-3">{body}</div>

@@ -744,7 +744,7 @@ function EventViewModal({
   const readField = (label: string, value: ReactNode) => (
     <div>
       <div className={uiTypography.overline}>{label}</div>
-      <div className={uiCx(uiTypography.body, 'mt-0.5 font-medium text-gray-900')}>{value}</div>
+      <div className={uiCx(uiTypography.body, 'mt-0.5 font-semibold text-gray-900')}>{value}</div>
     </div>
   );
 
@@ -845,27 +845,27 @@ function EventViewModal({
         </div>
         <div className="p-6 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Event Name</label>
-            <div className="text-gray-900 font-medium">{event.name}</div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">Event Name</label>
+            <div className="text-gray-900 font-semibold">{event.name}</div>
           </div>
 
           {event.location && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Location</label>
               <div className="text-gray-900">{event.location}</div>
             </div>
           )}
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Start {isAllDay ? 'Date' : 'Date & Time'}</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Start {isAllDay ? 'Date' : 'Date & Time'}</label>
               <div className="text-gray-900">
                 {formatDateTime(startDate, !isAllDay)}
                 {!isAllDay && <span className="text-xs text-gray-500 ml-2">({timezone})</span>}
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">End {isAllDay ? 'Date' : 'Date & Time'}</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">End {isAllDay ? 'Date' : 'Date & Time'}</label>
               <div className="text-gray-900">
                 {formatDateTime(endDate, !isAllDay)}
                 {!isAllDay && <span className="text-xs text-gray-500 ml-2">({timezone})</span>}
@@ -875,7 +875,7 @@ function EventViewModal({
 
           <div className="flex items-center gap-4 text-sm">
             {isAllDay && (
-              <span className="px-2 py-1 rounded bg-blue-100 text-blue-700 text-xs font-medium">All-day</span>
+              <span className="px-2 py-1 rounded bg-blue-100 text-blue-700 text-xs font-semibold">All-day</span>
             )}
             {!isAllDay && startDate.toDateString() === endDate.toDateString() && (
               <span className="text-gray-600">
@@ -885,13 +885,13 @@ function EventViewModal({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Recurrence</label>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">Recurrence</label>
             <div className="text-gray-900">{getRepeatDescription()}</div>
           </div>
 
           {Array.isArray(event.exceptions) && event.exceptions.length > 0 && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Exception Dates</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Exception Dates</label>
               <div className="flex flex-wrap gap-2">
                 {event.exceptions.map((date: string) => (
                   <span key={date} className="px-2 py-1 rounded bg-red-100 text-red-700 text-xs">
@@ -904,7 +904,7 @@ function EventViewModal({
 
           {Array.isArray(event.extra_dates) && event.extra_dates.length > 0 && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Extra Dates</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Extra Dates</label>
               <div className="flex flex-wrap gap-2">
                 {event.extra_dates.map((date: string) => (
                   <span key={date} className="px-2 py-1 rounded bg-green-100 text-green-700 text-xs">
@@ -917,7 +917,7 @@ function EventViewModal({
 
           {event.notes && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Notes</label>
               <div className="text-gray-900 whitespace-pre-wrap bg-gray-50 p-3 rounded">{event.notes}</div>
             </div>
           )}

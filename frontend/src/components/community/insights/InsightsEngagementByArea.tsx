@@ -105,16 +105,16 @@ export function InsightsEngagementByArea({
                     />
                     <div className="min-w-0 flex-1 space-y-1">
                       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                        <span className="text-xs font-medium text-gray-900 [overflow-wrap:anywhere]">
+                        <span className="text-sm font-semibold text-gray-900 [overflow-wrap:anywhere]">
                           {formatAreaLabel(area)}
                         </span>
-                        <span className="text-xs font-semibold text-gray-900 tabular-nums shrink-0">
+                        <span className="text-sm font-semibold text-gray-900 tabular-nums shrink-0">
                           {value.toLocaleString()}{' '}
-                          <span className="font-normal text-gray-500">({pct.toFixed(0)}%)</span>
+                          <span className="font-normal text-gray-600">({pct.toFixed(0)}%)</span>
                         </span>
                       </div>
                       <p
-                        className="text-[11px] text-gray-500 tabular-nums leading-snug [overflow-wrap:anywhere]"
+                        className="text-xs text-gray-600 tabular-nums leading-snug [overflow-wrap:anywhere]"
                         title={breakdownTitle}
                       >
                         {bucket.posts}p · {bucket.views}v · {bucket.likes}l · {bucket.comments}c

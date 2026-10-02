@@ -80,7 +80,7 @@ export default function FleetInspectionsIdGate() {
   });
 
   if (!id || id === 'new') {
-    return <div className="p-4 text-gray-500">Invalid inspection ID</div>;
+    return <div className="p-4 text-gray-600">Invalid inspection ID</div>;
   }
 
   const loadingInitial =
@@ -114,7 +114,7 @@ export default function FleetInspectionsIdGate() {
     return <InspectionDetail />;
   }
 
-  return <div className="p-4 text-gray-500">Inspection or schedule not found</div>;
+  return <div className="p-4 text-gray-600">Inspection or schedule not found</div>;
 }
 
 /** Bookmark compatibility: `/fleet/inspection-schedules/:id` → `/fleet/inspections/:id` */

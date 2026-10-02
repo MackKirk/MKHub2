@@ -273,7 +273,7 @@ export default function FleetServiceCalendar({
                 'bg-white',
               )}
             >
-              <span className={uiCx('text-xs font-medium', dayIsToday ? 'text-brand-red' : 'text-gray-700')}>
+              <span className={uiCx('text-sm font-semibold', dayIsToday ? 'text-brand-red' : 'text-gray-700')}>
                 {date.getDate()}
               </span>
               <div className="mt-1 flex-1 space-y-1 overflow-auto">
@@ -324,9 +324,9 @@ export default function FleetServiceCalendar({
                             )}
                           </div>
                           <div className="min-w-0 flex-1 text-left">
-                            <span className="block line-clamp-2 font-medium leading-snug">{woLines.primary}</span>
+                            <span className="block line-clamp-2 font-semibold leading-snug">{woLines.primary}</span>
                             {woLines.unitLine ? (
-                              <span className="block line-clamp-1 text-[10px] leading-tight opacity-85">
+                              <span className="block line-clamp-1 text-xs leading-tight opacity-85">
                                 {woLines.unitLine}
                               </span>
                             ) : null}
@@ -352,15 +352,15 @@ export default function FleetServiceCalendar({
                           INSP
                         </span>
                         <div className="min-w-0 flex-1 text-left">
-                          <span className="block line-clamp-2 font-medium leading-snug text-violet-900">
+                          <span className="block line-clamp-2 font-semibold leading-snug text-violet-900">
                             {inLines.primary}
                           </span>
                           {inLines.unitLine ? (
-                            <span className="block line-clamp-1 text-[10px] leading-tight text-violet-700/90">
+                            <span className="block line-clamp-1 text-xs leading-tight text-violet-700/90">
                               {inLines.unitLine}
                             </span>
                           ) : null}
-                          <span className="block text-[10px] text-violet-600">{formatTime(ev.scheduled_at)}</span>
+                          <span className="block text-xs text-violet-600">{formatTime(ev.scheduled_at)}</span>
                         </div>
                       </div>
                     </button>

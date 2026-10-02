@@ -11,7 +11,7 @@ export default function InventoryOrders(){
       <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
         <div>
           <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Orders</div>
-          <div className="text-sm text-gray-500 font-medium">Purchase orders and delivery status.</div>
+          <div className="text-sm text-gray-600 font-semibold">Purchase orders and delivery status.</div>
         </div>
       </div>
       <div className="rounded-xl border bg-white overflow-hidden">

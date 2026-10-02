@@ -31,7 +31,7 @@ export function UploadProgressPanel({
       bodyClassName="p-0"
     >
       <div className={uiCx('flex items-center justify-between border-b px-2.5 py-2', uiBorders.subtle, uiColors.surfaceSubtle)}>
-        <div className={uiCx(uiTypography.sectionTitle, 'text-xs')}>
+        <div className={uiCx(uiTypography.sectionTitle, 'text-sm')}>
           Upload Progress
           <span className={uiCx(uiTypography.helper, 'ml-2 font-normal')}>
             {finished} of {items.length}
@@ -46,14 +46,14 @@ export function UploadProgressPanel({
           <div key={item.id} className={uiCx('border-b px-2.5 py-2', uiBorders.subtle)}>
             <div className="mb-1 flex items-start gap-2">
               <div className="min-w-0 flex-1">
-                <div className={uiCx(uiTypography.body, 'truncate text-xs font-medium')} title={item.name}>
+                <div className={uiCx(uiTypography.body, 'truncate text-sm font-semibold')} title={item.name}>
                   {item.name}
                 </div>
                 {typeof item.size === 'number' ? (
                   <div className={uiTypography.helper}>{(item.size / 1024 / 1024).toFixed(2)} MB</div>
                 ) : null}
               </div>
-              <div className="text-xs">
+              <div className="text-sm">
                 {item.status === 'pending' && '…'}
                 {item.status === 'uploading' && '…'}
                 {item.status === 'success' && '✓'}

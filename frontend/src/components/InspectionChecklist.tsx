@@ -27,9 +27,9 @@ export default function InspectionChecklist({ items, results = {}, onChange, rea
     <div className="space-y-2">
       {items.map(item => (
         <div key={item.key} className="flex items-center justify-between p-3 border rounded-lg">
-          <span className="text-sm font-medium">{item.label}</span>
+          <span className="text-sm font-semibold">{item.label}</span>
           {readOnly ? (
-            <span className={`px-3 py-1 rounded text-xs font-medium ${
+            <span className={`px-3 py-1 rounded text-sm font-semibold ${
               localResults[item.key] === 'pass' ? 'bg-green-100 text-green-800' :
               localResults[item.key] === 'fail' ? 'bg-red-100 text-red-800' :
               'bg-gray-100 text-gray-800'

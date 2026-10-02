@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import FadeInOnMount from '@/components/FadeInOnMount';
+import { AppTooltip } from '@/components/ui';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import { useAnimationReady } from '@/contexts/AnimationReadyContext';
 import { api } from '@/lib/api';
@@ -269,7 +270,7 @@ export function ChartWidget({ config }: ChartWidgetProps) {
   const lineLabel = showLineInSubtitle ? ` · ${getBusinessLineShortLabel(businessLine)}` : '';
   const chartSubtitle = `${periodDisplay} · ${modeLabel}${lineLabel}${customerFilterLabel}`;
   const Subtitle = () => (
-    <p className="mb-1.5 shrink-0 text-[10px] text-gray-500" aria-hidden>{chartSubtitle}</p>
+    <p className="mb-1.5 shrink-0 text-sm text-gray-600" aria-hidden>{chartSubtitle}</p>
   );
 
   if (isLoading) {
@@ -283,7 +284,7 @@ export function ChartWidget({ config }: ChartWidgetProps) {
     );
   }
   if (error) return <div className="flex flex-col min-h-0 h-full"><Subtitle /><div className="flex flex-1 items-center justify-center text-sm text-red-500">Failed to load</div></div>;
-  if (sorted.length === 0) return <div className="flex flex-col min-h-0 h-full"><Subtitle /><div className="flex flex-1 items-center justify-center text-sm text-gray-500">No data</div></div>;
+  if (sorted.length === 0) return <div className="flex flex-col min-h-0 h-full"><Subtitle /><div className="flex flex-1 items-center justify-center text-sm text-gray-600">No data</div></div>;
 
   if (chartType === 'line') {
     // X-axis = months, Y-axis = value, one line per status/division (from timeseries API)
@@ -299,11 +300,11 @@ export function ChartWidget({ config }: ChartWidgetProps) {
     }
     if (timeseries.error) return <div className="flex flex-col min-h-0 h-full"><Subtitle /><div className="flex flex-1 items-center justify-center text-sm text-red-500">Failed to load</div></div>;
     const ts = timeseries.data;
-    if (!ts || !ts.months.length || !ts.series.length) return <div className="flex flex-col min-h-0 h-full"><Subtitle /><div className="flex flex-1 items-center justify-center text-sm text-gray-500">No data</div></div>;
+    if (!ts || !ts.months.length || !ts.series.length) return <div className="flex flex-col min-h-0 h-full"><Subtitle /><div className="flex flex-1 items-center justify-center text-sm text-gray-600">No data</div></div>;
 
     const months = ts.months;
     const series = ts.series.filter((s) => s.values.some((v) => v > 0));
-    if (!series.length) return <div className="text-sm text-gray-500">No data</div>;
+    if (!series.length) return <div className="text-sm text-gray-600">No data</div>;
 
     const allVals = series.flatMap((s) => s.values);
     const maxY = Math.max(...allVals, 1);
@@ -442,7 +443,7 @@ export function ChartWidget({ config }: ChartWidgetProps) {
           {hoveredLinePoint &&
             createPortal(
               <div
-                className="fixed z-[9999] pointer-events-none px-2.5 py-1.5 rounded-lg shadow-xl bg-gray-900 text-white text-xs whitespace-nowrap transition-shadow duration-150"
+                className="fixed z-[9999] pointer-events-none px-2.5 py-1.5 rounded-lg shadow-xl bg-gray-900 text-white text-sm whitespace-nowrap transition-shadow duration-150"
                 style={{ left: lineTooltipPos.x + 10, top: lineTooltipPos.y + 10 }}
               >
                 <div className="font-semibold">{hoveredLinePoint.seriesLabel}</div>
@@ -454,7 +455,7 @@ export function ChartWidget({ config }: ChartWidgetProps) {
               document.body
             )}
         </div>
-        <ul className="flex flex-col gap-1 shrink-0 text-[10px] overflow-y-auto py-0.5 border-l border-gray-200 pl-3 min-w-0 max-w-[45%]">
+        <ul className="flex flex-col gap-1 shrink-0 text-sm overflow-y-auto py-0.5 border-l border-gray-200 pl-3 min-w-0 max-w-[45%]">
           {series.map((s, i) => {
             const total = seriesTotals[i] ?? 0;
             const pct = lineChartTotal > 0 ? (total / lineChartTotal) * 100 : 0;
@@ -465,7 +466,9 @@ export function ChartWidget({ config }: ChartWidgetProps) {
                   className="w-2.5 h-0.5 rounded shrink-0"
                   style={{ backgroundColor: colors[i % colors.length] }}
                 />
-                <span className="text-gray-600 truncate min-w-0">{s.label}</span>
+                <AppTooltip content={s.label} followCursor wrap constrain className="min-w-0 flex-1">
+                  <span className="font-semibold text-gray-600 truncate min-w-0">{s.label}</span>
+                </AppTooltip>
                 <span className="text-gray-900 font-semibold tabular-nums shrink-0">
                   {displayValue} ({pct.toFixed(0)}%)
                 </span>
@@ -581,13 +584,13 @@ export function ChartWidget({ config }: ChartWidgetProps) {
                 >
                   {mode === 'value' ? formatCompactCurrency(total) : total}
                 </div>
-                <div className="text-[10px] font-medium text-gray-500 mt-0.5 whitespace-nowrap">{centerEntityLabel}</div>
+                <div className="text-sm font-semibold text-gray-600 mt-0.5 whitespace-nowrap">{centerEntityLabel}</div>
               </div>
             )}
             {hoveredPieSlice &&
               createPortal(
                 <div
-                  className="fixed z-[9999] pointer-events-none px-2.5 py-1.5 rounded-lg shadow-xl bg-gray-900 text-white text-xs whitespace-nowrap transition-shadow duration-150"
+                  className="fixed z-[9999] pointer-events-none px-2.5 py-1.5 rounded-lg shadow-xl bg-gray-900 text-white text-sm whitespace-nowrap transition-shadow duration-150"
                   style={{ left: pieTooltipPos.x + 10, top: pieTooltipPos.y + 10 }}
                 >
                   <div className="font-semibold">{hoveredPieSlice.label}</div>
@@ -600,13 +603,13 @@ export function ChartWidget({ config }: ChartWidgetProps) {
           </div>
           <div className="flex-1 min-w-0 overflow-y-auto py-0.5 sm:pl-1">
             {sorted.length === 0 ? (
-              <div className="text-xs text-gray-400">No data</div>
+              <div className="text-sm text-gray-600">No data</div>
             ) : (
-              <div className="w-full text-xs">
+              <div className="w-full text-sm">
                 <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-3 gap-y-0 items-center pb-1.5 mb-0.5 border-b border-gray-100">
-                  <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">{categoryColLabel}</span>
-                  <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400 text-right min-w-[4.5rem]">{metricColLabel}</span>
-                  <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400 text-right w-10">%</span>
+                  <span className="text-sm font-semibold uppercase tracking-wide text-gray-600">{categoryColLabel}</span>
+                  <span className="text-sm font-semibold uppercase tracking-wide text-gray-600 text-right min-w-[4.5rem]">{metricColLabel}</span>
+                  <span className="text-xs font-semibold uppercase tracking-wide text-gray-600 text-right w-10">%</span>
                 </div>
                 {sorted.slice(0, 10).map((e, i) => {
                   const pct = totalForPct > 0 ? (e.value / totalForPct) * 100 : 0;
@@ -621,12 +624,14 @@ export function ChartWidget({ config }: ChartWidgetProps) {
                           className="w-2.5 h-2.5 rounded-full shrink-0"
                           style={{ backgroundColor: dotColor }}
                         />
-                        <span className="text-gray-700 truncate">{e.label}</span>
+                        <AppTooltip content={e.label} followCursor wrap constrain className="min-w-0 flex-1">
+                          <span className="font-semibold text-gray-700 truncate">{e.label}</span>
+                        </AppTooltip>
                       </div>
-                      <span className="text-gray-900 font-medium tabular-nums text-right min-w-[4.5rem]">
+                      <span className="text-gray-900 font-semibold tabular-nums text-right min-w-[4.5rem]">
                         {mode === 'value' ? formatCurrency(e.value) : e.value}
                       </span>
-                      <span className="text-gray-500 tabular-nums text-right w-10">
+                      <span className="text-xs font-semibold text-gray-600 tabular-nums text-right w-10">
                         {pct.toFixed(0)}%
                       </span>
                     </div>
@@ -660,14 +665,16 @@ export function ChartWidget({ config }: ChartWidgetProps) {
                 key={e.label}
                 className="grid grid-cols-[7.5rem_minmax(0,1fr)_auto] gap-x-3 items-center shrink-0"
               >
-                <span className="text-xs text-gray-600 truncate">{e.label}</span>
+                <AppTooltip content={e.label} followCursor wrap constrain>
+                  <span className="text-sm font-semibold text-gray-600 truncate">{e.label}</span>
+                </AppTooltip>
                 <div className="bg-gray-100/80 rounded-full h-3.5 min-w-0 relative overflow-hidden">
                   <div
                     className="rounded-full h-3.5 transition-all duration-300 ease-out absolute inset-y-0 left-0"
                     style={{ width: `${barWidthPct}%`, ...barFillStyle }}
                   />
                 </div>
-                <span className="text-xs font-semibold text-gray-900 whitespace-nowrap tabular-nums text-right min-w-[5.5rem]">
+                <span className="text-sm font-semibold text-gray-900 whitespace-nowrap tabular-nums text-right min-w-[5.5rem]">
                   {formatCurrency(e.value)} ({percentage.toFixed(0)}%)
                 </span>
               </div>
@@ -679,14 +686,16 @@ export function ChartWidget({ config }: ChartWidgetProps) {
               key={e.label}
               className="grid grid-cols-[7.5rem_minmax(0,1fr)_auto] gap-x-3 items-center shrink-0"
             >
-              <span className="text-xs text-gray-600 truncate">{e.label}</span>
+              <AppTooltip content={e.label} followCursor wrap constrain>
+                <span className="text-sm font-semibold text-gray-600 truncate">{e.label}</span>
+              </AppTooltip>
               <div className="bg-gray-100/80 rounded-full h-3.5 min-w-0 relative overflow-hidden">
                 <div
                   className="rounded-full h-3.5 transition-all duration-300 ease-out absolute inset-y-0 left-0"
                   style={{ width: `${barWidthPct}%`, ...barFillStyle }}
                 />
               </div>
-              <span className="text-xs font-semibold text-gray-900 whitespace-nowrap tabular-nums text-right min-w-[5.5rem]">
+              <span className="text-sm font-semibold text-gray-900 whitespace-nowrap tabular-nums text-right min-w-[5.5rem]">
                 {e.value} ({percentage.toFixed(0)}%)
               </span>
             </div>

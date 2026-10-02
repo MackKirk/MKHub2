@@ -33,11 +33,11 @@ export function CustomerOverviewPipelineFunnel({
             const pct = funnel[pctKey] as number | null;
             return (
               <div key={stage.key} className="space-y-1">
-                <div className="flex items-center justify-between text-xs gap-2">
-                  <span className="text-gray-600 font-medium">{stage.label}</span>
+                <div className="flex items-center justify-between text-sm gap-2">
+                  <span className="text-gray-600 font-semibold">{stage.label}</span>
                   <span className="font-semibold text-gray-900 tabular-nums shrink-0">
                     {displayMode === 'value' ? formatCurrency(value) : value}
-                    {pct != null ? <span className="text-gray-500 font-normal ml-1">({pct.toFixed(0)}%)</span> : null}
+                    {pct != null ? <span className="text-gray-600 font-normal ml-1">({pct.toFixed(0)}%)</span> : null}
                   </span>
                 </div>
                 <HorizontalBar value={value} max={max} color={stage.color} height={10} ariaLabel={stage.label} />

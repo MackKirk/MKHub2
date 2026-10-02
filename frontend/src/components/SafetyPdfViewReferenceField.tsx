@@ -9,7 +9,7 @@ import type { SafetyFormField } from '@/types/safetyFormTemplate';
 function PdfBadge({ className = '' }: { className?: string }) {
   return (
     <div
-      className={`w-8 h-10 rounded-lg bg-red-500 text-white flex items-center justify-center text-[10px] font-extrabold select-none flex-shrink-0 ${className}`}
+      className={`w-8 h-10 rounded-lg bg-red-500 text-white flex items-center justify-center text-xs font-extrabold select-none flex-shrink-0 ${className}`}
       aria-hidden
     >
       PDF
@@ -78,12 +78,12 @@ export default function SafetyPdfViewReferenceField({ field, rowBg, trailingSlot
       <div className="flex flex-wrap items-start gap-2 mb-2">
         <SafetyFieldQuestionLabel
           field={field}
-          className="text-sm font-medium text-gray-600 flex-1 min-w-0"
+          className="text-sm font-semibold text-gray-600 flex-1 min-w-0"
         />
         {trailingSlot ? <div className="shrink-0">{trailingSlot}</div> : null}
       </div>
       {attachments.length === 0 ? (
-        <p className="text-xs text-gray-500">No reference PDFs attached for this question.</p>
+        <p className="text-sm text-gray-600">No reference PDFs attached for this question.</p>
       ) : (
         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
           {attachments.map((a) => (
@@ -94,7 +94,7 @@ export default function SafetyPdfViewReferenceField({ field, rowBg, trailingSlot
               className="group rounded-xl border border-gray-200 bg-white px-2 py-3 pt-2 min-h-[100px] flex flex-col items-center gap-1.5 text-left hover:border-gray-300 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/25"
             >
               <PdfBadge />
-              <span className="text-[10px] text-gray-700 line-clamp-3 w-full text-center break-words">{a.originalName}</span>
+              <span className="text-xs text-gray-700 line-clamp-3 w-full text-center break-words">{a.originalName}</span>
               <span className="text-[9px] text-blue-600 group-hover:underline">View</span>
             </button>
           ))}

@@ -283,7 +283,7 @@ export default function FuelCardsList() {
                               className="min-h-[52px] cursor-pointer border-b border-gray-100 transition-colors last:border-b-0 hover:bg-gray-50"
                               onClick={() => nav(`/company-assets/fuel-cards/${row.id}`)}
                             >
-                              <td className="px-3 py-3 align-top font-mono text-xs tracking-wider text-gray-800">
+                              <td className="px-3 py-3 align-top font-mono text-sm tracking-wider text-gray-800">
                                 {row.card_number}
                               </td>
                               <td className={uiCx(uiTypography.body, 'px-3 py-3 align-top text-gray-700')}>

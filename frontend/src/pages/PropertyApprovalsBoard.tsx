@@ -65,10 +65,10 @@ function PermitCard({ permit, isDragging }: { permit: Permit; isDragging?: boole
 
   return (
     <AppCard className={uiCx('cursor-grab active:cursor-grabbing', isDragging && 'opacity-80 shadow-lg')} bodyClassName="!p-3">
-      <div className="text-sm font-medium text-gray-900">{title}</div>
+      <div className="text-sm font-semibold text-gray-900">{title}</div>
       <div className={uiCx(uiTypography.helper, 'mt-0.5')}>{permit.property_name}</div>
       {permit.compliance_label && (
-        <AppBadge variant={badgeVariant} className="mt-2 text-xs">
+        <AppBadge variant={badgeVariant} className="mt-2 text-sm">
           {permit.compliance_label}
         </AppBadge>
       )}

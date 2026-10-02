@@ -85,26 +85,26 @@ function DriversLicenseVisualCard({
       </div>
       <p className="pr-24 text-[8px] font-bold uppercase tracking-[0.18em] text-sky-200/95">Licence / Permis</p>
       <p className="mt-1.5 line-clamp-2 text-base font-bold leading-tight text-white">{displayName}</p>
-      <p className="mt-0.5 text-[10px] text-sky-100/90">
+      <p className="mt-0.5 text-xs text-sky-100/90">
         DOB <span className="font-bold text-white">{fmtLong(dateOfBirth)}</span>
       </p>
       <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 border-t border-white/15 pt-3">
         <div>
-          <p className="text-[9px] font-medium uppercase tracking-wide text-sky-300/90">No.</p>
+          <p className="text-[9px] font-semibold uppercase tracking-wide text-sky-300/90">No.</p>
           <p className="font-mono text-sm font-bold leading-tight text-white">{num || '—'}</p>
         </div>
         <div>
-          <p className="text-[9px] font-medium uppercase tracking-wide text-sky-300/90">Expires</p>
+          <p className="text-[9px] font-semibold uppercase tracking-wide text-sky-300/90">Expires</p>
           <p className={`text-sm font-bold leading-tight ${expired ? 'text-red-300' : 'text-white'}`}>
             {fmtLong(expiry)}
           </p>
         </div>
         <div className="min-w-0">
-          <p className="text-[9px] font-medium uppercase tracking-wide text-sky-300/90">Jurisdiction</p>
-          <p className="line-clamp-2 text-xs font-bold leading-snug text-white">{jurisdictionLabel(jur)}</p>
+          <p className="text-[9px] font-semibold uppercase tracking-wide text-sky-300/90">Jurisdiction</p>
+          <p className="line-clamp-2 text-sm font-bold leading-snug text-white">{jurisdictionLabel(jur)}</p>
         </div>
         <div>
-          <p className="text-[9px] font-medium uppercase tracking-wide text-sky-300/90">Class</p>
+          <p className="text-[9px] font-semibold uppercase tracking-wide text-sky-300/90">Class</p>
           <p className="text-sm font-bold text-white">{cls || '—'}</p>
         </div>
       </div>

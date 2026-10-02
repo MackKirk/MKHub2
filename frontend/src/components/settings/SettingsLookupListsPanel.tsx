@@ -115,7 +115,7 @@ function ColorSwatchInput({
         value={hex}
         onChange={(e) => onChange(e.target.value)}
       />
-      <span className={uiCx('font-mono text-xs', uiTypography.helper)}>{hex}</span>
+      <span className={uiCx('font-mono text-sm', uiTypography.helper)}>{hex}</span>
     </div>
   );
 }
@@ -713,7 +713,7 @@ export default function SettingsLookupListsPanel({ canEdit = true }: { canEdit?:
                                     aria-label="Label"
                                   />
                                   {dirty ? (
-                                    <div className="mt-1 text-[11px] font-medium text-amber-700">Unsaved changes</div>
+                                    <div className="mt-1 text-xs font-semibold text-amber-700">Unsaved changes</div>
                                   ) : null}
                                 </td>
                                 <td className="px-3 py-3">

@@ -74,14 +74,14 @@ function StoredFilePreviewCard({
         ) : (
           <div className={uiCx('flex h-32 flex-col items-center justify-center gap-2 px-3', uiTypography.helper)}>
             <Paperclip className="h-5 w-5 shrink-0 text-gray-400" aria-hidden />
-            <span className="font-medium text-gray-800">Document on file</span>
+            <span className="font-semibold text-gray-800">Document on file</span>
             <AppButton type="button" variant="secondary" size="sm" onClick={openPreview} disabled={disabled || !previewMeta?.previewUrl}>
               View
             </AppButton>
           </div>
         )}
         <div className={uiCx('flex items-center justify-between gap-2 border-t border-gray-100 bg-white', uiSpacing.compactCardPadding)}>
-          <span className={uiCx(uiTypography.helper, 'min-w-0 truncate font-medium text-gray-900')}>
+          <span className={uiCx(uiTypography.helper, 'min-w-0 truncate font-semibold text-gray-900')}>
             Immigration status document
           </span>
           {canEdit ? (
@@ -89,7 +89,7 @@ function StoredFilePreviewCard({
               type="button"
               onClick={onRemove}
               disabled={disabled}
-              className={uiCx(uiTypography.helper, 'shrink-0 font-medium text-brand-red hover:text-brand-red/80 disabled:opacity-50')}
+              className={uiCx(uiTypography.helper, 'shrink-0 font-semibold text-brand-red hover:text-brand-red/80 disabled:opacity-50')}
             >
               Remove
             </button>
@@ -280,7 +280,7 @@ export function UserImmigrationStatusDocumentSection({
         {permitFileId ? (
           <StoredFilePreviewCard fileId={permitFileId} canEdit={canEdit} onRemove={removeFile} disabled={uploading} />
         ) : !canEdit ? (
-          <div className={uiCx(uiTypography.helper, 'font-medium text-gray-900')}>—</div>
+          <div className={uiCx(uiTypography.helper, 'font-semibold text-gray-900')}>—</div>
         ) : null}
         {canEdit ? (
           <>

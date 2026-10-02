@@ -354,7 +354,7 @@ export function CreateDocumentWizardModal({
 
               >
 
-                <span className="absolute top-3 right-3 text-[10px] font-semibold uppercase tracking-wide text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
+                <span className="absolute top-3 right-3 text-xs font-semibold uppercase tracking-wide text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded">
 
                   Coming soon
 
@@ -362,9 +362,9 @@ export function CreateDocumentWizardModal({
 
                 <Icon className="h-5 w-5 mb-2 text-gray-400" />
 
-                <div className="font-semibold text-gray-500 mb-1">{card.title}</div>
+                <div className="font-semibold text-gray-600 mb-1">{card.title}</div>
 
-                <div className="text-sm text-gray-400">{card.description}</div>
+                <div className="text-sm text-gray-600">{card.description}</div>
 
               </div>
 

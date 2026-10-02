@@ -135,19 +135,19 @@ export default function Calendar() {
         <div className="flex items-center gap-1">
           <button
             onClick={goToPreviousMonth}
-            className="px-2.5 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 active:bg-gray-100 active:scale-[0.98] text-xs font-medium text-gray-600 transition-all duration-150"
+            className="px-2.5 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 active:bg-gray-100 active:scale-[0.98] text-xs font-semibold text-gray-600 transition-all duration-150"
           >
             ←
           </button>
           <button
             onClick={goToToday}
-            className="px-2.5 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 active:bg-gray-100 active:scale-[0.98] text-xs font-medium text-gray-600 transition-all duration-150"
+            className="px-2.5 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 active:bg-gray-100 active:scale-[0.98] text-xs font-semibold text-gray-600 transition-all duration-150"
           >
             Today
           </button>
           <button
             onClick={goToNextMonth}
-            className="px-2.5 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 active:bg-gray-100 active:scale-[0.98] text-xs font-medium text-gray-600 transition-all duration-150"
+            className="px-2.5 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 active:bg-gray-100 active:scale-[0.98] text-xs font-semibold text-gray-600 transition-all duration-150"
           >
             →
           </button>
@@ -198,7 +198,7 @@ export default function Calendar() {
       </div>
 
       {/* Legend */}
-      <div className="mt-4 flex items-center gap-4 text-[10px] text-gray-500 font-medium">
+      <div className="mt-4 flex items-center gap-4 text-[10px] text-gray-500 font-semibold">
         <div className="flex items-center gap-1.5">
           <div className="w-3 h-3 rounded border border-gray-200/80 bg-blue-50/60 relative">
             <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-1 h-1 rounded-full bg-blue-600"></div>
@@ -214,7 +214,7 @@ export default function Calendar() {
       {/* Friendly message when no shifts in current month */}
       {datesWithShifts.size === 0 && (
         <div className="mt-5 text-center py-5 text-gray-500 border-t border-gray-100/60">
-          <div className="text-sm font-medium mb-1">📅 No shifts scheduled this month</div>
+          <div className="text-sm font-semibold mb-1">📅 No shifts scheduled this month</div>
           <div className="text-xs text-gray-400">You're all set!</div>
         </div>
       )}

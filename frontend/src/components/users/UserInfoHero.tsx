@@ -106,7 +106,7 @@ function UserInfoHeroBody({
                   type="button"
                   onClick={() => photoInputRef.current?.click()}
                   disabled={photoUploading}
-                  className="absolute inset-0 flex items-center justify-center bg-black/40 text-xs font-medium text-white opacity-0 transition-opacity group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="absolute inset-0 flex items-center justify-center bg-black/40 text-sm font-semibold text-white opacity-0 transition-opacity group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {photoUploading ? 'Uploading…' : 'Change'}
                 </button>
@@ -127,7 +127,7 @@ function UserInfoHeroBody({
             <div className="mb-1">
               <h3 className="text-sm font-bold text-gray-900">{primaryTitle}</h3>
               {subtitleLine ? (
-                <p className="mt-0.5 text-xs font-medium text-gray-600">{subtitleLine}</p>
+                <p className="mt-0.5 text-sm font-semibold text-gray-600">{subtitleLine}</p>
               ) : null}
             </div>
 

@@ -233,7 +233,7 @@ export default function OrdersTab({ projectId, project, statusLabel }: { project
       delivered: { className: 'bg-green-100 text-green-800', text: 'Delivered' }
     };
     const badge = badges[status] || badges.draft;
-    return <span className={`px-2 py-1 rounded text-xs font-medium ${badge.className}`}>{badge.text}</span>;
+    return <span className={`px-2 py-1 rounded text-sm font-semibold ${badge.className}`}>{badge.text}</span>;
   };
 
   const renderOrderCard = (order: Order) => {
@@ -251,7 +251,7 @@ export default function OrdersTab({ projectId, project, statusLabel }: { project
               {getStatusBadge(order.status)}
             </div>
             {order.order_code && (
-              <div className="text-xs text-gray-500 mb-1">Code: {order.order_code}</div>
+              <div className="text-sm text-gray-600 mb-1">Code: {order.order_code}</div>
             )}
             <button
               onClick={() => setViewingItemsOrder(order)}
@@ -260,10 +260,10 @@ export default function OrdersTab({ projectId, project, statusLabel }: { project
               {order.items.length} item{order.items.length !== 1 ? 's' : ''} • Total: ${totalAmount.toFixed(2)}
             </button>
             {order.supplier_email && (
-              <div className="text-xs text-gray-500 truncate">{order.supplier_email}</div>
+              <div className="text-sm text-gray-600 truncate">{order.supplier_email}</div>
             )}
             {order.recipient_email && !order.supplier_email && (
-              <div className="text-xs text-gray-500 truncate">{order.recipient_email}</div>
+              <div className="text-sm text-gray-600 truncate">{order.recipient_email}</div>
             )}
           </div>
           {canEditOrders && (
@@ -388,7 +388,7 @@ export default function OrdersTab({ projectId, project, statusLabel }: { project
             {supplierOrders.map(renderOrderCard)}
           </div>
         ) : (
-          <div className="text-sm text-gray-500 py-4">No supplier orders yet</div>
+          <div className="text-sm text-gray-600 py-4">No supplier orders yet</div>
         )}
       </div>
 
@@ -400,7 +400,7 @@ export default function OrdersTab({ projectId, project, statusLabel }: { project
             {shopMiscOrders.map(renderOrderCard)}
           </div>
         ) : (
-          <div className="text-sm text-gray-500 py-4">No shop/misc orders yet</div>
+          <div className="text-sm text-gray-600 py-4">No shop/misc orders yet</div>
         )}
       </div>
 
@@ -412,7 +412,7 @@ export default function OrdersTab({ projectId, project, statusLabel }: { project
             {subcontractorOrders.map(renderOrderCard)}
           </div>
         ) : (
-          <div className="text-sm text-gray-500 py-4">No sub-contractor orders yet</div>
+          <div className="text-sm text-gray-600 py-4">No sub-contractor orders yet</div>
         )}
       </div>
 
@@ -432,10 +432,10 @@ export default function OrdersTab({ projectId, project, statusLabel }: { project
             </div>
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  To: {reviewingOrder.order_type === 'supplier' && <span className="text-xs text-gray-500">(auto-filled from supplier)</span>}
-                      {reviewingOrder.order_type === 'shop_misc' && <span className="text-xs text-gray-500">(enter email or select user)</span>}
-                      {reviewingOrder.order_type === 'subcontractor' && reviewingOrder.supplier_email ? <span className="text-xs text-gray-500">(auto-filled from supplier)</span> : <span className="text-xs text-gray-500">(enter email if no supplier)</span>}
+                <label className="block text-sm font-semibold text-gray-700 mb-1">
+                  To: {reviewingOrder.order_type === 'supplier' && <span className="text-sm text-gray-600">(auto-filled from supplier)</span>}
+                      {reviewingOrder.order_type === 'shop_misc' && <span className="text-sm text-gray-600">(enter email or select user)</span>}
+                      {reviewingOrder.order_type === 'subcontractor' && reviewingOrder.supplier_email ? <span className="text-sm text-gray-600">(auto-filled from supplier)</span> : <span className="text-sm text-gray-600">(enter email if no supplier)</span>}
                 </label>
                 <input
                   type="email"
@@ -448,7 +448,7 @@ export default function OrdersTab({ projectId, project, statusLabel }: { project
               </div>
               {reviewingOrder.order_type === 'shop_misc' && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Or Select Internal User:</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Or Select Internal User:</label>
                   <select
                     className="w-full border rounded px-3 py-2"
                     value={selectedUserId}
@@ -472,7 +472,7 @@ export default function OrdersTab({ projectId, project, statusLabel }: { project
                 </div>
               )}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">CC (optional):</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">CC (optional):</label>
                 <input
                   type="email"
                   className="w-full border rounded px-3 py-2"
@@ -482,7 +482,7 @@ export default function OrdersTab({ projectId, project, statusLabel }: { project
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Subject:</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Subject:</label>
                 <input
                   type="text"
                   className="w-full border rounded px-3 py-2"
@@ -491,7 +491,7 @@ export default function OrdersTab({ projectId, project, statusLabel }: { project
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email Body (editable):</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Email Body (editable):</label>
                 <textarea
                   rows={20}
                   className="w-full border rounded px-3 py-2 font-mono text-sm"
@@ -558,11 +558,11 @@ export default function OrdersTab({ projectId, project, statusLabel }: { project
                 <table className="w-full">
                   <thead className="bg-gray-50 border-b">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Item</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Quantity</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Unit</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Unit Price</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Total</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 uppercase">Item</th>
+                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700 uppercase">Quantity</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 uppercase">Unit</th>
+                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700 uppercase">Unit Price</th>
+                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700 uppercase">Total</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
@@ -573,11 +573,11 @@ export default function OrdersTab({ projectId, project, statusLabel }: { project
                       
                       return (
                         <tr key={item.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 text-sm font-medium text-gray-900">{item.name}</td>
+                          <td className="px-4 py-3 text-sm font-semibold text-gray-900">{item.name}</td>
                           <td className="px-4 py-3 text-sm text-gray-900 text-right">{formattedQuantity}</td>
                           <td className="px-4 py-3 text-sm text-gray-600">{item.unit || '-'}</td>
                           <td className="px-4 py-3 text-sm text-gray-900 text-right">${item.unit_price.toFixed(2)}</td>
-                          <td className="px-4 py-3 text-sm font-medium text-gray-900 text-right">${item.total_price.toFixed(2)}</td>
+                          <td className="px-4 py-3 text-sm font-semibold text-gray-900 text-right">${item.total_price.toFixed(2)}</td>
                         </tr>
                       );
                     })}
@@ -944,7 +944,7 @@ function AddExtraOrderWizard({
               {orderType === 'supplier' && (
                 <>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Supplier</label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Supplier</label>
                     <div className="flex items-center gap-2 mb-2">
                       <input
                         type="checkbox"
@@ -991,7 +991,7 @@ function AddExtraOrderWizard({
                   
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <label className="block text-sm font-medium text-gray-700">Items</label>
+                      <label className="block text-sm font-semibold text-gray-700">Items</label>
                       <button
                         type="button"
                         onClick={handleAddItem}
@@ -1004,12 +1004,12 @@ function AddExtraOrderWizard({
                       <table className="w-full text-sm">
                         <thead className="bg-gray-50 border-b">
                           <tr>
-                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-700">Product</th>
-                            <th className="px-3 py-2 text-right text-xs font-medium text-gray-700">Qty</th>
-                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-700">Unit</th>
-                            <th className="px-3 py-2 text-right text-xs font-medium text-gray-700">Unit Price</th>
-                            <th className="px-3 py-2 text-right text-xs font-medium text-gray-700">Total</th>
-                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-700">Notes</th>
+                            <th className="px-3 py-2 text-left text-sm font-semibold text-gray-700">Product</th>
+                            <th className="px-3 py-2 text-right text-sm font-semibold text-gray-700">Qty</th>
+                            <th className="px-3 py-2 text-left text-sm font-semibold text-gray-700">Unit</th>
+                            <th className="px-3 py-2 text-right text-sm font-semibold text-gray-700">Unit Price</th>
+                            <th className="px-3 py-2 text-right text-sm font-semibold text-gray-700">Total</th>
+                            <th className="px-3 py-2 text-left text-sm font-semibold text-gray-700">Notes</th>
                             <th className="px-3 py-2"></th>
                           </tr>
                         </thead>
@@ -1082,8 +1082,8 @@ function AddExtraOrderWizard({
                                             }}
                                             className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm border-b last:border-b-0"
                                           >
-                                            <div className="font-medium">{product.name}</div>
-                                            <div className="text-xs text-gray-500">
+                                            <div className="font-semibold">{product.name}</div>
+                                            <div className="text-sm text-gray-600">
                                               {product.supplier_name || ''} · {product.unit || ''} · ${Number(product.price || 0).toFixed(2)}
                                             </div>
                                           </button>
@@ -1094,7 +1094,7 @@ function AddExtraOrderWizard({
                                   <button
                                     type="button"
                                     onClick={() => setProductSearchModalOpen({ itemId: item.id })}
-                                    className="px-2 py-1 rounded text-gray-500 hover:text-blue-600"
+                                    className="px-2 py-1 rounded text-gray-600 hover:text-blue-600"
                                     title="Browse products"
                                   >
                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1135,7 +1135,7 @@ function AddExtraOrderWizard({
                                   required
                                 />
                               </td>
-                              <td className="px-3 py-2 text-right text-sm font-medium">
+                              <td className="px-3 py-2 text-right text-sm font-semibold">
                                 ${item.total_price.toFixed(2)}
                               </td>
                               <td className="px-3 py-2">
@@ -1171,7 +1171,7 @@ function AddExtraOrderWizard({
               {orderType === 'shop_misc' && (
                 <>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Recipient Email</label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Recipient Email</label>
                     <input
                       type="email"
                       placeholder="recipient@example.com"
@@ -1182,7 +1182,7 @@ function AddExtraOrderWizard({
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Or Select Internal User</label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Or Select Internal User</label>
                     <select
                       value={recipientUserId}
                       onChange={(e) => {
@@ -1207,7 +1207,7 @@ function AddExtraOrderWizard({
                   
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <label className="block text-sm font-medium text-gray-700">Items</label>
+                      <label className="block text-sm font-semibold text-gray-700">Items</label>
                       <button
                         type="button"
                         onClick={handleAddItem}
@@ -1220,12 +1220,12 @@ function AddExtraOrderWizard({
                       <table className="w-full text-sm">
                         <thead className="bg-gray-50 border-b">
                           <tr>
-                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-700">Description</th>
-                            <th className="px-3 py-2 text-right text-xs font-medium text-gray-700">Qty</th>
-                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-700">Unit</th>
-                            <th className="px-3 py-2 text-right text-xs font-medium text-gray-700">Unit Price</th>
-                            <th className="px-3 py-2 text-right text-xs font-medium text-gray-700">Total</th>
-                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-700">Notes</th>
+                            <th className="px-3 py-2 text-left text-sm font-semibold text-gray-700">Description</th>
+                            <th className="px-3 py-2 text-right text-sm font-semibold text-gray-700">Qty</th>
+                            <th className="px-3 py-2 text-left text-sm font-semibold text-gray-700">Unit</th>
+                            <th className="px-3 py-2 text-right text-sm font-semibold text-gray-700">Unit Price</th>
+                            <th className="px-3 py-2 text-right text-sm font-semibold text-gray-700">Total</th>
+                            <th className="px-3 py-2 text-left text-sm font-semibold text-gray-700">Notes</th>
                             <th className="px-3 py-2"></th>
                           </tr>
                         </thead>
@@ -1273,7 +1273,7 @@ function AddExtraOrderWizard({
                                   required
                                 />
                               </td>
-                              <td className="px-3 py-2 text-right text-sm font-medium">
+                              <td className="px-3 py-2 text-right text-sm font-semibold">
                                 ${item.total_price.toFixed(2)}
                               </td>
                               <td className="px-3 py-2">
@@ -1309,7 +1309,7 @@ function AddExtraOrderWizard({
               {orderType === 'subcontractor' && (
                 <>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Recipient Email</label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Recipient Email</label>
                     <input
                       type="email"
                       placeholder="recipient@example.com"
@@ -1320,7 +1320,7 @@ function AddExtraOrderWizard({
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Or Select Internal User</label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Or Select Internal User</label>
                     <select
                       value={recipientUserId}
                       onChange={(e) => {
@@ -1345,7 +1345,7 @@ function AddExtraOrderWizard({
                   
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <label className="block text-sm font-medium text-gray-700">Items</label>
+                      <label className="block text-sm font-semibold text-gray-700">Items</label>
                       <button
                         type="button"
                         onClick={handleAddItem}
@@ -1358,12 +1358,12 @@ function AddExtraOrderWizard({
                       <table className="w-full text-sm">
                         <thead className="bg-gray-50 border-b">
                           <tr>
-                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-700">Description</th>
-                            <th className="px-3 py-2 text-right text-xs font-medium text-gray-700">Qty</th>
-                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-700">Unit</th>
-                            <th className="px-3 py-2 text-right text-xs font-medium text-gray-700">Unit Price</th>
-                            <th className="px-3 py-2 text-right text-xs font-medium text-gray-700">Total</th>
-                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-700">Notes</th>
+                            <th className="px-3 py-2 text-left text-sm font-semibold text-gray-700">Description</th>
+                            <th className="px-3 py-2 text-right text-sm font-semibold text-gray-700">Qty</th>
+                            <th className="px-3 py-2 text-left text-sm font-semibold text-gray-700">Unit</th>
+                            <th className="px-3 py-2 text-right text-sm font-semibold text-gray-700">Unit Price</th>
+                            <th className="px-3 py-2 text-right text-sm font-semibold text-gray-700">Total</th>
+                            <th className="px-3 py-2 text-left text-sm font-semibold text-gray-700">Notes</th>
                             <th className="px-3 py-2"></th>
                           </tr>
                         </thead>
@@ -1411,7 +1411,7 @@ function AddExtraOrderWizard({
                                   required
                                 />
                               </td>
-                              <td className="px-3 py-2 text-right text-sm font-medium">
+                              <td className="px-3 py-2 text-right text-sm font-semibold">
                                 ${item.total_price.toFixed(2)}
                               </td>
                               <td className="px-3 py-2">
@@ -1550,15 +1550,15 @@ function AddProductModalForOrder({
         </div>
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
           <div className="flex-1">
-            <label className="text-xs text-gray-600">Search Product:</label>
+            <label className="text-sm text-gray-600">Search Product:</label>
             <input className="w-full border rounded px-3 py-2" placeholder="Type product name..." value={q} onChange={e => setQ(e.target.value)} />
           </div>
           {q.trim() && list.length > 0 && (
             <div className="max-h-64 overflow-auto rounded border divide-y">
               {list.map(p => (
                 <button key={p.id} onClick={() => setSelection(p)} className={`w-full text-left px-3 py-2 bg-white hover:bg-gray-50 ${selection?.id === p.id ? 'ring-2 ring-brand-red' : ''}`}>
-                  <div className="font-medium">{p.name}</div>
-                  <div className="text-xs text-gray-500">{p.supplier_name || ''} · {p.unit || ''} · ${Number(p.price || 0).toFixed(2)}</div>
+                  <div className="font-semibold">{p.name}</div>
+                  <div className="text-sm text-gray-600">{p.supplier_name || ''} · {p.unit || ''} · ${Number(p.price || 0).toFixed(2)}</div>
                 </button>
               ))}
               {hasMore && (
@@ -1594,7 +1594,7 @@ function AddProductModalForOrder({
                   />
                 </div>
                 <div className="flex-1 space-y-2">
-                  <div className="font-medium">{selection.name}</div>
+                  <div className="font-semibold">{selection.name}</div>
                   <div className="text-sm text-gray-600">Supplier: {selection.supplier_name || 'N/A'}</div>
                   <div className="text-sm text-gray-600">Unit: {selection.unit || '-'} · Price: ${Number(selection.price || 0).toFixed(2)}</div>
                 </div>
@@ -1742,7 +1742,7 @@ function SupplierProductModalForOrder({
           {/* Right: Products Grid */}
           <div className={`flex-1 overflow-y-auto p-4`}>
             {!activeSupplierName ? (
-              <div className="flex items-center justify-center h-full text-gray-500">
+              <div className="flex items-center justify-center h-full text-gray-600">
                 {supplierId ? 'Loading products...' : 'Select a supplier to view products'}
               </div>
             ) : (
@@ -1778,15 +1778,15 @@ function SupplierProductModalForOrder({
                               style={{ display: product.image_base64 ? 'none' : 'block' }}
                             />
                           </div>
-                          <div className="font-medium text-sm mb-1 line-clamp-2">{product.name}</div>
+                          <div className="font-semibold text-sm mb-1 line-clamp-2">{product.name}</div>
                           {product.category && (
-                            <div className="text-xs text-gray-500 mb-1">{product.category}</div>
+                            <div className="text-sm text-gray-600 mb-1">{product.category}</div>
                           )}
-                          <div className="text-xs text-red-600 font-semibold mt-auto">
+                          <div className="text-sm text-red-600 font-semibold mt-auto">
                             ${Number(product.price || 0).toFixed(2)}
                           </div>
                           {product.unit && (
-                            <div className="text-xs text-gray-500">Unit: {product.unit}</div>
+                            <div className="text-sm text-gray-600">Unit: {product.unit}</div>
                           )}
                         </button>
                       ))}
@@ -1800,7 +1800,7 @@ function SupplierProductModalForOrder({
                     )}
                   </>
                 ) : (
-                  <div className="flex items-center justify-center h-64 text-gray-500">
+                  <div className="flex items-center justify-center h-64 text-gray-600">
                     No products found for this supplier
                   </div>
                 )}

@@ -125,16 +125,16 @@ export function FleetAssignmentPhotosPicker({
             void addImageFiles(e.target.files);
           }}
         />
-        <p className="mb-2 text-xs text-gray-600">Drag and drop images here, paste (Ctrl+V), or upload</p>
+        <p className="mb-2 text-sm text-gray-600">Drag and drop images here, paste (Ctrl+V), or upload</p>
         <button
           type="button"
           disabled={disabled}
           onClick={() => fileInputRef.current?.click()}
-          className="text-sm font-medium text-brand-red hover:underline disabled:opacity-50 disabled:no-underline"
+          className="text-sm font-semibold text-brand-red hover:underline disabled:opacity-50 disabled:no-underline"
         >
           Choose images
         </button>
-        <p className="mt-1.5 text-xs text-gray-500">Multiple images supported</p>
+        <p className="mt-1.5 text-sm text-gray-600">Multiple images supported</p>
       </div>
       {photoIds.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-2">
@@ -148,7 +148,7 @@ export function FleetAssignmentPhotosPicker({
               {!disabled && (
                 <button
                   type="button"
-                  className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-xs leading-5 text-white hover:bg-black/80"
+                  className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-sm leading-5 text-white hover:bg-black/80"
                   onClick={() => removePhoto(id)}
                   aria-label="Remove image"
                 >

@@ -74,7 +74,7 @@ export function CustomerOverviewPortfolioMix({
       title="Portfolio mix"
       subtitle={view === 'status' ? 'Projects by status' : 'Projects by division'}
       actions={
-        <div className="inline-flex rounded-lg border border-gray-200 p-0.5 text-xs">
+        <div className="inline-flex rounded-lg border border-gray-200 p-0.5 text-sm">
           <button
             type="button"
             onClick={() => setView('status')}
@@ -105,7 +105,7 @@ export function CustomerOverviewPortfolioMix({
               displayMode === 'value' ? `${formatCurrency(v)} (${pct.toFixed(0)}%)` : `${v} (${pct.toFixed(0)}%)`
             }
           />
-          <ul className="flex-1 space-y-2 text-xs min-w-0 w-full">
+          <ul className="flex-1 space-y-2 text-sm min-w-0 w-full">
             {slices.map((s) => (
               <li key={s.id} className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: s.color }} />

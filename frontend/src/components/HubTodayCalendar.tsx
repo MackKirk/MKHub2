@@ -235,7 +235,7 @@ export default function HubTodayCalendar() {
           open && 'bg-white/10',
         )}
       >
-        <div className="text-[10px] font-medium uppercase tracking-wide text-white/55">Today</div>
+        <div className="text-[10px] font-semibold uppercase tracking-wide text-white/55">Today</div>
         <div className="mt-0.5 text-xs font-semibold text-white/90 whitespace-nowrap">{todayLabel}</div>
       </button>
       {typeof document !== 'undefined' && panel ? createPortal(panel, document.body) : null}

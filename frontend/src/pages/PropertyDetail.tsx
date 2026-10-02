@@ -765,7 +765,7 @@ export default function PropertyDetail() {
   };
 
   if (isLoading || !property) {
-    return <div className="p-6 text-gray-500">Loading property…</div>;
+    return <div className="p-6 text-gray-600">Loading property…</div>;
   }
 
   return (
@@ -818,9 +818,9 @@ export default function PropertyDetail() {
                     <div className={uiTypography.helper}>Ends {fmtDate(activeLease.end_date)}</div>
                   ) : null}
                   {activeLease.base_rent != null ? (
-                    <div className="text-sm font-medium text-gray-900">
+                    <div className="text-sm font-semibold text-gray-900">
                       {activeLease.currency || 'CAD'} {activeLease.base_rent}
-                      <span className="font-normal text-gray-500">/{activeLease.rent_frequency || 'period'}</span>
+                      <span className="font-normal text-gray-600">/{activeLease.rent_frequency || 'period'}</span>
                     </div>
                   ) : null}
                 </div>
@@ -919,18 +919,18 @@ export default function PropertyDetail() {
                     <ul className="space-y-2 text-sm">
                       {property.owners.map((o) => (
                         <li key={o.entity_id} className="flex items-start justify-between gap-3">
-                          <span className="font-medium text-gray-900">
+                          <span className="font-semibold text-gray-900">
                             {o.entity_display_name || o.entity_legal_name}
                           </span>
                           {o.ownership_percentage != null ? (
-                            <span className="shrink-0 text-gray-500">{o.ownership_percentage}%</span>
+                            <span className="shrink-0 text-gray-600">{o.ownership_percentage}%</span>
                           ) : null}
                         </li>
                       ))}
                     </ul>
                   )}
                   {property.ownership_percentage_total != null && property.ownership_percentage_total !== 100 && (
-                    <p className="mt-2 text-xs text-amber-600">Total: {property.ownership_percentage_total}%</p>
+                    <p className="mt-2 text-sm text-amber-600">Total: {property.ownership_percentage_total}%</p>
                   )}
                 </div>
               </AppCard>
@@ -1007,13 +1007,13 @@ export default function PropertyDetail() {
                       className="px-4 py-3"
                     >
                       <span className="text-sm font-semibold capitalize text-gray-900">{l.role}</span>
-                      <span className="truncate text-xs text-gray-700">{l.counterparty_name || '—'}</span>
-                      <span className="truncate text-xs text-gray-700">
+                      <span className="truncate text-sm text-gray-700">{l.counterparty_name || '—'}</span>
+                      <span className="truncate text-sm text-gray-700">
                         {l.base_rent != null
                           ? `${l.currency || 'CAD'} ${l.base_rent}${l.rent_frequency ? ` / ${l.rent_frequency}` : ''}`
                           : '—'}
                       </span>
-                      <div className="min-w-0 text-xs text-gray-600">
+                      <div className="min-w-0 text-sm text-gray-600">
                         <div className="truncate">
                           {l.start_date ? fmtDate(l.start_date) : '—'}
                           {' → '}
@@ -1115,14 +1115,14 @@ export default function PropertyDetail() {
                           <div className={uiCx(uiTypography.helper, 'truncate')}>Broker {p.broker}</div>
                         ) : null}
                       </div>
-                      <span className="truncate text-xs text-gray-700">{p.policy_number || '—'}</span>
-                      <span className="truncate text-xs capitalize text-gray-700">
+                      <span className="truncate text-sm text-gray-700">{p.policy_number || '—'}</span>
+                      <span className="truncate text-sm capitalize text-gray-700">
                         {p.policy_type ? p.policy_type.replace(/_/g, ' ') : '—'}
                       </span>
-                      <span className="truncate text-xs text-gray-700">
+                      <span className="truncate text-sm text-gray-700">
                         {p.expiry_date ? fmtDate(p.expiry_date) : '—'}
                       </span>
-                      <span className="truncate text-xs text-gray-700">
+                      <span className="truncate text-sm text-gray-700">
                         {p.annual_premium != null ? `$${p.annual_premium}` : '—'}
                       </span>
                       <div className="flex w-20 shrink-0 items-center justify-end gap-1.5">
@@ -1204,14 +1204,14 @@ export default function PropertyDetail() {
                       className="px-4 py-3"
                     >
                       <span className="text-sm font-semibold text-gray-900">{t.tax_year}</span>
-                      <span className="truncate text-xs text-gray-700">{t.jurisdiction || '—'}</span>
-                      <span className="truncate text-xs text-gray-700">
+                      <span className="truncate text-sm text-gray-700">{t.jurisdiction || '—'}</span>
+                      <span className="truncate text-sm text-gray-700">
                         {t.assessed_value != null ? `$${t.assessed_value}` : '—'}
                       </span>
-                      <span className="truncate text-xs text-gray-700">
+                      <span className="truncate text-sm text-gray-700">
                         {t.tax_amount != null ? `$${t.tax_amount}` : '—'}
                       </span>
-                      <span className="truncate text-xs text-gray-700">
+                      <span className="truncate text-sm text-gray-700">
                         {t.due_date ? fmtDate(t.due_date) : '—'}
                       </span>
                       <AppBadge
@@ -1324,13 +1324,13 @@ export default function PropertyDetail() {
                           </div>
                         ) : null}
                       </div>
-                      <span className="truncate text-xs capitalize text-gray-700">
+                      <span className="truncate text-sm capitalize text-gray-700">
                         {p.permit_type ? p.permit_type.replace(/_/g, ' ') : '—'}
                       </span>
-                      <span className="truncate text-xs text-gray-700">{p.permit_number || '—'}</span>
-                      <span className="truncate text-xs text-gray-700">{p.authority || '—'}</span>
+                      <span className="truncate text-sm text-gray-700">{p.permit_number || '—'}</span>
+                      <span className="truncate text-sm text-gray-700">{p.authority || '—'}</span>
                       <AppBadge variant="neutral">{p.stage.replace(/_/g, ' ')}</AppBadge>
-                      <span className="truncate text-xs text-gray-700">
+                      <span className="truncate text-sm text-gray-700">
                         {p.expiry_date ? fmtDate(p.expiry_date) : '—'}
                       </span>
                       <div className="flex w-20 shrink-0 items-center justify-end gap-1.5">
@@ -1413,7 +1413,7 @@ export default function PropertyDetail() {
                         {p.role.replace(/_/g, ' ')}
                       </span>
                       <div className="min-w-0">
-                        <div className="truncate text-xs font-medium text-gray-900">
+                        <div className="truncate text-sm font-semibold text-gray-900">
                           {p.contact_name || p.user_display_name || '—'}
                         </div>
                         {p.contact_name && p.user_display_name ? (
@@ -1422,8 +1422,8 @@ export default function PropertyDetail() {
                           <div className={uiCx(uiTypography.helper, 'truncate')}>{p.contact_email}</div>
                         ) : null}
                       </div>
-                      <span className="truncate text-xs text-gray-700">{p.contact_company || '—'}</span>
-                      <span className="truncate text-xs text-gray-700">{p.contact_phone || '—'}</span>
+                      <span className="truncate text-sm text-gray-700">{p.contact_company || '—'}</span>
+                      <span className="truncate text-sm text-gray-700">{p.contact_phone || '—'}</span>
                       <div className="flex w-20 shrink-0 items-center justify-end gap-1.5">
                         {canEdit ? (
                           <>
@@ -1511,13 +1511,13 @@ export default function PropertyDetail() {
                           </div>
                         ) : null}
                       </div>
-                      <span className="truncate text-xs capitalize text-gray-700">
+                      <span className="truncate text-sm capitalize text-gray-700">
                         {m.item_type ? m.item_type.replace(/_/g, ' ') : '—'}
                       </span>
-                      <span className="truncate text-xs capitalize text-gray-700">
+                      <span className="truncate text-sm capitalize text-gray-700">
                         {m.frequency || '—'}
                       </span>
-                      <span className="truncate text-xs text-gray-700">
+                      <span className="truncate text-sm text-gray-700">
                         {m.next_due_date ? fmtDate(m.next_due_date) : '—'}
                       </span>
                       <AppBadge
@@ -2146,7 +2146,7 @@ export default function PropertyDetail() {
           <div className="border-t pt-4">
             <div className="flex items-center justify-between gap-2">
               <div className={uiTypography.sectionTitle}>Owners</div>
-              <Link to="/settings?section=property-owners" className="text-xs text-brand-red hover:underline">
+              <Link to="/settings?section=property-owners" className="text-sm text-brand-red hover:underline">
                 Manage owners in Settings
               </Link>
             </div>

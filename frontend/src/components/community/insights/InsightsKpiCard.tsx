@@ -138,7 +138,7 @@ export function InsightsKpiCard({
               ? <CountUpInt value={value} />
               : value.toLocaleString(undefined, { maximumFractionDigits: 1 })}
         </span>
-        {unit ? <span className="shrink-0 text-sm font-medium text-gray-500">{unit}</span> : null}
+        {unit ? <span className="shrink-0 text-sm font-semibold text-gray-600">{unit}</span> : null}
       </div>
       <div className="flex min-h-[32px] w-full min-w-0 flex-1 items-end">
         {sparkline ? (

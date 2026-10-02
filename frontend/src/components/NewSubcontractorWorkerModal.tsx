@@ -174,14 +174,14 @@ export default function NewSubcontractorWorkerModal({
 
   const stepPillClass = (n: number) =>
     uiCx(
-      'rounded-full px-2 py-1 text-[10px] font-medium',
+      'rounded-full px-2 py-1 text-xs font-semibold',
       step === n ? 'bg-gray-900 text-white' : 'bg-gray-200 text-gray-600',
     );
 
   const stepIndicators = (
-    <div className={uiCx(uiLayout.actionsRow, uiTypography.helper, 'text-[10px] font-medium')}>
+    <div className={uiCx(uiLayout.actionsRow, uiTypography.helper, 'text-xs font-semibold')}>
       <span className={stepPillClass(1)}>Step 1</span>
-      <span className="text-gray-400">→</span>
+      <span className="text-gray-600">→</span>
       <span className={stepPillClass(2)}>Step 2</span>
     </div>
   );

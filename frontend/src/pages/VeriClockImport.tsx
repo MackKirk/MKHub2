@@ -444,8 +444,8 @@ export default function VeriClockImport() {
             <Stat label="Hub used twice" value={duplicateGroups.length} warn={duplicateGroups.length > 0} />
           </div>
           {plan.unmatched_jobs.length > 0 ? (
-            <div className="mt-4 space-y-1 text-xs text-gray-600">
-              <p className="font-medium text-gray-800">Jobs not found in Hub</p>
+            <div className="mt-4 space-y-1 text-sm text-gray-600">
+              <p className="font-semibold text-gray-800">Jobs not found in Hub</p>
               {plan.unmatched_jobs.slice(0, 12).map((job) => (
                 <p key={job.label}>
                   {job.label} · {job.count}
@@ -490,7 +490,7 @@ export default function VeriClockImport() {
                     onPatch={patchPerson}
                   />
                 ))}
-                {visible.length === 0 ? <p className="text-sm text-gray-500">Nothing in this filter.</p> : null}
+                {visible.length === 0 ? <p className="text-sm text-gray-600">Nothing in this filter.</p> : null}
               </div>
             </>
           ) : null}
@@ -515,8 +515,8 @@ export default function VeriClockImport() {
                   {unlinkedHub.map((user) => (
                     <div key={user.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5">
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-gray-900">{getUserDisplayName(user)}</p>
-                        <p className="text-xs text-gray-500">
+                        <p className="text-sm font-semibold text-gray-900">{getUserDisplayName(user)}</p>
+                        <p className="text-sm text-gray-600">
                           {user.username || user.id}
                           {user.department ? ` · ${user.department}` : ''}
                         </p>
@@ -582,7 +582,7 @@ export default function VeriClockImport() {
             {visibleJobs.map((row) => (
               <JobMatchRow key={row.vericlock_job_code} row={row} onPatch={patchJob} />
             ))}
-            {visibleJobs.length === 0 ? <p className="text-sm text-gray-500">Nothing in this filter.</p> : null}
+            {visibleJobs.length === 0 ? <p className="text-sm text-gray-600">Nothing in this filter.</p> : null}
           </div>
         </AppCard>
       ) : null}
@@ -606,11 +606,11 @@ function PersonMatchRow({
     <div className="grid gap-3 rounded-xl border border-gray-200 bg-white p-3 md:grid-cols-[minmax(0,1.2fr)_minmax(0,1.4fr)_auto]">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
-          <p className="text-sm font-medium text-gray-900">{row.vericlock_name}</p>
+          <p className="text-sm font-semibold text-gray-900">{row.vericlock_name}</p>
           <AppBadge variant={badge.variant}>{badge.label}</AppBadge>
           {duplicate ? <AppBadge variant="warning">Hub used twice</AppBadge> : null}
         </div>
-        <p className="mt-1 text-xs text-gray-500">
+        <p className="mt-1 text-sm text-gray-600">
           ID {row.vericlock_employee_id}
           {row.group ? ` · ${row.group}` : ''}
           {` · ${row.row_count} row${row.row_count === 1 ? '' : 's'}`}
@@ -660,10 +660,10 @@ function JobMatchRow({
     <div className="grid gap-3 rounded-xl border border-gray-200 bg-white p-3 md:grid-cols-[minmax(0,1.2fr)_minmax(0,1.4fr)_auto]">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
-          <p className="text-sm font-medium text-gray-900">{row.vericlock_label}</p>
+          <p className="text-sm font-semibold text-gray-900">{row.vericlock_label}</p>
           <AppBadge variant={badge.variant}>{badge.label}</AppBadge>
         </div>
-        <p className="mt-1 text-xs text-gray-500">
+        <p className="mt-1 text-sm text-gray-600">
           Code {row.vericlock_job_code}
           {` · ${row.row_count} row${row.row_count === 1 ? '' : 's'}`}
         </p>
@@ -720,7 +720,7 @@ function JobMatchRow({
 function Stat({ label, value, warn }: { label: string; value: number; warn?: boolean }) {
   return (
     <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
-      <p className="text-[11px] uppercase tracking-wide text-gray-500">{label}</p>
+      <p className="text-xs uppercase tracking-wide text-gray-600">{label}</p>
       <p className={uiCx('text-lg font-semibold', warn ? 'text-amber-800' : 'text-gray-900')}>{value}</p>
     </div>
   );

@@ -185,7 +185,7 @@ export default function PersonalSignaturesPage() {
           <span className="inline-flex flex-wrap items-center gap-2">
             <span>Signatures</span>
             {pendingCount > 0 ? (
-              <span className="inline-flex rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-800">
+              <span className="inline-flex rounded-full bg-blue-100 px-2.5 py-0.5 text-sm font-semibold text-blue-800">
                 {pendingCount} pending
               </span>
             ) : null}
@@ -201,7 +201,7 @@ export default function PersonalSignaturesPage() {
             type="button"
             onClick={() => setActiveTab('pending')}
             className={uiCx(
-              'inline-flex items-center gap-2 border-b-2 px-1 pb-3 text-sm font-medium transition-colors',
+              'inline-flex items-center gap-2 border-b-2 px-1 pb-3 text-sm font-semibold transition-colors',
               activeTab === 'pending'
                 ? 'border-brand-red text-brand-red'
                 : 'border-transparent text-gray-600 hover:text-gray-900',
@@ -223,7 +223,7 @@ export default function PersonalSignaturesPage() {
             type="button"
             onClick={() => setActiveTab('completed')}
             className={uiCx(
-              'inline-flex items-center gap-2 border-b-2 px-1 pb-3 text-sm font-medium transition-colors',
+              'inline-flex items-center gap-2 border-b-2 px-1 pb-3 text-sm font-semibold transition-colors',
               activeTab === 'completed'
                 ? 'border-brand-red text-brand-red'
                 : 'border-transparent text-gray-600 hover:text-gray-900',
@@ -251,7 +251,7 @@ export default function PersonalSignaturesPage() {
               <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" aria-hidden />
               <div>
                 <h2 className="text-base font-semibold text-gray-900">Action required</h2>
-                <p className="text-sm text-gray-500">Documents that need your signature now.</p>
+                <p className="text-sm text-gray-600">Documents that need your signature now.</p>
               </div>
             </div>
             {isLoading ? (
@@ -272,7 +272,7 @@ export default function PersonalSignaturesPage() {
                 <Clock className="mt-0.5 h-5 w-5 shrink-0 text-gray-500" aria-hidden />
                 <div>
                   <h2 className="text-base font-semibold text-gray-900">Waiting for others</h2>
-                  <p className="text-sm text-gray-500">You will be notified when it is your turn.</p>
+                  <p className="text-sm text-gray-600">You will be notified when it is your turn.</p>
                 </div>
               </div>
               <div className="space-y-3">{waiting.map((item) => renderCard(item))}</div>

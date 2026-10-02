@@ -170,7 +170,7 @@ function TrainingDetailField({ label, children }: { label: string; children: Rea
       )}
     >
       <dt className={uiTypography.helper}>{label}</dt>
-      <dd className={uiCx(uiTypography.body, 'min-w-0 break-words font-medium text-gray-900')}>{children}</dd>
+      <dd className={uiCx(uiTypography.body, 'min-w-0 break-words font-semibold text-gray-900')}>{children}</dd>
     </div>
   );
 }
@@ -832,7 +832,7 @@ export function EmployeeTrainingSection(
           description={
             <>
               Shortcuts to add a linked record for a checklist slot. After you save, it appears in{' '}
-              <span className="font-medium text-gray-700">{trainingTitle}</span> above and leaves this list.
+              <span className="font-semibold text-gray-700">{trainingTitle}</span> above and leaves this list.
             </>
           }
           {...appSectionPresetProps('workload')}
@@ -875,7 +875,7 @@ export function EmployeeTrainingSection(
               )}
             >
               Not yet linked in {trainingTitle}:{' '}
-              <span className="font-medium text-gray-800">{matrixShortcutItems.map((r) => r.label).join(', ')}</span>
+              <span className="font-semibold text-gray-800">{matrixShortcutItems.map((r) => r.label).join(', ')}</span>
             </p>
           )}
         </div>

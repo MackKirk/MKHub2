@@ -65,7 +65,7 @@ function KpiCard({ label, value, hint }: { label: string; value: string; hint?: 
     <div className="min-w-0 rounded-lg border border-gray-100 bg-white px-3 py-2.5">
       <div className={uiTypography.helper}>{label}</div>
       <div className="mt-0.5 truncate text-lg font-semibold text-gray-900">{value}</div>
-      {hint ? <div className="mt-0.5 text-[10px] text-gray-500">{hint}</div> : null}
+      {hint ? <div className="mt-0.5 text-xs text-gray-600">{hint}</div> : null}
     </div>
   );
 }
@@ -77,7 +77,7 @@ function SimpleDonut({
 }) {
   const total = slices.reduce((s, x) => s + x.value, 0);
   if (total <= 0) {
-    return <div className="flex h-40 items-center justify-center text-sm text-gray-500">No data</div>;
+    return <div className="flex h-40 items-center justify-center text-sm text-gray-600">No data</div>;
   }
   const r = 42;
   const cx = 60;
@@ -117,11 +117,11 @@ function SimpleDonut({
       </svg>
       <ul className="min-w-0 space-y-1.5">
         {slices.map((s) => (
-          <li key={s.label} className="flex items-center gap-2 text-xs text-gray-700">
+          <li key={s.label} className="flex items-center gap-2 text-sm text-gray-700">
             <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: s.color }} />
             <span className="min-w-0 flex-1 truncate">{s.label}</span>
             <span className="font-semibold">{s.value}</span>
-            <span className="text-gray-400">{Math.round((s.value / total) * 100)}%</span>
+            <span className="text-gray-600">{Math.round((s.value / total) * 100)}%</span>
           </li>
         ))}
       </ul>
@@ -136,13 +136,13 @@ function SimpleBars({
 }) {
   const max = Math.max(...rows.map((r) => r.value), 1);
   if (!rows.length) {
-    return <div className="flex h-40 items-center justify-center text-sm text-gray-500">No data</div>;
+    return <div className="flex h-40 items-center justify-center text-sm text-gray-600">No data</div>;
   }
   return (
     <div className="space-y-2">
       {rows.slice(0, 8).map((row) => (
         <div key={row.label} className="min-w-0">
-          <div className="mb-0.5 flex items-baseline justify-between gap-2 text-xs">
+          <div className="mb-0.5 flex items-baseline justify-between gap-2 text-sm">
             <span className="truncate text-gray-700">{row.label}</span>
             <span className="shrink-0 font-semibold text-gray-900">{row.value}</span>
           </div>
@@ -169,7 +169,7 @@ function WinRateLine({
   const points = months.filter((m) => m.win_rate != null);
   if (points.length < 2) {
     return (
-      <div className="flex h-40 items-center justify-center text-sm text-gray-500">
+      <div className="flex h-40 items-center justify-center text-sm text-gray-600">
         Need more decided outcomes for a trend
       </div>
     );

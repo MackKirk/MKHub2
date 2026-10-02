@@ -22,7 +22,7 @@ export default function LoginAppDownloadHint() {
   return (
     <div className="mt-5 rounded-xl border border-brand-red/20 bg-brand-red/[0.04] p-3 text-center">
       <p className="text-sm font-semibold text-gray-900">Using a phone?</p>
-      <p className="mt-1 text-xs text-gray-600">
+      <p className="mt-1 text-sm text-gray-600">
         For the best experience, use the MK Hub mobile app.
       </p>
       <a

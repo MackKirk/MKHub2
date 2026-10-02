@@ -172,7 +172,7 @@ export function FleetAssetInspectionsTab({
                     >
                       <time
                         dateTime={inspection.inspection_date}
-                        className={uiCx(uiTypography.body, 'whitespace-nowrap font-medium tabular-nums text-gray-900')}
+                        className={uiCx(uiTypography.body, 'whitespace-nowrap font-semibold tabular-nums text-gray-900')}
                       >
                         {formatDateLocal(new Date(inspection.inspection_date))}
                       </time>

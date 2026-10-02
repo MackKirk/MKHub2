@@ -59,7 +59,7 @@ export function DocumentCreatorModal({
             closeSlotBelow={compressButton}
           />
         ) : (
-          <div className="flex items-center justify-center p-8 text-gray-500">
+          <div className="flex items-center justify-center p-8 text-gray-600">
             Loading...
           </div>
         )}

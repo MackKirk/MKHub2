@@ -34,7 +34,7 @@ function PageShell({ children }: { children: React.ReactNode }) {
             </div>
             <div className="hidden sm:block h-10 w-px bg-gray-200 shrink-0" aria-hidden />
             <div className="min-w-0">
-              <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">MK Hub · HR</p>
+              <p className="text-sm font-semibold text-gray-600 uppercase tracking-wider">MK Hub · HR</p>
               <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate">Documents to sign</h1>
             </div>
           </div>
@@ -42,7 +42,7 @@ function PageShell({ children }: { children: React.ReactNode }) {
             <button
               type="button"
               onClick={() => navigate('/profile')}
-              className="px-3 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+              className="px-3 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
             >
               Profile
             </button>
@@ -53,10 +53,10 @@ function PageShell({ children }: { children: React.ReactNode }) {
               }}
               disabled={!canLeaveToHome}
               title={canLeaveToHome ? undefined : 'Complete overdue Hub-blocking signatures before returning to the Hub'}
-              className={`px-3 py-2 text-xs font-medium rounded-lg shadow-sm ${
+              className={`px-3 py-2 text-sm font-semibold rounded-lg shadow-sm ${
                 canLeaveToHome
                   ? 'text-white bg-gradient-to-r from-brand-red to-[#ee2b2b] hover:opacity-95'
-                  : 'text-gray-400 bg-gray-100 border border-gray-200 cursor-not-allowed'
+                  : 'text-gray-600 bg-gray-100 border border-gray-200 cursor-not-allowed'
               }`}
             >
               Home
@@ -64,7 +64,7 @@ function PageShell({ children }: { children: React.ReactNode }) {
             <button
               type="button"
               onClick={() => logoutSession(queryClient, navigate)}
-              className="px-3 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+              className="px-3 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
             >
               Logout
             </button>
@@ -166,7 +166,7 @@ export default function OnboardingDocuments() {
         <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-10 text-center">
           <div className="inline-flex flex-col items-center gap-3">
             <img src={LOGO_SRC} alt="" className="h-12 w-auto opacity-40 object-contain" />
-            <div className="text-sm text-gray-500">Loading your documents…</div>
+            <div className="text-sm text-gray-600">Loading your documents…</div>
           </div>
         </div>
       </PageShell>
@@ -180,7 +180,7 @@ export default function OnboardingDocuments() {
           <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5 sm:p-6">
             <div>
               <h2 className="text-base font-semibold text-gray-900">Onboarding documents</h2>
-              <p className="text-sm text-gray-500 mt-1">No assignments at the moment.</p>
+              <p className="text-sm text-gray-600 mt-1">No assignments at the moment.</p>
             </div>
           </div>
           <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-8 sm:p-10 text-center">
@@ -190,7 +190,7 @@ export default function OnboardingDocuments() {
             <button
               type="button"
               onClick={() => navigate('/home', { replace: true })}
-              className="px-5 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-brand-red to-[#ee2b2b] rounded-lg hover:opacity-95 shadow-sm"
+              className="px-5 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-brand-red to-[#ee2b2b] rounded-lg hover:opacity-95 shadow-sm"
             >
               Continue to MK Hub
             </button>
@@ -206,9 +206,9 @@ export default function OnboardingDocuments() {
         <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5 sm:p-6">
           <div className="min-w-0 max-w-xl">
             <h2 className="text-base sm:text-lg font-semibold text-gray-900">Sign onboarding documents</h2>
-            <p className="text-sm text-gray-500 mt-1">
+            <p className="text-sm text-gray-600 mt-1">
               Review each PDF and sign where indicated. Completed files are saved under{' '}
-              <span className="text-gray-700 font-medium">Profile → Docs → HR Documents</span>.
+              <span className="text-gray-700 font-semibold">Profile → Docs → HR Documents</span>.
             </p>
           </div>
           {status?.past_deadline && pendingRequired.length > 0 && (
@@ -233,24 +233,24 @@ export default function OnboardingDocuments() {
                 {docs.map((d) => (
                   <tr key={d.id} className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50/80 transition-colors align-top">
                     <td className="px-4 py-3.5 min-w-0 max-w-md">
-                      <div className="text-sm font-medium text-gray-900">{d.document_name}</div>
+                      <div className="text-sm font-semibold text-gray-900">{d.document_name}</div>
                       {d.subject_label && (
-                        <div className="text-[11px] text-gray-600 mt-1.5 leading-snug max-w-md">
+                        <div className="text-xs text-gray-600 mt-1.5 leading-snug max-w-md">
                           This document was sent to you in connection with the onboarding of{' '}
                           <span className="font-semibold text-gray-800">{d.subject_label}</span>.
                         </div>
                       )}
                       {d.user_message && d.status === 'pending' && (
-                        <div className="text-xs text-gray-500 mt-1.5 line-clamp-2">{d.user_message}</div>
+                        <div className="text-sm text-gray-600 mt-1.5 line-clamp-2">{d.user_message}</div>
                       )}
                     </td>
                     <td className="px-4 py-3.5 whitespace-nowrap">
                       {d.status === 'signed' ? (
-                        <span className="inline-flex px-2.5 py-1 rounded-md text-xs font-medium bg-green-100 text-green-800">
+                        <span className="inline-flex px-2.5 py-1 rounded-md text-sm font-semibold bg-green-100 text-green-800">
                           Signed
                         </span>
                       ) : (
-                        <span className="inline-flex px-2.5 py-1 rounded-md text-xs font-medium bg-amber-100 text-amber-900">
+                        <span className="inline-flex px-2.5 py-1 rounded-md text-sm font-semibold bg-amber-100 text-amber-900">
                           Pending{d.required ? ' · Blocks hub if overdue' : ''}
                         </span>
                       )}
@@ -259,7 +259,7 @@ export default function OnboardingDocuments() {
                       {d.deadline_at ? (
                         <>
                           {new Date(d.deadline_at).toLocaleDateString()}
-                          {d.remaining_days != null && <span className="text-gray-400"> · {d.remaining_days}d left</span>}
+                          {d.remaining_days != null && <span className="text-gray-600"> · {d.remaining_days}d left</span>}
                         </>
                       ) : (
                         '—'
@@ -271,14 +271,14 @@ export default function OnboardingDocuments() {
                           <button
                             type="button"
                             onClick={() => void openPreview(d.id, d.document_name)}
-                            className="px-3 py-1.5 rounded-full text-xs font-medium text-gray-700 border border-gray-200 hover:border-gray-300 bg-white"
+                            className="px-3 py-1.5 rounded-full text-sm font-semibold text-gray-700 border border-gray-200 hover:border-gray-300 bg-white"
                           >
                             Review
                           </button>
                           <button
                             type="button"
                             onClick={() => setSignItem(d)}
-                            className="px-3 py-1.5 text-xs font-medium text-white bg-gradient-to-r from-brand-red to-[#ee2b2b] rounded-lg hover:opacity-95 shadow-sm"
+                            className="px-3 py-1.5 text-sm font-semibold text-white bg-gradient-to-r from-brand-red to-[#ee2b2b] rounded-lg hover:opacity-95 shadow-sm"
                           >
                             Sign
                           </button>
@@ -297,7 +297,7 @@ export default function OnboardingDocuments() {
             type="button"
             disabled={!canLeaveToHome}
             onClick={() => navigate('/home', { replace: true })}
-            className="px-4 py-2.5 text-sm font-medium text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed bg-white"
+            className="px-4 py-2.5 text-sm font-semibold text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed bg-white"
           >
             {pendingRequired.length === 0
               ? 'Continue to MK Hub'
@@ -333,7 +333,7 @@ export default function OnboardingDocuments() {
                   href={pdfPreview.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
+                  className="text-sm px-2 py-1 rounded border hover:bg-gray-50"
                   title="Open in new tab"
                 >
                   🔗

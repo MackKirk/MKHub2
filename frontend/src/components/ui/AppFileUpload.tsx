@@ -134,7 +134,7 @@ function FilePreviewCard({
           type="button"
           onClick={onRemove}
           disabled={disabled}
-          className={uiCx(uiTypography.helper, 'shrink-0 font-medium text-brand-red hover:text-brand-red/80 disabled:opacity-50')}
+          className={uiCx(uiTypography.helper, 'shrink-0 font-semibold text-brand-red hover:text-brand-red/80 disabled:opacity-50')}
         >
           Remove
         </button>

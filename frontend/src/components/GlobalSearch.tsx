@@ -376,20 +376,20 @@ export default function GlobalSearch({
         <div className="absolute left-0 right-0 top-full mt-2 z-50 rounded-xl border border-gray-200/20 bg-white shadow-2xl overflow-hidden">
           <div className="max-h-[60vh] overflow-auto">
             {isFetching && q.trim().length >= 2 && (
-              <div className="px-4 py-3 text-xs text-gray-500 border-b bg-gray-50">
+              <div className="px-4 py-3 text-sm text-gray-600 border-b bg-gray-50">
                 Searching…
               </div>
             )}
 
             {sections.length === 0 ? (
-              <div className="px-4 py-6 text-sm text-gray-500">
+              <div className="px-4 py-6 text-sm text-gray-600">
                 {q.trim().length < 2 ? 'Type at least 2 characters to search.' : 'No results.'}
               </div>
             ) : (
               <div className="py-2">
                 {sections.map((section) => (
                   <div key={section.id} className="mb-2 last:mb-0">
-                    <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    <div className="px-4 py-2 text-sm font-semibold text-gray-600 uppercase tracking-wide">
                       {section.label}
                     </div>
                     <div className="px-2">
@@ -411,14 +411,14 @@ export default function GlobalSearch({
                           >
                             <div className="flex items-center justify-between gap-3">
                               <div className="min-w-0">
-                                <div className={`text-sm font-medium truncate ${active ? 'text-gray-900' : 'text-gray-800'}`}>
+                                <div className={`text-sm font-semibold truncate ${active ? 'text-gray-900' : 'text-gray-800'}`}>
                                   {item.title}
                                 </div>
                                 {item.subtitle ? (
-                                  <div className="text-xs text-gray-500 truncate">{item.subtitle}</div>
+                                  <div className="text-sm text-gray-600 truncate">{item.subtitle}</div>
                                 ) : null}
                               </div>
-                              <div className="text-[10px] px-2 py-1 rounded-full bg-gray-100 text-gray-600 flex-shrink-0">
+                              <div className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600 flex-shrink-0">
                                 {item.type}
                               </div>
                             </div>
@@ -431,7 +431,7 @@ export default function GlobalSearch({
               </div>
             )}
           </div>
-          <div className="px-4 py-2 text-[11px] text-gray-500 border-t bg-gray-50 flex items-center justify-between">
+          <div className="px-4 py-2 text-xs text-gray-600 border-t bg-gray-50 flex items-center justify-between">
             <span>Ctrl+K to focus</span>
             <span>↑ ↓ Enter Esc</span>
           </div>

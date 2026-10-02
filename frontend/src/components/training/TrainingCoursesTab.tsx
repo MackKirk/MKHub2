@@ -116,12 +116,12 @@ function CourseCard({
         {course.description ? (
           <p className={uiCx(uiTypography.body, 'mb-3 line-clamp-2 text-gray-600')}>{course.description}</p>
         ) : (
-          <p className={uiCx(uiTypography.helper, 'mb-3 italic text-gray-400')}>No description</p>
+          <p className={uiCx(uiTypography.helper, 'mb-3 italic text-gray-600')}>No description</p>
         )}
         <div className="mb-3">
           <div className={uiCx('mb-1 flex justify-between', uiTypography.helper)}>
             <span>Progress</span>
-            <span className="font-medium text-gray-700">{progressPercent}%</span>
+            <span className="font-semibold text-gray-700">{progressPercent}%</span>
           </div>
           <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
             <div
@@ -141,7 +141,7 @@ function CourseCard({
         >
           <span>{duration ?? '—'}</span>
           {course.certificate_expires_at ? (
-            <span className={activeTab === 'expired' ? 'font-medium text-amber-700' : undefined}>
+            <span className={activeTab === 'expired' ? 'font-semibold text-amber-700' : undefined}>
               Expires {new Date(course.certificate_expires_at).toLocaleDateString()}
             </span>
           ) : course.completed_at ? (

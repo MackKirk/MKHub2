@@ -59,7 +59,7 @@ function ToolbarButton({
       title={title}
       onClick={onClick}
       disabled={disabled}
-      className={`inline-flex items-center justify-center px-2 py-1 text-xs rounded border transition-colors ${
+      className={`inline-flex items-center justify-center px-2 py-1 text-sm rounded border transition-colors ${
         active ? 'bg-brand-red text-white border-brand-red' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
       } ${disabled ? 'opacity-40 cursor-not-allowed' : ''} ${className}`}
     >
@@ -262,7 +262,7 @@ export default function CommunityPostRichTextEditor({
         CommunityMention.configure({
           HTMLAttributes: {
             class:
-              'rounded bg-red-50 px-1 py-0.5 font-medium text-brand-red ring-1 ring-red-100 not-italic',
+              'rounded bg-red-50 px-1 py-0.5 font-semibold text-brand-red ring-1 ring-red-100 not-italic',
           },
           suggestion: {
             char: '@',
@@ -327,7 +327,7 @@ export default function CommunityPostRichTextEditor({
   if (!editor) {
     return (
       <div
-        className={`text-sm text-gray-500 py-6 ${fillHeight ? 'flex min-h-[12rem] flex-1 items-center justify-center' : ''}`}
+        className={`text-sm text-gray-600 py-6 ${fillHeight ? 'flex min-h-[12rem] flex-1 items-center justify-center' : ''}`}
       >
         Loading editor…
       </div>
@@ -467,7 +467,7 @@ export default function CommunityPostRichTextEditor({
         </ToolbarButton>
       </div>
       <EditorContent editor={editor} className={editorContentClass} />
-      <p className="shrink-0 border-t border-gray-100 bg-slate-50 px-3 py-2 text-[11px] text-gray-500">
+      <p className="shrink-0 border-t border-gray-100 bg-slate-50 px-3 py-2 text-xs text-gray-600">
         Type <strong>@</strong> to mention someone. Paste or drop images, or use <strong>Image</strong>.
       </p>
 
@@ -483,8 +483,8 @@ export default function CommunityPostRichTextEditor({
           }}
         >
           <h3 className="text-sm font-semibold text-gray-900">Insert link</h3>
-          <p className="mt-0.5 text-xs text-gray-500">Use https://, mailto:, or tel:</p>
-          <label htmlFor="community-editor-link-url" className="mt-3 block text-xs font-medium text-gray-700">
+          <p className="mt-0.5 text-sm text-gray-600">Use https://, mailto:, or tel:</p>
+          <label htmlFor="community-editor-link-url" className="mt-3 block text-sm font-semibold text-gray-700">
             Address
           </label>
           <input
@@ -502,7 +502,7 @@ export default function CommunityPostRichTextEditor({
             <button
               type="button"
               onClick={cancelLinkDialog}
-              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
+              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50"
             >
               Cancel
             </button>

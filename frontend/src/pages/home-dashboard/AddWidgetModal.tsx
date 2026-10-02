@@ -162,7 +162,7 @@ function GalleryCard({
       {isKpi && (
         <>
           <div className="flex items-start justify-between gap-2">{iconNode}</div>
-          <div className={uiCx('mt-2.5 font-medium text-gray-800', uiTypography.body)}>{item.label}</div>
+          <div className={uiCx('mt-2.5 font-semibold text-gray-800', uiTypography.body)}>{item.label}</div>
           <p className={uiCx('mt-0.5 line-clamp-2', uiTypography.helper)}>{item.description}</p>
         </>
       )}
@@ -177,7 +177,7 @@ function GalleryCard({
               {item.chartType === 'donut' && <MiniDonutChart variant={chartVariant} />}
               {item.chartType === 'line' && <MiniLineChart variant={chartVariant} />}
             </div>
-            <div className={uiCx('font-medium text-gray-800', uiTypography.body)}>{item.label}</div>
+            <div className={uiCx('font-semibold text-gray-800', uiTypography.body)}>{item.label}</div>
             <p className={uiCx('mt-0.5 line-clamp-2', uiTypography.helper)}>{item.description}</p>
           </>
         );
@@ -185,20 +185,20 @@ function GalleryCard({
       {isList && (
         <>
           <div className="flex items-start justify-between gap-2">{iconNode}</div>
-          <div className={uiCx('mt-2.5 font-medium text-gray-800', uiTypography.body)}>{item.label}</div>
+          <div className={uiCx('mt-2.5 font-semibold text-gray-800', uiTypography.body)}>{item.label}</div>
           <p className={uiCx('mt-0.5 line-clamp-2', uiTypography.helper)}>{item.description}</p>
         </>
       )}
       {isShortcut && (
         <div className="flex flex-col items-center justify-center gap-2.5 py-1">
           {iconNode}
-          <span className={uiCx('text-center font-medium text-gray-800', uiTypography.body)}>{item.label}</span>
+          <span className={uiCx('text-center font-semibold text-gray-800', uiTypography.body)}>{item.label}</span>
         </div>
       )}
       {isCalendar && (
         <div className="flex flex-col items-center justify-center gap-2.5 py-1">
           {iconNode}
-          <span className={uiCx('text-center font-medium text-gray-800', uiTypography.body)}>{item.label}</span>
+          <span className={uiCx('text-center font-semibold text-gray-800', uiTypography.body)}>{item.label}</span>
           <p className={uiCx('line-clamp-2 text-center', uiTypography.helper)}>{item.description}</p>
         </div>
       )}

@@ -338,7 +338,7 @@ export default function SendForSignatureModal(props: Props) {
           </DndContext>
         )}
         <div className="flex items-center gap-3 text-sm">
-          <span className="font-medium text-gray-700">Signing deadline (days per turn)</span>
+          <span className="font-semibold text-gray-700">Signing deadline (days per turn)</span>
           <input
             type="number"
             min={1}
@@ -359,7 +359,7 @@ export default function SendForSignatureModal(props: Props) {
           />
         ) : null}
         <label className="block text-sm">
-          <span className="font-medium text-gray-700">Message to signers (optional)</span>
+          <span className="font-semibold text-gray-700">Message to signers (optional)</span>
           <textarea
             className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm min-h-[72px]"
             value={messageToSigners}

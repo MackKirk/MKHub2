@@ -159,8 +159,8 @@ export default function PropertiesDashboard() {
                     {data.permits_expired.map((p) => (
                       <li key={p.id} className="flex items-start justify-between gap-2 text-sm">
                         <span>
-                          <span className="font-medium text-gray-900">{p.title || 'Permit'}</span>
-                          <span className="text-gray-500"> · {p.property_name}</span>
+                          <span className="font-semibold text-gray-900">{p.title || 'Permit'}</span>
+                          <span className="text-gray-600"> · {p.property_name}</span>
                         </span>
                         <AppBadge variant="danger">{p.compliance_label || 'Expired'}</AppBadge>
                       </li>
@@ -183,7 +183,7 @@ export default function PropertiesDashboard() {
                   <ul className="space-y-2 text-sm">
                     {[...(data.leases_expired ?? []), ...(data.leases_expiring ?? [])].slice(0, 8).map((l) => (
                       <li key={l.id} className="flex justify-between gap-2">
-                        <span className="font-medium text-gray-900">{l.property_name}</span>
+                        <span className="font-semibold text-gray-900">{l.property_name}</span>
                         <AppBadge variant={l.status === 'expired' ? 'danger' : 'warning'}>{l.status}</AppBadge>
                       </li>
                     ))}

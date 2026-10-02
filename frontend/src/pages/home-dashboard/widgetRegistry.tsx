@@ -123,6 +123,6 @@ export { getWidgetIcon } from './widgetVisualMeta';
 
 export function renderWidget(type: string, config?: Record<string, unknown>): ReactNode {
   const Comp = getWidgetComponent(type);
-  if (!Comp) return <div className="text-sm text-gray-400">Unknown: {type}</div>;
+  if (!Comp) return <div className="text-sm text-gray-600">Unknown: {type}</div>;
   return <Comp config={config} />;
 }

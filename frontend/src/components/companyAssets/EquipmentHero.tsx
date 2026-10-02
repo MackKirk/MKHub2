@@ -30,8 +30,8 @@ const fleetHeroAssignButtonClass =
 const fleetHeroReturnButtonClass =
   'h-24 w-24 sm:h-28 sm:w-28 rounded-xl border-2 border-emerald-600 bg-emerald-50 text-emerald-950 text-sm font-semibold shadow-sm hover:bg-emerald-100 active:scale-[0.98] transition flex flex-col items-center justify-center gap-1 px-1 py-2 text-center leading-tight';
 
-const fleetHeroValueClass = 'text-xs font-semibold text-gray-900 mt-0.5';
-const fleetHeroValueMutedClass = 'text-xs font-semibold text-gray-400 mt-0.5';
+const fleetHeroValueClass = 'text-sm font-semibold text-gray-900 mt-0.5';
+const fleetHeroValueMutedClass = 'text-sm font-semibold text-gray-600 mt-0.5';
 
 const HERO_PANEL_EASE = 'ease-[cubic-bezier(0.22,1,0.36,1)]';
 const HERO_PANEL_TRANSITION_BASE = 'overflow-hidden';
@@ -119,13 +119,13 @@ function EquipmentHeroBody({
             )}
           >
             {photoBusy ? (
-              <div className="flex h-full w-full items-center justify-center text-xs font-medium text-gray-500">
+              <div className="flex h-full w-full items-center justify-center text-sm font-semibold text-gray-600">
                 …
               </div>
             ) : photoUrl ? (
               <img src={photoUrl} alt={equipment.name || 'Equipment'} className="h-full w-full object-cover" />
             ) : (
-              <div className="flex h-full w-full flex-col items-center justify-center text-gray-400">
+              <div className="flex h-full w-full flex-col items-center justify-center text-gray-600">
                 <svg className="h-10 w-10 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
                   <path
                     strokeLinecap="round"
@@ -149,7 +149,7 @@ function EquipmentHeroBody({
                 onPhotoClick();
               }}
               className={uiCx(
-                'absolute inset-0 flex items-center justify-center bg-black/40 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100 disabled:cursor-not-allowed',
+                'absolute inset-0 flex items-center justify-center bg-black/40 text-sm text-white opacity-0 transition-opacity group-hover:opacity-100 disabled:cursor-not-allowed',
                 !photoUrl && !canEdit && 'pointer-events-none',
               )}
             >
@@ -163,7 +163,7 @@ function EquipmentHeroBody({
             <div className="mb-1">
               <h3 className="text-sm font-bold text-gray-900">{primaryTitle}</h3>
               {subtitleLine ? (
-                <p className="mt-0.5 text-xs font-medium text-gray-600">{subtitleLine}</p>
+                <p className="mt-0.5 text-sm font-semibold text-gray-600">{subtitleLine}</p>
               ) : null}
             </div>
 

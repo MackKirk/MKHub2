@@ -26,7 +26,7 @@ export default function CustomSafetySignatureSlots({ projectId, formPayload, set
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
-      <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Custom signatures</div>
+      <div className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Custom signatures</div>
       <div className="space-y-4">
         {pendingOnly.map((entry) => (
           <CustomSignatureRow
@@ -78,12 +78,12 @@ function CustomSignatureRow({
   return (
     <div className="rounded-lg border border-gray-100 bg-gray-50/80 p-3 space-y-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="text-xs font-medium text-gray-500">Custom Signer</div>
+        <div className="text-sm font-semibold text-gray-600">Custom Signer</div>
         <button
           type="button"
           disabled={disabled}
           onClick={removeRow}
-          className="text-xs font-medium text-red-700 hover:underline disabled:opacity-50"
+          className="text-sm font-semibold text-red-700 hover:underline disabled:opacity-50"
         >
           Remove
         </button>
@@ -105,7 +105,7 @@ function CustomSignatureRow({
             placeholder="Full name of person signing"
             className={INPUT_CLASS}
           />
-          {!nameTrim ? <p className="mt-1 text-xs text-gray-500">Enter a name to enable the signature pad.</p> : null}
+          {!nameTrim ? <p className="mt-1 text-sm text-gray-600">Enter a name to enable the signature pad.</p> : null}
         </div>
         <div>
           <label className={SAFETY_MODAL_FIELD_LABEL}>Company</label>

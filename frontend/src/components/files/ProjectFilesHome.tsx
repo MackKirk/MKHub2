@@ -80,14 +80,14 @@ function CategoryTile({
         <div
           className={
             designSystem
-              ? uiCx(uiTypography.body, 'truncate text-sm font-medium text-gray-900')
+              ? uiCx(uiTypography.body, 'truncate text-sm font-semibold text-gray-900')
               : 'truncate text-sm font-semibold text-gray-900'
           }
           title={category.name}
         >
           {category.name}
         </div>
-        <div className={uiCx(designSystem ? uiTypography.helper : 'text-xs text-gray-500', 'truncate')}>
+        <div className={uiCx(designSystem ? uiTypography.helper : 'text-sm text-gray-600', 'truncate')}>
           {counts}
         </div>
       </div>
@@ -133,13 +133,13 @@ function AllFilesTile({
         <div
           className={
             designSystem
-              ? uiCx(uiTypography.body, 'truncate text-sm font-medium text-gray-900')
+              ? uiCx(uiTypography.body, 'truncate text-sm font-semibold text-gray-900')
               : 'truncate text-sm font-semibold text-gray-900'
           }
         >
           All Files
         </div>
-        <div className={uiCx(designSystem ? uiTypography.helper : 'text-xs text-gray-500', 'truncate')}>
+        <div className={uiCx(designSystem ? uiTypography.helper : 'text-sm text-gray-600', 'truncate')}>
           {counts}
         </div>
       </div>
@@ -217,7 +217,7 @@ export default function ProjectFilesHome({
           <button
             type="button"
             onClick={onUpload}
-            className="rounded bg-brand-red px-2 py-1.5 text-xs font-medium text-white"
+            className="rounded bg-brand-red px-2 py-1.5 text-sm font-semibold text-white"
           >
             Upload
           </button>
@@ -225,7 +225,7 @@ export default function ProjectFilesHome({
             <button
               type="button"
               onClick={onCreateFolder}
-              className="rounded border border-gray-300 bg-white px-2 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+              className="rounded border border-gray-300 bg-white px-2 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
             >
               New Folder
             </button>
@@ -256,7 +256,7 @@ export default function ProjectFilesHome({
       }}
       placeholder="Search all project files..."
       aria-label="Search all project files"
-      className="min-w-0 w-full rounded-lg border border-gray-300 px-3 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-brand-red"
+      className="min-w-0 w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-brand-red"
     />
   );
 
@@ -303,7 +303,7 @@ export default function ProjectFilesHome({
         description="Contact an administrator if you need access to project files."
       />
     ) : (
-      <div className="py-12 text-center text-sm text-gray-500">
+      <div className="py-12 text-center text-sm text-gray-600">
         No file categories are available for your account.
       </div>
     );
@@ -322,7 +322,7 @@ export default function ProjectFilesHome({
           <h3 className={designSystem ? uiTypography.sectionTitle : 'text-sm font-semibold text-gray-900'}>
             {title}
           </h3>
-          <p className={designSystem ? uiTypography.sectionSubtitle : 'mt-0.5 text-xs text-gray-600'}>
+          <p className={designSystem ? uiTypography.sectionSubtitle : 'mt-0.5 text-sm text-gray-600'}>
             {description}
           </p>
         </div>

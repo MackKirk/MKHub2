@@ -325,7 +325,7 @@ const ProjectDocumentsTab = forwardRef<ProjectDocumentsTabHandle, ProjectDocumen
         type="button"
         onClick={() => setShowChooseTypeModal(true)}
         disabled={isCreating}
-        className="px-4 py-2 rounded bg-brand-red text-white text-sm font-medium hover:bg-brand-red/90 disabled:opacity-50"
+        className="px-4 py-2 rounded bg-brand-red text-white text-sm font-semibold hover:bg-brand-red/90 disabled:opacity-50"
       >
         Create new document
       </button>
@@ -360,10 +360,10 @@ const ProjectDocumentsTab = forwardRef<ProjectDocumentsTabHandle, ProjectDocumen
             maxPages={4}
           />
           <div className="min-w-0 flex-1">
-            <div className={uiCx(designSystem ? uiTypography.sectionTitle : 'font-medium text-gray-900', 'truncate')}>
+            <div className={uiCx(designSystem ? uiTypography.sectionTitle : 'font-semibold text-gray-900', 'truncate')}>
               {doc.title || 'Untitled document'}
             </div>
-            <div className={uiCx(designSystem ? uiTypography.helper : 'text-xs text-gray-500')}>
+            <div className={uiCx(designSystem ? uiTypography.helper : 'text-sm text-gray-600')}>
               Updated {formatDate(doc.updated_at ?? doc.created_at)}
             </div>
           </div>
@@ -429,7 +429,7 @@ const ProjectDocumentsTab = forwardRef<ProjectDocumentsTabHandle, ProjectDocumen
     designSystem ? (
       <p className={uiCx(uiTypography.helper, 'py-6')}>Loading...</p>
     ) : (
-      <div className="text-sm text-gray-500 py-6">Loading...</div>
+      <div className="text-sm text-gray-600 py-6">Loading...</div>
     )
   ) : documents.length === 0 ? (
     designSystem ? (

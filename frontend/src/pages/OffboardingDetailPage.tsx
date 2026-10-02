@@ -224,7 +224,7 @@ export default function OffboardingDetailPage() {
                 {detail.access_revocation_timing === 'scheduled' && detail.access_revoke_at_local ? (
                   <MetaField label="Scheduled Revocation">
                     {fmtDateTime(detail.access_revoke_at_local)}
-                    <span className="ml-1 font-normal text-gray-500">({detail.company_timezone})</span>
+                    <span className="ml-1 font-normal text-gray-600">({detail.company_timezone})</span>
                   </MetaField>
                 ) : null}
                 <div className="min-w-0">

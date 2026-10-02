@@ -647,7 +647,7 @@ export default function EventModal({ projectId, mode, event, designSystem, onClo
               <h2 className="text-sm font-semibold text-gray-900">
                 {mode === 'create' ? 'Create Event' : 'Edit Event'}
               </h2>
-              <p className="text-xs text-gray-500 mt-0.5">
+              <p className="text-sm text-gray-600 mt-0.5">
                 {mode === 'create' ? 'Add an event to the project calendar' : 'Update event details'}
               </p>
             </div>
@@ -661,7 +661,7 @@ export default function EventModal({ projectId, mode, event, designSystem, onClo
           >
             {/* Basic Info */}
             <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Event Name *</label>
+              <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">Event Name *</label>
               <input
                 type="text"
                 value={name}
@@ -674,11 +674,11 @@ export default function EventModal({ projectId, mode, event, designSystem, onClo
           <div className="grid grid-cols-2 gap-6">
             {/* When Section */}
             <div className="border border-gray-200 rounded-lg p-4">
-              <h3 className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-3">When</h3>
+              <h3 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-3">When</h3>
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Start Date *</label>
+                    <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">Start Date *</label>
                     <input
                       type="date"
                       value={startDate}
@@ -692,7 +692,7 @@ export default function EventModal({ projectId, mode, event, designSystem, onClo
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">End Date *</label>
+                    <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">End Date *</label>
                     <input
                       type="date"
                       value={endDate}
@@ -747,7 +747,7 @@ export default function EventModal({ projectId, mode, event, designSystem, onClo
                 )}
 
                 <div>
-                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Timezone</label>
+                  <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">Timezone</label>
                   <select
                     value={timezone}
                     onChange={(e) => setTimezone(e.target.value)}
@@ -759,14 +759,14 @@ export default function EventModal({ projectId, mode, event, designSystem, onClo
                     <option value="America/Los_Angeles">America/Los_Angeles (PST/PDT)</option>
                     <option value="UTC">UTC</option>
                   </select>
-                  <p className="text-xs text-gray-500 mt-1">All times respect this timezone</p>
+                  <p className="text-sm text-gray-600 mt-1">All times respect this timezone</p>
                 </div>
               </div>
             </div>
 
             {/* Repeat Section */}
             <div className="border border-gray-200 rounded-lg p-4">
-              <h3 className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-3">Repeat</h3>
+              <h3 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-3">Repeat</h3>
               <select
                 value={repeatType}
                 onChange={(e) => setRepeatType(e.target.value as any)}
@@ -784,7 +784,7 @@ export default function EventModal({ projectId, mode, event, designSystem, onClo
                 <div className="space-y-3 text-sm">
                   {repeatType === 'daily' && (
                     <div>
-                      <label className="block text-xs text-gray-600 mb-1">Every</label>
+                      <label className="block text-sm text-gray-600 mb-1">Every</label>
                       <div className="flex items-center gap-2">
                         <input
                           type="number"
@@ -793,14 +793,14 @@ export default function EventModal({ projectId, mode, event, designSystem, onClo
                           onChange={(e) => setRepeatInterval(Math.max(1, parseInt(e.target.value) || 1))}
                           className="w-16 border rounded px-2 py-1"
                         />
-                        <span className="text-xs text-gray-600">day(s)</span>
+                        <span className="text-sm text-gray-600">day(s)</span>
                       </div>
                     </div>
                   )}
 
                   {repeatType === 'weekly' && (
                     <div>
-                      <label className="block text-xs text-gray-600 mb-2">Every</label>
+                      <label className="block text-sm text-gray-600 mb-2">Every</label>
                       <div className="flex items-center gap-2 mb-2">
                         <input
                           type="number"
@@ -809,14 +809,14 @@ export default function EventModal({ projectId, mode, event, designSystem, onClo
                           onChange={(e) => setRepeatInterval(Math.max(1, parseInt(e.target.value) || 1))}
                           className="w-16 border rounded px-2 py-1"
                         />
-                        <span className="text-xs text-gray-600">week(s) on</span>
+                        <span className="text-sm text-gray-600">week(s) on</span>
                       </div>
                       <div className="flex gap-1 flex-wrap">
                         {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, idx) => (
                           <button
                             key={`${day}-${idx}`}
                             onClick={() => toggleDayOfWeek(idx)}
-                            className={`w-7 h-7 text-xs rounded border flex items-center justify-center ${
+                            className={`w-7 h-7 text-sm rounded border flex items-center justify-center ${
                               repeatDaysOfWeek[idx]
                                 ? 'bg-brand-red text-white border-brand-red font-semibold'
                                 : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
@@ -832,7 +832,7 @@ export default function EventModal({ projectId, mode, event, designSystem, onClo
 
                   {repeatType === 'monthly' && (
                     <div>
-                      <label className="block text-xs text-gray-600 mb-1">Every</label>
+                      <label className="block text-sm text-gray-600 mb-1">Every</label>
                       <div className="flex items-center gap-2">
                         <input
                           type="number"
@@ -841,14 +841,14 @@ export default function EventModal({ projectId, mode, event, designSystem, onClo
                           onChange={(e) => setRepeatInterval(Math.max(1, parseInt(e.target.value) || 1))}
                           className="w-16 border rounded px-2 py-1"
                         />
-                        <span className="text-xs text-gray-600">month(s) on day {new Date(startDate).getDate()}</span>
+                        <span className="text-sm text-gray-600">month(s) on day {new Date(startDate).getDate()}</span>
                       </div>
                     </div>
                   )}
 
                   {repeatType === 'yearly' && (
                     <div>
-                      <label className="block text-xs text-gray-600 mb-1">Every</label>
+                      <label className="block text-sm text-gray-600 mb-1">Every</label>
                       <div className="flex items-center gap-2">
                         <input
                           type="number"
@@ -857,20 +857,20 @@ export default function EventModal({ projectId, mode, event, designSystem, onClo
                           onChange={(e) => setRepeatInterval(Math.max(1, parseInt(e.target.value) || 1))}
                           className="w-16 border rounded px-2 py-1"
                         />
-                        <span className="text-xs text-gray-600">year(s)</span>
+                        <span className="text-sm text-gray-600">year(s)</span>
                       </div>
                     </div>
                   )}
 
                   {repeatType === 'custom' && (
-                    <div className="text-xs text-gray-500 p-2 bg-gray-50 rounded">
+                    <div className="text-sm text-gray-600 p-2 bg-gray-50 rounded">
                       Custom recurrence options coming soon. Use Weekly or Monthly for now.
                     </div>
                   )}
 
                   {/* Repeat Ends */}
                   <div>
-                    <label className="block text-xs text-gray-600 mb-2">Ends</label>
+                    <label className="block text-sm text-gray-600 mb-2">Ends</label>
                     <div className="space-y-1.5">
                       <label className="flex items-center gap-2 cursor-pointer">
                         <input
@@ -880,7 +880,7 @@ export default function EventModal({ projectId, mode, event, designSystem, onClo
                           checked={repeatEnds === 'never'}
                           onChange={(e) => setRepeatEnds(e.target.value as any)}
                         />
-                        <span className="text-xs">Never</span>
+                        <span className="text-sm">Never</span>
                       </label>
                       <label className="flex items-center gap-2 cursor-pointer">
                         <input
@@ -890,14 +890,14 @@ export default function EventModal({ projectId, mode, event, designSystem, onClo
                           checked={repeatEnds === 'on'}
                           onChange={(e) => setRepeatEnds(e.target.value as any)}
                         />
-                        <span className="text-xs">On</span>
+                        <span className="text-sm">On</span>
                         {repeatEnds === 'on' && (
                           <input
                             type="date"
                             value={repeatUntilDate}
                             onChange={(e) => setRepeatUntilDate(e.target.value)}
                             min={startDate}
-                            className="border rounded px-2 py-1 text-xs ml-2"
+                            className="border rounded px-2 py-1 text-sm ml-2"
                           />
                         )}
                       </label>
@@ -909,7 +909,7 @@ export default function EventModal({ projectId, mode, event, designSystem, onClo
                           checked={repeatEnds === 'after'}
                           onChange={(e) => setRepeatEnds(e.target.value as any)}
                         />
-                        <span className="text-xs">After</span>
+                        <span className="text-sm">After</span>
                         {repeatEnds === 'after' && (
                           <div className="flex items-center gap-2 ml-2">
                             <input
@@ -917,9 +917,9 @@ export default function EventModal({ projectId, mode, event, designSystem, onClo
                               min="1"
                               value={repeatCount}
                               onChange={(e) => setRepeatCount(Math.max(1, parseInt(e.target.value) || 1))}
-                              className="w-16 border rounded px-2 py-1 text-xs"
+                              className="w-16 border rounded px-2 py-1 text-sm"
                             />
-                            <span className="text-xs text-gray-600">occurrences</span>
+                            <span className="text-sm text-gray-600">occurrences</span>
                           </div>
                         )}
                       </label>
@@ -932,11 +932,11 @@ export default function EventModal({ projectId, mode, event, designSystem, onClo
 
             {/* Exceptions & Preview Section */}
             <div className="border border-gray-200 rounded-lg p-4">
-              <h3 className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-3">Exceptions & Preview</h3>
+              <h3 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-3">Exceptions & Preview</h3>
             
             {/* Summary */}
             <div className="mb-4 p-3 bg-blue-50 rounded border border-blue-200">
-              <div className="text-sm font-medium text-blue-900 mb-1">Summary</div>
+              <div className="text-sm font-semibold text-blue-900 mb-1">Summary</div>
               <div className="text-sm text-blue-700">{summaryText}</div>
             </div>
 
@@ -945,13 +945,13 @@ export default function EventModal({ projectId, mode, event, designSystem, onClo
               <div className="flex items-center gap-2 mb-2">
                 <button
                   onClick={addException}
-                  className="px-3 py-1 text-xs rounded border bg-gray-50 hover:bg-gray-100"
+                  className="px-3 py-1 text-sm rounded border bg-gray-50 hover:bg-gray-100"
                 >
                   + Add exception date
                 </button>
                 <button
                   onClick={addExtraDate}
-                  className="px-3 py-1 text-xs rounded border bg-gray-50 hover:bg-gray-100"
+                  className="px-3 py-1 text-sm rounded border bg-gray-50 hover:bg-gray-100"
                 >
                   + Add extra date
                 </button>
@@ -962,7 +962,7 @@ export default function EventModal({ projectId, mode, event, designSystem, onClo
                   {exceptions.map(date => (
                     <span
                       key={date}
-                      className="px-2 py-1 text-xs rounded bg-red-100 text-red-700 flex items-center gap-1"
+                      className="px-2 py-1 text-sm rounded bg-red-100 text-red-700 flex items-center gap-1"
                     >
                       {new Date(date).toLocaleDateString()}
                       <button onClick={() => removeException(date)} className="hover:text-red-900 font-bold">×</button>
@@ -976,7 +976,7 @@ export default function EventModal({ projectId, mode, event, designSystem, onClo
                   {extraDates.map(date => (
                     <span
                       key={date}
-                      className="px-2 py-1 text-xs rounded bg-green-100 text-green-700 flex items-center gap-1"
+                      className="px-2 py-1 text-sm rounded bg-green-100 text-green-700 flex items-center gap-1"
                     >
                       {new Date(date).toLocaleDateString()}
                       <button onClick={() => removeExtraDate(date)} className="hover:text-green-900 font-bold">×</button>
@@ -988,7 +988,7 @@ export default function EventModal({ projectId, mode, event, designSystem, onClo
 
             {/* Preview Calendar - Simple list view for better clarity */}
             <div>
-              <div className="text-xs font-medium text-gray-600 mb-2">Preview (showing first {Math.min(previewOccurrences.length, 30)} of {occurrences.length} occurrence{occurrences.length !== 1 ? 's' : ''})</div>
+              <div className="text-sm font-semibold text-gray-600 mb-2">Preview (showing first {Math.min(previewOccurrences.length, 30)} of {occurrences.length} occurrence{occurrences.length !== 1 ? 's' : ''})</div>
               {previewOccurrences.length > 0 ? (
                 <div className="max-h-48 overflow-y-auto border rounded p-2 space-y-1">
                   {previewOccurrences.slice(0, 30).map((occ, idx) => {
@@ -998,7 +998,7 @@ export default function EventModal({ projectId, mode, event, designSystem, onClo
                     return (
                       <div
                         key={idx}
-                        className={`p-2 rounded text-xs flex items-center justify-between ${
+                        className={`p-2 rounded text-sm flex items-center justify-between ${
                           isException
                             ? 'bg-red-50 border border-red-200 text-red-700'
                             : isExtra
@@ -1007,26 +1007,26 @@ export default function EventModal({ projectId, mode, event, designSystem, onClo
                         }`}
                       >
                         <div className="flex items-center gap-2">
-                          <span className="font-medium">{date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
+                          <span className="font-semibold">{date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
                           {occ.isAllDay ? (
-                            <span className="text-xs px-1.5 py-0.5 rounded bg-gray-200">All day</span>
+                            <span className="text-sm px-1.5 py-0.5 rounded bg-gray-200">All day</span>
                           ) : occ.startTime && occ.endTime ? (
-                            <span className="text-xs">{occ.startTime} - {occ.endTime}</span>
+                            <span className="text-sm">{occ.startTime} - {occ.endTime}</span>
                           ) : null}
                         </div>
-                        {isException && <span className="text-xs">(excluded)</span>}
-                        {isExtra && <span className="text-xs">(extra)</span>}
+                        {isException && <span className="text-sm">(excluded)</span>}
+                        {isExtra && <span className="text-sm">(extra)</span>}
                       </div>
                     );
                   })}
                   {previewOccurrences.length > 30 && (
-                    <div className="text-xs text-gray-500 text-center pt-2">
+                    <div className="text-sm text-gray-600 text-center pt-2">
                       ... and {previewOccurrences.length - 30} more occurrences
                     </div>
                   )}
                 </div>
               ) : (
-                <div className="text-xs text-gray-500 p-4 text-center border rounded bg-gray-50">
+                <div className="text-sm text-gray-600 p-4 text-center border rounded bg-gray-50">
                   No occurrences in preview range. Adjust your repeat settings or date range.
                 </div>
               )}
@@ -1036,7 +1036,7 @@ export default function EventModal({ projectId, mode, event, designSystem, onClo
             {/* Location and Notes */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Location</label>
+                <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">Location</label>
                 <input
                   type="text"
                   value={location}
@@ -1046,7 +1046,7 @@ export default function EventModal({ projectId, mode, event, designSystem, onClo
                 />
               </div>
               <div>
-                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Notes</label>
+                <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">Notes</label>
                 <textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
@@ -1062,7 +1062,7 @@ export default function EventModal({ projectId, mode, event, designSystem, onClo
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
+            className="px-3 py-1.5 rounded-lg text-sm font-semibold text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
           >
             Cancel
           </button>

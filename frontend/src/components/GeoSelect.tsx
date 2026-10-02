@@ -134,7 +134,7 @@ export default function GeoSelect({ country, state, city, onChange, labels, requ
   return (
     <div className="grid md:grid-cols-3 gap-3">
       <div>
-        <label className="text-xs text-gray-600">{countryLabel}{required ? ' *' : ''}</label>
+        <label className="text-sm text-gray-600">{countryLabel}{required ? ' *' : ''}</label>
         <select className="w-full border rounded px-3 py-2" value={country || ''} onChange={(e) => onChange({ country: e.target.value })} disabled={disabled || !countriesLoaded}>
           <option value="">{countriesLoaded ? 'Select...' : 'Loading...'}</option>
           {allCountries.map((c) => (
@@ -143,7 +143,7 @@ export default function GeoSelect({ country, state, city, onChange, labels, requ
         </select>
       </div>
       <div>
-        <label className="text-xs text-gray-600">{stateLabel}</label>
+        <label className="text-sm text-gray-600">{stateLabel}</label>
         <select className="w-full border rounded px-3 py-2" value={state || ''} onChange={(e) => onChange({ state: e.target.value })} disabled={disabled || !country || loadingStates}>
           <option value="">{loadingStates ? 'Loading...' : 'Select...'}</option>
           {allStates.map((s) => (
@@ -152,7 +152,7 @@ export default function GeoSelect({ country, state, city, onChange, labels, requ
         </select>
       </div>
       <div>
-        <label className="text-xs text-gray-600">{cityLabel}</label>
+        <label className="text-sm text-gray-600">{cityLabel}</label>
         <select className="w-full border rounded px-3 py-2" value={city || ''} onChange={(e) => onChange({ city: e.target.value })} disabled={disabled || !country || loadingCities}>
           <option value="">{loadingCities ? 'Loading...' : 'Select...'}</option>
           {allCities.map((ct) => (

@@ -86,7 +86,7 @@ export default function InspectionSchedules() {
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <div className="text-sm font-semibold text-gray-900">Inspection schedules</div>
-            <div className="text-xs text-gray-500 mt-0.5">Each schedule has Body and Mechanical inspections (created when you add the schedule). Open them to fill the checklist. If result is Fail, a work order is generated.</div>
+            <div className="text-sm text-gray-600 mt-0.5">Each schedule has Body and Mechanical inspections (created when you add the schedule). Open them to fill the checklist. If result is Fail, a work order is generated.</div>
           </div>
           <div className="flex items-center gap-2">
             <select
@@ -103,7 +103,7 @@ export default function InspectionSchedules() {
             </select>
             <button
               onClick={() => nav('/fleet/inspections/new')}
-              className="px-3 py-2 text-sm font-medium text-white bg-brand-red rounded-lg hover:bg-red-700 transition-colors"
+              className="px-3 py-2 text-sm font-semibold text-white bg-brand-red rounded-lg hover:bg-red-700 transition-colors"
             >
               New schedule
             </button>
@@ -113,19 +113,19 @@ export default function InspectionSchedules() {
 
       <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
         {isLoading ? (
-          <div className="p-8 text-center text-gray-500">Loading schedules...</div>
+          <div className="p-8 text-center text-gray-600">Loading schedules...</div>
         ) : schedules.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="text-left px-4 py-3 font-medium text-gray-700">Date</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-700">Vehicle</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-700">Category</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-700">Urgency</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-700">Status</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-700">Progress</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-700">Actions</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-700">Date</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-700">Vehicle</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-700">Category</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-700">Urgency</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-700">Status</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-700">Progress</th>
+                  <th className="text-right px-4 py-3 font-semibold text-gray-700">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -140,7 +140,7 @@ export default function InspectionSchedules() {
                       <td className="px-4 py-3 text-gray-600">{URGENCY_LABELS[s.urgency] ?? s.urgency}</td>
                       <td className="px-4 py-3">
                         <span
-                          className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${
+                          className={`inline-flex px-2 py-0.5 rounded text-sm font-semibold ${
                             s.status === 'scheduled'
                               ? 'bg-blue-100 text-blue-800'
                               : s.status === 'in_progress'
@@ -153,7 +153,7 @@ export default function InspectionSchedules() {
                           {SCHEDULE_STATUS_LABELS[s.status] ?? s.status}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-xs text-gray-600">
+                      <td className="px-4 py-3 text-sm text-gray-600">
                         <span className="mr-2">Body: {s.body_inspection_id ? (bodyDone ? INSPECTION_RESULT_LABELS[s.body_result!] ?? s.body_result : 'Pending') : '—'}</span>
                         <span>Mech: {s.mechanical_inspection_id ? (mechDone ? INSPECTION_RESULT_LABELS[s.mechanical_result!] ?? s.mechanical_result : 'Pending') : '—'}</span>
                       </td>
@@ -165,7 +165,7 @@ export default function InspectionSchedules() {
                                 <button
                                   type="button"
                                   onClick={() => nav(`/fleet/inspections/${s.id}?focus=body`)}
-                                  className="px-3 py-1.5 text-sm font-medium text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50"
+                                  className="px-3 py-1.5 text-sm font-semibold text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50"
                                 >
                                   Open Body
                                 </button>
@@ -174,7 +174,7 @@ export default function InspectionSchedules() {
                                   type="button"
                                   onClick={() => startBodyMutation.mutate(s.id)}
                                   disabled={startBodyMutation.isPending || startMechanicalMutation.isPending}
-                                  className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                                  className="px-3 py-1.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
                                 >
                                   {startBodyMutation.isPending ? 'Opening...' : 'Body / Exterior'}
                                 </button>
@@ -183,7 +183,7 @@ export default function InspectionSchedules() {
                                 <button
                                   type="button"
                                   onClick={() => nav(`/fleet/inspections/${s.id}?focus=mechanical`)}
-                                  className="px-3 py-1.5 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+                                  className="px-3 py-1.5 text-sm font-semibold text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
                                 >
                                   Open Mechanical
                                 </button>
@@ -192,7 +192,7 @@ export default function InspectionSchedules() {
                                   type="button"
                                   onClick={() => startMechanicalMutation.mutate(s.id)}
                                   disabled={startBodyMutation.isPending || startMechanicalMutation.isPending}
-                                  className="px-3 py-1.5 text-sm font-medium text-white bg-gray-700 rounded-lg hover:bg-gray-800 disabled:opacity-50"
+                                  className="px-3 py-1.5 text-sm font-semibold text-white bg-gray-700 rounded-lg hover:bg-gray-800 disabled:opacity-50"
                                 >
                                   {startMechanicalMutation.isPending ? 'Opening...' : 'Mechanical'}
                                 </button>
@@ -214,7 +214,7 @@ export default function InspectionSchedules() {
                                 deleteScheduleMutation.mutate(s.id);
                               }}
                               disabled={deleteScheduleMutation.isPending}
-                              className="px-3 py-1.5 text-sm font-medium text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 disabled:opacity-50"
+                              className="px-3 py-1.5 text-sm font-semibold text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 disabled:opacity-50"
                             >
                               {deleteScheduleMutation.isPending ? 'Deleting…' : 'Delete'}
                             </button>
@@ -228,7 +228,7 @@ export default function InspectionSchedules() {
             </table>
           </div>
         ) : (
-          <div className="p-8 text-center text-gray-500">No inspection schedules found. Create one from Inspections or the button above.</div>
+          <div className="p-8 text-center text-gray-600">No inspection schedules found. Create one from Inspections or the button above.</div>
         )}
       </div>
     </div>

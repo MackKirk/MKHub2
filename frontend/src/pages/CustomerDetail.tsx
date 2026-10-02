@@ -411,7 +411,7 @@ export default function CustomerDetail(){
                     <button
                       type="button"
                       onClick={() => setPickerOpen(true)}
-                      className="absolute inset-0 flex items-center justify-center bg-black/40 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100"
+                      className="absolute inset-0 flex items-center justify-center bg-black/40 text-sm text-white opacity-0 transition-opacity group-hover:opacity-100"
                     >
                       Change
                     </button>
@@ -456,7 +456,7 @@ export default function CustomerDetail(){
                       {clientStatusLabel ? (
                         <AppBadge variant={clientStatusVariant}>{clientStatusLabel}</AppBadge>
                       ) : (
-                        <span className={uiCx(uiTypography.helper, 'font-semibold text-gray-400')}>{EM_DASH}</span>
+                        <span className={uiCx(uiTypography.helper, 'font-semibold text-gray-600')}>{EM_DASH}</span>
                       )}
                     </div>
                   </div>
@@ -487,7 +487,7 @@ export default function CustomerDetail(){
               {c.display_name || c.name || id}
             </h3>
             <div className="flex shrink-0 items-center gap-1">
-              <span className="text-[10px] font-medium leading-none text-gray-500">{c.code || id?.slice(0, 8) || EM_DASH}</span>
+              <span className="text-xs font-semibold leading-none text-gray-600">{c.code || id?.slice(0, 8) || EM_DASH}</span>
               {clientStatusLabel ? (
                 <AppBadge variant={clientStatusVariant} className="!px-1.5 !py-0 !text-[9px] !leading-none">
                   {clientStatusLabel}
@@ -536,7 +536,7 @@ export default function CustomerDetail(){
           {isLoading? <div className="h-24 animate-pulse bg-gray-100 rounded"/> : (
             <>
               {availableTabs.length === 0 && (
-                <p className="text-sm text-gray-500">You do not have permission to view any section of this customer.</p>
+                <p className="text-sm text-gray-600">You do not have permission to view any section of this customer.</p>
               )}
               {tab === null && hasOverviewView && (
                   <CustomerOverviewTab
@@ -639,7 +639,7 @@ export default function CustomerDetail(){
                       }
                     />
                     <div className="mt-4">
-                      <div className={uiCx(uiTypography.helper, 'whitespace-pre-wrap break-words font-medium text-gray-900')}>
+                      <div className={uiCx(uiTypography.helper, 'whitespace-pre-wrap break-words font-semibold text-gray-900')}>
                         {String((client as any)?.description || '') || EM_DASH}
                       </div>
                     </div>
@@ -693,7 +693,7 @@ export default function CustomerDetail(){
                       <>
                         <div
                           className={uiCx(
-                            'grid gap-2 sm:gap-3 lg:gap-4 items-center px-4 py-2 bg-gray-50 border-b border-gray-200 rounded-t-lg text-[10px] font-semibold text-gray-700',
+                            'grid gap-2 sm:gap-3 lg:gap-4 items-center px-4 py-2 bg-gray-50 border-b border-gray-200 rounded-t-lg text-xs font-semibold text-gray-700',
                             OPPORTUNITY_LIST_MIN_WIDTH,
                             OPPORTUNITY_LIST_GRID_CLASS,
                           )}
@@ -738,7 +738,7 @@ export default function CustomerDetail(){
                       <>
                         <div
                           className={uiCx(
-                            'grid gap-2 sm:gap-3 lg:gap-4 items-center px-4 py-2 bg-gray-50 border-b border-gray-200 rounded-t-lg text-[10px] font-semibold text-gray-700',
+                            'grid gap-2 sm:gap-3 lg:gap-4 items-center px-4 py-2 bg-gray-50 border-b border-gray-200 rounded-t-lg text-xs font-semibold text-gray-700',
                             PROJECT_LIST_MIN_WIDTH,
                             PROJECT_LIST_GRID_CLASS,
                           )}
@@ -841,9 +841,9 @@ function ProjectRow({ project, files, onCoverClick, hasEditPermission }: { proje
       <div className="flex items-center gap-4 min-w-0 flex-1">
         <img src={src} className="w-24 h-24 rounded-lg border object-cover"/>
         <div className="min-w-0 flex-1">
-          <div className="font-medium text-base truncate">{project.name||'Project'}</div>
+          <div className="font-semibold text-base truncate">{project.name||'Project'}</div>
           <div className="text-sm text-gray-600 truncate mt-1">{project.code||''}</div>
-          <div className="text-sm text-gray-500 truncate mt-1">Start: {start||EM_DASH}</div>
+          <div className="text-sm text-gray-600 truncate mt-1">Start: {start||EM_DASH}</div>
         </div>
       </div>
       <div className="flex items-center gap-3 text-sm" onClick={e=> e.stopPropagation()}>
@@ -857,7 +857,7 @@ function ProjectRow({ project, files, onCoverClick, hasEditPermission }: { proje
           <div className="h-2 w-20 bg-gray-100 rounded-full overflow-hidden">
             <div className="h-full bg-brand-red" style={{ width: `${progress}%` }} />
           </div>
-          <span className="text-xs text-gray-600">{progress}%</span>
+          <span className="text-sm text-gray-600">{progress}%</span>
         </div>
         {hasEditPermission && (
           <button onClick={(e)=>{ e.preventDefault(); e.stopPropagation(); onCoverClick(String(project.id)); }} className="ml-2 px-3 py-1.5 rounded bg-gray-100 hover:bg-gray-200 text-sm" title="Change cover">Cover</button>
@@ -872,7 +872,7 @@ function ReadOnlyField({ label, value }: { label: ReactNode; value?: string | nu
   return (
     <div className="space-y-1">
       <div className={uiTypography.controlLabel}>{label}</div>
-      <div className={uiCx(uiTypography.helper, 'break-words font-medium text-gray-900')}>
+      <div className={uiCx(uiTypography.helper, 'break-words font-semibold text-gray-900')}>
         {display || EM_DASH}
       </div>
     </div>
@@ -885,7 +885,7 @@ function Field({ label, tooltip, children }: { label: ReactNode; tooltip?: strin
     <div className="space-y-2">
       <label className={uiCx(uiTypography.controlLabel, 'flex items-center gap-1')}>
         <span>{label}</span>
-        {tooltip ? <AppTooltip content={tooltip}><span className="inline-flex text-gray-400">?</span></AppTooltip> : null}
+        {tooltip ? <AppTooltip content={tooltip}><span className="inline-flex text-gray-600">?</span></AppTooltip> : null}
       </label>
       {children}
     </div>
@@ -907,21 +907,21 @@ function ProjectMiniCard({ project, coverSrc, clientName }:{ project:any, coverS
         <img className="w-full h-full object-cover" src={coverSrc} />
       </div>
       <div className="p-2">
-        <div className="text-xs text-gray-600 truncate">{clientName||''}</div>
+        <div className="text-sm text-gray-600 truncate">{clientName||''}</div>
         <div className="font-semibold text-sm truncate group-hover:underline">{project.name||'Project'}</div>
-        <div className="text-xs text-gray-600 truncate">{project.code||''}</div>
+        <div className="text-sm text-gray-600 truncate">{project.code||''}</div>
         <div className="mt-1 flex items-center justify-between">
-          <span className="px-2 py-0.5 rounded-full text-[11px] border bg-gray-50 text-gray-800 truncate max-w-[60%]" title={status}>{status||EM_DASH}</span>
-          <span className="text-[11px] text-gray-600">{reports||0} reports</span>
+          <span className="px-2 py-0.5 rounded-full text-xs border bg-gray-50 text-gray-800 truncate max-w-[60%]" title={status}>{status||EM_DASH}</span>
+          <span className="text-xs text-gray-600">{reports||0} reports</span>
         </div>
         <div className="mt-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
           <div className="h-full bg-brand-red" style={{ width: `${progress}%` }} />
         </div>
-        <div className="mt-1 grid grid-cols-2 gap-2 text-[11px] text-gray-700">
+        <div className="mt-1 grid grid-cols-2 gap-2 text-xs text-gray-700">
           <div><span className="opacity-70">Start:</span> {start||EM_DASH}</div>
           <div><span className="opacity-70">End Date:</span> {eta||EM_DASH}</div>
         </div>
-        <div className="mt-1 grid grid-cols-2 gap-2 text-[11px] text-gray-700">
+        <div className="mt-1 grid grid-cols-2 gap-2 text-xs text-gray-700">
           <div className="truncate" title={est}><span className="opacity-70">Estimator:</span> {est? <UserInline id={est} /> : EM_DASH}</div>
           <div className="truncate" title={lead}><span className="opacity-70">On-site:</span> {lead? <UserInline id={lead} /> : EM_DASH}</div>
         </div>
@@ -935,7 +935,7 @@ function UserInline({ id }:{ id:string }){
   const fn = data?.profile?.preferred_name || data?.profile?.first_name || '';
   const ln = data?.profile?.last_name || '';
   const label = `${fn} ${ln}`.trim() || '';
-  return <span className="font-medium">{label||EM_DASH}</span>;
+  return <span className="font-semibold">{label||EM_DASH}</span>;
 }
 
 function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: { id: string, files: ClientFile[], sites: Site[], onRefresh: ()=>any, hasEditPermission?: boolean }){
@@ -1022,10 +1022,10 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
                    onDragOver={(e)=>{ e.preventDefault(); }}
                    onDrop={async(e)=>{ e.preventDefault(); if(e.dataTransfer.files?.length){ const arr=Array.from(e.dataTransfer.files); for(const file of arr){ await uploadToFolder(f.id, file as File); } toast.success('Uploaded'); } }}>
                 <div className="text-4xl">ðŸ“</div>
-                <div className="mt-1 text-sm font-medium truncate text-center w-full" title={f.name}>{f.name}</div>
+                <div className="mt-1 text-sm font-semibold truncate text-center w-full" title={f.name}>{f.name}</div>
                 <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 folder-actions">
                   {hasEditPermission && (
-                    <button onClick={(e)=>{ e.stopPropagation(); removeFolder(f.id, f.name); }} className="p-1 rounded bg-red-600 hover:bg-red-700 text-white text-[10px]" title="Delete folder">ðŸ—‘ï¸</button>
+                    <button onClick={(e)=>{ e.stopPropagation(); removeFolder(f.id, f.name); }} className="p-1 rounded bg-red-600 hover:bg-red-700 text-white text-xs" title="Delete folder">ðŸ—‘ï¸</button>
                   )}
                 </div>
               </div>
@@ -1051,7 +1051,7 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
             <div className="p-4">
               {childFolders.length>0 && (
                 <div className="mb-3">
-                  <div className="text-xs text-gray-600 mb-1">Subfolders</div>
+                  <div className="text-sm text-gray-600 mb-1">Subfolders</div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2">
                     {childFolders.map((f:any)=> (
                       <div key={f.id} className="relative rounded-lg border p-3 h-28 bg-white hover:bg-gray-50 select-none group flex flex-col items-center justify-center"
@@ -1059,10 +1059,10 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
                            onDragOver={(e)=>{ e.preventDefault(); }}
                            onDrop={async(e)=>{ e.preventDefault(); if(e.dataTransfer.files?.length){ const arr=Array.from(e.dataTransfer.files); for(const file of arr){ await uploadToFolder(f.id, file as File); } toast.success('Uploaded'); } }}>
                         <div className="text-4xl">ðŸ“</div>
-                        <div className="mt-1 text-sm font-medium truncate text-center w-full" title={f.name}>{f.name}</div>
+                        <div className="mt-1 text-sm font-semibold truncate text-center w-full" title={f.name}>{f.name}</div>
                         <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 folder-actions">
                           {hasEditPermission && (
-                            <button onClick={(e)=>{ e.stopPropagation(); removeFolder(f.id, f.name); }} className="p-1 rounded bg-red-600 hover:bg-red-700 text-white text-[10px]" title="Delete folder">ðŸ—‘ï¸</button>
+                            <button onClick={(e)=>{ e.stopPropagation(); removeFolder(f.id, f.name); }} className="p-1 rounded bg-red-600 hover:bg-red-700 text-white text-xs" title="Delete folder">ðŸ—‘ï¸</button>
                           )}
                         </div>
                       </div>
@@ -1103,10 +1103,10 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
                         setSelectedDocIds(prev=>{ const next = new Set(prev); if(e.target.checked) next.add(d.id); else next.delete(d.id); return next; });
                       }} />
                     )}
-                    <div className={`w-10 h-12 rounded-lg ${s.bg} ${s.txt} flex items-center justify-center text-[10px] font-extrabold select-none`}>{ext||'FILE'}</div>
+                    <div className={`w-10 h-12 rounded-lg ${s.bg} ${s.txt} flex items-center justify-center text-xs font-extrabold select-none`}>{ext||'FILE'}</div>
                     <div className="flex-1 min-w-0" onClick={async()=>{ if(selectMode) return; try{ const r:any = await api('GET', withFileAccessToken(`/files/${encodeURIComponent(d.file_id)}/download`)); const url=r.download_url||''; if(url) { if(ext==='PDF') setPreviewPdf({ url, name: d.title||'Preview' }); else window.open(url,'_blank'); } }catch(_e){ toast.error('Preview not available'); } }}>
-                      <div className="font-medium truncate cursor-pointer hover:underline">{d.title||'Document'}</div>
-                      <div className="text-[11px] text-gray-600 truncate">Uploaded {String(d.created_at||'').slice(0,10)}</div>
+                      <div className="font-semibold truncate cursor-pointer hover:underline">{d.title||'Document'}</div>
+                      <div className="text-xs text-gray-600 truncate">Uploaded {String(d.created_at||'').slice(0,10)}</div>
                     </div>
                     <div className="ml-auto flex items-center gap-1">
                       <a title="Download" className="p-2 rounded hover:bg-gray-100" href={withFileAccessToken(`/files/${encodeURIComponent(d.file_id)}/download`)} target="_blank">â¬‡ï¸</a>
@@ -1129,16 +1129,16 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
           <div key={f.id} className="relative group">
             <img className="w-full h-24 object-cover rounded border" src={withFileAccessToken(`/files/${f.file_object_id}/thumbnail?w=300`)} loading="lazy" />
             <div className="absolute right-2 top-2 hidden group-hover:flex gap-1">
-              <button onClick={async(e)=>{ e.stopPropagation(); const url = await fetchDownloadUrl(String(f.file_object_id)); if(url) window.open(url,'_blank'); }} className="bg-black/70 hover:bg-black/80 text-white text-[11px] px-2 py-1 rounded" title="Zoom">ðŸ”</button>
-              <button onClick={(e)=>{ e.stopPropagation(); setEditingImage({ fileObjectId: f.file_object_id, name: f.original_name || 'image' }); }} className="bg-blue-600 hover:bg-blue-700 text-white text-[11px] px-2 py-1 rounded" title="Edit">âœï¸</button>
+              <button onClick={async(e)=>{ e.stopPropagation(); const url = await fetchDownloadUrl(String(f.file_object_id)); if(url) window.open(url,'_blank'); }} className="bg-black/70 hover:bg-black/80 text-white text-xs px-2 py-1 rounded" title="Zoom">ðŸ”</button>
+              <button onClick={(e)=>{ e.stopPropagation(); setEditingImage({ fileObjectId: f.file_object_id, name: f.original_name || 'image' }); }} className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-2 py-1 rounded" title="Edit">âœï¸</button>
               {hasEditPermission && (
-                <button onClick={(e)=>{ e.stopPropagation(); removePic(f.id); }} className="bg-red-600 hover:bg-red-700 text-white text-[11px] px-2 py-1 rounded" title="Delete">ðŸ—‘ï¸</button>
+                <button onClick={(e)=>{ e.stopPropagation(); removePic(f.id); }} className="bg-red-600 hover:bg-red-700 text-white text-xs px-2 py-1 rounded" title="Delete">ðŸ—‘ï¸</button>
               )}
             </div>
             <div className={`absolute left-2 top-2 text-[10px] font-bold rounded-full w-6 h-6 grid place-items-center ${isSite? 'bg-blue-500 text-white':'bg-green-500 text-white'}`} title={isSite? 'Site image':'Client image'}>
               {isSite? String((f.site_id||'') as string).slice(0,2).toUpperCase() : 'C'}
             </div>
-            <div className="absolute inset-x-0 bottom-0 hidden group-hover:flex items-center text-[11px] text-white bg-gradient-to-t from-black/70 to-transparent px-2 py-1">
+            <div className="absolute inset-x-0 bottom-0 hidden group-hover:flex items-center text-xs text-white bg-gradient-to-t from-black/70 to-transparent px-2 py-1">
               <span className="truncate">{tip}</span>
             </div>
           </div>

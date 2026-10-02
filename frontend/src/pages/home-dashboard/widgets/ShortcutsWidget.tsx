@@ -82,7 +82,7 @@ export function ShortcutsWidget({ config }: ShortcutsWidgetProps) {
             >
               <WidgetIcon icon={Icon} size={singleLarge ? 'lg' : 'md'} className="text-gray-800" />
               <span
-                className="w-full min-w-0 truncate text-center font-medium text-gray-800"
+                className="w-full min-w-0 truncate text-center font-semibold text-gray-800"
                 style={{ fontSize: 'clamp(0.6875rem, 8cqh, 0.9375rem)' }}
               >
                 {label}

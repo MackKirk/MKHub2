@@ -9,7 +9,7 @@ function MiniStat({ label, value, unit }: { label: string; value: number | strin
       <div className={uiCx(uiTypography.overline, 'break-words leading-tight')}>{label}</div>
       <div className="text-base font-semibold tabular-nums text-gray-900">
         {value}
-        {unit ? <span className="ml-0.5 text-xs font-medium text-gray-500">{unit}</span> : null}
+        {unit ? <span className="ml-0.5 text-sm font-semibold text-gray-600">{unit}</span> : null}
       </div>
     </AppCard>
   );

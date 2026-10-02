@@ -396,14 +396,14 @@ export default function ProjectNew(){
 
   const stepPillClass = (n: number) =>
     uiCx(
-      'rounded-full px-2 py-1 text-[10px] font-medium',
+      'rounded-full px-2 py-1 text-xs font-semibold',
       step === n ? 'bg-gray-900 text-white' : 'bg-gray-200 text-gray-600',
     );
 
   const stepIndicators = (
-    <div className={uiCx(uiLayout.actionsRow, uiTypography.helper, 'text-[10px] font-medium')}>
+    <div className={uiCx(uiLayout.actionsRow, uiTypography.helper, 'text-xs font-semibold')}>
       <span className={stepPillClass(1)}>Step 1</span>
-      <span className="text-gray-400">→</span>
+      <span className="text-gray-600">→</span>
       <span className={stepPillClass(2)}>Step 2</span>
     </div>
   );
@@ -586,18 +586,18 @@ export default function ProjectNew(){
                 }
               />
               {isBidding && projectDivisionIds.length === 0 && (
-                <p className="text-xs text-red-600">
+                <p className="text-sm text-red-600">
                   Select at least one division for this opportunity
                 </p>
               )}
               {startedAsOpportunity && isCreatingLeakInvestigation && (
-                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
                   Leak Investigations are created as projects, not opportunities.
                 </p>
               )}
                   <div className="rounded-lg border border-gray-200 bg-white overflow-hidden divide-y divide-gray-200">
                     {divisionsLoading ? (
-                      <div className="text-xs text-gray-500 text-center py-6">Loading project divisions…</div>
+                      <div className="text-sm text-gray-600 text-center py-6">Loading project divisions…</div>
                     ) : divisionsForPicker && divisionsForPicker.length > 0 ? (
                         (divisionsForPicker || []).map((div: any) => {
                           const divId = String(div.id);
@@ -622,7 +622,7 @@ export default function ProjectNew(){
                                     );
                                   }
                                 }}
-                                className={`w-full text-left px-3 py-2.5 text-sm font-medium flex items-center gap-2 transition-colors ${
+                                className={`w-full text-left px-3 py-2.5 text-sm font-semibold flex items-center gap-2 transition-colors ${
                                   hasSubdivisions
                                     ? 'bg-gray-50 hover:bg-gray-100 text-gray-900'
                                     : projectDivisionIds.includes(divId)
@@ -631,7 +631,7 @@ export default function ProjectNew(){
                                 }`}
                               >
                                 {hasSubdivisions && (
-                                  <span className="text-gray-500 text-xs w-4 flex-shrink-0">
+                                  <span className="text-gray-600 text-sm w-4 flex-shrink-0">
                                     {isExpanded ? '▼' : '▶'}
                                   </span>
                                 )}
@@ -655,7 +655,7 @@ export default function ProjectNew(){
                                             prev.includes(subId) ? prev.filter((x) => x !== subId) : [...prev, subId]
                                           )
                                         }
-                                        className={`w-full text-left px-3 py-2 rounded-lg text-xs flex items-center gap-2 transition-colors ${
+                                        className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2 transition-colors ${
                                           subSelected
                                             ? 'bg-indigo-50 text-gray-900 border border-indigo-200'
                                             : 'bg-white border border-gray-200 hover:bg-gray-50 text-gray-800'
@@ -674,7 +674,7 @@ export default function ProjectNew(){
                           );
                         })
                     ) : (
-                      <div className="text-xs text-gray-500 text-center py-6">
+                      <div className="text-sm text-gray-600 text-center py-6">
                         No project divisions available. Please run the seed script.
                       </div>
                     )}
@@ -682,7 +682,7 @@ export default function ProjectNew(){
                   {/* Legacy divisions support (deprecated) — hidden for opportunities and leak investigations */}
                   {!isBidding && !isCreatingLeakInvestigation && settings?.divisions && settings.divisions.length > 0 && (
                     <div className="mt-3 pt-3 border-t border-gray-200">
-                      <label className="text-xs text-gray-500">Legacy Divisions (deprecated)</label>
+                      <label className="text-sm text-gray-600">Legacy Divisions (deprecated)</label>
                       <div className="flex flex-wrap gap-2 mt-1">
                         {(settings.divisions || []).map((d: any) => {
                           const id = String(d.id || d.label || d.value);
@@ -698,7 +698,7 @@ export default function ProjectNew(){
                                   prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
                                 )
                               }
-                              className={`px-2 py-1 rounded-full border text-xs ${selected ? 'ring-2 ring-brand-red' : ''}`}
+                              className={`px-2 py-1 rounded-full border text-sm ${selected ? 'ring-2 ring-brand-red' : ''}`}
                               style={{ backgroundColor: bg }}
                             >
                               {ab}

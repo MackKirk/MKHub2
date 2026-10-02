@@ -86,9 +86,9 @@ export function FileFolderGridTile({
           <Folder className="h-7 w-7" aria-hidden />
         </div>
         <div className="w-full text-center">
-          <div className="truncate text-xs font-semibold text-gray-900">{folder.name}</div>
+          <div className="truncate text-sm font-semibold text-gray-900">{folder.name}</div>
           {typeof folder.fileCount === 'number' ? (
-            <div className="text-[10px] text-gray-500">({folder.fileCount})</div>
+            <div className="text-xs text-gray-600">({folder.fileCount})</div>
           ) : null}
         </div>
       </div>
@@ -120,7 +120,7 @@ export function FileParentGridTile({
       <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-gray-200 text-gray-600 text-lg font-semibold">
         ..
       </div>
-      <div className="truncate text-xs font-semibold text-gray-700">Up one level</div>
+      <div className="truncate text-sm font-semibold text-gray-700">Up one level</div>
     </button>
   );
 }

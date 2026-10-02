@@ -52,11 +52,11 @@ export function CustomerOverviewProjectListModal({
             <li key={p.id}>
               <Link
                 to={`/projects/${encodeURIComponent(p.id)}`}
-                className={uiCx('block px-3 py-2.5 text-sm font-medium text-brand-red hover:bg-red-50')}
+                className={uiCx('block px-3 py-2.5 text-sm font-semibold text-brand-red hover:bg-red-50')}
                 onClick={onClose}
               >
                 {p.name || p.code || p.id}
-                {p.code && p.name ? <span className="ml-1 font-normal text-gray-500">({p.code})</span> : null}
+                {p.code && p.name ? <span className="ml-1 font-normal text-gray-600">({p.code})</span> : null}
               </Link>
             </li>
           ))}
@@ -103,7 +103,7 @@ export function CustomerOverviewRelatedModal({
                 <li key={m.id} className={uiCx('flex items-center gap-2 px-3 py-2 hover:bg-gray-50')}>
                   <Link
                     to={`/projects/${encodeURIComponent(m.id)}`}
-                    className="min-w-0 flex-1 truncate text-sm font-medium text-brand-red"
+                    className="min-w-0 flex-1 truncate text-sm font-semibold text-brand-red"
                     onClick={onClose}
                   >
                     {m.name || m.code || m.id}
@@ -125,7 +125,7 @@ export function CustomerOverviewRelatedModal({
                 <li key={m.id} className={uiCx('flex items-center gap-2 px-3 py-2 hover:bg-gray-50')}>
                   <Link
                     to={`/projects/${encodeURIComponent(m.id)}`}
-                    className="min-w-0 flex-1 truncate text-sm font-medium text-brand-red"
+                    className="min-w-0 flex-1 truncate text-sm font-semibold text-brand-red"
                     onClick={onClose}
                   >
                     {m.name || m.code || m.id}

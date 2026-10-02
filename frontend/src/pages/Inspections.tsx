@@ -310,7 +310,7 @@ export default function Inspections() {
                               }
                             }}
                           >
-                            <span className={uiCx(uiTypography.body, 'whitespace-nowrap font-medium text-gray-900')}>
+                            <span className={uiCx(uiTypography.body, 'whitespace-nowrap font-semibold text-gray-900')}>
                               {s.scheduled_at ? formatDateLocal(new Date(s.scheduled_at)) : '—'}
                             </span>
                             <div className="min-w-0">

@@ -92,11 +92,11 @@ function HierarchicalPickerPanel({
       className={uiCx(uiDropdown.menuSearchable, 'max-h-96')}
       style={menuPosition}
     >
-      <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-gray-100 bg-white px-2.5 py-2 text-xs text-gray-600">
+      <div className={uiCx('flex shrink-0 flex-wrap items-center gap-1 border-b border-gray-100 bg-white px-2.5 py-2', uiTypography.helper)}>
         <button
           type="button"
           className={uiCx(
-            'rounded-md px-2 py-1 font-medium transition-colors',
+            'rounded-md px-2 py-1 font-semibold transition-colors',
             pathIds.length === 0 ? 'bg-gray-100 text-gray-900' : 'hover:bg-gray-50',
           )}
           onMouseDown={(e) => e.preventDefault()}
@@ -113,7 +113,7 @@ function HierarchicalPickerPanel({
               type="button"
               title={seg.name}
               className={uiCx(
-                'max-w-[10rem] truncate rounded-md px-2 py-1 font-medium transition-colors',
+                'max-w-[10rem] truncate rounded-md px-2 py-1 font-semibold transition-colors',
                 i === trail.length - 1 ? 'bg-gray-50 text-gray-900' : 'hover:bg-gray-50',
               )}
               onMouseDown={(e) => e.preventDefault()}
@@ -307,7 +307,7 @@ export function AppHierarchicalSelectSingle({
         />
       </div>
       {error ? (
-        <span className="block text-xs text-red-600">{error}</span>
+        <span className="block text-sm text-red-600">{error}</span>
       ) : helperText ? (
         <span className={uiTypography.helper}>{helperText}</span>
       ) : null}
@@ -442,7 +442,7 @@ export function AppHierarchicalSelectMulti({
           />
           <span className="flex min-w-0 flex-1 items-center gap-3">
             <SelectDropdownCheckbox checked={isSelected} />
-            <span className="min-w-0 flex-1 truncate text-xs text-gray-900">{displayLabel}</span>
+            <span className={uiCx('min-w-0 flex-1 truncate', uiTypography.controlValue)}>{displayLabel}</span>
           </span>
         </label>
       </li>
@@ -507,7 +507,7 @@ export function AppHierarchicalSelectMulti({
   const triggerClasses = uiCx(
     uiDropdown.trigger,
     'flex w-full items-center justify-between gap-2 pr-8 text-left',
-    value.length === 0 && 'text-gray-400',
+    value.length === 0 && 'text-gray-600',
     open && !disabled && 'border-gray-400 ring-1 ring-inset ring-gray-400/35',
     triggerClassName,
   );
@@ -533,7 +533,7 @@ export function AppHierarchicalSelectMulti({
           <>
             {label}
             {value.length > 0 ? (
-              <span className="ml-1 font-normal normal-case text-gray-500">({value.length} selected)</span>
+              <span className="ml-1 font-normal normal-case text-gray-600">({value.length} selected)</span>
             ) : null}
           </>
         }
@@ -577,7 +577,7 @@ export function AppHierarchicalSelectMulti({
       </div>
       {chipsRow}
       {error ? (
-        <span className="block text-xs text-red-600">{error}</span>
+        <span className="block text-sm text-red-600">{error}</span>
       ) : helperText ? (
         <span className={uiTypography.helper}>{helperText}</span>
       ) : null}

@@ -111,9 +111,9 @@ function FileCategoriesView({ canEdit = true }: { canEdit?: boolean }) {
           <div className="min-w-0">
             <h3 className={uiTypography.sectionTitle}>Two different taxonomies</h3>
             <p className={uiCx('mt-1', uiTypography.helper)}>
-              <span className="font-medium text-gray-800">Company file categories</span> are the top-level
+              <span className="font-semibold text-gray-800">Company file categories</span> are the top-level
               areas in Company Files (HR, Operations, etc.).{' '}
-              <span className="font-medium text-gray-800">Project file categories</span> define upload
+              <span className="font-semibold text-gray-800">Project file categories</span> define upload
               slugs and default project subfolder names (Drawings, Safety, Contract…).
             </p>
           </div>
@@ -291,7 +291,7 @@ function CompanyFileCategoriesCard({ canEdit = true }: { canEdit?: boolean }) {
                               type="button"
                               variant="secondary"
                               size="sm"
-                              className="h-auto px-1 py-0 text-[10px] leading-none"
+                              className="h-auto px-1 py-0 text-xs leading-none"
                               disabled={i === 0}
                               onClick={() => move(i, -1)}
                               title="Move up"
@@ -302,7 +302,7 @@ function CompanyFileCategoriesCard({ canEdit = true }: { canEdit?: boolean }) {
                               type="button"
                               variant="secondary"
                               size="sm"
-                              className="h-auto px-1 py-0 text-[10px] leading-none"
+                              className="h-auto px-1 py-0 text-xs leading-none"
                               disabled={i === sorted.length - 1}
                               onClick={() => move(i, 1)}
                               title="Move down"
@@ -602,7 +602,7 @@ function ProjectFileCategoriesCard({ canEdit = true }: { canEdit?: boolean }) {
                               type="button"
                               variant="secondary"
                               size="sm"
-                              className="h-auto px-1 py-0 text-[10px] leading-none"
+                              className="h-auto px-1 py-0 text-xs leading-none"
                               disabled={i === 0}
                               onClick={() => move(i, -1)}
                               title="Move up"
@@ -613,7 +613,7 @@ function ProjectFileCategoriesCard({ canEdit = true }: { canEdit?: boolean }) {
                               type="button"
                               variant="secondary"
                               size="sm"
-                              className="h-auto px-1 py-0 text-[10px] leading-none"
+                              className="h-auto px-1 py-0 text-xs leading-none"
                               disabled={i === sorted.length - 1}
                               onClick={() => move(i, 1)}
                               title="Move down"
@@ -651,7 +651,7 @@ function ProjectFileCategoriesCard({ canEdit = true }: { canEdit?: boolean }) {
                         </td>
                         <td className="px-3 py-2">
                           <AppTextarea
-                            textareaClassName="min-h-[2.5rem] text-xs"
+                            textareaClassName="min-h-[2.5rem] text-sm"
                             rows={2}
                             placeholder="—"
                             value={description}
@@ -984,7 +984,7 @@ function AssetLibraryView({
                       onBlur={() => saveLabel(it, label)}
                     />
                     {dirty ? (
-                      <div className="text-[11px] font-medium text-amber-700">Unsaved label — blur to save</div>
+                      <div className="text-xs font-semibold text-amber-700">Unsaved label — blur to save</div>
                     ) : null}
                     <div className={uiCx('mt-auto flex flex-wrap gap-2', uiLayout.actionsRow)}>
                       <input

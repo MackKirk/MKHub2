@@ -113,14 +113,14 @@ export default function BugReportDescription({ description }: Props) {
           <div className={uiCx(uiRadius.card, uiBorders.subtle, uiColors.surface, uiSpacing.compactCardPadding, uiSpacing.sectionStack)}>
             {bugDetails.severity && (
               <div className="flex items-center gap-3">
-                <span className={uiCx(uiTypography.helper, 'min-w-[5.5rem] shrink-0 font-medium')}>Severity</span>
+                <span className={uiCx(uiTypography.helper, 'min-w-[5.5rem] shrink-0 font-semibold')}>Severity</span>
                 <AppBadge variant={severityVariant(bugDetails.severity)}>{bugDetails.severity}</AppBadge>
               </div>
             )}
 
             {bugDetails.page_url && (
               <div className="flex items-start gap-3">
-                <span className={uiCx(uiTypography.helper, 'min-w-[5.5rem] shrink-0 pt-0.5 font-medium')}>Page URL</span>
+                <span className={uiCx(uiTypography.helper, 'min-w-[5.5rem] shrink-0 pt-0.5 font-semibold')}>Page URL</span>
                 <a
                   href={bugDetails.page_url}
                   target="_blank"
@@ -134,21 +134,21 @@ export default function BugReportDescription({ description }: Props) {
 
             {bugDetails.screen && (
               <div className="flex items-center gap-3">
-                <span className={uiCx(uiTypography.helper, 'min-w-[5.5rem] shrink-0 font-medium')}>Screen</span>
+                <span className={uiCx(uiTypography.helper, 'min-w-[5.5rem] shrink-0 font-semibold')}>Screen</span>
                 <span className={uiCx(uiTypography.body, 'font-mono')}>{bugDetails.screen}</span>
               </div>
             )}
 
             {bugDetails.reported_by && (
               <div className="flex items-center gap-3">
-                <span className={uiCx(uiTypography.helper, 'min-w-[5.5rem] shrink-0 font-medium')}>Reported by</span>
+                <span className={uiCx(uiTypography.helper, 'min-w-[5.5rem] shrink-0 font-semibold')}>Reported by</span>
                 <span className={uiTypography.body}>{bugDetails.reported_by}</span>
               </div>
             )}
 
             {bugDetails.user_agent && (
               <div className="flex items-start gap-3 border-t border-gray-100 pt-3">
-                <span className={uiCx(uiTypography.helper, 'min-w-[5.5rem] shrink-0 pt-0.5 font-medium')}>Browser</span>
+                <span className={uiCx(uiTypography.helper, 'min-w-[5.5rem] shrink-0 pt-0.5 font-semibold')}>Browser</span>
                 <span
                   className={uiCx(
                     uiTypography.helper,

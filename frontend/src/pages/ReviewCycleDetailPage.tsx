@@ -614,7 +614,7 @@ export default function ReviewCycleDetailPage() {
 
             to={`/users/${encodeURIComponent(r.user_id)}`}
 
-            className="font-medium text-brand-red hover:underline"
+            className="font-semibold text-brand-red hover:underline"
 
           >
 
@@ -640,7 +640,7 @@ export default function ReviewCycleDetailPage() {
 
           ) : (
 
-            <span key={`${r.user_id}-sup`} className="text-gray-400">
+            <span key={`${r.user_id}-sup`} className="text-gray-600">
 
               —
 
@@ -662,7 +662,7 @@ export default function ReviewCycleDetailPage() {
 
             <AppTooltip key={`${r.user_id}-admin`} content="Reserved for a future admin-only review step" wrap>
 
-              <span className="text-gray-400">—</span>
+              <span className="text-gray-600">—</span>
 
             </AppTooltip>,
 
@@ -800,7 +800,7 @@ export default function ReviewCycleDetailPage() {
 
           to={`/users/${encodeURIComponent(e.id)}`}
 
-          className="font-medium text-brand-red hover:underline"
+          className="font-semibold text-brand-red hover:underline"
 
           onClick={() => setScopePeopleModalOpen(false)}
 
@@ -1256,7 +1256,7 @@ export default function ReviewCycleDetailPage() {
 
                 <div className={uiCx(uiTypography.overline, 'mb-2')}>Default form</div>
 
-                <p className={uiCx(uiTypography.body, 'font-medium', uiColors.textStrong)}>
+                <p className={uiCx(uiTypography.body, 'font-semibold', uiColors.textStrong)}>
 
                   {templateLabel(cycle.form_template_id)}
 
@@ -1284,11 +1284,11 @@ export default function ReviewCycleDetailPage() {
 
                 <p className={uiCx(uiTypography.helper, 'mt-1')}>
 
-                  Self: <span className="font-medium">{cycle.assignment_self_rows}</span>
+                  Self: <span className="font-semibold">{cycle.assignment_self_rows}</span>
 
                   {' · '}
 
-                  Supervisor: <span className="font-medium">{cycle.assignment_supervisor_rows}</span>
+                  Supervisor: <span className="font-semibold">{cycle.assignment_supervisor_rows}</span>
 
                 </p>
 
@@ -1452,7 +1452,7 @@ export default function ReviewCycleDetailPage() {
 
                         {' '}
 
-                        The <span className="font-medium text-gray-800">Admin</span> column (HR/admin only) is reserved
+                        The <span className="font-semibold text-gray-800">Admin</span> column (HR/admin only) is reserved
 
                         for a future third step.
 
@@ -1520,7 +1520,7 @@ export default function ReviewCycleDetailPage() {
 
                   <div className="mt-1 text-2xl font-bold tabular-nums text-emerald-900">{hrSummary.both}</div>
 
-                  <div className="text-xs text-emerald-800/80">self + supervisor submitted</div>
+                  <div className="text-sm text-emerald-800/80">self + supervisor submitted</div>
 
                 </AppCard>
 
@@ -1530,7 +1530,7 @@ export default function ReviewCycleDetailPage() {
 
                   <div className="mt-1 text-2xl font-bold tabular-nums text-amber-950">{hrSummary.missE}</div>
 
-                  <div className="text-xs text-amber-900/80">employee review open</div>
+                  <div className="text-sm text-amber-900/80">employee review open</div>
 
                 </AppCard>
 
@@ -1540,7 +1540,7 @@ export default function ReviewCycleDetailPage() {
 
                   <div className="mt-1 text-2xl font-bold tabular-nums text-amber-950">{hrSummary.missS}</div>
 
-                  <div className="text-xs text-amber-900/80">manager review open</div>
+                  <div className="text-sm text-amber-900/80">manager review open</div>
 
                 </AppCard>
 

@@ -265,7 +265,7 @@ export default function CustomerNew(){
       <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
         <div>
           <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">New Customer</div>
-          <div className="text-sm text-gray-500 font-medium">Create a customer with required details</div>
+          <div className="text-sm text-gray-600 font-semibold">Create a customer with required details</div>
         </div>
       </div>
       <div className="rounded-xl border bg-white p-4">
@@ -278,47 +278,47 @@ export default function CustomerNew(){
           <div className="space-y-4">
             <div>
               <div className="flex items-center gap-2"><h4 className="font-semibold">Company</h4></div>
-              <div className="text-xs text-gray-500 mt-0.5 mb-2">Core company identity details.</div>
+              <div className="text-sm text-gray-600 mt-0.5 mb-2">Core company identity details.</div>
               <div className="grid md:grid-cols-2 gap-3">
-                <div className="md:col-span-2"><label className="text-xs text-gray-600">Display name <span className="text-red-600">*</span></label><input className="w-full border rounded px-3 py-2" value={form.display_name} onChange={e=>setForm((s:any)=>({...s, display_name: e.target.value}))} /></div>
-                <div><label className="text-xs text-gray-600">Legal name</label><input className="w-full border rounded px-3 py-2" value={form.legal_name} onChange={e=>setForm((s:any)=>({...s, legal_name: e.target.value}))} placeholder="Same as display name if empty" /></div>
+                <div className="md:col-span-2"><label className="text-sm text-gray-600">Display name <span className="text-red-600">*</span></label><input className="w-full border rounded px-3 py-2" value={form.display_name} onChange={e=>setForm((s:any)=>({...s, display_name: e.target.value}))} /></div>
+                <div><label className="text-sm text-gray-600">Legal name</label><input className="w-full border rounded px-3 py-2" value={form.legal_name} onChange={e=>setForm((s:any)=>({...s, legal_name: e.target.value}))} placeholder="Same as display name if empty" /></div>
                 <div>
-                  <label className="text-xs text-gray-600">Status</label>
+                  <label className="text-sm text-gray-600">Status</label>
                   <select className="w-full border rounded px-3 py-2" value={form.client_status} onChange={e=>setForm((s:any)=>({...s, client_status: e.target.value}))}>
                     {sortByLabel(statuses, (s:any)=> (s.label||'').toString()).map((s:any)=> <option key={s.label} value={s.label}>{s.label}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs text-gray-600">Type</label>
+                  <label className="text-sm text-gray-600">Type</label>
                   <select className="w-full border rounded px-3 py-2" value={form.client_type} onChange={e=>setForm((s:any)=>({...s, client_type: e.target.value}))}>
                     {sortByLabel(types, (t:any)=> (t.label||'').toString()).map((t:any)=> <option key={t.label} value={t.label}>{t.label}</option>)}
                   </select>
                 </div>
-                <div><label className="text-xs text-gray-600">Email</label><input className="w-full border rounded px-3 py-2" value={form.email} onChange={e=>setForm((s:any)=>({...s, email: e.target.value}))} /></div>
-                <div><label className="text-xs text-gray-600">Phone</label><input className="w-full border rounded px-3 py-2" value={form.phone} onChange={e=>setForm((s:any)=>({...s, phone: formatPhone(e.target.value)}))} /></div>
+                <div><label className="text-sm text-gray-600">Email</label><input className="w-full border rounded px-3 py-2" value={form.email} onChange={e=>setForm((s:any)=>({...s, email: e.target.value}))} /></div>
+                <div><label className="text-sm text-gray-600">Phone</label><input className="w-full border rounded px-3 py-2" value={form.phone} onChange={e=>setForm((s:any)=>({...s, phone: formatPhone(e.target.value)}))} /></div>
                 <div>
-                  <label className="text-xs text-gray-600">Lead source</label>
+                  <label className="text-sm text-gray-600">Lead source</label>
                   <select className="w-full border rounded px-3 py-2" value={form.lead_source||''} onChange={e=>setForm((s:any)=>({...s, lead_source: e.target.value}))}>
                     <option value="">Select...</option>
                     {sortByLabel(leadSources, (ls:any)=> (ls?.label ?? ls?.name ?? '').toString()).map((ls:any)=>{ const val = ls?.value ?? ls?.id ?? ls?.label ?? ls?.name ?? String(ls); const label = ls?.label ?? ls?.name ?? String(ls); return <option key={String(val)} value={String(val)}>{label}</option>; })}
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs text-gray-600">Estimator</label>
+                  <label className="text-sm text-gray-600">Estimator</label>
                   <select className="w-full border rounded px-3 py-2" value={form.estimator_id||''} onChange={e=> setForm((s:any)=> ({...s, estimator_id: e.target.value||null}))}>
                     <option value="">Select...</option>
                     {sortByLabel(employees||[], (emp:any)=> (emp.name||emp.username||'').toString()).map((emp:any)=> <option key={emp.id} value={emp.id}>{emp.name||emp.username}</option>)}
                   </select>
                 </div>
-                <div><label className="text-xs text-gray-600">Tax number</label><input className="w-full border rounded px-3 py-2" value={form.tax_number} onChange={e=>setForm((s:any)=>({...s, tax_number: e.target.value}))} /></div>
+                <div><label className="text-sm text-gray-600">Tax number</label><input className="w-full border rounded px-3 py-2" value={form.tax_number} onChange={e=>setForm((s:any)=>({...s, tax_number: e.target.value}))} /></div>
               </div>
             </div>
             <div>
               <div className="flex items-center gap-2"><h4 className="font-semibold">Address</h4></div>
-              <div className="text-xs text-gray-500 mt-0.5 mb-2">Primary mailing and location address.</div>
+              <div className="text-sm text-gray-600 mt-0.5 mb-2">Primary mailing and location address.</div>
               <div className="grid md:grid-cols-2 gap-3">
                 <div className="md:col-span-2">
-                  <label className="text-xs text-gray-600">Address line 1</label>
+                  <label className="text-sm text-gray-600">Address line 1</label>
                   <AddressAutocomplete
                     value={form.address_line1}
                     onChange={(value) => setForm((s:any)=>({...s, address_line1: value}))}
@@ -337,7 +337,7 @@ export default function CustomerNew(){
                   />
                 </div>
                 <div className="md:col-span-2">
-                  <label className="text-xs text-gray-600">Address line 2</label>
+                  <label className="text-sm text-gray-600">Address line 2</label>
                   <AddressAutocomplete
                     value={form.address_line2}
                     onChange={(value) => setForm((s:any)=>({...s, address_line2: value}))}
@@ -345,7 +345,7 @@ export default function CustomerNew(){
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-600">Country</label>
+                  <label className="text-sm text-gray-600">Country</label>
                   <select className="w-full border rounded px-3 py-2" value={form.country || ''} onChange={(e) => setForm((s:any)=>({...s, country: e.target.value}))} disabled={!countriesLoaded}>
                     <option value="">{countriesLoaded ? 'Select...' : 'Loading...'}</option>
                     {allCountries.map((c) => (
@@ -354,7 +354,7 @@ export default function CustomerNew(){
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs text-gray-600">Province/State</label>
+                  <label className="text-sm text-gray-600">Province/State</label>
                   <select className="w-full border rounded px-3 py-2" value={form.province || ''} onChange={(e) => setForm((s:any)=>({...s, province: e.target.value}))} disabled={!form.country || loadingStates}>
                     <option value="">{loadingStates ? 'Loading...' : 'Select...'}</option>
                     {allStates.map((s) => (
@@ -363,7 +363,7 @@ export default function CustomerNew(){
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs text-gray-600">City</label>
+                  <label className="text-sm text-gray-600">City</label>
                   <select className="w-full border rounded px-3 py-2" value={form.city || ''} onChange={(e) => setForm((s:any)=>({...s, city: e.target.value}))} disabled={!form.country || loadingCities}>
                     <option value="">{loadingCities ? 'Loading...' : 'Select...'}</option>
                     {allCities.map((ct) => (
@@ -372,18 +372,18 @@ export default function CustomerNew(){
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs text-gray-600">Postal code</label>
+                  <label className="text-sm text-gray-600">Postal code</label>
                   <input className="w-full border rounded px-3 py-2" value={form.postal_code} onChange={e=>setForm((s:any)=>({...s, postal_code: e.target.value}))} />
                 </div>
               </div>
             </div>
             <div>
               <div className="flex items-center gap-2"><h4 className="font-semibold">Billing</h4></div>
-              <div className="text-xs text-gray-500 mt-0.5 mb-2">Preferences used for invoices and payments.</div>
+              <div className="text-sm text-gray-600 mt-0.5 mb-2">Preferences used for invoices and payments.</div>
               <div className="grid md:grid-cols-2 gap-3">
-                <div><label className="text-xs text-gray-600">Billing email</label><input className="w-full border rounded px-3 py-2" value={form.billing_email||''} onChange={e=>setForm((s:any)=>({...s, billing_email: e.target.value}))} /></div>
+                <div><label className="text-sm text-gray-600">Billing email</label><input className="w-full border rounded px-3 py-2" value={form.billing_email||''} onChange={e=>setForm((s:any)=>({...s, billing_email: e.target.value}))} /></div>
                 <div>
-                  <label className="text-xs text-gray-600">PO required</label>
+                  <label className="text-sm text-gray-600">PO required</label>
                   <select className="w-full border rounded px-3 py-2" value={form.po_required?'true':'false'} onChange={e=>setForm((s:any)=>({...s, po_required: e.target.value==='true'}))}><option value="false">No</option><option value="true">Yes</option></select>
                 </div>
                 <div className="md:col-span-2 text-sm">
@@ -392,7 +392,7 @@ export default function CustomerNew(){
                 {form.use_diff_billing && (
                   <>
                     <div className="md:col-span-2">
-                      <label className="text-xs text-gray-600">Billing Address 1</label>
+                      <label className="text-sm text-gray-600">Billing Address 1</label>
                       <AddressAutocomplete
                         value={form.billing_address_line1||''}
                         onChange={(value) => setForm((s:any)=>({...s, billing_address_line1: value}))}
@@ -411,7 +411,7 @@ export default function CustomerNew(){
                       />
                     </div>
                     <div className="md:col-span-2">
-                      <label className="text-xs text-gray-600">Billing Address 2</label>
+                      <label className="text-sm text-gray-600">Billing Address 2</label>
                       <AddressAutocomplete
                         value={form.billing_address_line2||''}
                         onChange={(value) => setForm((s:any)=>({...s, billing_address_line2: value}))}
@@ -419,7 +419,7 @@ export default function CustomerNew(){
                       />
                     </div>
                     <div>
-                      <label className="text-xs text-gray-600">Billing Country</label>
+                      <label className="text-sm text-gray-600">Billing Country</label>
                       <select className="w-full border rounded px-3 py-2" value={form.billing_country || ''} onChange={(e) => setForm((s:any)=>({...s, billing_country: e.target.value}))} disabled={!countriesLoaded}>
                         <option value="">{countriesLoaded ? 'Select...' : 'Loading...'}</option>
                         {allCountries.map((c) => (
@@ -428,7 +428,7 @@ export default function CustomerNew(){
                       </select>
                     </div>
                     <div>
-                      <label className="text-xs text-gray-600">Billing Province/State</label>
+                      <label className="text-sm text-gray-600">Billing Province/State</label>
                       <select className="w-full border rounded px-3 py-2" value={form.billing_province || ''} onChange={(e) => setForm((s:any)=>({...s, billing_province: e.target.value}))} disabled={!form.billing_country || loadingBillingStates}>
                         <option value="">{loadingBillingStates ? 'Loading...' : 'Select...'}</option>
                         {allBillingStates.map((s) => (
@@ -437,7 +437,7 @@ export default function CustomerNew(){
                       </select>
                     </div>
                     <div>
-                      <label className="text-xs text-gray-600">Billing City</label>
+                      <label className="text-sm text-gray-600">Billing City</label>
                       <select className="w-full border rounded px-3 py-2" value={form.billing_city || ''} onChange={(e) => setForm((s:any)=>({...s, billing_city: e.target.value}))} disabled={!form.billing_country || loadingBillingCities}>
                         <option value="">{loadingBillingCities ? 'Loading...' : 'Select...'}</option>
                         {allBillingCities.map((ct) => (
@@ -446,7 +446,7 @@ export default function CustomerNew(){
                       </select>
                     </div>
                     <div>
-                      <label className="text-xs text-gray-600">Billing Postal code</label>
+                      <label className="text-sm text-gray-600">Billing Postal code</label>
                       <input className="w-full border rounded px-3 py-2" value={form.billing_postal_code||''} onChange={e=>setForm((s:any)=>({...s, billing_postal_code: e.target.value}))} />
                     </div>
                   </>
@@ -460,7 +460,7 @@ export default function CustomerNew(){
             <div className="flex items-center justify-between">
               <div>
                 <div className="font-semibold">Contacts</div>
-                <div className="text-xs text-gray-600">Add one or more contacts now (optional)</div>
+                <div className="text-sm text-gray-600">Add one or more contacts now (optional)</div>
               </div>
               <button onClick={()=>setContactModalOpen(true)} className="px-3 py-1.5 rounded bg-brand-red text-white">Add Contact</button>
             </div>
@@ -473,7 +473,7 @@ export default function CustomerNew(){
                     <div className="w-16 h-16 rounded bg-gray-200 grid place-items-center text-lg font-bold text-gray-600 flex-shrink-0">{(c.name||'?').slice(0,2).toUpperCase()}</div>
                   )}
                   <div className="flex-1">
-                    <div className="font-semibold flex items-center gap-2">{c.name||'(No name)'} {c.is_primary && <span className="text-[11px] bg-green-50 text-green-700 border border-green-200 rounded-full px-2">Primary</span>}</div>
+                    <div className="font-semibold flex items-center gap-2">{c.name||'(No name)'} {c.is_primary && <span className="text-xs bg-green-50 text-green-700 border border-green-200 rounded-full px-2">Primary</span>}</div>
                     <div className="text-gray-600">{c.role_title||''} {c.department? `· ${c.department}`:''}</div>
                     <div className="text-gray-700 mt-1">{[c.email, formatContactPhoneDisplay(c.phone, c.phone_extension)].filter(Boolean).join(' · ')||'-'}</div>
                   </div>
@@ -587,43 +587,43 @@ export default function CustomerNew(){
             </div>
             <div className="p-4 grid md:grid-cols-5 gap-3 items-start">
               <div className="md:col-span-2">
-                <div className="text-[11px] uppercase text-gray-500 mb-1">Contact Photo</div>
+                <div className="text-xs uppercase text-gray-600 mb-1">Contact Photo</div>
                 <button onClick={()=> setCPickerOpen(true)} className="w-full h-40 border rounded grid place-items-center bg-gray-50 relative overflow-hidden">
                   {cPhotoPreview ? (
                     <img src={cPhotoPreview} className="w-full h-full object-cover" alt="Contact preview" />
                   ) : (
-                    <div className="text-gray-400">Select Photo</div>
+                    <div className="text-gray-600">Select Photo</div>
                   )}
                 </button>
               </div>
               <div className="md:col-span-3 grid grid-cols-2 gap-2">
                 <div className="col-span-2">
-                  <label className="text-xs text-gray-600">Name</label>
+                  <label className="text-sm text-gray-600">Name</label>
                   <input className="border rounded px-3 py-2 col-span-2 w-full" value={cName} onChange={e=>setCName(e.target.value)} />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-600">Role/Title</label>
+                  <label className="text-sm text-gray-600">Role/Title</label>
                   <input className="border rounded px-3 py-2 w-full" value={cRole} onChange={e=>setCRole(e.target.value)} />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-600">Department</label>
+                  <label className="text-sm text-gray-600">Department</label>
                   <input className="border rounded px-3 py-2 w-full" value={cDept} onChange={e=>setCDept(e.target.value)} />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-600">Email</label>
+                  <label className="text-sm text-gray-600">Email</label>
                   <input className="border rounded px-3 py-2 w-full" value={cEmail} onChange={e=>setCEmail(e.target.value)} />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-600">Phone</label>
+                  <label className="text-sm text-gray-600">Phone</label>
                   <input className="border rounded px-3 py-2 w-full" value={cPhone} onChange={e=>setCPhone(formatPhone(e.target.value))} />
                 </div>
                 <div className="flex gap-2">
                   <div className="min-w-0 flex-1">
-                    <label className="text-xs text-gray-600">Ext.</label>
+                    <label className="text-sm text-gray-600">Ext.</label>
                     <input className="border rounded px-3 py-2 w-full" value={cPhoneExtension} onChange={e=>setCPhoneExtension(formatPhoneExtension(e.target.value))} />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <label className="text-xs text-gray-600">Primary</label>
+                    <label className="text-sm text-gray-600">Primary</label>
                     <select className="border rounded px-3 py-2 w-full" value={cPrimary} onChange={e=>setCPrimary(e.target.value as any)}>
                       <option value="false">No</option>
                       <option value="true">Yes</option>

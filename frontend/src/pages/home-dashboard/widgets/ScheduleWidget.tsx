@@ -152,7 +152,7 @@ export function ScheduleWidget({ config: _config, embedded = false, fillHeight }
     </div>
   ) : (
     <div className="mb-2 flex shrink-0 items-center justify-between gap-2">
-      <span className={uiCx(uiTypography.helper, 'truncate font-medium text-gray-600')}>{weekLabel}</span>
+      <span className={uiCx(uiTypography.helper, 'truncate font-semibold text-gray-600')}>{weekLabel}</span>
       <div className="flex shrink-0 items-center gap-0.5">
         <AppButton
           type="button"
@@ -168,7 +168,7 @@ export function ScheduleWidget({ config: _config, embedded = false, fillHeight }
           variant="ghost"
           size="sm"
           onClick={goToToday}
-          className="h-auto min-h-0 px-1.5 py-0.5 text-[10px]"
+          className="h-auto min-h-0 px-1.5 py-0.5 text-sm"
         >
           Today
         </AppButton>
@@ -199,7 +199,7 @@ export function ScheduleWidget({ config: _config, embedded = false, fillHeight }
               description="Your schedule is clear."
               className="border-0 bg-transparent p-2 shadow-none"
               action={
-                <Link to="/schedule" className="text-xs font-medium text-brand-red hover:underline">
+                <Link to="/schedule" className="text-sm font-semibold text-brand-red hover:underline">
                   View schedule →
                 </Link>
               }

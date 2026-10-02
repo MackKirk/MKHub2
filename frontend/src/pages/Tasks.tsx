@@ -93,7 +93,7 @@ function PrioritySortSelect({
         value={value}
         onChange={(e) => onChange(e.target.value as SortBy)}
         options={[...prioritySortOptions]}
-        triggerClassName="!w-auto min-w-[7.5rem] !py-1.5 text-[11px] font-medium"
+        triggerClassName="!w-auto min-w-[7.5rem] !py-1.5 text-xs font-semibold"
         aria-label="Sort by priority"
       />
     </div>
@@ -305,8 +305,8 @@ export default function TasksPage() {
               <TaskColumnSkeleton />
             ) : tasksInProgress.length === 0 ? (
               <p className={uiTypography.helper}>
-                Nothing in progress. Pick a task from <span className="font-medium text-gray-800">To Do</span> and click{' '}
-                <span className="font-medium text-gray-800">Start task</span>.
+                Nothing in progress. Pick a task from <span className="font-semibold text-gray-800">To Do</span> and click{' '}
+                <span className="font-semibold text-gray-800">Start task</span>.
               </p>
             ) : (
               tasksInProgress.map((t) => (

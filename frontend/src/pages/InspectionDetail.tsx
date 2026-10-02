@@ -534,7 +534,7 @@ export default function InspectionDetail() {
               deleteInspectionMutation.mutate();
             }}
             disabled={deleteInspectionMutation.isPending}
-            className="px-3 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-700 text-xs font-medium hover:bg-red-100 disabled:opacity-50"
+            className="px-3 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-700 text-sm font-semibold hover:bg-red-100 disabled:opacity-50"
           >
             {deleteInspectionMutation.isPending ? 'Deleting…' : 'Delete'}
           </button>
@@ -549,7 +549,7 @@ export default function InspectionDetail() {
               {assetPhotoUrl ? (
                 <img src={assetPhotoUrl} alt={fleetAsset?.name || 'Vehicle'} className="w-full h-full object-cover" />
               ) : (
-                <div className="w-full h-full flex items-center justify-center text-gray-400">
+                <div className="w-full h-full flex items-center justify-center text-gray-600">
                   <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" />
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1h-1M4 12a2 2 0 110 4m0-4a2 2 0 100 4m0-4v2m0-4V6m16 4a2 2 0 110 4m0-4a2 2 0 100 4m0-4v2m0-4V6" />
@@ -561,7 +561,7 @@ export default function InspectionDetail() {
               <button
                 type="button"
                 onClick={() => nav(`/fleet/assets/${inspection.fleet_asset_id}`)}
-                className="mt-2 text-xs font-medium text-brand-red hover:underline"
+                className="mt-2 text-sm font-semibold text-brand-red hover:underline"
               >
                 View asset
               </button>
@@ -569,38 +569,38 @@ export default function InspectionDetail() {
           </div>
           <div className="flex-1 min-w-0 grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-4">
             <div>
-              <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Type</span>
+              <span className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Type</span>
               <div className="mt-0.5">
-                <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${inspection.inspection_type === 'body' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'}`}>
+                <span className={`inline-block px-2 py-0.5 rounded text-sm font-semibold ${inspection.inspection_type === 'body' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'}`}>
                   {inspection.inspection_type === 'body' ? 'Body / Exterior' : inspection.inspection_type === 'mechanical' ? 'Mechanical' : inspection.inspection_type || '—'}
                 </span>
               </div>
             </div>
             <div>
-              <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Result</span>
+              <span className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Result</span>
               <div className="mt-0.5">
-                <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${resultColors[inspection.result] || 'bg-gray-100 text-gray-800'}`}>
+                <span className={`inline-block px-2 py-0.5 rounded text-sm font-semibold ${resultColors[inspection.result] || 'bg-gray-100 text-gray-800'}`}>
                   {resultLabels[inspection.result] ?? inspection.result}
                 </span>
               </div>
             </div>
             <div>
-              <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Vehicle</span>
+              <span className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Vehicle</span>
               <div className="text-sm font-semibold text-gray-900 mt-0.5 truncate" title={inspection.fleet_asset_name || inspection.fleet_asset_id}>
                 {inspection.fleet_asset_name || fleetAsset?.unit_number || fleetAsset?.name || inspection.fleet_asset_id || '—'}
               </div>
             </div>
             <div>
-              <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Date</span>
+              <span className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Date</span>
               <div className="text-sm font-semibold text-gray-900 mt-0.5">{new Date(inspection.inspection_date).toLocaleDateString()}</div>
             </div>
             <div>
-              <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Created</span>
+              <span className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Created</span>
               <div className="text-sm font-semibold text-gray-900 mt-0.5">{new Date(inspection.created_at).toLocaleDateString()}</div>
             </div>
             {inspection.inspection_schedule_id && (
               <div className="col-span-2 sm:col-span-1">
-                <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Schedule</span>
+                <span className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Schedule</span>
                 <div className="mt-0.5">
                   <button
                     type="button"
@@ -609,7 +609,7 @@ export default function InspectionDetail() {
                       const focus = t === 'body' ? 'body' : 'mechanical';
                       nav(`/fleet/inspections/${inspection.inspection_schedule_id}?focus=${focus}`);
                     }}
-                    className="text-xs font-medium text-brand-red hover:underline"
+                    className="text-sm font-semibold text-brand-red hover:underline"
                   >
                     Inspection overview
                   </button>
@@ -632,19 +632,19 @@ export default function InspectionDetail() {
                     <h3 className="text-sm font-semibold text-gray-800 mb-3">Vehicle</h3>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
                       <div>
-                        <span className="text-gray-500 block text-xs font-medium">Unit #</span>
+                        <span className="text-gray-600 block text-sm font-semibold">Unit #</span>
                         <span className="text-gray-900">{fleetAsset.unit_number || fleetAsset.name || '—'}</span>
                       </div>
                       <div>
-                        <span className="text-gray-500 block text-xs font-medium">Name</span>
+                        <span className="text-gray-600 block text-sm font-semibold">Name</span>
                         <span className="text-gray-900">{fleetAsset.name || '—'}</span>
                       </div>
                       <div>
-                        <span className="text-gray-500 block text-xs font-medium">KM</span>
+                        <span className="text-gray-600 block text-sm font-semibold">KM</span>
                         <span className="text-gray-900">{fleetAsset.odometer_current != null ? fleetAsset.odometer_current.toLocaleString() : '—'}</span>
                       </div>
                       <div>
-                        <span className="text-gray-500 block text-xs font-medium">Date</span>
+                        <span className="text-gray-600 block text-sm font-semibold">Date</span>
                         <span className="text-gray-900">{inspection.inspection_date ? new Date(inspection.inspection_date).toLocaleDateString() : new Date().toLocaleDateString()}</span>
                       </div>
                     </div>
@@ -666,9 +666,9 @@ export default function InspectionDetail() {
                         {/* Row: Bloco A (title + description) | Bloco B (buttons) */}
                         <div className="flex flex-wrap items-center gap-4 mb-3">
                           <div className="flex-1 min-w-0">
-                            <div className="font-medium text-gray-900">{area.label}</div>
+                            <div className="font-semibold text-gray-900">{area.label}</div>
                             {area.description && (
-                              <div className="text-xs text-gray-500 mt-0.5">{area.description}</div>
+                              <div className="text-sm text-gray-600 mt-0.5">{area.description}</div>
                             )}
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
@@ -696,7 +696,7 @@ export default function InspectionDetail() {
 
                 {/* Observations (where Quote was) */}
                 <div className="rounded-xl border border-gray-200 bg-white p-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Observations</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Observations</label>
                   <textarea
                     value={bodyForm.notes}
                     onChange={(e) => setBodyForm((p) => (p ? { ...p, notes: e.target.value } : p))}
@@ -708,7 +708,7 @@ export default function InspectionDetail() {
 
                 {/* Photos */}
                 <div className="rounded-xl border border-gray-200 bg-white p-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Photos</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Photos</label>
                   <div className="flex flex-wrap gap-3 items-start">
                     {bodyPhotoIds.map((photoId) => (
                       <div key={photoId} className="relative group">
@@ -720,7 +720,7 @@ export default function InspectionDetail() {
                         <button
                           type="button"
                           onClick={() => removeBodyPhoto(photoId)}
-                          className="absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full bg-red-500 text-white text-xs font-bold opacity-0 group-hover:opacity-100 transition-opacity shadow"
+                          className="absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full bg-red-500 text-white text-sm font-bold opacity-0 group-hover:opacity-100 transition-opacity shadow"
                           title="Remove"
                         >
                           ×
@@ -735,17 +735,17 @@ export default function InspectionDetail() {
                         onChange={handleAddPhoto}
                         disabled={photoUploading}
                       />
-                      {photoUploading ? <span className="text-xs">...</span> : <span className="text-2xl">+</span>}
+                      {photoUploading ? <span className="text-sm">...</span> : <span className="text-2xl">+</span>}
                     </label>
                   </div>
                 </div>
 
                 {!bodyComplete ? (
                   <div className="rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 p-5 flex items-center justify-between gap-4">
-                    <span className="text-sm font-medium text-gray-700">Inspection result</span>
+                    <span className="text-sm font-semibold text-gray-700">Inspection result</span>
                     <div className="text-right">
                       <span className="text-xl font-semibold text-gray-700">Draft</span>
-                      <p className="text-xs text-gray-500 mt-1 max-w-[16rem] sm:max-w-none">
+                      <p className="text-sm text-gray-600 mt-1 max-w-[16rem] sm:max-w-none">
                         Answer every area, then Finish to submit Pass / Conditional / Fail.
                       </p>
                     </div>
@@ -760,7 +760,7 @@ export default function InspectionDetail() {
                           : 'bg-green-50 border-green-200'
                     }`}
                   >
-                    <span className="text-sm font-medium text-gray-700">Result if you finish now</span>
+                    <span className="text-sm font-semibold text-gray-700">Result if you finish now</span>
                     <div className="flex items-center gap-2">
                       <span
                         className={`text-3xl ${
@@ -798,7 +798,7 @@ export default function InspectionDetail() {
                       type="button"
                       onClick={handleFinishBody}
                       disabled={updateInspectionMutation.isPending}
-                      className="px-5 py-2.5 bg-blue-600 text-white rounded-lg font-medium text-sm hover:bg-blue-700 disabled:opacity-50"
+                      className="px-5 py-2.5 bg-blue-600 text-white rounded-lg font-semibold text-sm hover:bg-blue-700 disabled:opacity-50"
                       aria-label="Finish inspection"
                     >
                       {updateInspectionMutation.isPending ? 'Saving…' : 'Finish inspection'}
@@ -807,7 +807,7 @@ export default function InspectionDetail() {
                       type="button"
                       onClick={handleSaveBodyDraft}
                       disabled={updateInspectionMutation.isPending}
-                      className="px-5 py-2.5 border border-gray-300 bg-white rounded-lg font-medium text-sm text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+                      className="px-5 py-2.5 border border-gray-300 bg-white rounded-lg font-semibold text-sm text-gray-800 hover:bg-gray-50 disabled:opacity-50"
                       aria-label="Save draft"
                     >
                       Save draft
@@ -828,9 +828,9 @@ export default function InspectionDetail() {
                   <h3 className="text-sm font-semibold text-gray-800">Body / Exterior inspection</h3>
                   {isBody && (
                     hasWorkOrder ? (
-                      <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">View only (work order generated)</span>
+                      <span className="text-sm text-gray-600 bg-gray-100 px-2 py-1 rounded">View only (work order generated)</span>
                     ) : isResultFinal ? (
-                      <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">View only (inspection completed)</span>
+                      <span className="text-sm text-gray-600 bg-gray-100 px-2 py-1 rounded">View only (inspection completed)</span>
                     ) : (
                       <button
                         type="button"
@@ -846,16 +846,16 @@ export default function InspectionDetail() {
                   <div className="bg-gray-50 p-4 rounded-lg border mb-4">
                     <h3 className="text-sm font-semibold text-gray-700 mb-3">Vehicle</h3>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
-                      <div><span className="text-gray-600 block text-xs font-medium">Unit #</span> {fleetAsset.unit_number || fleetAsset.name || '—'}</div>
-                      <div><span className="text-gray-600 block text-xs font-medium">Name</span> {fleetAsset.name || '—'}</div>
-                      <div><span className="text-gray-600 block text-xs font-medium">KM</span> {fleetAsset.odometer_current != null ? fleetAsset.odometer_current.toLocaleString() : '—'}</div>
-                      <div><span className="text-gray-600 block text-xs font-medium">Date</span> {inspection.inspection_date ? new Date(inspection.inspection_date).toLocaleDateString() : '—'}</div>
+                      <div><span className="text-gray-600 block text-sm font-semibold">Unit #</span> {fleetAsset.unit_number || fleetAsset.name || '—'}</div>
+                      <div><span className="text-gray-600 block text-sm font-semibold">Name</span> {fleetAsset.name || '—'}</div>
+                      <div><span className="text-gray-600 block text-sm font-semibold">KM</span> {fleetAsset.odometer_current != null ? fleetAsset.odometer_current.toLocaleString() : '—'}</div>
+                      <div><span className="text-gray-600 block text-sm font-semibold">Date</span> {inspection.inspection_date ? new Date(inspection.inspection_date).toLocaleDateString() : '—'}</div>
                     </div>
                   </div>
                 )}
                 {checklistTemplate?.areas && (
                   <div>
-                    <label className="text-sm text-gray-600 mb-3 block font-medium">Body / Exterior areas</label>
+                    <label className="text-sm text-gray-600 mb-3 block font-semibold">Body / Exterior areas</label>
                     <div className="space-y-3 border rounded-lg p-4 bg-white">
                       {checklistTemplate.areas.map((area) => {
                         const result = (inspection.checklist_results as any)?.areas?.find((a: any) => a.key === area.key);
@@ -865,7 +865,7 @@ export default function InspectionDetail() {
                         return (
                           <div key={area.key} className="border-b border-gray-100 last:border-b-0 pb-3 last:pb-0">
                             <div className="flex items-center gap-2">
-                              <span className="font-medium text-sm text-gray-800">{area.label}</span>
+                              <span className="font-semibold text-sm text-gray-800">{area.label}</span>
                               {cond && (
                                 <span
                                   className={`shrink-0 w-9 h-9 flex items-center justify-center rounded-xl text-lg font-bold ${
@@ -877,7 +877,7 @@ export default function InspectionDetail() {
                                 </span>
                               )}
                             </div>
-                            {area.description && <div className="text-xs text-gray-500 mt-0.5">{area.description}</div>}
+                            {area.description && <div className="text-sm text-gray-600 mt-0.5">{area.description}</div>}
                             <div className="mt-1 text-sm text-gray-600">{issueText || '—'}</div>
                           </div>
                         );
@@ -888,7 +888,7 @@ export default function InspectionDetail() {
                 {(inspection.checklist_results as any)?.quote_amount != null && (
                   <div>
                     <label className="text-sm text-gray-600">Quote amount</label>
-                    <div className="font-medium mt-1">{(inspection.checklist_results as any).quote_amount}</div>
+                    <div className="font-semibold mt-1">{(inspection.checklist_results as any).quote_amount}</div>
                   </div>
                 )}
               </>
@@ -907,23 +907,23 @@ export default function InspectionDetail() {
                     <h3 className="text-sm font-semibold text-gray-800 mb-3">Vehicle</h3>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
                       <div>
-                        <span className="text-gray-500 block text-xs font-medium">Unit #</span>
+                        <span className="text-gray-600 block text-sm font-semibold">Unit #</span>
                         <span className="text-gray-900">{fleetAsset.unit_number || fleetAsset.name || '—'}</span>
                       </div>
                       <div>
-                        <span className="text-gray-500 block text-xs font-medium">Name</span>
+                        <span className="text-gray-600 block text-sm font-semibold">Name</span>
                         <span className="text-gray-900">{fleetAsset.name || '—'}</span>
                       </div>
                       <div>
-                        <span className="text-gray-500 block text-xs font-medium">KM</span>
+                        <span className="text-gray-600 block text-sm font-semibold">KM</span>
                         <span className="text-gray-900">{fleetAsset.odometer_current != null ? fleetAsset.odometer_current.toLocaleString() : '—'}</span>
                       </div>
                       <div>
-                        <span className="text-gray-500 block text-xs font-medium">Hours</span>
+                        <span className="text-gray-600 block text-sm font-semibold">Hours</span>
                         <span className="text-gray-900">{fleetAsset.hours_current != null ? fleetAsset.hours_current.toLocaleString() : '—'}</span>
                       </div>
                       <div>
-                        <span className="text-gray-500 block text-xs font-medium">Date</span>
+                        <span className="text-gray-600 block text-sm font-semibold">Date</span>
                         <span className="text-gray-900">{inspection.inspection_date ? new Date(inspection.inspection_date).toLocaleDateString() : new Date().toLocaleDateString()}</span>
                       </div>
                     </div>
@@ -952,7 +952,7 @@ export default function InspectionDetail() {
                             >
                               <div className="flex flex-wrap items-center gap-4">
                                 <div className="flex-1 min-w-0">
-                                  <div className="font-medium text-gray-900">
+                                  <div className="font-semibold text-gray-900">
                                     {item.key}. {item.label}
                                   </div>
                                 </div>
@@ -984,7 +984,7 @@ export default function InspectionDetail() {
 
                 {/* Observations */}
                 <div className="rounded-xl border border-gray-200 bg-white p-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Observations</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Observations</label>
                   <textarea
                     value={mechanicalForm.notes}
                     onChange={(e) => setMechanicalForm((p) => (p ? { ...p, notes: e.target.value } : p))}
@@ -996,7 +996,7 @@ export default function InspectionDetail() {
 
                 {/* Photos */}
                 <div className="rounded-xl border border-gray-200 bg-white p-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Photos</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Photos</label>
                   <div className="flex flex-wrap gap-3 items-start">
                     {bodyPhotoIds.map((photoId) => (
                       <div key={photoId} className="relative group">
@@ -1008,7 +1008,7 @@ export default function InspectionDetail() {
                         <button
                           type="button"
                           onClick={() => removeBodyPhoto(photoId)}
-                          className="absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full bg-red-500 text-white text-xs font-bold opacity-0 group-hover:opacity-100 transition-opacity shadow"
+                          className="absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full bg-red-500 text-white text-sm font-bold opacity-0 group-hover:opacity-100 transition-opacity shadow"
                           title="Remove"
                         >
                           ×
@@ -1023,17 +1023,17 @@ export default function InspectionDetail() {
                         onChange={handleAddPhoto}
                         disabled={photoUploading}
                       />
-                      {photoUploading ? <span className="text-xs">...</span> : <span className="text-2xl">+</span>}
+                      {photoUploading ? <span className="text-sm">...</span> : <span className="text-2xl">+</span>}
                     </label>
                   </div>
                 </div>
 
                 {!mechComplete ? (
                   <div className="rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 p-5 flex items-center justify-between gap-4">
-                    <span className="text-sm font-medium text-gray-700">Inspection result</span>
+                    <span className="text-sm font-semibold text-gray-700">Inspection result</span>
                     <div className="text-right">
                       <span className="text-xl font-semibold text-gray-700">Draft</span>
-                      <p className="text-xs text-gray-500 mt-1 max-w-[16rem] sm:max-w-none">
+                      <p className="text-sm text-gray-600 mt-1 max-w-[16rem] sm:max-w-none">
                         Answer every checklist item, then Finish to submit Pass / Conditional / Fail.
                       </p>
                     </div>
@@ -1048,7 +1048,7 @@ export default function InspectionDetail() {
                           : 'bg-green-50 border-green-200'
                     }`}
                   >
-                    <span className="text-sm font-medium text-gray-700">Result if you finish now</span>
+                    <span className="text-sm font-semibold text-gray-700">Result if you finish now</span>
                     <div className="flex items-center gap-2">
                       <span
                         className={`text-3xl ${
@@ -1086,7 +1086,7 @@ export default function InspectionDetail() {
                       type="button"
                       onClick={handleFinishMechanical}
                       disabled={updateInspectionMutation.isPending}
-                      className="px-5 py-2.5 bg-blue-600 text-white rounded-lg font-medium text-sm hover:bg-blue-700 disabled:opacity-50"
+                      className="px-5 py-2.5 bg-blue-600 text-white rounded-lg font-semibold text-sm hover:bg-blue-700 disabled:opacity-50"
                       aria-label="Finish inspection"
                     >
                       {updateInspectionMutation.isPending ? 'Saving…' : 'Finish inspection'}
@@ -1095,7 +1095,7 @@ export default function InspectionDetail() {
                       type="button"
                       onClick={handleSaveMechanicalDraft}
                       disabled={updateInspectionMutation.isPending}
-                      className="px-5 py-2.5 border border-gray-300 bg-white rounded-lg font-medium text-sm text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+                      className="px-5 py-2.5 border border-gray-300 bg-white rounded-lg font-semibold text-sm text-gray-800 hover:bg-gray-50 disabled:opacity-50"
                       aria-label="Save draft"
                     >
                       Save draft
@@ -1116,9 +1116,9 @@ export default function InspectionDetail() {
                   <h3 className="text-sm font-semibold text-gray-800">Mechanical inspection</h3>
                   {isMechanical && (
                     hasWorkOrder ? (
-                      <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">View only (work order generated)</span>
+                      <span className="text-sm text-gray-600 bg-gray-100 px-2 py-1 rounded">View only (work order generated)</span>
                     ) : isResultFinal ? (
-                      <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">View only (inspection completed)</span>
+                      <span className="text-sm text-gray-600 bg-gray-100 px-2 py-1 rounded">View only (inspection completed)</span>
                     ) : (
                       <button
                         type="button"
@@ -1134,17 +1134,17 @@ export default function InspectionDetail() {
                   <div className="bg-gray-50 p-4 rounded-lg border mb-4">
                     <h3 className="text-sm font-semibold text-gray-700 mb-3">Vehicle</h3>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
-                      <div><span className="text-gray-600 block text-xs font-medium">Unit #</span> {fleetAsset.unit_number || fleetAsset.name || '—'}</div>
-                      <div><span className="text-gray-600 block text-xs font-medium">Name</span> {fleetAsset.name || '—'}</div>
-                      <div><span className="text-gray-600 block text-xs font-medium">KM</span> {fleetAsset.odometer_current != null ? fleetAsset.odometer_current.toLocaleString() : '—'}</div>
-                      <div><span className="text-gray-600 block text-xs font-medium">Hours</span> {fleetAsset.hours_current != null ? fleetAsset.hours_current.toLocaleString() : '—'}</div>
-                      <div><span className="text-gray-600 block text-xs font-medium">Date</span> {inspection.inspection_date ? new Date(inspection.inspection_date).toLocaleDateString() : '—'}</div>
+                      <div><span className="text-gray-600 block text-sm font-semibold">Unit #</span> {fleetAsset.unit_number || fleetAsset.name || '—'}</div>
+                      <div><span className="text-gray-600 block text-sm font-semibold">Name</span> {fleetAsset.name || '—'}</div>
+                      <div><span className="text-gray-600 block text-sm font-semibold">KM</span> {fleetAsset.odometer_current != null ? fleetAsset.odometer_current.toLocaleString() : '—'}</div>
+                      <div><span className="text-gray-600 block text-sm font-semibold">Hours</span> {fleetAsset.hours_current != null ? fleetAsset.hours_current.toLocaleString() : '—'}</div>
+                      <div><span className="text-gray-600 block text-sm font-semibold">Date</span> {inspection.inspection_date ? new Date(inspection.inspection_date).toLocaleDateString() : '—'}</div>
                     </div>
                   </div>
                 )}
                 {inspection.checklist_results && checklistTemplate?.sections && (
                   <div>
-                    <label className="text-sm text-gray-600 mb-3 block font-medium">Checklist Results</label>
+                    <label className="text-sm text-gray-600 mb-3 block font-semibold">Checklist Results</label>
                     <div className="space-y-6 border rounded-lg p-4 bg-white">
                       {checklistTemplate.sections.map((section) => {
                         const checklistItems = inspection.checklist_results && typeof inspection.checklist_results === 'object'
@@ -1219,7 +1219,7 @@ export default function InspectionDetail() {
               inspection.result === 'fail' ? 'bg-yellow-50 border-yellow-200' : 'bg-slate-50 border-slate-200'
             }`}
           >
-            <div className="font-medium mb-2 text-gray-900">
+            <div className="font-semibold mb-2 text-gray-900">
               {inspection.result === 'fail' ? 'Failed inspection' : 'Create work order'}
             </div>
             <p className="text-sm text-gray-600 mb-3">
@@ -1242,7 +1242,7 @@ export default function InspectionDetail() {
           !inspection.auto_generated_work_order_id &&
           !!inspection.inspection_schedule_id && (
           <div className="border rounded-lg p-4 bg-slate-50 border-slate-200">
-            <div className="font-medium mb-2 text-gray-900">Create work order</div>
+            <div className="font-semibold mb-2 text-gray-900">Create work order</div>
             <p className="text-sm text-gray-600 mb-3">
               {inspection.result === 'fail'
                 ? 'This inspection failed. Create a work order from this checklist, or open the overview to see Body and Mechanical together.'
@@ -1273,7 +1273,7 @@ export default function InspectionDetail() {
 
         {inspection.auto_generated_work_order_id && (
           <div className="border rounded-lg p-4 bg-green-50">
-            <div className="font-medium mb-2">Work Order Generated</div>
+            <div className="font-semibold mb-2">Work Order Generated</div>
             <button
               onClick={() => nav(`/fleet/work-orders/${inspection.auto_generated_work_order_id}`)}
               className="text-sm text-brand-red hover:underline"

@@ -35,7 +35,7 @@ export const uiListCreateItem = {
     'flex w-full items-center justify-center gap-2',
     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/30',
   ),
-  label: 'font-medium text-xs text-gray-700',
+  label: 'font-semibold text-sm text-gray-700',
   card: 'min-h-[200px] p-2.5',
   row: 'box-border min-h-[60px] px-3 py-3',
 } as const;
@@ -54,11 +54,13 @@ export const uiTypography = {
   pageTitle: 'text-lg font-semibold text-gray-900',
   pageSubtitle: 'text-sm text-gray-600',
   sectionTitle: 'text-sm font-semibold text-gray-900',
-  sectionSubtitle: 'text-xs text-gray-600',
+  sectionSubtitle: 'text-sm text-gray-600',
   body: 'text-sm text-gray-700',
-  helper: 'text-xs text-gray-600',
-  overline: 'text-[10px] uppercase tracking-wide text-gray-500 font-semibold',
-  controlLabel: 'text-xs font-medium text-gray-600',
+  helper: 'text-sm text-gray-600',
+  overline: 'text-sm font-semibold uppercase tracking-wide text-gray-700',
+  controlLabel: 'text-sm font-semibold text-gray-700',
+  /** Typed values and menu options — readable body, not a caption. */
+  controlValue: 'text-sm text-gray-900',
 } as const;
 
 /** Page shell header (AppPageHeader) — back control is separate from decorative icon tile. */
@@ -95,7 +97,8 @@ export const uiSpacing = {
 export const uiDropdown = {
   /** Same shell as AppInput / Search — moderate corners, not pill-shaped. */
   trigger: uiCx(
-    'w-full bg-white text-xs text-gray-900 outline-none transition-colors placeholder:text-gray-400',
+    'w-full bg-white outline-none transition-colors placeholder:text-gray-400',
+    uiTypography.controlValue,
     'focus:border-gray-400 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-gray-400/35',
     'disabled:cursor-not-allowed disabled:bg-gray-100',
     uiSpacing.controlX,
@@ -124,18 +127,19 @@ export const uiDropdown = {
   menuSearchHeader: 'shrink-0 border-b border-gray-100 bg-white px-2.5 py-2',
   menuOptionsList: 'min-h-0 flex-1 list-none overflow-y-auto overscroll-contain py-1.5',
   option: uiCx(
-    'w-full text-left text-xs text-gray-900 transition-colors hover:bg-gray-50',
+    'w-full text-left transition-colors hover:bg-gray-50',
+    uiTypography.controlValue,
     uiSpacing.controlX,
     uiSpacing.controlY,
   ),
-  optionSelected: 'bg-gray-50 font-medium',
-  optionMuted: uiCx('text-xs text-gray-500', uiSpacing.controlX, uiSpacing.controlY),
+  optionSelected: 'bg-gray-50 font-semibold',
+  optionMuted: uiCx('text-sm text-gray-600', uiSpacing.controlX, uiSpacing.controlY),
   optionGroupHeader: uiCx(
-    'sticky top-0 z-[1] border-b border-gray-100 bg-gray-50 text-[11px] font-semibold text-gray-700',
+    'sticky top-0 z-[1] border-b border-gray-100 bg-gray-50 text-sm font-semibold text-gray-700',
     uiSpacing.controlX,
     'py-2',
   ),
-  optionEmpty: uiCx('text-xs text-amber-800', uiSpacing.controlX, uiSpacing.controlY),
+  optionEmpty: uiCx('text-sm text-amber-800', uiSpacing.controlX, uiSpacing.controlY),
 } as const;
 
 /** User picker rows and selected chip (AppUserSelect). */
@@ -150,11 +154,11 @@ export const uiUserSelect = {
   avatarSm: 'h-6 w-6 shrink-0 rounded-full object-cover',
   avatarMd: 'h-8 w-8 shrink-0 rounded-full object-cover',
   avatarPlaceholder:
-    'inline-flex shrink-0 items-center justify-center rounded-full bg-gray-200 text-[10px] font-medium text-gray-600',
-  chip: 'inline-flex max-w-full items-center gap-1.5 rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-800',
+    'inline-flex shrink-0 items-center justify-center rounded-full bg-gray-200 text-[10px] font-semibold text-gray-600',
+  chip: 'inline-flex max-w-full items-center gap-1.5 rounded-full bg-gray-100 px-2 py-1 text-sm text-gray-800',
   chipRow: 'flex flex-wrap gap-1.5',
   chipAvatar: 'h-5 w-5',
-  chipClear: 'shrink-0 text-gray-500 transition-colors hover:text-gray-800',
+  chipClear: 'shrink-0 text-gray-600 transition-colors hover:text-gray-800',
 } as const;
 
 /** Portaled calendar panel — same shell as dropdown menu. */
@@ -171,16 +175,16 @@ export const uiDatePicker = {
     uiRadius.control,
   ),
   weekHeader: 'grid grid-cols-7 gap-0.5 px-2',
-  weekday: 'py-1 text-center text-[10px] font-semibold uppercase tracking-wide text-gray-500',
+  weekday: 'py-1 text-center text-xs font-semibold uppercase tracking-wide text-gray-600',
   grid: 'grid grid-cols-7 gap-0.5 px-2',
   day: uiCx(
     'flex h-8 w-full items-center justify-center rounded-md text-xs text-gray-900 transition-colors hover:bg-gray-50',
   ),
   dayOutside: 'text-gray-400',
   dayToday: 'font-semibold text-brand-red',
-  daySelected: 'bg-brand-red/10 font-medium ring-1 ring-inset ring-brand-red/35',
+  daySelected: 'bg-brand-red/10 font-semibold ring-1 ring-inset ring-brand-red/35',
   footer: 'mt-2 flex items-center justify-between border-t border-gray-100 px-3 pt-2',
-  footerAction: 'text-xs font-medium text-brand-red hover:text-brand-red/80',
+  footerAction: 'text-sm font-semibold text-brand-red hover:text-brand-red/80',
   triggerIcon:
     'pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400',
   /** Clock In/Out card trigger — icon tile + overline + date (opens same portaled panel). */
@@ -201,13 +205,13 @@ export const uiDatePicker = {
   yearList: 'max-h-[108px] overflow-y-auto overscroll-contain',
   yearGrid: 'grid grid-cols-4 gap-1',
   yearCell:
-    'flex h-8 items-center justify-center rounded-md text-xs text-gray-900 transition-colors hover:bg-gray-50',
-  yearCellActive: 'bg-brand-red/10 font-medium ring-1 ring-inset ring-brand-red/35',
+    'flex h-8 items-center justify-center rounded-md text-sm text-gray-900 transition-colors hover:bg-gray-50',
+  yearCellActive: 'bg-brand-red/10 font-semibold ring-1 ring-inset ring-brand-red/35',
   monthSection: 'border-t border-gray-100 px-3 pt-2 pb-1',
   monthGrid: 'mt-1.5 grid grid-cols-3 gap-1',
   monthCell:
-    'flex h-8 items-center justify-center rounded-md text-xs text-gray-900 transition-colors hover:bg-gray-50',
-  monthCellActive: 'bg-brand-red/10 font-medium ring-1 ring-inset ring-brand-red/35',
+    'flex h-8 items-center justify-center rounded-md text-sm text-gray-900 transition-colors hover:bg-gray-50',
+  monthCellActive: 'bg-brand-red/10 font-semibold ring-1 ring-inset ring-brand-red/35',
 } as const;
 
 /** Stacked modals (e.g. picker opened from a form modal on z-[200]). */
@@ -233,10 +237,10 @@ export const uiTooltip = {
   /** Viewport-anchored shell only — do not add `relative` here (breaks `fixed`). Above modal shells (z-50). */
   shell: 'pointer-events-none fixed z-[100060]',
   panel:
-    'relative inline-block whitespace-nowrap rounded px-2 py-1 text-xs text-white shadow-lg bg-gray-900',
+    'relative inline-block whitespace-nowrap rounded px-2 py-1 text-sm text-white shadow-lg bg-gray-900',
   /** Multi-line explanations (e.g. disabled action reasons). */
   panelWrap:
-    'relative block max-w-[min(16rem,calc(100vw-2rem))] whitespace-normal text-left leading-snug rounded px-2.5 py-1.5 text-xs text-white shadow-lg bg-gray-900',
+    'relative block max-w-[min(16rem,calc(100vw-2rem))] whitespace-normal text-left leading-snug rounded px-2.5 py-1.5 text-sm text-white shadow-lg bg-gray-900',
   /** `left` is set inline so the arrow stays over the anchor when the panel is clamped to the viewport. */
   arrowTop: 'absolute -bottom-1 h-2 w-2 -translate-x-1/2 rotate-45 bg-gray-900',
   arrowBottom: 'absolute -top-1 h-2 w-2 -translate-x-1/2 rotate-45 bg-gray-900',

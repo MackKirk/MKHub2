@@ -205,7 +205,7 @@ function FleetMixPanel({
       {rows.map(({ label, count, pct: rowPct, color }) => (
         <div key={label}>
           <div className={uiCx('mb-1 flex justify-between', uiTypography.helper)}>
-            <span className="font-medium text-gray-700">{label}</span>
+            <span className="font-semibold text-gray-700">{label}</span>
             <span className="tabular-nums">
               {count} ({rowPct}%)
             </span>
@@ -217,7 +217,7 @@ function FleetMixPanel({
       ))}
       <div className={uiCx('border-t border-gray-100 pt-3', uiTypography.helper)}>
         <div className="flex justify-between">
-          <span className="font-medium text-gray-600">Total</span>
+          <span className="font-semibold text-gray-600">Total</span>
           <span className={uiCx('font-semibold tabular-nums', uiColors.textStrong)}>{total.toLocaleString()}</span>
         </div>
       </div>
@@ -387,7 +387,7 @@ function PendingInspectionsCard({
               )}
             >
               <div className="min-w-0 flex-1">
-                <div className={uiCx('truncate font-medium', uiTypography.helper, uiColors.textStrong)}>
+                <div className={uiCx('truncate font-semibold', uiTypography.helper, uiColors.textStrong)}>
                   {item.fleet_asset_name || item.id}
                 </div>
                 {item.inspection_date ? (
@@ -453,7 +453,7 @@ function OpenWorkOrdersCard({
               )}
             >
               <div className="min-w-0 flex-1">
-                <div className={uiCx('truncate font-medium', uiTypography.helper, uiColors.textStrong)}>
+                <div className={uiCx('truncate font-semibold', uiTypography.helper, uiColors.textStrong)}>
                   {item.work_order_number || item.id}
                 </div>
                 {item.description ? (

@@ -176,7 +176,7 @@ function EstimateChangesBlock({ selectedReport }: { selectedReport: ProjectRepor
                       <div key={idx} className="px-2.5 py-2">
                         <div className="flex items-start justify-between gap-4">
                           <div className="min-w-0 flex-1">
-                            <div className={uiCx(uiTypography.body, 'mb-1 font-medium')}>
+                            <div className={uiCx(uiTypography.body, 'mb-1 font-semibold')}>
                               {item.name || 'Unnamed Item'}
                             </div>
                             <div
@@ -186,38 +186,38 @@ function EstimateChangesBlock({ selectedReport }: { selectedReport: ProjectRepor
                               )}
                             >
                               <span>
-                                <span className="font-medium">Qty:</span> {item.quantity || 0}{' '}
+                                <span className="font-semibold">Qty:</span> {item.quantity || 0}{' '}
                                 {item.unit || ''}
                               </span>
                               {item.item_type === 'labour' && item.labour_journey && (
                                 <>
                                   <span>
-                                    <span className="font-medium">Journey:</span>{' '}
+                                    <span className="font-semibold">Journey:</span>{' '}
                                     {item.labour_journey} {item.labour_journey_type || 'hours'}
                                   </span>
                                   {item.labour_men && item.labour_men > 0 && (
                                     <span>
-                                      <span className="font-medium">Men:</span> {item.labour_men}
+                                      <span className="font-semibold">Men:</span> {item.labour_men}
                                     </span>
                                   )}
                                 </>
                               )}
                               <span>
-                                <span className="font-medium">Unit Price:</span> $
+                                <span className="font-semibold">Unit Price:</span> $
                                 {(item.unit_price || 0).toFixed(2)}
                               </span>
                               {item.item_type && (
                                 <span>
-                                  <span className="font-medium">Type:</span> {item.item_type}
+                                  <span className="font-semibold">Type:</span> {item.item_type}
                                 </span>
                               )}
                               {item.supplier_name && (
                                 <span>
-                                  <span className="font-medium">Supplier:</span> {item.supplier_name}
+                                  <span className="font-semibold">Supplier:</span> {item.supplier_name}
                                 </span>
                               )}
                               {item.taxable && (
-                                <span className="font-medium text-green-700">Taxable</span>
+                                <span className="font-semibold text-green-700">Taxable</span>
                               )}
                             </div>
                             {item.description && (
@@ -328,7 +328,7 @@ function ReportDetailPanel({
                   className={uiCx(uiUserSelect.avatarSm, 'rounded-full object-cover')}
                 />
                 <div>
-                  <div className={uiCx(uiTypography.body, 'font-medium')}>{authorInfo.name}</div>
+                  <div className={uiCx(uiTypography.body, 'font-semibold')}>{authorInfo.name}</div>
                   <div className={uiTypography.helper}>
                     {reportDate
                       ? reportDate.toLocaleDateString('en-US', {
@@ -643,7 +643,7 @@ export function ProjectReportsTabDs(props: ProjectReportsTabDsProps) {
                                   compact
                                 />
                               )}
-                              {hasStatusBadges && <span className="text-gray-400">·</span>}
+                              {hasStatusBadges && <span className="text-gray-600">·</span>}
                               <span>{listSubtitle}</span>
                             </div>
                             {preview && (

@@ -22,9 +22,9 @@ export type JobPickerItem = {
 function JobNameWithCode({ job, selected }: { job: JobPickerItem; selected?: boolean }) {
   const code = job.code?.trim();
   return (
-    <div className="text-xs text-gray-900">
-      <span className={selected ? 'font-medium' : undefined}>{job.name}</span>
-      {code ? <span className="font-normal text-gray-500">{` (${code})`}</span> : null}
+    <div className="text-sm text-gray-900">
+      <span className={selected ? 'font-semibold' : undefined}>{job.name}</span>
+      {code ? <span className="font-normal text-gray-600">{` (${code})`}</span> : null}
     </div>
   );
 }
@@ -245,7 +245,7 @@ export function JobSearchCombobox({
                     }}
                   >
                     <JobNameWithCode job={job} selected={value === job.id} />
-                    {addr ? <div className="mt-0.5 truncate text-xs text-gray-500">{addr}</div> : null}
+                    {addr ? <div className="mt-0.5 truncate text-sm text-gray-600">{addr}</div> : null}
                   </button>
                 </li>
               );

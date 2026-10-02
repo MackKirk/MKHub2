@@ -67,14 +67,14 @@ export function CustomerOverviewToolbar({
                     }
                   }
                 }}
-                className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                className={`px-2.5 py-1 rounded-full text-sm font-semibold transition-colors ${
                   preset === p.id ? 'bg-brand-red text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
               >
                 {p.label}
               </button>
             ))}
-            <span className="text-[11px] text-gray-500 hidden sm:inline">{summary}</span>
+            <span className="text-xs text-gray-600 hidden sm:inline">{summary}</span>
           </div>
           <div className="flex flex-wrap items-center gap-2 justify-end">
             {preset === 'custom' ? (
@@ -84,16 +84,16 @@ export function CustomerOverviewToolbar({
                   value={localFrom}
                   onChange={(e) => setLocalFrom(e.target.value)}
                   onBlur={() => onDateFromChange(localFrom)}
-                  className="text-xs border border-gray-200 rounded px-2 py-1"
+                  className="text-sm border border-gray-200 rounded px-2 py-1"
                   aria-label="From date"
                 />
-                <span className="text-gray-400 text-xs">→</span>
+                <span className="text-gray-600 text-sm">→</span>
                 <input
                   type="date"
                   value={localTo}
                   onChange={(e) => setLocalTo(e.target.value)}
                   onBlur={() => onDateToChange(localTo)}
-                  className="text-xs border border-gray-200 rounded px-2 py-1"
+                  className="text-sm border border-gray-200 rounded px-2 py-1"
                   aria-label="To date"
                 />
               </div>
@@ -104,7 +104,7 @@ export function CustomerOverviewToolbar({
                   key={m}
                   type="button"
                   onClick={() => onDisplayModeChange(m)}
-                  className={`px-2.5 py-1 rounded-full text-xs font-medium capitalize ${
+                  className={`px-2.5 py-1 rounded-full text-sm font-semibold capitalize ${
                     displayMode === m ? 'bg-white shadow-sm text-gray-900' : 'text-gray-600'
                   }`}
                 >
@@ -116,7 +116,7 @@ export function CustomerOverviewToolbar({
               type="button"
               onClick={onRefresh}
               disabled={isRefreshing}
-              className="text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              className="text-sm font-semibold px-3 py-1.5 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
             >
               {isRefreshing ? 'Refreshing…' : 'Refresh'}
             </button>

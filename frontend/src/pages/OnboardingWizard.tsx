@@ -70,9 +70,9 @@ const VISA_STATUS_OPTIONS = [
 ];
 
 const ADDRESS_INPUT_CLASS =
-  'w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400';
+  'w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400';
 const ADDRESS_INPUT_INVALID_CLASS =
-  'w-full rounded-lg border border-red-300 bg-red-50 px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-red-300 focus:border-red-300';
+  'w-full rounded-lg border border-red-300 bg-red-50 px-2.5 py-1.5 text-sm text-gray-900 focus:ring-1 focus:ring-red-300 focus:border-red-300';
 const HUB_REQUIRED_MSG = 'Required to enter the Hub';
 
 const HUB_REQUIRED_FIELDS = [
@@ -716,7 +716,7 @@ export default function OnboardingWizard() {
           actions={
             <div className="text-right">
               <div className={uiTypography.overline}>Progress</div>
-              <div className={uiCx(uiTypography.helper, 'mt-0.5 font-medium text-gray-800')}>
+              <div className={uiCx(uiTypography.helper, 'mt-0.5 font-semibold text-gray-800')}>
                 Step {currentStep} of {totalSteps}
               </div>
             </div>
@@ -747,7 +747,7 @@ export default function OnboardingWizard() {
               );
             })}
           </div>
-          <div className="mt-3 grid grid-cols-2 gap-x-2 gap-y-1 text-xs sm:grid-cols-3 md:grid-cols-6">
+          <div className="mt-3 grid grid-cols-2 gap-x-2 gap-y-1 text-sm sm:grid-cols-3 md:grid-cols-6">
             {Array.from({ length: totalSteps }, (_, i) => {
               const step = i + 1;
               const isCurrent = step === currentStep;
@@ -764,12 +764,12 @@ export default function OnboardingWizard() {
                       ? 'bg-red-50 font-semibold text-brand-red'
                       : needsInfo
                         ? 'bg-red-50/80 text-red-700 hover:bg-red-50'
-                        : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900',
+                        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900',
                   )}
                 >
                   <span className="sr-only">Step {step}: </span>
                   <span className="block">{STEP_LABELS[step]}</span>
-                  {needsInfo ? <span className="mt-0.5 block text-[10px] font-medium text-red-600">Needs info</span> : null}
+                  {needsInfo ? <span className="mt-0.5 block text-xs font-semibold text-red-600">Needs info</span> : null}
                 </button>
               );
             })}
@@ -855,7 +855,7 @@ export default function OnboardingWizard() {
                     className={hubFieldError('address_line1') ? ADDRESS_INPUT_INVALID_CLASS : ADDRESS_INPUT_CLASS}
                   />
                   {hubFieldError('address_line1') ? (
-                    <span className="block text-xs text-red-600">{HUB_REQUIRED_MSG}</span>
+                    <span className="block text-sm text-red-600">{HUB_REQUIRED_MSG}</span>
                   ) : null}
                 </div>
                 <AppInput
@@ -909,7 +909,7 @@ export default function OnboardingWizard() {
                     className={hubFieldError('postal_code') ? ADDRESS_INPUT_INVALID_CLASS : ADDRESS_INPUT_CLASS}
                   />
                   {hubFieldError('postal_code') ? (
-                    <span className="block text-xs text-red-600">{HUB_REQUIRED_MSG}</span>
+                    <span className="block text-sm text-red-600">{HUB_REQUIRED_MSG}</span>
                   ) : null}
                 </div>
                 <div className="space-y-1.5">
@@ -1092,7 +1092,7 @@ function EducationStep({ userId }: { userId: string }) {
                     <div className={uiTypography.helper}>
                       {[e.degree, e.major_specialization].filter(Boolean).join(' · ') || '—'}
                     </div>
-                    <div className={uiCx(uiTypography.helper, 'mt-1 text-gray-500')}>
+                    <div className={uiCx(uiTypography.helper, 'mt-1 text-gray-600')}>
                       {formatEducationPeriod(e.start_date, e.end_date)}
                     </div>
                   </div>
@@ -1937,7 +1937,7 @@ function ImmigrationStatusDocumentSection({ userId, canEdit, isRequired }: { use
           ) : null}
         </div>
       ) : !canEdit ? (
-        <div className={uiCx(uiTypography.helper, 'font-medium text-gray-900')}>No permit document uploaded</div>
+        <div className={uiCx(uiTypography.helper, 'font-semibold text-gray-900')}>No permit document uploaded</div>
       ) : null}
       {canEdit ? (
         <>
@@ -2163,7 +2163,7 @@ function VisaInformationSection({ userId, canEdit, isRequired = false, showInlin
             {isRequired ? <p className={uiCx(uiTypography.helper, 'text-red-600')}>Visa information is required</p> : null}
           </div>
         ) : (
-          <div className={uiCx(uiTypography.helper, 'font-medium text-gray-900')}>—</div>
+          <div className={uiCx(uiTypography.helper, 'font-semibold text-gray-900')}>—</div>
         )
       ) : (
         <div className="flex flex-col gap-3">
@@ -2178,7 +2178,7 @@ function VisaInformationSection({ userId, canEdit, isRequired = false, showInlin
                   <div className={uiTypography.helper}>
                     {[v.visa_number && `#${v.visa_number}`, v.issuing_country].filter(Boolean).join(' · ')}
                   </div>
-                  <div className={uiCx(uiTypography.helper, 'mt-1 text-gray-500')}>
+                  <div className={uiCx(uiTypography.helper, 'mt-1 text-gray-600')}>
                     {v.issued_date ? String(v.issued_date).slice(0, 10) : ''}
                     {v.issued_date && v.expiry_date ? ' — ' : ''}
                     {v.expiry_date ? String(v.expiry_date).slice(0, 10) : ''}

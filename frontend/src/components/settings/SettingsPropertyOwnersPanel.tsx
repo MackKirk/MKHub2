@@ -197,7 +197,7 @@ export default function SettingsPropertyOwnersPanel({ canEdit }: Props) {
                       <div className={uiCx(uiTypography.helper, 'truncate')}>{r.legal_name}</div>
                     ) : null}
                   </div>
-                  <span className="truncate text-xs text-gray-700">{r.legal_name}</span>
+                  <span className="truncate text-sm text-gray-700">{r.legal_name}</span>
                   <AppBadge variant="neutral">{r.entity_type === 'person' ? 'Person' : 'Company'}</AppBadge>
                   <AppBadge variant={r.active ? 'success' : 'neutral'}>{r.active ? 'Active' : 'Inactive'}</AppBadge>
                   <div className="flex w-20 shrink-0 items-center justify-end gap-1.5">

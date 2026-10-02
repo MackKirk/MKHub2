@@ -270,7 +270,7 @@ export function UserVisaInformationSection({
   const renderVisaRecordCardField = (label: string, value: ReactNode) => (
     <div className="min-w-0 space-y-1">
       <div className={uiTypography.controlLabel}>{label}</div>
-      <div className={uiCx(uiTypography.helper, 'break-words font-medium text-gray-900')}>{value}</div>
+      <div className={uiCx(uiTypography.helper, 'break-words font-semibold text-gray-900')}>{value}</div>
     </div>
   );
 
@@ -331,7 +331,7 @@ export function UserVisaInformationSection({
               {isRequired ? <p className={uiCx(uiTypography.helper, 'text-red-600')}>Visa information is required</p> : null}
             </div>
           ) : (
-            <div className={uiCx(uiTypography.helper, 'font-medium text-gray-900')}>—</div>
+            <div className={uiCx(uiTypography.helper, 'font-semibold text-gray-900')}>—</div>
           )
         ) : canEdit ? (
           visaEditCards

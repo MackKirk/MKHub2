@@ -18,7 +18,7 @@ import { UserWorkEligibilityDocumentsSection } from '@/components/users/UserWork
 import { userProfileFieldHint } from '@/lib/userProfileFieldHints';
 
 const ADDRESS_INPUT_CLASS =
-  'w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400';
+  'w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400';
 
 const GENDER_OPTIONS = ['Male', 'Female', 'Other', 'Prefer not to say'].map((v) => ({ value: v, label: v }));
 const MARITAL_OPTIONS = ['Single', 'Married', 'Common-law', 'Divorced', 'Widowed', 'Prefer not to say'].map((v) => ({

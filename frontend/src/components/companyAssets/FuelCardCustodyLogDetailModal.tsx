@@ -36,7 +36,7 @@ function ReadOnlyDetailField({ label, value }: { label: string; value: string })
   return (
     <div className="space-y-1">
       <div className={uiTypography.controlLabel}>{label}</div>
-      <div className={uiCx(uiTypography.body, 'break-words font-medium text-gray-900')}>{value || '—'}</div>
+      <div className={uiCx(uiTypography.body, 'break-words font-semibold text-gray-900')}>{value || '—'}</div>
     </div>
   );
 }

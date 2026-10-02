@@ -89,7 +89,7 @@ function ScheduledWorkersSection({ entry }: { entry: ProjectCalendarDayEntry }) 
           <CalendarOff className="h-4 w-4" aria-hidden />
         </span>
         <div className="min-w-0 pt-0.5">
-          <p className="text-sm font-medium text-gray-800">No workers scheduled</p>
+          <p className="text-sm font-semibold text-gray-800">No workers scheduled</p>
           <p className={uiCx('mt-0.5', uiTypography.helper)}>
             This project is active on this day, but no workload shifts are assigned yet.
           </p>
@@ -118,7 +118,7 @@ function ScheduledWorkersSection({ entry }: { entry: ProjectCalendarDayEntry }) 
           <Users className="h-4 w-4" aria-hidden />
         </span>
         <div className="min-w-0 pt-0.5">
-          <p className="text-sm font-medium text-gray-800">
+          <p className="text-sm font-semibold text-gray-800">
             {entry.shift_count} worker{entry.shift_count === 1 ? '' : 's'} scheduled
           </p>
           <p className={uiCx('mt-0.5', uiTypography.helper)}>
@@ -143,14 +143,14 @@ function ScheduledWorkersSection({ entry }: { entry: ProjectCalendarDayEntry }) 
                   }}
                   size="sm"
                 />
-                <span className="truncate text-sm font-medium text-gray-900">
+                <span className="truncate text-sm font-semibold text-gray-900">
                   {shift.worker_name || 'Worker'}
                 </span>
               </div>
               {timeRange ? (
                 <span
                   className={uiCx(
-                    'inline-flex shrink-0 items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium tabular-nums text-gray-700',
+                    'inline-flex shrink-0 items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold tabular-nums text-gray-700',
                   )}
                 >
                   <Clock className="h-3 w-3 opacity-60" aria-hidden />

@@ -298,7 +298,7 @@ export default function SettingsAutoTasksPanel({ canEdit }: Props) {
                   <li key={item.key} className="flex items-start justify-between gap-3 px-4 py-3">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className={uiCx(uiTypography.body, 'font-medium text-gray-900')}>{item.name}</p>
+                        <p className={uiCx(uiTypography.body, 'font-semibold text-gray-900')}>{item.name}</p>
                         {triggerOriginBadges(item)}
                       </div>
                       <p className={uiCx(uiTypography.helper, 'mt-1 line-clamp-2 text-gray-600')}>
@@ -345,7 +345,7 @@ export default function SettingsAutoTasksPanel({ canEdit }: Props) {
               row.tasks[0]?.title || row.task_title || row.trigger_name,
               row.origin_label || '—',
               row.tasks.length ? (
-                <Link to="/tasks" className="font-medium text-brand-red hover:underline">
+                <Link to="/tasks" className="font-semibold text-brand-red hover:underline">
                   {getStatusLabel((row.tasks[0].status as TaskStatus) || 'accepted')}
                 </Link>
               ) : (

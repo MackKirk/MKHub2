@@ -33,7 +33,7 @@ export function CommunityPageHeader({
           ) : null}
           <div className="min-w-0">
             <div className="text-lg font-semibold text-gray-900 tracking-tight">{title}</div>
-            <div className="text-sm text-gray-500 mt-0.5">{subtitle}</div>
+            <div className="text-sm text-gray-600 mt-0.5">{subtitle}</div>
           </div>
         </div>
         {actions ? <div className="hidden sm:flex items-center gap-2 flex-wrap justify-end shrink-0">{actions}</div> : null}

@@ -69,7 +69,7 @@ function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }
       type="button"
       onClick={onRemove}
       className={uiCx(
-        'inline-flex items-center gap-1.5 border bg-white px-2.5 py-1 text-xs font-medium text-gray-700 transition-colors hover:border-gray-300 hover:bg-gray-50',
+        'inline-flex items-center gap-1.5 border bg-white px-2.5 py-1 text-sm font-semibold text-gray-700 transition-colors hover:border-gray-300 hover:bg-gray-50',
         uiRadius.control,
         uiBorders.subtle,
       )}
@@ -431,7 +431,7 @@ function AttendanceTotalHoursField({
               {' · '}
               {formatDurationMinutes(breakMinutes)} break
               {' · '}
-              <span className="font-medium text-gray-800">{formatDurationMinutes(net)} after break</span>
+              <span className="font-semibold text-gray-800">{formatDurationMinutes(net)} after break</span>
             </>
           ) : null}
         </p>
@@ -1804,7 +1804,7 @@ export default function Attendance() {
 
       {viewMode === 'list' && canEditAttendance && selectedEvents.size > 0 ? (
         <div className={uiCx('flex items-center justify-between rounded-xl border border-blue-200 bg-blue-50 px-3 py-2')}>
-          <div className={uiCx(uiTypography.helper, 'font-medium text-blue-900')}>
+          <div className={uiCx(uiTypography.helper, 'font-semibold text-blue-900')}>
             {selectedEvents.size} event(s) selected
           </div>
           <AppButton
@@ -2204,12 +2204,12 @@ export default function Attendance() {
                       <DetailField label="Break">{formatBreak(viewingEvent.break_minutes)}</DetailField>
                       {viewingEvent.clock_in_notes ? (
                         <DetailField label="Clock-in notes">
-                          <pre className="whitespace-pre-wrap font-sans text-xs">{viewingEvent.clock_in_notes}</pre>
+                          <pre className="whitespace-pre-wrap font-sans text-sm">{viewingEvent.clock_in_notes}</pre>
                         </DetailField>
                       ) : null}
                       {viewingEvent.clock_out_notes ? (
                         <DetailField label="Clock-out notes">
-                          <pre className="whitespace-pre-wrap font-sans text-xs">{viewingEvent.clock_out_notes}</pre>
+                          <pre className="whitespace-pre-wrap font-sans text-sm">{viewingEvent.clock_out_notes}</pre>
                         </DetailField>
                       ) : null}
                       {(() => {
@@ -2217,7 +2217,7 @@ export default function Attendance() {
                         if (!gps) return null;
                         return (
                           <DetailField label="Location">
-                            <span className="text-xs">
+                            <span className="text-sm">
                               {gps.lat.toFixed(6)}, {gps.lng.toFixed(6)}
                               {gps.accuracy_m != null ? ` · ±${Math.round(gps.accuracy_m)}m` : ''}
                             </span>
@@ -2267,7 +2267,7 @@ export default function Attendance() {
                       <DetailField label="Source">{viewingEvent.source || '—'}</DetailField>
                       {viewingEvent.gps_lat != null && viewingEvent.gps_lng != null ? (
                         <DetailField label="Location">
-                          <span className="text-xs">
+                          <span className="text-sm">
                             {Number(viewingEvent.gps_lat).toFixed(6)}, {Number(viewingEvent.gps_lng).toFixed(6)}
                             {viewingEvent.gps_accuracy_m != null
                               ? ` · ±${Math.round(viewingEvent.gps_accuracy_m)}m`
@@ -2277,7 +2277,7 @@ export default function Attendance() {
                       ) : null}
                       {(viewingEvent.clock_in_reason || viewingEvent.clock_out_reason) ? (
                         <DetailField label="Notes / reason">
-                          <pre className="whitespace-pre-wrap font-sans text-xs">
+                          <pre className="whitespace-pre-wrap font-sans text-sm">
                             {viewingEvent.clock_in_reason || viewingEvent.clock_out_reason}
                           </pre>
                         </DetailField>
@@ -2288,7 +2288,7 @@ export default function Attendance() {
                       <DetailField label="Approved at">{formatDateTime(viewingEvent.approved_at)}</DetailField>
                       <DetailField label="Approved by (user id)">{viewingEvent.approved_by || '—'}</DetailField>
                       {viewingEvent.shift_deleted ? (
-                        <div className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900 mt-2">
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-sm text-amber-900 mt-2">
                           Linked shift was deleted
                           {viewingEvent.shift_deleted_by ? ` by ${viewingEvent.shift_deleted_by}` : ''}
                           {viewingEvent.shift_deleted_at
@@ -2391,7 +2391,7 @@ export default function Attendance() {
                   <>
                     {editingEvent.worker_name}
                     {editingEvent.subcontractor_company_name ? (
-                      <span className="font-normal text-gray-500"> · {editingEvent.subcontractor_company_name}</span>
+                      <span className="font-normal text-gray-600"> · {editingEvent.subcontractor_company_name}</span>
                     ) : null}
                   </>
                 }

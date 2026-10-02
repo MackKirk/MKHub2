@@ -336,7 +336,7 @@ export function AnnouncementManagerCard({ post }: { post: any }) {
                 </p>
                 <div className={uiCx(uiTypography.helper, 'flex flex-wrap items-center gap-x-3 gap-y-1.5')}>
                   <span className="inline-flex items-center gap-1.5 text-gray-600">
-                    <IconUsers className="text-gray-400" />
+                    <IconUsers className="text-gray-600" />
                     {post.target_type === 'all'
                       ? 'All employees'
                       : post.target_type === 'users'
@@ -344,22 +344,22 @@ export function AnnouncementManagerCard({ post }: { post: any }) {
                         : `Divisions (${(post.target_division_ids || []).length})`}
                   </span>
                   <span className="inline-flex items-center gap-1.5 text-gray-600">
-                    <IconCalendar className="text-gray-400" />
+                    <IconCalendar className="text-gray-600" />
                     Created {formatTimeAgo(post.created_at)}
                   </span>
                   {post.publish_at && (
                     <span className="inline-flex items-center gap-1.5 text-gray-600">
-                      <IconCalendar className="text-gray-400" />
+                      <IconCalendar className="text-gray-600" />
                       Live {formatTimeAgo(post.publish_at)}
                     </span>
                   )}
                   <span className="inline-flex items-center gap-1.5 text-gray-600">
-                    <IconEye className="text-gray-400" />
+                    <IconEye className="text-gray-600" />
                     {post.views_count || 0} views
                   </span>
                   {post.requires_read_confirmation && (
                     <span className="inline-flex items-center gap-1.5 text-gray-600">
-                      <IconCheckCircle className="text-gray-400" />
+                      <IconCheckCircle className="text-gray-600" />
                       {confC}/{totalR || '?'} confirmed
                     </span>
                   )}
@@ -493,19 +493,19 @@ export function AnnouncementManagerCard({ post }: { post: any }) {
                             {conf.user_avatar ? (
                               <img src={conf.user_avatar} alt="" className="w-full h-full rounded-full object-cover" />
                             ) : (
-                              <span className="text-gray-500 text-xs">{(conf.user_name || 'U')[0].toUpperCase()}</span>
+                              <span className="text-gray-600 text-sm">{(conf.user_name || 'U')[0].toUpperCase()}</span>
                             )}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <div className="font-medium text-gray-900 truncate">{conf.user_name || 'Unknown'}</div>
-                            <div className="text-xs text-gray-500">Confirmed {formatTimeAgo(conf.confirmed_at)}</div>
+                            <div className="font-semibold text-gray-900 truncate">{conf.user_name || 'Unknown'}</div>
+                            <div className="text-sm text-gray-600">Confirmed {formatTimeAgo(conf.confirmed_at)}</div>
                           </div>
                         </div>
                       ))}
                     </div>
                   )}
                   {showConfirmations && confirmations.length === 0 && (
-                    <div className="text-sm text-gray-500 py-2">No confirmations yet</div>
+                    <div className="text-sm text-gray-600 py-2">No confirmations yet</div>
                   )}
 
                   {showPending && pendingData?.pending?.length > 0 && (
@@ -518,7 +518,7 @@ export function AnnouncementManagerCard({ post }: { post: any }) {
                     </div>
                   )}
                   {showPending && (!pendingData?.pending || pendingData.pending.length === 0) && (
-                    <div className="text-sm text-gray-500 py-2">No pending recipients (or everyone confirmed)</div>
+                    <div className="text-sm text-gray-600 py-2">No pending recipients (or everyone confirmed)</div>
                   )}
                 </div>
               </div>

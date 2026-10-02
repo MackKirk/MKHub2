@@ -8,9 +8,9 @@ const FIELD =
 const CARD =
   'rounded-2xl border border-slate-200/90 bg-white shadow-sm ring-1 ring-slate-100/80 overflow-hidden';
 const BTN_GHOST =
-  'inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-600 shadow-sm hover:bg-slate-50 disabled:opacity-40';
+  'inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm font-semibold text-gray-600 shadow-sm hover:bg-slate-50 disabled:opacity-40';
 const BTN_DANGER =
-  'inline-flex items-center justify-center rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50';
+  'inline-flex items-center justify-center rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-sm font-semibold text-red-600 hover:bg-red-50';
 
 export type QuizQuestionRow = {
   id: string;
@@ -157,7 +157,7 @@ export default function QuizBuilderSection({ courseId, quiz }: Props) {
     <div className="space-y-6">
       <div className={`${CARD} bg-gradient-to-br from-slate-50/90 to-white p-5`}>
         <div className="mb-4 flex flex-wrap items-center gap-2">
-          <span className="rounded-full bg-brand-red/10 px-3 py-1 text-xs font-bold uppercase tracking-wide text-brand-red">
+          <span className="rounded-full bg-brand-red/10 px-3 py-1 text-sm font-bold uppercase tracking-wide text-brand-red">
             Quiz
           </span>
           <p className="text-sm text-slate-600">
@@ -165,7 +165,7 @@ export default function QuizBuilderSection({ courseId, quiz }: Props) {
           </p>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <label className="block text-xs font-semibold text-slate-500">
+          <label className="block text-sm font-semibold text-slate-500">
             Title
             <input
               className={`${FIELD} mt-1 bg-white`}
@@ -183,7 +183,7 @@ export default function QuizBuilderSection({ courseId, quiz }: Props) {
               }}
             />
           </label>
-          <label className="block text-xs font-semibold text-slate-500">
+          <label className="block text-sm font-semibold text-slate-500">
             Pass at (%)
             <input
               type="number"
@@ -205,7 +205,7 @@ export default function QuizBuilderSection({ courseId, quiz }: Props) {
             />
           </label>
           <div className="space-y-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 sm:col-span-2 lg:col-span-2">
-            <div className="text-xs font-semibold text-slate-500">Attempts</div>
+            <div className="text-sm font-semibold text-slate-500">Attempts</div>
             <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
               <input
                 type="radio"
@@ -261,7 +261,7 @@ export default function QuizBuilderSection({ courseId, quiz }: Props) {
                 }}
               />
             </label>
-            <p className="text-xs leading-snug text-slate-500">
+            <p className="text-sm leading-snug text-slate-500">
               After a failed attempt, per-question correct/incorrect feedback stays hidden while the learner still has
               another attempt (so they cannot memorize answers).
             </p>
@@ -275,7 +275,7 @@ export default function QuizBuilderSection({ courseId, quiz }: Props) {
             <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 bg-slate-50/80 px-4 py-3">
               <span className="text-sm font-bold text-slate-400">{idx + 1}</span>
               <select
-                className={`${FIELD} max-w-[220px] border-slate-200 bg-white py-1.5 text-xs font-semibold`}
+                className={`${FIELD} max-w-[220px] border-slate-200 bg-white py-1.5 text-sm font-semibold`}
                 value={isSingleType(q.question_type) ? 'single_choice' : q.question_type}
                 onChange={(e) => {
                   const next = e.target.value;
@@ -345,7 +345,7 @@ export default function QuizBuilderSection({ courseId, quiz }: Props) {
             </div>
 
             <div className="space-y-4 p-4">
-              <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <label className="block text-sm font-semibold uppercase tracking-wide text-slate-500">
                 Question
                 <textarea
                   className={`${FIELD} mt-1 min-h-[88px] resize-y`}
@@ -361,7 +361,7 @@ export default function QuizBuilderSection({ courseId, quiz }: Props) {
 
               {isTrueFalse(q.question_type) && (
                 <div className="space-y-2">
-                  <p className="text-xs font-semibold text-slate-500">Correct answer</p>
+                  <p className="text-sm font-semibold text-slate-500">Correct answer</p>
                   <div className="flex flex-wrap gap-3">
                     {(['true', 'false'] as const).map((v) => (
                       <button
@@ -430,7 +430,7 @@ function OptionBlockSingle({
 
   return (
     <div className="space-y-2">
-      <p className="text-xs font-semibold text-slate-500">Options — click the circle next to the correct answer</p>
+      <p className="text-sm font-semibold text-slate-500">Options — click the circle next to the correct answer</p>
       <ul className="space-y-2">
         {options.map((opt, i) => (
           <li
@@ -467,7 +467,7 @@ function OptionBlockSingle({
             />
             <button
               type="button"
-              className="shrink-0 text-xs font-semibold text-red-600 hover:underline disabled:opacity-30"
+              className="shrink-0 text-sm font-semibold text-red-600 hover:underline disabled:opacity-30"
               disabled={options.length <= 2}
               onClick={() => {
                 const next = options.filter((_, j) => j !== i);
@@ -488,7 +488,7 @@ function OptionBlockSingle({
       </ul>
       <button
         type="button"
-        className="text-xs font-semibold text-brand-red hover:underline"
+        className="text-sm font-semibold text-brand-red hover:underline"
         onClick={() =>
           onUpdate({
             question_type: 'single_choice',
@@ -530,7 +530,7 @@ function OptionBlockMulti({
 
   return (
     <div className="space-y-2">
-      <p className="text-xs font-semibold text-slate-500">
+      <p className="text-sm font-semibold text-slate-500">
         Options — check every correct answer (learners must match all)
       </p>
       <ul className="space-y-2">
@@ -570,7 +570,7 @@ function OptionBlockMulti({
             />
             <button
               type="button"
-              className="shrink-0 text-xs font-semibold text-red-600 hover:underline disabled:opacity-30"
+              className="shrink-0 text-sm font-semibold text-red-600 hover:underline disabled:opacity-30"
               disabled={options.length <= 2}
               onClick={() => {
                 const nextOpts = options.filter((_, j) => j !== i);
@@ -595,7 +595,7 @@ function OptionBlockMulti({
       </ul>
       <button
         type="button"
-        className="text-xs font-semibold text-brand-red hover:underline"
+        className="text-sm font-semibold text-brand-red hover:underline"
         onClick={() =>
           onUpdate({
             question_type: 'multiple_select',

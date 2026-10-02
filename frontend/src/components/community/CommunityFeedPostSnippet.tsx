@@ -212,7 +212,7 @@ export function CommunityFeedPostSnippet({
 
           <div className="min-w-0 flex-1">
             <h4 className="line-clamp-2 text-base font-semibold leading-snug text-slate-950">{post.title}</h4>
-            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-sm text-slate-500">
               <button
                 type="button"
                 className={uiCx(
@@ -228,7 +228,7 @@ export function CommunityFeedPostSnippet({
               </button>
               <span>{formatTimeAgo(post.created_at)}</span>
               {post.related_area ? (
-                <span className="rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-medium text-slate-600">
+                <span className="rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-semibold text-slate-600">
                   {COMMUNITY_FEED_AREA_LABELS[post.related_area] || post.related_area}
                 </span>
               ) : null}
@@ -253,7 +253,7 @@ export function CommunityFeedPostSnippet({
                 </span>
               ) : null}
               {hasAttachment ? (
-                <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
+                <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-xs font-semibold text-slate-600">
                   <Paperclip className="h-3 w-3" />
                   {attachmentCount > 1 ? `${attachmentCount}` : '1'}
                 </span>
@@ -313,7 +313,7 @@ export function CommunityFeedPostSnippet({
           {isRequired ? (
             <div
               className={uiCx(
-                'mt-2.5 flex items-center gap-1.5 rounded-lg border px-2 py-1.5 text-[11px] font-medium',
+                'mt-2.5 flex items-center gap-1.5 rounded-lg border px-2 py-1.5 text-xs font-semibold',
                 post.user_has_confirmed
                   ? 'border-emerald-200 text-emerald-800'
                   : 'border-red-200 text-red-800',
@@ -329,7 +329,7 @@ export function CommunityFeedPostSnippet({
 
           <div
             className={uiCx(
-              'mt-3 flex items-center gap-1 border-t border-gray-100 pt-2.5 text-xs',
+              'mt-3 flex items-center gap-1 border-t border-gray-100 pt-2.5 text-sm',
               !interactive && 'pointer-events-none',
             )}
           >
@@ -341,7 +341,7 @@ export function CommunityFeedPostSnippet({
               }}
               className={uiCx(
                 'inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 transition-all hover:bg-gray-50 active:opacity-60',
-                post.user_has_liked ? 'text-red-600' : 'text-gray-500',
+                post.user_has_liked ? 'text-red-600' : 'text-gray-600',
               )}
             >
               {post.user_has_liked ? (
@@ -358,7 +358,7 @@ export function CommunityFeedPostSnippet({
                   />
                 </svg>
               )}
-              <span className="font-medium">{post.likes_count ?? 0}</span>
+              <span className="font-semibold">{post.likes_count ?? 0}</span>
             </button>
             <button
               type="button"
@@ -366,7 +366,7 @@ export function CommunityFeedPostSnippet({
                 e.stopPropagation();
                 onCommentClick?.(e);
               }}
-              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-gray-500 transition-all hover:bg-gray-50 active:opacity-60"
+              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-gray-600 transition-all hover:bg-gray-50 active:opacity-60"
             >
               <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
                 <path
@@ -376,13 +376,13 @@ export function CommunityFeedPostSnippet({
                   d="M8 10h8m-8 4h5m8 5l-3.5-3.5A9 9 0 1112 3a9 9 0 019 9 8.97 8.97 0 01-1.5 5z"
                 />
               </svg>
-              <span className="font-medium">{post.comments_count ?? 0}</span>
+              <span className="font-semibold">{post.comments_count ?? 0}</span>
             </button>
             {feedMode && !interactive ? (
-              <span className="ml-auto px-2 text-xs font-medium text-gray-400">Preview</span>
+              <span className="ml-auto px-2 text-sm font-semibold text-gray-600">Preview</span>
             ) : null}
             {!feedMode ? (
-              <span className="ml-auto px-2 text-xs font-medium text-gray-400">Click to view full post</span>
+              <span className="ml-auto px-2 text-sm font-semibold text-gray-600">Click to view full post</span>
             ) : null}
           </div>
         </div>

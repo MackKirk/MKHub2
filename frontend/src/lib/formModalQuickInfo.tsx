@@ -23,7 +23,7 @@ export type FormModalQuickInfoCopy = {
 
 /** Emphasize a visible UI label inside Quick Info copy. */
 export function uiLabel(children: ReactNode) {
-  return <span className="font-medium text-gray-800">{children}</span>;
+  return <span className="font-semibold text-gray-800">{children}</span>;
 }
 
 export function formModalQuickInfo(copy: FormModalQuickInfoCopy): ReactNode {
@@ -575,7 +575,7 @@ export function employeeLegacyReviewImportQuickInfo(kind: 'self' | 'supervisor')
     howToUse: (
       <>
         Select a {uiLabel('Review cycle')} whose template labels match legacy{' '}
-        <code className="text-[11px] bg-gray-100 px-1 rounded">question</code> text.
+        <code className="text-xs bg-gray-100 px-1 rounded">question</code> text.
         {kind === 'supervisor' ? ` Choose the ${uiLabel('Supervisor')} who signed the legacy form.` : ''} Paste or
         upload {uiLabel('Legacy JSON')}, run {uiLabel('Preview')}, then {uiLabel('Apply import')}.
       </>

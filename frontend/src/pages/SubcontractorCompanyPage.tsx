@@ -331,7 +331,7 @@ export default function SubcontractorCompanyPage() {
                       <button
                         type="button"
                         onClick={() => setPickerOpen(true)}
-                        className="absolute inset-0 flex items-center justify-center bg-black/40 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100"
+                        className="absolute inset-0 flex items-center justify-center bg-black/40 text-sm text-white opacity-0 transition-opacity group-hover:opacity-100"
                       >
                         Change
                       </button>
@@ -487,7 +487,7 @@ export default function SubcontractorCompanyPage() {
                       }
                     />
                     <div className="mt-4">
-                      <div className={uiCx(uiTypography.helper, 'whitespace-pre-wrap break-words font-medium text-gray-900')}>
+                      <div className={uiCx(uiTypography.helper, 'whitespace-pre-wrap break-words font-semibold text-gray-900')}>
                         {String(company.notes || '') || EM_DASH}
                       </div>
                     </div>
@@ -603,7 +603,7 @@ function ReadOnlyField({ label, value }: { label: ReactNode; value?: string | nu
   return (
     <div className="space-y-1">
       <div className={uiTypography.controlLabel}>{label}</div>
-      <div className={uiCx(uiTypography.helper, 'break-words font-medium text-gray-900')}>
+      <div className={uiCx(uiTypography.helper, 'break-words font-semibold text-gray-900')}>
         {display || EM_DASH}
       </div>
     </div>

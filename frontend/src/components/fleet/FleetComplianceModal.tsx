@@ -100,13 +100,13 @@ function ComplianceAttachmentThumb({
   if (!showImage) {
     return (
       <div className="relative group h-20 w-20 shrink-0">
-        <div className="flex h-full w-full flex-col items-center justify-center rounded-lg border border-gray-200 bg-gray-100 p-1 text-center text-[10px] font-medium text-gray-600">
+        <div className="flex h-full w-full flex-col items-center justify-center rounded-lg border border-gray-200 bg-gray-100 p-1 text-center text-[10px] font-semibold text-gray-600">
           Doc
         </div>
         {!disabled && (
           <button
             type="button"
-            className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-xs leading-5 text-white hover:bg-black/80"
+            className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-sm leading-5 text-white hover:bg-black/80"
             onClick={onRemove}
             aria-label="Remove file"
           >
@@ -128,7 +128,7 @@ function ComplianceAttachmentThumb({
       {!disabled && (
         <button
           type="button"
-          className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-xs leading-5 text-white hover:bg-black/80"
+          className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-sm leading-5 text-white hover:bg-black/80"
           onClick={onRemove}
           aria-label="Remove file"
         >

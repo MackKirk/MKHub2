@@ -406,7 +406,7 @@ export default function NewCustomerModal({
 
   const stepPillClass = (n: number) =>
     uiCx(
-      'rounded-full px-2 py-1 text-[10px] font-medium',
+      'rounded-full px-2 py-1 text-xs font-semibold',
       step === n ? 'bg-gray-900 text-white' : 'bg-gray-200 text-gray-600',
     );
 
@@ -587,11 +587,11 @@ export default function NewCustomerModal({
   );
 
   const stepIndicators = (
-    <div className={uiCx(uiLayout.actionsRow, uiTypography.helper, 'text-[10px] font-medium')}>
+    <div className={uiCx(uiLayout.actionsRow, uiTypography.helper, 'text-xs font-semibold')}>
       <span className={stepPillClass(1)}>1</span>
-      <span className="text-gray-400">→</span>
+      <span className="text-gray-600">→</span>
       <span className={stepPillClass(2)}>2</span>
-      <span className="text-gray-400">→</span>
+      <span className="text-gray-600">→</span>
       <span className={stepPillClass(3)}>3</span>
     </div>
   );
@@ -655,10 +655,10 @@ export default function NewCustomerModal({
                             {c.legal_name ? <span>Legal: {c.legal_name}</span> : null}
                             {c.legal_name && c.city ? ' · ' : ''}
                             {c.city ? <span>{c.city}</span> : null}
-                            {c.client_status ? <span className="text-gray-500"> · {c.client_status}</span> : null}
+                            {c.client_status ? <span className="text-gray-600"> · {c.client_status}</span> : null}
                           </div>
                         </div>
-                        <Link to={`/customers/${encodeURIComponent(c.id)}`} target="_blank" rel="noreferrer" className="shrink-0 text-xs text-brand-red hover:underline">
+                        <Link to={`/customers/${encodeURIComponent(c.id)}`} target="_blank" rel="noreferrer" className="shrink-0 text-sm text-brand-red hover:underline">
                           View customer
                         </Link>
                       </li>
@@ -818,7 +818,7 @@ export default function NewCustomerModal({
                       <div className={uiCx(uiTypography.sectionTitle, 'flex flex-wrap items-center gap-2')}>
                         {c.name || '(No name)'}
                         {c.is_primary && (
-                          <span className={uiCx(uiRadius.badge, 'border border-green-200 bg-green-50 px-2 text-[11px] text-green-700')}>Primary</span>
+                          <span className={uiCx(uiRadius.badge, 'border border-green-200 bg-green-50 px-2 text-xs text-green-700')}>Primary</span>
                         )}
                       </div>
                       <div className={uiTypography.helper}>

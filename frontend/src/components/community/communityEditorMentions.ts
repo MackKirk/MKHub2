@@ -110,7 +110,7 @@ export function createMentionSuggestionRender(zIndex = 200000) {
 
     if (propsRef.items.length === 0) {
       const empty = document.createElement('div');
-      empty.className = 'px-3 py-2 text-xs text-gray-500';
+      empty.className = 'px-3 py-2 text-sm text-gray-600';
       empty.textContent = 'No matches';
       root.appendChild(empty);
       return;
@@ -125,12 +125,12 @@ export function createMentionSuggestionRender(zIndex = 200000) {
       if (index === selectedIndex) btn.classList.add('bg-red-50');
 
       const t1 = document.createElement('div');
-      t1.className = 'font-medium text-gray-900';
+      t1.className = 'font-semibold text-gray-900';
       t1.textContent = item.label;
       btn.appendChild(t1);
       if (item.subtitle) {
         const t2 = document.createElement('div');
-        t2.className = 'text-xs text-gray-500 mt-0.5';
+        t2.className = 'text-sm text-gray-600 mt-0.5';
         t2.textContent = item.subtitle;
         btn.appendChild(t2);
       }

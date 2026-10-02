@@ -84,7 +84,7 @@ export default function ImagePositionDropdown({ value, onChange, disabled }: Ima
         aria-haspopup="dialog"
       >
         <PositionIcon value={effective} />
-        <span className="max-w-[6rem] truncate text-[11px] font-semibold text-slate-900">{current.title}</span>
+        <span className="max-w-[6rem] truncate text-xs font-semibold text-slate-900">{current.title}</span>
         <span className="text-xs leading-none text-slate-500" aria-hidden>
           ▾
         </span>

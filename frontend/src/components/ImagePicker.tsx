@@ -1391,7 +1391,7 @@ export default function ImagePicker({
           padding: 2px 8px;
           border-radius: 4px;
           font-size: 11px;
-          font-weight: 500;
+          font-weight: 600;
           white-space: nowrap;
           line-height: 1.2;
           flex-shrink: 0;
@@ -1439,7 +1439,7 @@ export default function ImagePicker({
                           setTab('upload');
                           setGalleryDialogOpen(false);
                         }}
-                        className={`flex h-full min-h-0 flex-1 items-center justify-center px-2 text-[11px] font-semibold capitalize transition-[background-color,color,box-shadow] duration-150 ${
+                        className={`flex h-full min-h-0 flex-1 items-center justify-center px-2 text-xs font-semibold capitalize transition-[background-color,color,box-shadow] duration-150 ${
                           tab === 'upload' ? editorSegmentedSegmentSelectedClass : editorSegmentedSegmentIdleClass
                         }`}
                       >
@@ -1451,7 +1451,7 @@ export default function ImagePicker({
                           setTab('library');
                           setGalleryDialogOpen(true);
                         }}
-                        className={`flex h-full min-h-0 flex-1 items-center justify-center px-2 text-[11px] font-semibold capitalize transition-[background-color,color,box-shadow] duration-150 ${
+                        className={`flex h-full min-h-0 flex-1 items-center justify-center px-2 text-xs font-semibold capitalize transition-[background-color,color,box-shadow] duration-150 ${
                           tab === 'library' ? editorSegmentedSegmentSelectedClass : editorSegmentedSegmentIdleClass
                         }`}
                       >
@@ -1496,19 +1496,19 @@ export default function ImagePicker({
                           <svg className="mb-2 h-9 w-9 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                           </svg>
-                          <p className="text-sm font-medium text-slate-800">
+                          <p className="text-sm font-semibold text-slate-800">
                             Drop an image here or{' '}
                             <span className="text-brand-red underline decoration-brand-red/40 underline-offset-2">browse</span>
                           </p>
-                          <p className="mt-1 max-w-[14rem] text-[11px] leading-snug text-slate-500">
-                            <kbd className="rounded border border-slate-200 bg-slate-100 px-1 py-0.5 font-mono text-[10px] text-slate-700">Ctrl+V</kbd> /{' '}
-                            <kbd className="rounded border border-slate-200 bg-slate-100 px-1 py-0.5 font-mono text-[10px] text-slate-700">⌘V</kbd> to paste while this dialog is open
+                          <p className="mt-1 max-w-[14rem] text-xs leading-snug text-slate-500">
+                            <kbd className="rounded border border-slate-200 bg-slate-100 px-1 py-0.5 font-mono text-xs text-slate-700">Ctrl+V</kbd> /{' '}
+                            <kbd className="rounded border border-slate-200 bg-slate-100 px-1 py-0.5 font-mono text-xs text-slate-700">⌘V</kbd> to paste while this dialog is open
                           </p>
                         </div>
                         <button
                           type="button"
                           onClick={handlePaste}
-                          className={`${selectionToolButtonGhostClass} h-9 w-full justify-center gap-2 text-xs font-semibold`}
+                          className={`${selectionToolButtonGhostClass} h-9 w-full justify-center gap-2 text-sm font-semibold`}
                           title="Paste from clipboard (may require permission)"
                         >
                           <svg className="h-4 w-4 shrink-0 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
@@ -1524,7 +1524,7 @@ export default function ImagePicker({
                           thumbnail size icons in the toolbar to adjust preview size.
                         </p>
                         {isLoadingLibrary ? (
-                          <p className="inline-flex items-center gap-1.5 text-xs text-slate-500">
+                          <p className="inline-flex items-center gap-1.5 text-sm text-slate-500">
                             <span
                               className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-slate-200 border-t-brand-red"
                               aria-hidden
@@ -1541,7 +1541,7 @@ export default function ImagePicker({
                             Open gallery
                           </button>
                         ) : (
-                          <p className="text-xs text-slate-500">Gallery viewer is open.</p>
+                          <p className="text-sm text-slate-500">Gallery viewer is open.</p>
                         )}
                       </div>
                     )}
@@ -1583,19 +1583,19 @@ export default function ImagePicker({
                     <svg className="mb-2 h-9 w-9 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                     </svg>
-                    <p className="text-sm font-medium text-slate-800">
+                    <p className="text-sm font-semibold text-slate-800">
                       Drop an image here or{' '}
                       <span className="text-brand-red underline decoration-brand-red/40 underline-offset-2">browse</span>
                     </p>
-                    <p className="mt-1 max-w-[14rem] text-[11px] leading-snug text-slate-500">
-                      <kbd className="rounded border border-slate-200 bg-slate-100 px-1 py-0.5 font-mono text-[10px] text-slate-700">Ctrl+V</kbd> /{' '}
-                      <kbd className="rounded border border-slate-200 bg-slate-100 px-1 py-0.5 font-mono text-[10px] text-slate-700">⌘V</kbd> to paste while this dialog is open
+                    <p className="mt-1 max-w-[14rem] text-xs leading-snug text-slate-500">
+                      <kbd className="rounded border border-slate-200 bg-slate-100 px-1 py-0.5 font-mono text-xs text-slate-700">Ctrl+V</kbd> /{' '}
+                      <kbd className="rounded border border-slate-200 bg-slate-100 px-1 py-0.5 font-mono text-xs text-slate-700">⌘V</kbd> to paste while this dialog is open
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={handlePaste}
-                    className={`${selectionToolButtonGhostClass} h-9 w-full justify-center gap-2 text-xs font-semibold`}
+                    className={`${selectionToolButtonGhostClass} h-9 w-full justify-center gap-2 text-sm font-semibold`}
                     title="Paste from clipboard (may require permission)"
                   >
                     <svg className="h-4 w-4 shrink-0 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
@@ -1615,7 +1615,7 @@ export default function ImagePicker({
                       <button
                         type="button"
                         onClick={() => handleOrientationChange('landscape')}
-                        className={`flex h-full min-h-0 items-center justify-center px-2.5 text-[11px] font-semibold transition-[background-color,color,box-shadow] duration-150 ${
+                        className={`flex h-full min-h-0 items-center justify-center px-2.5 text-xs font-semibold transition-[background-color,color,box-shadow] duration-150 ${
                           orientation === 'landscape' ? editorSegmentedSegmentSelectedClass : editorSegmentedSegmentIdleClass
                         }`}
                       >
@@ -1624,7 +1624,7 @@ export default function ImagePicker({
                       <button
                         type="button"
                         onClick={() => handleOrientationChange('portrait')}
-                        className={`flex h-full min-h-0 items-center justify-center px-2.5 text-[11px] font-semibold transition-[background-color,color,box-shadow] duration-150 ${
+                        className={`flex h-full min-h-0 items-center justify-center px-2.5 text-xs font-semibold transition-[background-color,color,box-shadow] duration-150 ${
                           orientation === 'portrait' ? editorSegmentedSegmentSelectedClass : editorSegmentedSegmentIdleClass
                         }`}
                       >
@@ -1650,7 +1650,7 @@ export default function ImagePicker({
                           onPointerDown={(e) => e.preventDefault()}
                           onMouseDown={(e) => e.preventDefault()}
                           onClick={() => applyFitMode(opt.id)}
-                          className={`flex h-full min-h-0 items-center justify-center px-2.5 text-[11px] font-semibold transition-[background-color,color,box-shadow] duration-150 disabled:opacity-50 ${
+                          className={`flex h-full min-h-0 items-center justify-center px-2.5 text-xs font-semibold transition-[background-color,color,box-shadow] duration-150 disabled:opacity-50 ${
                             fitMode === opt.id
                               ? editorSegmentedSegmentSelectedClass
                               : editorSegmentedSegmentIdleClass
@@ -1809,7 +1809,7 @@ export default function ImagePicker({
                 </p>
                 <div className="mt-3 flex w-full flex-nowrap items-center gap-2" style={{ width: cw + 6 }}>
                   <div className="custom-slider-container mb-0 min-w-0 flex-1">
-                    <span className="flex w-11 shrink-0 text-xs font-medium text-slate-700">Zoom</span>
+                    <span className="flex w-11 shrink-0 text-sm font-semibold text-slate-700">Zoom</span>
                     <input
                       type="range"
                       min={zoomMin}
@@ -1835,7 +1835,7 @@ export default function ImagePicker({
                     type="button"
                     disabled={!img || !allowEdit}
                     onClick={() => rotateImage(-90)}
-                    className={`${selectionToolButtonGhostClass} h-8 shrink-0 px-3 text-xs font-semibold disabled:opacity-50`}
+                    className={`${selectionToolButtonGhostClass} h-8 shrink-0 px-3 text-sm font-semibold disabled:opacity-50`}
                     title="Rotate left"
                   >
                     ⟲ Left
@@ -1844,7 +1844,7 @@ export default function ImagePicker({
                     type="button"
                     disabled={!img || !allowEdit}
                     onClick={() => rotateImage(90)}
-                    className={`${selectionToolButtonGhostClass} h-8 shrink-0 px-3 text-xs font-semibold disabled:opacity-50`}
+                    className={`${selectionToolButtonGhostClass} h-8 shrink-0 px-3 text-sm font-semibold disabled:opacity-50`}
                     title="Rotate right"
                   >
                     ⟳ Right
@@ -1859,7 +1859,7 @@ export default function ImagePicker({
                       setTy(y);
                       setRotation(0);
                     }}
-                    className={`${selectionToolButtonGhostClass} h-8 shrink-0 px-3 text-xs disabled:opacity-50`}
+                    className={`${selectionToolButtonGhostClass} h-8 shrink-0 px-3 text-sm disabled:opacity-50`}
                   >
                     Reset
                   </button>
@@ -1868,7 +1868,7 @@ export default function ImagePicker({
                       type="button"
                       disabled={!img || isLoading || isSavingFromEditor}
                       onClick={openImageEditorFromPicker}
-                      className={`${editorTransitionInteractive} h-9 shrink-0 rounded-md bg-slate-700 px-4 text-xs font-semibold text-white hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/35 disabled:opacity-50`}
+                      className={`${editorTransitionInteractive} h-9 shrink-0 rounded-md bg-slate-700 px-4 text-sm font-semibold text-white hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/35 disabled:opacity-50`}
                     >
                       Edit image
                     </button>
@@ -1877,7 +1877,7 @@ export default function ImagePicker({
                     type="button"
                     disabled={!img || isLoading || isConfirming}
                     onClick={confirm}
-                    className={`${editorTransitionInteractive} inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md bg-brand-red px-4 text-xs font-semibold text-white shadow-sm hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/45 disabled:opacity-50`}
+                    className={`${editorTransitionInteractive} inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md bg-brand-red px-4 text-sm font-semibold text-white shadow-sm hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/45 disabled:opacity-50`}
                   >
                     {isConfirming && (
                       <span

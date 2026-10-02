@@ -76,13 +76,13 @@ export default function OffboardingCompleteModal({
           {accessRevocationTiming === 'scheduled' && hubAccessActive ? (
             <div className="flex items-center justify-between gap-3 p-3 text-gray-600">
               <span>Scheduled revocation</span>
-              <span className="text-right font-medium text-gray-900">{scheduledRevocationLabel}</span>
+              <span className="text-right font-semibold text-gray-900">{scheduledRevocationLabel}</span>
             </div>
           ) : null}
           {accessRevocationTiming === 'manually_later' && hubAccessActive ? (
             <div className="flex items-center justify-between gap-3 p-3 text-gray-600">
               <span>Access revocation</span>
-              <span className="text-right font-medium text-gray-900">Manual — when deactivated</span>
+              <span className="text-right font-semibold text-gray-900">Manual — when deactivated</span>
             </div>
           ) : null}
           <div className="flex items-center justify-between p-3">
@@ -105,7 +105,7 @@ export default function OffboardingCompleteModal({
 
         {blockers.length > 0 ? (
           <div className="rounded-lg border border-red-200 bg-red-50 p-3">
-            <div className="font-medium text-red-800 mb-1">Blocking issues</div>
+            <div className="font-semibold text-red-800 mb-1">Blocking issues</div>
             <ul className="list-disc pl-5 text-red-700 space-y-0.5">
               {blockers.map((b) => (
                 <li key={b}>{b}</li>
@@ -116,7 +116,7 @@ export default function OffboardingCompleteModal({
 
         {warnings.length > 0 ? (
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-            <div className="font-medium text-amber-900 mb-1">Warnings (will not block completion)</div>
+            <div className="font-semibold text-amber-900 mb-1">Warnings (will not block completion)</div>
             <ul className="list-disc pl-5 text-amber-800 space-y-0.5">
               {warnings.map((w) => (
                 <li key={w}>{w}</li>

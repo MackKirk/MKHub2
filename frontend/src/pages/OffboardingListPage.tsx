@@ -75,11 +75,11 @@ const FILTER_HINTS = {
 
 function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }) {
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs text-gray-700">
+    <span className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 py-1 text-sm text-gray-700">
       {label}
       <button
         type="button"
-        className="rounded p-0.5 text-gray-500 hover:bg-gray-100 hover:text-gray-800"
+        className="rounded p-0.5 text-gray-600 hover:bg-gray-100 hover:text-gray-800"
         aria-label={`Remove filter ${label}`}
         onClick={onRemove}
       >
@@ -525,7 +525,7 @@ export default function OffboardingListPage() {
                   >
                     <td className="min-w-0 px-3 py-3 align-top">
                       <div className="flex min-w-0 flex-col gap-0.5">
-                        <span className={uiCx('truncate font-medium', uiTypography.helper, uiColors.textStrong)}>
+                        <span className={uiCx('truncate font-semibold', uiTypography.helper, uiColors.textStrong)}>
                           {row.employee_name}
                         </span>
                         {row.position ? (

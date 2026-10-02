@@ -521,7 +521,7 @@ export default function WorkOrders({ scope = 'fleet' }: { scope?: WorkOrderListS
                               }
                             }}
                           >
-                            <span className={uiCx(uiTypography.body, 'whitespace-nowrap font-medium text-gray-900')}>
+                            <span className={uiCx(uiTypography.body, 'whitespace-nowrap font-semibold text-gray-900')}>
                               {wo.work_order_number}
                             </span>
                             <div className="min-w-0">

@@ -222,7 +222,7 @@ function SortableSectionsSidebarItem({
       <button
         type="button"
         ref={setActivatorNodeRef}
-        className="cursor-grab active:cursor-grabbing touch-none text-gray-400 hover:text-gray-600 p-1 shrink-0 mt-0.5 rounded"
+        className="cursor-grab active:cursor-grabbing touch-none text-gray-600 hover:text-gray-600 p-1 shrink-0 mt-0.5 rounded"
         aria-label="Drag to reorder section"
         {...listeners}
         {...attributes}
@@ -231,7 +231,7 @@ function SortableSectionsSidebarItem({
       </button>
       <button
         type="button"
-        className="flex-1 min-w-0 text-left text-xs font-medium text-gray-800 leading-snug hover:text-brand-red"
+        className="flex-1 min-w-0 text-left text-sm font-semibold text-gray-800 leading-snug hover:text-brand-red"
         title={display}
         onClick={onNavigate}
       >
@@ -893,7 +893,7 @@ export default function FormTemplateEditorPage() {
     <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50 pb-24')}>
       {isLoading || !tmpl ? (
         <AppCard>
-          <p className={uiCx(uiTypography.body, 'text-center text-gray-500 py-6')}>Loading…</p>
+          <p className={uiCx(uiTypography.body, 'text-center text-gray-600 py-6')}>Loading…</p>
         </AppCard>
       ) : (
         <>
@@ -991,7 +991,7 @@ export default function FormTemplateEditorPage() {
                           {versionLabel.trim() ? (
                             versionLabel.trim()
                           ) : (
-                            <span className="text-gray-400 font-normal">—</span>
+                            <span className="text-gray-600 font-normal">—</span>
                           )}
                         </button>
                       )}
@@ -1017,7 +1017,7 @@ export default function FormTemplateEditorPage() {
                           saveMetaMut.mutate({ status: next });
                         }}
                       >
-                        <span className="text-xs text-gray-700">{status === 'active' ? 'Active' : 'Inactive'}</span>
+                        <span className="text-sm text-gray-700">{status === 'active' ? 'Active' : 'Inactive'}</span>
                         <button
                           type="button"
                           role="switch"
@@ -1044,7 +1044,7 @@ export default function FormTemplateEditorPage() {
                           />
                         </button>
                       </label>
-                      {saveMetaMut.isPending && <span className="text-xs text-gray-400 whitespace-nowrap">Saving…</span>}
+                      {saveMetaMut.isPending && <span className="text-sm text-gray-600 whitespace-nowrap">Saving…</span>}
                     </div>
                   </div>
                 </div>
@@ -1143,7 +1143,7 @@ export default function FormTemplateEditorPage() {
                                 className="flex-1 min-w-[120px] text-left text-sm font-semibold text-gray-900 truncate rounded px-2 py-1 -mx-0 border border-transparent hover:bg-gray-100/80"
                                 aria-label="Edit section title"
                               >
-                                {sec.title.trim() ? sec.title : <span className="text-gray-400">Section title</span>}
+                                {sec.title.trim() ? sec.title : <span className="text-gray-600">Section title</span>}
                               </button>
                             )}
                             <button
@@ -1186,7 +1186,7 @@ export default function FormTemplateEditorPage() {
                                           <button
                                             type="button"
                                             ref={setActivatorNodeRef}
-                                            className="cursor-grab text-gray-400 hover:text-gray-700 px-0.5 shrink-0 touch-none"
+                                            className="cursor-grab text-gray-600 hover:text-gray-700 px-0.5 shrink-0 touch-none"
                                             aria-label="Drag field"
                                             {...listeners}
                                             {...attributes}
@@ -1245,7 +1245,7 @@ export default function FormTemplateEditorPage() {
                                               {field.label.trim() ? (
                                                 field.label
                                               ) : (
-                                                <span className="text-gray-400">Question / label</span>
+                                                <span className="text-gray-600">Question / label</span>
                                               )}
                                             </button>
                                           )}
@@ -1604,7 +1604,7 @@ export default function FormTemplateEditorPage() {
                     <AppButton
                       type="button"
                       variant="ghost"
-                      className="shrink-0 !px-2 !py-1 text-xs"
+                      className="shrink-0 !px-2 !py-1 text-sm"
                       onClick={() => setPdfViewDraftAttachments((prev) => prev.filter((x) => x.id !== a.id))}
                     >
                       Remove

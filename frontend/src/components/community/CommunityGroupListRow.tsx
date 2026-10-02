@@ -27,7 +27,7 @@ export function CommunityGroupListRow({ group, onOpen }: Props) {
             className="h-full w-full object-cover"
           />
         ) : (
-          <span className="text-sm font-bold text-gray-400">{(group.name || 'G').charAt(0).toUpperCase()}</span>
+          <span className="text-sm font-bold text-gray-600">{(group.name || 'G').charAt(0).toUpperCase()}</span>
         )}
       </div>
       <div className="min-w-0 flex-1">

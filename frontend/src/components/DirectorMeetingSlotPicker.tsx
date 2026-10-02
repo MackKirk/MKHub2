@@ -242,11 +242,11 @@ export default function DirectorMeetingSlotPicker({
           {selectedBookingYmd ? formatYmdHeading(selectedBookingYmd) : 'Select a day'}
         </h3>
         {!selectedBookingYmd ? (
-          <p className="text-xs text-gray-500 py-5 text-center rounded-xl border border-dashed border-gray-200 bg-gray-50/50 px-2">
+          <p className="text-sm text-gray-600 py-5 text-center rounded-xl border border-dashed border-gray-200 bg-gray-50/50 px-2">
             Tap a date on the calendar to see times.
           </p>
         ) : slotsForSelectedDay.length === 0 ? (
-          <p className="text-xs text-gray-500 py-5 text-center rounded-xl border border-dashed border-gray-200 bg-gray-50/50 px-2">
+          <p className="text-sm text-gray-600 py-5 text-center rounded-xl border border-dashed border-gray-200 bg-gray-50/50 px-2">
             No slots on this day.
           </p>
         ) : (
@@ -269,22 +269,22 @@ export default function DirectorMeetingSlotPicker({
                       {!taken ? (
                         <AppBadge
                           variant="success"
-                          className="!px-1.5 !py-px !text-[10px] !leading-none normal-case !tracking-normal"
+                          className="!px-1.5 !py-px !text-xs !leading-none normal-case !tracking-normal"
                         >
                           Available
                         </AppBadge>
                       ) : null}
                     </div>
-                    <div className="text-xs text-gray-500 mt-0.5">{durationMinutes} min meeting</div>
+                    <div className="text-sm text-gray-600 mt-0.5">{durationMinutes} min meeting</div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 shrink-0">
                     {taken ? (
-                      <span className="text-xs text-gray-700">
+                      <span className="text-sm text-gray-700">
                         {hideOtherBookedNames && !isMine ? (
-                          <span className="font-medium">Booked</span>
+                          <span className="font-semibold">Booked</span>
                         ) : (
                           <>
-                            Booked — <span className="font-medium">{bookedColleagueLabel(slot)}</span>
+                            Booked — <span className="font-semibold">{bookedColleagueLabel(slot)}</span>
                           </>
                         )}
                       </span>
@@ -294,7 +294,7 @@ export default function DirectorMeetingSlotPicker({
                         type="button"
                         onClick={() => onBook(slot.starts_at)}
                         disabled={isPending}
-                        className="rounded-lg bg-brand-red px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-[#aa1212] disabled:opacity-50"
+                        className="rounded-lg bg-brand-red px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#aa1212] disabled:opacity-50"
                       >
                         {reserveLabel}
                       </button>
@@ -306,7 +306,7 @@ export default function DirectorMeetingSlotPicker({
                           if (id) onCancelBookedSlot(id);
                         }}
                         disabled={isPending}
-                        className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-xs font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+                        className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-50 disabled:opacity-50"
                       >
                         {cancelLabel}
                       </button>
@@ -315,7 +315,7 @@ export default function DirectorMeetingSlotPicker({
                         type="button"
                         onClick={onCancelMine}
                         disabled={isPending}
-                        className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-xs font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+                        className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-50 disabled:opacity-50"
                       >
                         {cancelLabel}
                       </button>

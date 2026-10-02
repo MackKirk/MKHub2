@@ -29,7 +29,7 @@ function MiniStat({
       <div className={uiTypography.overline}>{label}</div>
       <div className={uiCx('text-xl font-semibold tabular-nums', valueCls)}>
         {value}
-        {unit ? <span className="ml-0.5 text-sm font-medium text-gray-500">{unit}</span> : null}
+        {unit ? <span className="ml-0.5 text-sm font-semibold text-gray-600">{unit}</span> : null}
       </div>
     </AppCard>
   );
@@ -75,7 +75,7 @@ export function InsightsReadHealth({ health }: { health: ReadHealth }) {
             <li key={p.post_id} className="flex min-w-0 flex-col gap-2 py-3 sm:flex-row sm:items-center sm:gap-3">
               <div className="min-w-0 flex-1">
                 <div className="flex min-w-0 flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-2">
-                  <span className="text-sm font-medium text-gray-900 [overflow-wrap:anywhere]">{p.title}</span>
+                  <span className="text-sm font-semibold text-gray-900 [overflow-wrap:anywhere]">{p.title}</span>
                   <span className={uiCx(uiTypography.helper, 'shrink-0 tabular-nums')}>
                     {p.confirmed}/{p.audience} confirmed
                   </span>

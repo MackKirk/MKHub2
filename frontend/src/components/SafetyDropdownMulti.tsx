@@ -117,7 +117,7 @@ export default function SafetyDropdownMulti({
   return (
     <div ref={rootRef} className="relative">
       {!hideLabel && (
-        <label className="block text-sm font-medium text-gray-600 mb-2">{label}</label>
+        <label className="block text-sm font-semibold text-gray-600 mb-2">{label}</label>
       )}
       <button
         ref={anchorRef}
@@ -128,7 +128,7 @@ export default function SafetyDropdownMulti({
         onClick={() => !disabled && setOpen((o) => !o)}
         className="w-full min-h-[2.75rem] flex items-center justify-between gap-2 px-3 py-2 border-2 border-gray-200 rounded-xl text-sm text-left bg-white text-gray-900 disabled:bg-gray-50 disabled:cursor-not-allowed hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-brand-red/20 focus:border-brand-red"
       >
-        <span className={`truncate min-w-0 ${value.length === 0 ? 'text-gray-500' : 'text-gray-900'}`}>{summary}</span>
+        <span className={`truncate min-w-0 ${value.length === 0 ? 'text-gray-600' : 'text-gray-900'}`}>{summary}</span>
         <svg
           className={`w-4 h-4 text-gray-500 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
           fill="none"
@@ -145,7 +145,7 @@ export default function SafetyDropdownMulti({
           {value.map((v) => (
             <span
               key={v}
-              className="inline-flex items-center gap-1 max-w-full pl-2 pr-1 py-1 rounded-lg bg-gray-100 border border-gray-200 text-xs text-gray-800"
+              className="inline-flex items-center gap-1 max-w-full pl-2 pr-1 py-1 rounded-lg bg-gray-100 border border-gray-200 text-sm text-gray-800"
             >
               <span className="truncate min-w-0" title={labelFor(v)}>
                 {labelFor(v)}
@@ -195,7 +195,7 @@ export default function SafetyDropdownMulti({
             <div className="min-h-0 flex-1 overflow-y-auto divide-y divide-gray-100">
               <button
                 type="button"
-                className="w-full px-3 py-2 text-left text-sm text-gray-500 hover:bg-gray-50 shrink-0"
+                className="w-full px-3 py-2 text-left text-sm text-gray-600 hover:bg-gray-50 shrink-0"
                 onClick={() => {
                   onChange([]);
                 }}
@@ -203,9 +203,9 @@ export default function SafetyDropdownMulti({
                 {clearSelectionLabel}
               </button>
               {normalizedRows.length === 0 ? (
-                <div className="px-3 py-2 text-sm text-gray-500">No options</div>
+                <div className="px-3 py-2 text-sm text-gray-600">No options</div>
               ) : filteredRows.length === 0 ? (
-                <div className="px-3 py-2 text-sm text-gray-500">No matches</div>
+                <div className="px-3 py-2 text-sm text-gray-600">No matches</div>
               ) : (
                 filteredRows.map((row) => (
                   <label

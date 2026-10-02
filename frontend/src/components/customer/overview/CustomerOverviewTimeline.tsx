@@ -48,10 +48,10 @@ export function CustomerOverviewTimeline({
                 key={s.id}
                 type="button"
                 onClick={() => setVisible((v) => ({ ...v, [s.id]: !v[s.id] }))}
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-sm font-semibold border ${
                   visible[s.id] !== false
                     ? 'border-gray-300 bg-white text-gray-900'
-                    : 'border-gray-200 bg-gray-50 text-gray-400 line-through'
+                    : 'border-gray-200 bg-gray-50 text-gray-600 line-through'
                 }`}
               >
                 <span className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />

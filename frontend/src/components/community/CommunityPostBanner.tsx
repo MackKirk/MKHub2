@@ -140,7 +140,7 @@ export function CommunityPostBannerPicker({
             className="pointer-events-none h-full w-full object-cover"
             style={{ objectPosition: communityBannerObjectPosition(focalX, focalY) }}
           />
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-center gap-1.5 bg-gradient-to-t from-black/55 to-transparent px-3 py-2 text-xs font-medium text-white">
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-center gap-1.5 bg-gradient-to-t from-black/55 to-transparent px-3 py-2 text-sm font-semibold text-white">
             <Move className="h-3.5 w-3.5" aria-hidden />
             Drag to reposition
           </div>

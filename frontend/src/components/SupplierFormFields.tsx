@@ -373,16 +373,16 @@ export function SupplierAddressFields(props: SupplierFormFieldsProps) {
 export function supplierFormStepPills(step: number, total = 2) {
   const stepPillClass = (n: number) =>
     uiCx(
-      'rounded-full px-2 py-1 text-[10px] font-medium',
+      'rounded-full px-2 py-1 text-xs font-semibold',
       step === n ? 'bg-gray-900 text-white' : 'bg-gray-200 text-gray-600',
     );
   return (
-    <div className={uiCx(uiLayout.actionsRow, uiTypography.helper, 'text-[10px] font-medium')}>
+    <div className={uiCx(uiLayout.actionsRow, uiTypography.helper, 'text-xs font-semibold')}>
       {Array.from({ length: total }, (_, i) => {
         const n = i + 1;
         return (
           <span key={n} className="inline-flex items-center gap-1">
-            {i > 0 ? <span className="text-gray-400">→</span> : null}
+            {i > 0 ? <span className="text-gray-600">→</span> : null}
             <span className={stepPillClass(n)}>{n}</span>
           </span>
         );

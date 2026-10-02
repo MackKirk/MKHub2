@@ -43,7 +43,7 @@ function shouldShowDayBadge(day: AppCalendarDay): boolean {
 }
 
 function calendarBadgeClass(tone: AppCalendarDayBadgeTone | undefined, compact: boolean) {
-  const size = compact ? 'h-5 min-w-[1.1rem] px-1 text-[9px]' : 'h-6 min-w-[1.25rem] px-1 text-[10px]';
+  const size = compact ? 'h-5 min-w-[1.1rem] px-1 text-xs' : 'h-6 min-w-[1.25rem] px-1 text-xs';
   const base = uiCx('inline-flex items-center justify-center rounded-full font-bold leading-none', size);
   switch (tone) {
     case 'accent':
@@ -76,12 +76,12 @@ export function AppCalendarBase({
   const navBtn = compact ? 'h-6 w-6' : 'h-8 w-8';
   const navIcon = compact ? 'h-3.5 w-3.5' : 'h-4 w-4';
   const weekdayClass = compact
-    ? 'bg-gray-50 px-1 py-0.5 text-center text-[9px] font-semibold uppercase tracking-wide text-gray-500'
-    : 'bg-gray-50 px-2 py-1.5 text-center text-[10px] font-semibold uppercase tracking-wide text-gray-500';
+    ? 'bg-gray-50 px-1 py-0.5 text-center text-xs font-semibold uppercase tracking-wide text-gray-500'
+    : 'bg-gray-50 px-2 py-1.5 text-center text-xs font-semibold uppercase tracking-wide text-gray-600';
 
   const compactCellSize = flatCompact
-    ? 'flex h-full min-h-10 min-w-0 px-0.5 py-0.5 text-[10px] font-medium'
-    : 'flex aspect-square min-h-0 min-w-0 px-0.5 py-0.5 text-[10px] font-medium';
+    ? 'flex h-full min-h-10 min-w-0 px-0.5 py-0.5 text-sm font-semibold'
+    : 'flex aspect-square min-h-0 min-w-0 px-0.5 py-0.5 text-sm font-semibold';
 
   const dayCellClass = (day: AppCalendarDay) => {
     const hasBadge = shouldShowDayBadge(day);
@@ -92,8 +92,8 @@ export function AppCalendarBase({
           ? uiCx(compactCellSize, 'flex-col items-stretch')
           : uiCx(compactCellSize, 'flex-col items-center justify-center')
         : hasBadge
-          ? 'flex min-h-14 flex-col px-2 py-1.5 text-left text-xs'
-          : 'min-h-14 px-2 py-1.5 text-left text-xs',
+          ? 'flex min-h-14 flex-col px-2 py-1.5 text-left text-base'
+          : 'min-h-14 px-2 py-1.5 text-left text-base',
       day.isMuted && !day.dateLabel
         ? 'pointer-events-none bg-gray-50/50'
         : day.isMuted

@@ -157,22 +157,22 @@ export function RmOpportunityFromProjectModal({
           <div className="min-w-0">
             <dt className={uiTypography.overline}>Project</dt>
             <AppTooltip constrain wrap content={projectName} disabled={!projectName}>
-              <dd className={uiCx(uiTypography.body, 'truncate font-medium text-gray-900')}>
+              <dd className={uiCx(uiTypography.body, 'truncate font-semibold text-gray-900')}>
                 {projectName || '—'}
-                {project?.code ? <span className="font-normal text-gray-500"> · {project.code}</span> : null}
+                {project?.code ? <span className="font-normal text-gray-600"> · {project.code}</span> : null}
               </dd>
             </AppTooltip>
           </div>
           <div className="min-w-0">
             <dt className={uiTypography.overline}>Customer</dt>
             <AppTooltip constrain wrap content={customer === '—' ? '' : customer} disabled={customer === '—'}>
-              <dd className={uiCx(uiTypography.body, 'truncate font-medium text-gray-900')}>{customer}</dd>
+              <dd className={uiCx(uiTypography.body, 'truncate font-semibold text-gray-900')}>{customer}</dd>
             </AppTooltip>
           </div>
           <div className="min-w-0">
             <dt className={uiTypography.overline}>Site</dt>
             <AppTooltip constrain wrap content={siteAddress || ''} disabled={!siteAddress}>
-              <dd className={uiCx(uiTypography.body, 'truncate font-medium text-gray-900')}>{site}</dd>
+              <dd className={uiCx(uiTypography.body, 'truncate font-semibold text-gray-900')}>{site}</dd>
             </AppTooltip>
           </div>
         </dl>
@@ -191,7 +191,7 @@ export function RmOpportunityFromProjectModal({
           />
           <div className="divide-y divide-gray-200 overflow-hidden rounded-lg border border-gray-200 bg-white">
             {divisionsLoading ? (
-              <div className="py-6 text-center text-xs text-gray-500">Loading project divisions…</div>
+              <div className="py-6 text-center text-sm text-gray-600">Loading project divisions…</div>
             ) : divisionsForPicker.length > 0 ? (
               divisionsForPicker.map((div) => {
                 const divId = String(div.id);
@@ -216,7 +216,7 @@ export function RmOpportunityFromProjectModal({
                           );
                         }
                       }}
-                      className={`flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-medium transition-colors ${
+                      className={`flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-semibold transition-colors ${
                         hasSubdivisions
                           ? 'bg-gray-50 text-gray-900 hover:bg-gray-100'
                           : divisionIds.includes(divId)
@@ -225,7 +225,7 @@ export function RmOpportunityFromProjectModal({
                       }`}
                     >
                       {hasSubdivisions ? (
-                        <span className="w-4 flex-shrink-0 text-xs text-gray-500">{isExpanded ? '▼' : '▶'}</span>
+                        <span className="w-4 flex-shrink-0 text-sm text-gray-600">{isExpanded ? '▼' : '▶'}</span>
                       ) : (
                         <span className="w-4 flex-shrink-0" aria-hidden />
                       )}
@@ -248,7 +248,7 @@ export function RmOpportunityFromProjectModal({
                                   prev.includes(subId) ? prev.filter((id) => id !== subId) : [...prev, subId],
                                 )
                               }
-                              className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs transition-colors ${
+                              className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors ${
                                 subSelected
                                   ? 'border border-indigo-200 bg-indigo-50 text-gray-900'
                                   : 'border border-gray-200 bg-white text-gray-800 hover:bg-gray-50'
@@ -267,7 +267,7 @@ export function RmOpportunityFromProjectModal({
                 );
               })
             ) : (
-              <div className="py-6 text-center text-xs text-gray-500">No project divisions available.</div>
+              <div className="py-6 text-center text-sm text-gray-600">No project divisions available.</div>
             )}
           </div>
         </div>

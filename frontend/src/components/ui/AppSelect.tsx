@@ -246,7 +246,7 @@ export function AppSelect({
         onClick={handleCreateNew}
       >
         <Plus className="h-4 w-4 shrink-0 text-gray-400" aria-hidden />
-        <span className="truncate text-xs font-medium">{createNewLabel}</span>
+        <span className={uiCx('truncate font-semibold', uiTypography.controlValue)}>{createNewLabel}</span>
       </button>
     </li>
   );
@@ -360,7 +360,7 @@ export function AppSelect({
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search…"
               autoComplete="off"
-              className={uiCx(uiDropdown.trigger, 'text-xs')}
+              className={uiDropdown.trigger}
               onMouseDown={(e) => e.stopPropagation()}
             />
           </div>
@@ -437,7 +437,7 @@ export function AppSelect({
         />
       </div>
       {error ? (
-        <span className="block text-xs text-red-600">{error}</span>
+        <span className="block text-sm text-red-600">{error}</span>
       ) : helperText ? (
         <span className={uiTypography.helper}>{helperText}</span>
       ) : null}

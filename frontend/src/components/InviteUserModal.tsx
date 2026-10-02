@@ -250,10 +250,10 @@ function RequirementCard({
       </span>
       <span className="min-w-0 w-full">
         <span className="flex min-w-0 items-center gap-1">
-          <span className="truncate text-xs font-semibold text-gray-900">{option.title}</span>
+          <span className="truncate text-sm font-semibold text-gray-900">{option.title}</span>
           {option.fieldHint ? <AppFieldHint hint={option.fieldHint} /> : null}
         </span>
-        <span className="mt-0.5 block text-[10px] leading-snug text-gray-500">{option.subtitle}</span>
+        <span className="mt-0.5 block text-xs leading-snug text-gray-600">{option.subtitle}</span>
       </span>
       {hasNote ? (
         <span
@@ -655,18 +655,18 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
 
   const stepPillClass = (n: number) =>
     uiCx(
-      'rounded-full px-2 py-1 text-[10px] font-medium',
+      'rounded-full px-2 py-1 text-xs font-semibold',
       step === n ? 'bg-gray-900 text-white' : 'bg-gray-200 text-gray-600',
     );
 
   const stepIndicators = (
-    <div className={uiCx(uiLayout.actionsRow, uiTypography.helper, 'text-[10px] font-medium')}>
+    <div className={uiCx(uiLayout.actionsRow, uiTypography.helper, 'text-xs font-semibold')}>
       <span className={stepPillClass(1)}>1</span>
-      <span className="text-gray-400">→</span>
+      <span className="text-gray-600">→</span>
       <span className={stepPillClass(2)}>2</span>
-      <span className="text-gray-400">→</span>
+      <span className="text-gray-600">→</span>
       <span className={stepPillClass(3)}>3</span>
-      <span className="text-gray-400">→</span>
+      <span className="text-gray-600">→</span>
       <span className={stepPillClass(4)}>4</span>
     </div>
   );
@@ -856,10 +856,10 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
                   onChange={(e) => setPayRate(sanitizePayRateInput(e.target.value))}
                   placeholder={payType === 'salary' ? '100000' : '50'}
                   disabled={loading}
-                  leftIcon={<span className="text-xs font-medium text-gray-500">$</span>}
+                  leftIcon={<span className="text-sm font-semibold text-gray-600">$</span>}
                   rightIcon={
                     payRateSuffix ? (
-                      <span className="pr-1 text-[11px] font-medium whitespace-nowrap text-gray-500">
+                      <span className="pr-1 text-xs font-semibold whitespace-nowrap text-gray-600">
                         {payRateSuffix}
                       </span>
                     ) : undefined
@@ -950,7 +950,7 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
                     <div className="flex flex-wrap items-center gap-2">
                       <span
                         className={uiCx(
-                          'inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide',
+                          'inline-flex items-center rounded px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide',
                           customizePackage
                             ? 'bg-amber-100 text-amber-900 ring-1 ring-inset ring-amber-200/80'
                             : 'bg-gray-100 text-gray-700',
@@ -968,7 +968,7 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
                       {!baseDocsLoading && activeDocumentOptions.length > 0 && !customizePackage ? (
                         <button
                           type="button"
-                          className="text-sm font-medium text-gray-800 underline-offset-2 hover:underline"
+                          className="text-sm font-semibold text-gray-800 underline-offset-2 hover:underline"
                           onClick={() => setShowPackageList((v) => !v)}
                         >
                           {showPackageList ? 'Hide list' : 'View list'}
@@ -991,7 +991,7 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
                           return (
                             <span
                               key={id}
-                              className="inline-flex max-w-full items-center rounded-full border border-gray-200 bg-white px-2.5 py-1 text-xs text-gray-800"
+                              className="inline-flex max-w-full items-center rounded-full border border-gray-200 bg-white px-2.5 py-1 text-sm text-gray-800"
                             >
                               <span className="truncate">{label}</span>
                             </span>

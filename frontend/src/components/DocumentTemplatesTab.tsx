@@ -181,7 +181,7 @@ export default function DocumentTemplatesTab({ readOnly = false }: { readOnly?: 
         <h2 className="text-sm font-semibold text-gray-900 mb-3">Add background template</h2>
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
-            <label className="block text-xs text-gray-600 mb-1">Name</label>
+            <label className="block text-sm text-gray-600 mb-1">Name</label>
             <input
               type="text"
               value={name}
@@ -191,7 +191,7 @@ export default function DocumentTemplatesTab({ readOnly = false }: { readOnly?: 
             />
           </div>
           <div>
-            <label className="block text-xs text-gray-600 mb-1">Description (optional)</label>
+            <label className="block text-sm text-gray-600 mb-1">Description (optional)</label>
             <input
               type="text"
               value={description}
@@ -205,7 +205,7 @@ export default function DocumentTemplatesTab({ readOnly = false }: { readOnly?: 
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="px-3 py-1.5 text-xs rounded-lg bg-gray-100 hover:bg-gray-200 border border-gray-200 text-gray-700 font-medium transition-colors"
+            className="px-3 py-1.5 text-sm rounded-lg bg-gray-100 hover:bg-gray-200 border border-gray-200 text-gray-700 font-semibold transition-colors"
           >
             {uploadingFileId ? 'Change image' : 'Upload background image'}
           </button>
@@ -217,16 +217,16 @@ export default function DocumentTemplatesTab({ readOnly = false }: { readOnly?: 
             onChange={handleFileChange}
           />
           {uploadingFileId && uploadingFileId !== 'uploading' && (
-            <span className="text-xs text-green-600">Image ready</span>
+            <span className="text-sm text-green-600">Image ready</span>
           )}
           {uploadingFileId === 'uploading' && (
-            <span className="text-xs text-gray-500">Uploading...</span>
+            <span className="text-sm text-gray-600">Uploading...</span>
           )}
           <button
             type="button"
             onClick={handleCreate}
             disabled={isSaving || !uploadingFileId || uploadingFileId === 'uploading' || !name.trim()}
-            className="px-3 py-1.5 text-xs rounded-lg bg-brand-red text-white font-medium hover:bg-[#aa1212] disabled:opacity-50 transition-colors"
+            className="px-3 py-1.5 text-sm rounded-lg bg-brand-red text-white font-semibold hover:bg-[#aa1212] disabled:opacity-50 transition-colors"
           >
             {isSaving ? 'Saving...' : 'Save template'}
           </button>
@@ -237,9 +237,9 @@ export default function DocumentTemplatesTab({ readOnly = false }: { readOnly?: 
       <div className="rounded-xl border bg-white p-4">
         <h2 className="text-sm font-semibold text-gray-900 mb-3">Registered templates</h2>
         {isLoading ? (
-          <p className="text-xs text-gray-500">Loading...</p>
+          <p className="text-sm text-gray-600">Loading...</p>
         ) : templates.length === 0 ? (
-          <p className="text-xs text-gray-500">No templates yet. Add one above.</p>
+          <p className="text-sm text-gray-600">No templates yet. Add one above.</p>
         ) : (
           <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6">
             {templates.map((t) => (
@@ -255,13 +255,13 @@ export default function DocumentTemplatesTab({ readOnly = false }: { readOnly?: 
                       className="max-w-full max-h-full object-contain"
                     />
                   ) : (
-                    <div className="text-gray-400 text-xs">No image</div>
+                    <div className="text-gray-600 text-sm">No image</div>
                   )}
                 </div>
                 <div className="p-2 flex-1 min-w-0">
-                  <h3 className="text-xs font-semibold text-gray-900 truncate">{t.name}</h3>
+                  <h3 className="text-sm font-semibold text-gray-900 truncate">{t.name}</h3>
                   {t.description && (
-                    <p className="text-[10px] text-gray-600 mt-0.5 line-clamp-2">{t.description}</p>
+                    <p className="text-xs text-gray-600 mt-0.5 line-clamp-2">{t.description}</p>
                   )}
                 </div>
                 <div className="p-2 flex items-center gap-0.5 border-t border-gray-100">
@@ -270,7 +270,7 @@ export default function DocumentTemplatesTab({ readOnly = false }: { readOnly?: 
                   <button
                     type="button"
                     onClick={() => openEditTemplate(t)}
-                    className="p-1.5 rounded text-gray-500 hover:text-brand-red hover:bg-brand-red/10 transition-colors"
+                    className="p-1.5 rounded text-gray-600 hover:text-brand-red hover:bg-brand-red/10 transition-colors"
                     title="Edit"
                     aria-label="Edit"
                   >
@@ -281,7 +281,7 @@ export default function DocumentTemplatesTab({ readOnly = false }: { readOnly?: 
                   <button
                     type="button"
                     onClick={() => handleDelete(t)}
-                    className="p-1.5 rounded text-gray-500 hover:text-red-600 hover:bg-red-50 transition-colors"
+                    className="p-1.5 rounded text-gray-600 hover:text-red-600 hover:bg-red-50 transition-colors"
                     title="Delete"
                     aria-label="Delete"
                   >
@@ -305,7 +305,7 @@ export default function DocumentTemplatesTab({ readOnly = false }: { readOnly?: 
             </div>
             <div className="p-4 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Name</label>
                 <input
                   type="text"
                   value={editName}
@@ -315,7 +315,7 @@ export default function DocumentTemplatesTab({ readOnly = false }: { readOnly?: 
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Description (optional)</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Description (optional)</label>
                 <input
                   type="text"
                   value={editDescription}
@@ -325,7 +325,7 @@ export default function DocumentTemplatesTab({ readOnly = false }: { readOnly?: 
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Background image</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Background image</label>
                 <div className="flex flex-wrap items-center gap-3">
                   {editFileId && editFileId !== 'uploading' && (
                     <img
@@ -335,7 +335,7 @@ export default function DocumentTemplatesTab({ readOnly = false }: { readOnly?: 
                     />
                   )}
                   {editFileId === 'uploading' && (
-                    <span className="text-sm text-gray-500">Uploading...</span>
+                    <span className="text-sm text-gray-600">Uploading...</span>
                   )}
                   <button
                     type="button"
@@ -367,7 +367,7 @@ export default function DocumentTemplatesTab({ readOnly = false }: { readOnly?: 
               <button
                 type="button"
                 onClick={() => setEditingTemplate(null)}
-                className="px-4 py-2 rounded border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50"
+                className="px-4 py-2 rounded border border-gray-300 text-gray-700 text-sm font-semibold hover:bg-gray-50"
               >
                 Cancel
               </button>
@@ -375,7 +375,7 @@ export default function DocumentTemplatesTab({ readOnly = false }: { readOnly?: 
                 type="button"
                 onClick={handleUpdateTemplate}
                 disabled={isSaving || !editName.trim()}
-                className="px-4 py-2 rounded bg-brand-red text-white text-sm font-medium hover:bg-brand-red/90 disabled:opacity-50"
+                className="px-4 py-2 rounded bg-brand-red text-white text-sm font-semibold hover:bg-brand-red/90 disabled:opacity-50"
               >
                 {isSaving ? 'Saving...' : 'Save'}
               </button>

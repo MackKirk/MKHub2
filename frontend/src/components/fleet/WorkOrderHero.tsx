@@ -93,7 +93,7 @@ function WorkOrderHeroBody({
             {workOrder.entity_type === 'fleet' && assetPhotoUrl ? (
               <img src={assetPhotoUrl} alt={assetName || 'Asset'} className="h-full w-full object-cover" />
             ) : (
-              <div className="flex h-full w-full items-center justify-center text-gray-400">
+              <div className="flex h-full w-full items-center justify-center text-gray-600">
                 <Truck className="h-10 w-10" strokeWidth={1.5} aria-hidden />
               </div>
             )}
@@ -104,7 +104,7 @@ function WorkOrderHeroBody({
           <div className="min-w-0 flex-1 space-y-4">
             <div className="mb-1">
               <h3 className="text-sm font-bold text-gray-900">{primaryTitle}</h3>
-              <p className="mt-0.5 text-xs font-medium text-gray-600">{subtitleLine || categoryLabel}</p>
+              <p className="mt-0.5 text-sm font-semibold text-gray-600">{subtitleLine || categoryLabel}</p>
             </div>
 
             <div className="grid grid-cols-2 gap-x-2.5 gap-y-3 sm:grid-cols-4">
@@ -119,7 +119,7 @@ function WorkOrderHeroBody({
                           ? `/fleet/assets/${encodeURIComponent(workOrder.entity_id)}`
                           : `/company-assets/equipment/${encodeURIComponent(workOrder.entity_id)}`
                       }
-                      className="mt-0.5 block break-words text-xs font-semibold text-brand-red hover:text-[#a31414] hover:underline"
+                      className="mt-0.5 block break-words text-sm font-semibold text-brand-red hover:text-[#a31414] hover:underline"
                       title={woHeroAssetLine || undefined}
                     >
                       {woHeroAssetLine || 'Open record'}
@@ -173,13 +173,13 @@ function WorkOrderHeroBody({
               {canStartService ? (
                 <button type="button" onClick={onStartService} className={woCheckInTileClass}>
                   <span>Check-in</span>
-                  <span className="text-[10px] font-semibold normal-case text-sky-700">Start Service</span>
+                  <span className="text-xs font-semibold normal-case text-sky-700">Start Service</span>
                 </button>
               ) : null}
               {canFinishService ? (
                 <button type="button" onClick={onEndService} className={woCheckOutTileClass}>
                   <span>Check-out</span>
-                  <span className="text-[10px] font-semibold normal-case text-emerald-800">End Service</span>
+                  <span className="text-xs font-semibold normal-case text-emerald-800">End Service</span>
                 </button>
               ) : null}
               {canReopen ? (

@@ -25,7 +25,7 @@ export function AppTable({ columns, rows, emptyState = 'No data available.', cla
           <tbody className={uiColors.surface}>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={columns.length} className="p-6 text-center text-xs text-gray-500">
+                <td colSpan={columns.length} className={uiCx('p-6 text-center', uiTypography.helper)}>
                   {emptyState}
                 </td>
               </tr>
@@ -33,7 +33,7 @@ export function AppTable({ columns, rows, emptyState = 'No data available.', cla
               rows.map((row, rowIndex) => (
                 <tr key={rowIndex} className="border-t border-gray-200 hover:bg-gray-50">
                   {row.map((cell, cellIndex) => (
-                    <td key={`${rowIndex}-${cellIndex}`} className="whitespace-nowrap p-2.5 text-xs text-gray-700">
+                    <td key={`${rowIndex}-${cellIndex}`} className={uiCx('whitespace-nowrap p-2.5', uiTypography.body)}>
                       {cell}
                     </td>
                   ))}

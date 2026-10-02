@@ -83,7 +83,7 @@ export function HomeWidgetListFooter({ to, label }: HomeWidgetListFooterProps) {
     <div className="shrink-0 border-t border-gray-100 pt-1.5">
       <Link
         to={to}
-        className={uiCx(uiTypography.helper, 'inline-block font-medium text-brand-red hover:underline')}
+        className={uiCx(uiTypography.helper, 'inline-block font-semibold text-brand-red hover:underline')}
         style={{ fontSize: 'clamp(0.5rem, 4cqh, 0.75rem)' }}
       >
         {label}

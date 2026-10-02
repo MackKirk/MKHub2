@@ -57,7 +57,7 @@ function CertificateCard({ cert, expired }: { cert: TrainingCertificate; expired
               {expired ? 'Expired' : 'Expires'}: {new Date(cert.expires_at).toLocaleDateString()}
             </p>
           ) : null}
-          <p className="mt-2 text-xs text-gray-500">Certificate #: {cert.certificate_number}</p>
+          <p className="mt-2 text-sm text-gray-600">Certificate #: {cert.certificate_number}</p>
           {expired ? <AppBadge variant="warning" className="mt-2">Expired</AppBadge> : null}
         </div>
         {cert.qr_code_data ? <CertificateQr data={cert.qr_code_data} /> : null}
@@ -67,7 +67,7 @@ function CertificateCard({ cert, expired }: { cert: TrainingCertificate; expired
           <a
             href={withFileAccessToken(`/files/${cert.certificate_file_id}`)}
             download
-            className="inline-flex h-9 w-full items-center justify-center rounded-md border border-brand-red bg-gradient-to-r from-brand-red to-[#ee2b2b] px-4 text-xs font-medium text-white hover:from-brand-red hover:to-brand-red sm:flex-1"
+            className="inline-flex h-9 w-full items-center justify-center rounded-md border border-brand-red bg-gradient-to-r from-brand-red to-[#ee2b2b] px-4 text-sm font-semibold text-white hover:from-brand-red hover:to-brand-red sm:flex-1"
           >
             Download PDF
           </a>
@@ -75,7 +75,7 @@ function CertificateCard({ cert, expired }: { cert: TrainingCertificate; expired
         {expired ? (
           <Link
             to={`/training/${cert.course_id}`}
-            className="inline-flex h-9 w-full items-center justify-center rounded-md border border-gray-300 bg-white px-4 text-xs font-medium text-gray-700 hover:bg-gray-50 sm:flex-1"
+            className="inline-flex h-9 w-full items-center justify-center rounded-md border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50 sm:flex-1"
           >
             Renew training
           </Link>
@@ -153,7 +153,7 @@ export default function TrainingCertificates({
           action={
             <Link
               to="/training?tab=courses"
-              className="inline-flex h-9 items-center justify-center rounded-md border border-brand-red bg-gradient-to-r from-brand-red to-[#ee2b2b] px-4 text-xs font-medium text-white hover:from-brand-red hover:to-brand-red"
+              className="inline-flex h-9 items-center justify-center rounded-md border border-brand-red bg-gradient-to-r from-brand-red to-[#ee2b2b] px-4 text-sm font-semibold text-white hover:from-brand-red hover:to-brand-red"
             >
               Browse courses
             </Link>

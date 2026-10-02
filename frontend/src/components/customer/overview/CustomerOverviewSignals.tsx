@@ -17,12 +17,12 @@ export function CustomerOverviewSignals({ signals }: { signals: AccountSignal[] 
             className={`rounded-lg border border-gray-200 border-l-4 p-3 ${SEVERITY_STYLES[s.severity]}`}
           >
             <div className="text-sm font-semibold text-gray-900">{s.title}</div>
-            <p className="text-xs text-gray-600 mt-1 leading-relaxed">{s.body}</p>
+            <p className="text-sm text-gray-600 mt-1 leading-relaxed">{s.body}</p>
             {s.ctaLabel && s.onAction ? (
               <button
                 type="button"
                 onClick={s.onAction}
-                className="mt-2 text-xs font-medium text-brand-red hover:underline"
+                className="mt-2 text-sm font-semibold text-brand-red hover:underline"
               >
                 {s.ctaLabel} →
               </button>

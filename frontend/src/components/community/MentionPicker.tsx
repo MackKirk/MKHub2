@@ -45,19 +45,19 @@ export default function MentionPicker({ mentions, onChange }: Props) {
   return (
     <div className="space-y-2.5">
       <div>
-        <span className="text-sm font-medium text-gray-800">Notify (optional)</span>
-        <p className="text-xs text-gray-500 mt-0.5">Mention people, a division, or a group—they receive a notification.</p>
+        <span className="text-sm font-semibold text-gray-800">Notify (optional)</span>
+        <p className="text-sm text-gray-600 mt-0.5">Mention people, a division, or a group—they receive a notification.</p>
       </div>
       <div className="flex flex-wrap gap-2 min-h-[1.75rem]">
         {mentions.map((m) => (
           <span
             key={`${m.entity_type}:${m.entity_id}`}
-            className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-800"
+            className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-sm font-semibold text-gray-800"
           >
             @{m.label}
             <button
               type="button"
-              className="rounded p-0.5 text-gray-500 hover:bg-gray-200 hover:text-red-700"
+              className="rounded p-0.5 text-gray-600 hover:bg-gray-200 hover:text-red-700"
               aria-label={`Remove ${m.label}`}
               onClick={() => remove(`${m.entity_type}:${m.entity_id}`)}
             >
@@ -83,8 +83,8 @@ export default function MentionPicker({ mentions, onChange }: Props) {
               className="w-full border-b border-gray-100 px-3 py-2.5 text-left text-sm last:border-0 hover:bg-gray-50"
               onClick={() => add(s)}
             >
-              <div className="font-medium text-gray-900">{s.label}</div>
-              {s.subtitle && <div className="text-xs text-gray-500 mt-0.5">{s.subtitle}</div>}
+              <div className="font-semibold text-gray-900">{s.label}</div>
+              {s.subtitle && <div className="text-sm text-gray-600 mt-0.5">{s.subtitle}</div>}
             </button>
           ))}
         </div>

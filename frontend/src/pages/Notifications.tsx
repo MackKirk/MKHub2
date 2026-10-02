@@ -334,7 +334,7 @@ export default function Notifications() {
                                   {targetLink ? (
                                     <>
                                       <span aria-hidden>•</span>
-                                      <span className="font-medium text-brand-red">Click to view</span>
+                                      <span className="font-semibold text-brand-red">Click to view</span>
                                     </>
                                   ) : null}
                                 </div>

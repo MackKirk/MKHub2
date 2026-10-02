@@ -81,7 +81,7 @@ export function FuelCardCustodyTab({ activeAssignment, assignments }: Props) {
                 )}
               >
                 <div className="min-w-0">
-                  <p className={uiCx(uiTypography.body, 'font-medium text-gray-900')}>
+                  <p className={uiCx(uiTypography.body, 'font-semibold text-gray-900')}>
                     {a.assigned_to_name || a.assigned_to_user_id}
                   </p>
                   <p className={uiCx(uiTypography.helper, 'mt-1')}>

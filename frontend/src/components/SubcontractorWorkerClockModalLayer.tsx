@@ -388,7 +388,7 @@ export function SubcontractorWorkerClockModalLayer({
       footer={
         <div className="flex w-full flex-col gap-2">
           {clockSubmitBlockedReason ? (
-            <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
               {clockSubmitBlockedReason}
             </p>
           ) : null}
@@ -422,11 +422,11 @@ export function SubcontractorWorkerClockModalLayer({
         />
 
         <div>
-          <span className="mb-1.5 block text-xs font-medium text-gray-700">Time</span>
+          <span className="mb-1.5 block text-sm font-semibold text-gray-700">Time</span>
           {!hasUnrestrictedClock ? (
             <div className="flex items-center gap-2 pointer-events-none opacity-60">
               <AppSelect className="flex-1" value={selectedHour12} options={HOUR_OPTIONS} placeholder="Hour" disabled sortOptions={false} />
-              <span className="font-medium text-gray-500">:</span>
+              <span className="font-semibold text-gray-600">:</span>
               <AppSelect className="flex-1" value={selectedMinute} options={MINUTE_OPTIONS} placeholder="Min" disabled sortOptions={false} />
               <AppSelect className="flex-1" value={selectedAmPm} options={AM_PM_OPTIONS} disabled sortOptions={false} />
             </div>
@@ -445,7 +445,7 @@ export function SubcontractorWorkerClockModalLayer({
                 required
                 sortOptions={false}
               />
-              <span className="font-medium text-gray-500">:</span>
+              <span className="font-semibold text-gray-600">:</span>
               <AppSelect
                 className="flex-1"
                 value={selectedMinute}
@@ -474,7 +474,7 @@ export function SubcontractorWorkerClockModalLayer({
             </div>
           )}
           {!hasUnrestrictedClock && (
-            <p className="mt-1.5 text-xs text-gray-500">
+            <p className="mt-1.5 text-sm text-gray-600">
               Time is locked to the current time (15-minute increments). Contact an administrator to enable time editing.
             </p>
           )}
@@ -490,7 +490,7 @@ export function SubcontractorWorkerClockModalLayer({
         )}
 
         {clockType === 'out' && openAttendance && (
-          <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-xs text-green-900">
+          <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-900">
             {openAttendance.project_name ? `Project: ${openAttendance.project_name}` : 'Open session'}
             {openAttendance.clock_in_time ? ` · Since ${new Date(openAttendance.clock_in_time).toLocaleString()}` : ''}
           </div>
@@ -524,7 +524,7 @@ export function SubcontractorWorkerClockModalLayer({
             )}
             {sigProjectId ? (
               <div className="min-w-0">
-                <p className="mb-1.5 text-xs font-medium text-gray-600">Signature</p>
+                <p className="mb-1.5 text-sm font-semibold text-gray-600">Signature</p>
                 <SubcontractorSimpleSignature
                   projectId={sigProjectId}
                   disabled={submitting}
@@ -533,7 +533,7 @@ export function SubcontractorWorkerClockModalLayer({
                 />
               </div>
             ) : (
-              <p className="text-xs text-amber-700">Missing project context for signature upload.</p>
+              <p className="text-sm text-amber-700">Missing project context for signature upload.</p>
             )}
           </div>
         )}
@@ -541,10 +541,10 @@ export function SubcontractorWorkerClockModalLayer({
         <div>
           {gpsLocation ? (
             <div className="rounded-lg border border-green-200 bg-green-50 p-3">
-              <div className="flex items-center gap-2 text-sm font-medium text-green-800">
+              <div className="flex items-center gap-2 text-sm font-semibold text-green-800">
                 <span>Location captured</span>
               </div>
-              <div className="mt-1 text-xs text-green-700">Accuracy: {Math.round(gpsLocation.accuracy)}m</div>
+              <div className="mt-1 text-sm text-green-700">Accuracy: {Math.round(gpsLocation.accuracy)}m</div>
             </div>
           ) : gpsLoading ? (
             <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
@@ -553,7 +553,7 @@ export function SubcontractorWorkerClockModalLayer({
           ) : gpsError ? (
             <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-800">
               {gpsError}{' '}
-              <button type="button" onClick={getCurrentLocation} className="text-xs font-medium underline">
+              <button type="button" onClick={getCurrentLocation} className="text-sm font-semibold underline">
                 Try again
               </button>
             </div>

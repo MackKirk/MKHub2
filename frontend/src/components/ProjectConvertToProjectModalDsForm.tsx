@@ -48,7 +48,7 @@ function ConvertBinaryChoice({
 }) {
   const yesClass = value
     ? 'bg-green-100 text-green-700 border-green-400 shadow-sm'
-    : 'bg-white text-gray-300 border-gray-200 hover:border-gray-300 hover:text-gray-400';
+    : 'bg-white text-gray-300 border-gray-200 hover:border-gray-300 hover:text-gray-600';
   const noClass = !value
     ? 'bg-red-100 text-red-700 border-red-400 shadow-sm'
     : 'bg-white text-gray-300 border-gray-200 hover:border-gray-300 hover:text-gray-400';
@@ -168,7 +168,7 @@ export function ProjectConvertToProjectModalDsForm({
         <p className={uiCx(uiTypography.body, 'text-amber-900')}>
           Converting &quot;{proj?.name || 'this opportunity'}&quot; to an active project will enable workload and
           timesheet functionality.{' '}
-          <span className="font-medium">Be careful, this action cannot be undone.</span>
+          <span className="font-semibold">Be careful, this action cannot be undone.</span>
         </p>
       </div>
 
@@ -186,7 +186,7 @@ export function ProjectConvertToProjectModalDsForm({
                   key={rid}
                   className={uiCx('flex items-center gap-3 px-3 py-2.5', uiColors.surface, 'hover:bg-gray-50')}
                 >
-                  <span className={uiCx(uiTypography.body, 'min-w-0 flex-1 truncate font-medium')}>{label}</span>
+                  <span className={uiCx(uiTypography.body, 'min-w-0 flex-1 truncate font-semibold')}>{label}</span>
                   <ConvertBinaryChoice
                     value={approved}
                     yesTitle="Awarded"
@@ -295,8 +295,8 @@ export function ProjectConvertToProjectModalDsForm({
                       </span>
                     ) : null}
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className={uiCx(uiTypography.body, 'truncate font-medium')}>{label}</span>
-                      <span className="text-gray-400">–</span>
+                      <span className={uiCx(uiTypography.body, 'truncate font-semibold')}>{label}</span>
+                      <span className="text-gray-600">–</span>
                       <span className={uiCx(uiTypography.body, 'font-semibold text-gray-900')}>
                         ${Number(value).toLocaleString('en-CA', { minimumFractionDigits: 2 })}
                       </span>
@@ -336,8 +336,8 @@ export function ProjectConvertToProjectModalDsForm({
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className={uiCx(uiTypography.body, 'truncate font-medium')}>{label}</span>
-                      <span className="text-gray-400">–</span>
+                      <span className={uiCx(uiTypography.body, 'truncate font-semibold')}>{label}</span>
+                      <span className="text-gray-600">–</span>
                       <span className={uiCx(uiTypography.body, 'font-semibold text-gray-900')}>
                         ${price.toLocaleString('en-CA', { minimumFractionDigits: 2 })}
                       </span>

@@ -1039,7 +1039,7 @@ export default function FleetAssets() {
                       </td>
                       <td className="min-w-0 px-3 py-3 align-top">
                         <div className="flex min-w-0 flex-col gap-0.5">
-                          <span className={uiCx('truncate font-medium', uiTypography.helper, uiColors.textStrong)}>
+                          <span className={uiCx('truncate font-semibold', uiTypography.helper, uiColors.textStrong)}>
                             {primaryName}
                           </span>
                           {metaLine ? (

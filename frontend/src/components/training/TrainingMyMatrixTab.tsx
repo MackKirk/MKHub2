@@ -67,7 +67,7 @@ export default function TrainingMyMatrixTab({ matrixItems, isLoading }: Props) {
             ) : (
               <span className="inline-block h-3.5 w-3.5 shrink-0 rounded-full bg-gray-200" aria-hidden />
             )}
-            <span className="text-sm font-medium text-gray-900">{item.label}</span>
+            <span className="text-sm font-semibold text-gray-900">{item.label}</span>
           </div>,
           statusFromTone(tone, record),
           fmt(record?.completion_date),

@@ -621,8 +621,8 @@ export default function TaskModal({ open, taskId, onClose, onUpdated }: Props) {
                           setStatusDropdownOpen(false);
                         }}
                         className={uiCx(
-                          'w-full px-3 py-2 text-left text-xs transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50',
-                          task.status === o.value && 'bg-gray-50 font-medium',
+                          'w-full px-3 py-2 text-left text-sm transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50',
+                          task.status === o.value && 'bg-gray-50 font-semibold',
                         )}
                       >
                         {o.label}
@@ -805,14 +805,14 @@ export default function TaskModal({ open, taskId, onClose, onUpdated }: Props) {
               <dl className={uiSpacing.sectionStack}>
                 <div className="flex items-center justify-between gap-3">
                   <dt className={uiTypography.helper}>Created</dt>
-                  <dd className={uiCx(uiTypography.body, 'font-medium text-gray-900')}>{formatDateTime(task.created_at)}</dd>
+                  <dd className={uiCx(uiTypography.body, 'font-semibold text-gray-900')}>{formatDateTime(task.created_at)}</dd>
                 </div>
                 {task.started_at && (
                   <div className="flex items-center justify-between gap-3">
                     <dt className={uiTypography.helper}>
                       Started{task.started_by?.name ? ` by ${task.started_by.name}` : ''}
                     </dt>
-                    <dd className={uiCx(uiTypography.body, 'font-medium text-gray-900')}>{formatDateTime(task.started_at)}</dd>
+                    <dd className={uiCx(uiTypography.body, 'font-semibold text-gray-900')}>{formatDateTime(task.started_at)}</dd>
                   </div>
                 )}
                 {task.concluded_at && (
@@ -820,12 +820,12 @@ export default function TaskModal({ open, taskId, onClose, onUpdated }: Props) {
                     <dt className={uiTypography.helper}>
                       Completed{task.concluded_by?.name ? ` by ${task.concluded_by.name}` : ''}
                     </dt>
-                    <dd className={uiCx(uiTypography.body, 'font-medium text-gray-900')}>{formatDateTime(task.concluded_at)}</dd>
+                    <dd className={uiCx(uiTypography.body, 'font-semibold text-gray-900')}>{formatDateTime(task.concluded_at)}</dd>
                   </div>
                 )}
                 <div className="flex items-center justify-between gap-3">
                   <dt className={uiTypography.helper}>Source</dt>
-                  <dd className={uiCx(uiTypography.body, 'font-medium text-gray-900')}>{getTaskSourceLabel(task)}</dd>
+                  <dd className={uiCx(uiTypography.body, 'font-semibold text-gray-900')}>{getTaskSourceLabel(task)}</dd>
                 </div>
                 {task.request?.id && (
                   <div className="flex items-center justify-between gap-3">
@@ -833,7 +833,7 @@ export default function TaskModal({ open, taskId, onClose, onUpdated }: Props) {
                     <dd>
                       <button
                         type="button"
-                        className={uiCx(uiTypography.body, 'font-medium text-brand-red hover:text-brand-red/80')}
+                        className={uiCx(uiTypography.body, 'font-semibold text-brand-red hover:text-brand-red/80')}
                         onClick={() => navigate('/task-requests', { state: { requestId: task.request?.id } })}
                       >
                         {task.request.title}

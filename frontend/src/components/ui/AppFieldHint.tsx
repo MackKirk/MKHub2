@@ -89,7 +89,7 @@ export function AppFieldHint({ hint, className }: AppFieldHintProps) {
         className={uiFieldHint.shell}
         style={{ top: coords.top, left: coords.left, width: 'max-content', maxWidth: TOOLTIP_MAX_WIDTH }}
       >
-        <span className="field-hint-content block text-[11px] leading-snug text-slate-700 [&_strong]:font-semibold [&_strong]:text-slate-900 [&_p+p]:mt-1.5 [&_br]:block">
+        <span className="field-hint-content block text-xs leading-snug text-slate-700 [&_strong]:font-semibold [&_strong]:text-slate-900 [&_p+p]:mt-1.5 [&_br]:block">
           {typeof hint === 'string' ? <HintRichText text={hint} /> : hint}
         </span>
       </span>,

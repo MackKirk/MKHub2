@@ -140,14 +140,14 @@ function OrgPersonCard({
               title={isInactive ? 'Inactive' : 'Active'}
             />
           </div>
-          <div className={uiCx(uiTypography.sectionTitle, 'mt-2.5 w-full truncate px-1 text-xs')} title={name}>
+          <div className={uiCx(uiTypography.sectionTitle, 'mt-2.5 w-full truncate px-1 text-sm')} title={name}>
             {name}
           </div>
           <div className={uiCx(uiTypography.helper, 'mt-0.5 min-h-[1rem] w-full truncate px-1')} title={node.job_title || ''}>
             {node.job_title || '—'}
           </div>
           {hasChildren ? (
-            <div className="mt-2 flex items-center justify-center gap-1 text-[10px] font-medium text-gray-500">
+            <div className="mt-2 flex items-center justify-center gap-1 text-[10px] font-semibold text-gray-600">
               <Users className="h-3 w-3" aria-hidden />
               <span>{teamLabel}</span>
             </div>

@@ -41,20 +41,20 @@ export function CustomerOverviewAccountStrip({
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-gray-600 min-w-0">
           {client.client_status ? (
             <span>
-              <span className="text-gray-500">Status:</span>{' '}
-              <span className="font-medium text-gray-900">{client.client_status}</span>
+              <span className="text-gray-600">Status:</span>{' '}
+              <span className="font-semibold text-gray-900">{client.client_status}</span>
             </span>
           ) : null}
           {client.client_type ? (
             <span>
-              <span className="text-gray-500">Type:</span>{' '}
-              <span className="font-medium text-gray-900">{client.client_type}</span>
+              <span className="text-gray-600">Type:</span>{' '}
+              <span className="font-semibold text-gray-900">{client.client_type}</span>
             </span>
           ) : null}
           {clientSince ? (
             <span>
-              <span className="text-gray-500">Client since:</span>{' '}
-              <span className="font-medium text-gray-900">{formatDateForDisplay(clientSince)}</span>
+              <span className="text-gray-600">Client since:</span>{' '}
+              <span className="font-semibold text-gray-900">{formatDateForDisplay(clientSince)}</span>
             </span>
           ) : null}
         </div>
@@ -65,7 +65,7 @@ export function CustomerOverviewAccountStrip({
               <button type="button" onClick={onContactsClick} className="hover:text-brand-red truncate text-left">
                 {primaryContact.name}
                 {primaryContact.email ? (
-                  <span className="text-gray-500 font-normal"> · {primaryContact.email}</span>
+                  <span className="text-gray-600 font-normal"> · {primaryContact.email}</span>
                 ) : null}
               </button>
             </span>
@@ -140,19 +140,19 @@ function CustomerOverviewRelationshipSnapshot({
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
         {metrics.map((m) => (
           <div key={m.label} className="min-w-0">
-            <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">{m.label}</div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-gray-600">{m.label}</div>
             <div className="text-lg font-semibold text-gray-900 tabular-nums truncate">{m.value}</div>
-            {m.sub ? <div className="text-[11px] text-gray-500 truncate">{m.sub}</div> : null}
+            {m.sub ? <div className="text-xs text-gray-600 truncate">{m.sub}</div> : null}
           </div>
         ))}
       </div>
-      <p className="text-xs text-gray-600 mt-3 border-t border-gray-100 pt-3">{snapshot.summaryLine}</p>
+      <p className="text-sm text-gray-600 mt-3 border-t border-gray-100 pt-3">{snapshot.summaryLine}</p>
       {snapshot.nextMilestone ? (
-        <p className="text-xs mt-1">
-          <span className="text-gray-500">Next: </span>
+        <p className="text-sm mt-1">
+          <span className="text-gray-600">Next: </span>
           <Link
             to={`/projects/${encodeURIComponent(snapshot.nextMilestone.id)}`}
-            className="font-medium text-brand-red hover:underline"
+            className="font-semibold text-brand-red hover:underline"
           >
             {snapshot.nextMilestone.label}
           </Link>

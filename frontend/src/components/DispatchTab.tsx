@@ -286,9 +286,9 @@ export default function DispatchTab({
           className={
             designSystem
               ? uiCx(
-                  'rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900',
+                  'rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900',
                 )
-              : 'mb-4 rounded border border-yellow-200 bg-yellow-50 p-3 text-xs text-yellow-800'
+              : 'mb-4 rounded border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-800'
           }
         >
           <strong>Editing Restricted:</strong> This project has status &quot;{statusLabel}&quot; which
@@ -299,8 +299,8 @@ export default function DispatchTab({
         <div
           className={
             designSystem
-              ? uiCx(uiRadius.card, uiBorders.subtle, uiColors.surfaceSubtle, 'p-3 text-xs text-gray-700')
-              : 'mb-4 rounded border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700'
+              ? uiCx(uiRadius.card, uiBorders.subtle, uiColors.surfaceSubtle, 'p-3 text-sm text-gray-700')
+              : 'mb-4 rounded border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700'
           }
         >
           <strong>View only:</strong> You can view the workload calendar but cannot create or edit
@@ -317,7 +317,7 @@ export default function DispatchTab({
       <button
         type="button"
         onClick={() => setView('calendar')}
-        className={`rounded px-3 py-1.5 text-xs font-medium ${view === 'calendar' ? 'bg-brand-red text-white' : 'bg-gray-100 text-gray-700'}`}
+        className={`rounded px-3 py-1.5 text-sm font-semibold ${view === 'calendar' ? 'bg-brand-red text-white' : 'bg-gray-100 text-gray-700'}`}
       >
         Calendar
       </button>
@@ -325,11 +325,11 @@ export default function DispatchTab({
         <button
           type="button"
           onClick={() => setView('pending')}
-          className={`rounded px-3 py-1.5 text-xs font-medium ${view === 'pending' ? 'bg-brand-red text-white' : 'bg-gray-100 text-gray-700'}`}
+          className={`rounded px-3 py-1.5 text-sm font-semibold ${view === 'pending' ? 'bg-brand-red text-white' : 'bg-gray-100 text-gray-700'}`}
         >
           Pending Queue
           {pendingAttendance && pendingAttendance.length > 0 && (
-            <span className="ml-1.5 rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-medium text-white">
+            <span className="ml-1.5 rounded-full bg-red-500 px-1.5 py-0.5 text-xs font-semibold text-white">
               {pendingAttendance.length}
             </span>
           )}
@@ -487,7 +487,7 @@ export default function DispatchTab({
       <div className="flex items-center gap-2">
         <button
           onClick={handleNotifyWorkers}
-          className="px-3 py-1.5 rounded text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1.5"
+          className="px-3 py-1.5 rounded text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1.5"
           title="Send push notifications and emails to workers with scheduled shifts"
         >
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -502,14 +502,14 @@ export default function DispatchTab({
         </button>
         <button
           onClick={() => setCreateShiftModal(true)}
-          className="px-3 py-1.5 rounded text-xs font-medium bg-brand-red text-white"
+          className="px-3 py-1.5 rounded text-sm font-semibold bg-brand-red text-white"
           disabled={deleteMode}
         >
           + Create Shift
         </button>
         <button
           onClick={toggleDeleteMode}
-          className={`px-3 py-1.5 rounded text-xs font-medium text-white ${
+          className={`px-3 py-1.5 rounded text-sm font-semibold text-white ${
             deleteMode ? 'bg-gray-600 hover:bg-gray-700' : 'bg-red-600 hover:bg-red-700'
           }`}
         >
@@ -518,7 +518,7 @@ export default function DispatchTab({
         {deleteMode && selectedShiftsForDelete.size > 0 && (
           <button
             onClick={handleDeleteSelectedShifts}
-            className="px-3 py-1.5 rounded text-xs font-medium bg-red-600 hover:bg-red-700 text-white"
+            className="px-3 py-1.5 rounded text-sm font-semibold bg-red-600 hover:bg-red-700 text-white"
           >
             Delete {selectedShiftsForDelete.size} Selected
           </button>
@@ -551,20 +551,20 @@ export default function DispatchTab({
 
   const legacyCalendarToolbarStart = !designSystem ? (
     <div className="flex items-center gap-2">
-      <button onClick={goPrevWeek} className="px-2.5 py-1 rounded border text-xs font-medium">
+      <button onClick={goPrevWeek} className="px-2.5 py-1 rounded border text-sm font-semibold">
         ← Prev
       </button>
       <input
         type="date"
         value={selectedDate}
         onChange={(e) => onWeekDatePick(e.target.value)}
-        className="border rounded px-2.5 py-1 text-xs"
+        className="border rounded px-2.5 py-1 text-sm"
       />
-      <button onClick={goNextWeek} className="px-2.5 py-1 rounded border text-xs font-medium">
+      <button onClick={goNextWeek} className="px-2.5 py-1 rounded border text-sm font-semibold">
         Next →
       </button>
-      <span className="text-xs font-semibold text-gray-700 min-w-[180px] text-center">{weekLabel}</span>
-      <button onClick={goTodayWeek} className="px-2.5 py-1 rounded border text-xs font-medium">
+      <span className="text-sm font-semibold text-gray-700 min-w-[180px] text-center">{weekLabel}</span>
+      <button onClick={goTodayWeek} className="px-2.5 py-1 rounded border text-sm font-semibold">
         Today
       </button>
     </div>
@@ -596,7 +596,7 @@ export default function DispatchTab({
                   : 'rounded-xl border border-orange-300 bg-orange-50 p-2.5'
               }
             >
-              <div className="flex items-center gap-2 text-xs text-orange-800">
+              <div className="flex items-center gap-2 text-sm text-orange-800">
                 <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
@@ -628,8 +628,8 @@ export default function DispatchTab({
                   key={day}
                   className={
                     designSystem
-                      ? uiCx(uiTypography.helper, 'font-semibold text-gray-600 text-center py-0.5')
-                      : 'text-[10px] font-semibold text-gray-600 text-center py-0.5'
+                      ? uiCx('text-sm font-semibold text-gray-600 text-center py-0.5')
+                      : 'text-sm font-semibold text-gray-600 text-center py-0.5'
                   }
                 >
                   {day}
@@ -675,8 +675,8 @@ export default function DispatchTab({
                       isSelected && !deleteMode ? 'ring-2 ring-brand-red border-brand-red' : ''
                     } ${isToday && !isSelected && !deleteMode ? 'ring-1 ring-gray-300' : ''}`}
                   >
-                    <div className="text-[10px] font-semibold text-gray-700 flex-shrink-0 mb-0.5">
-                      <div className="text-[9px] text-gray-500 uppercase">{dayName}</div>
+                    <div className="text-sm font-semibold text-gray-700 flex-shrink-0 mb-0.5">
+                      <div className="text-xs text-gray-600 uppercase">{dayName}</div>
                       <div>{dayNumber}</div>
                     </div>
                     <div 
@@ -693,7 +693,7 @@ export default function DispatchTab({
                           return (
                             <div
                               key={shift.id}
-                              className={`text-[10px] p-1 rounded group relative ${
+                              className={`text-xs p-1 rounded group relative ${
                                 deleteMode
                                   ? canDelete
                                     ? isShiftSelected
@@ -770,20 +770,20 @@ export default function DispatchTab({
                               )}
                               <div className="flex items-start justify-between gap-1">
                                 <div className={`flex-1 min-w-0 ${deleteMode ? 'ml-4' : ''}`}>
-                                  <div className="font-medium truncate text-[10px]">
+                                  <div className="font-semibold truncate text-xs">
                                     {worker?.name || shift.worker_id}
                                   </div>
-                                  <span className="text-[9px] text-gray-600">
+                                  <span className="text-xs text-gray-600">
                                     {formatTime12h(shift.start_time)} - {formatTime12h(shift.end_time)}
                                   </span>
                                   {shift.job_name && (
-                                    <div className="text-[9px] text-gray-500 mt-0.5 truncate">
+                                    <div className="text-xs text-gray-600 mt-0.5 truncate">
                                       {shift.job_name}
                                     </div>
                                   )}
                                   {/* NOTE: During testing phase, past date validation is disabled */}
                                   {/* {deleteMode && !canDelete && (
-                                    <div className="text-[8px] text-red-600 mt-0.5 font-medium">
+                                    <div className="text-[8px] text-red-600 mt-0.5 font-semibold">
                                       Past date
                                     </div>
                                   )} */}
@@ -875,7 +875,7 @@ export default function DispatchTab({
                           );
                         })
                       ) : (
-                        <div className="text-[9px] text-gray-400" onMouseDown={(e) => e.stopPropagation()}>No shifts</div>
+                        <div className="text-xs text-gray-600" onMouseDown={(e) => e.stopPropagation()}>No shifts</div>
                       )}
                     </div>
                   </div>
@@ -898,7 +898,7 @@ export default function DispatchTab({
             className={
               designSystem
                 ? uiCx('border-b px-4 py-3', uiTypography.sectionTitle)
-                : 'p-3 border-b text-xs font-semibold text-gray-900'
+                : 'p-3 border-b text-sm font-semibold text-gray-900'
             }
           >
             Pending Attendance Approval
@@ -946,7 +946,7 @@ export default function DispatchTab({
             ) : designSystem ? (
               <AppEmptyState className="py-8" title="No pending attendance" />
             ) : (
-              <div className="p-3 text-xs text-gray-600">No pending attendance</div>
+              <div className="p-3 text-sm text-gray-600">No pending attendance</div>
             )}
           </div>
         </div>
@@ -1042,21 +1042,21 @@ function PendingAttendanceRow({
     <div className="p-3">
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
-          <div className="text-xs font-medium text-gray-900">
+          <div className="text-sm font-semibold text-gray-900">
             {worker?.name || attendance.worker_id} - {attendance.clock_in_time && !attendance.clock_out_time ? 'Clock In' : 
                                                       attendance.clock_out_time ? 'Clock Out' : 
                                                       attendance.type === 'in' ? 'Clock In' : 'Clock Out'}
           </div>
-          <div className="text-[10px] text-gray-600 mt-0.5">
+          <div className="text-xs text-gray-600 mt-0.5">
             {attendance.clock_in_time ? new Date(attendance.clock_in_time).toLocaleString() : 
              attendance.clock_out_time ? new Date(attendance.clock_out_time).toLocaleString() :
              attendance.time_selected_utc ? new Date(attendance.time_selected_utc).toLocaleString() : '--'}
           </div>
           {attendance.reason_text && (
-            <div className="text-[10px] text-gray-700 mt-0.5">{attendance.reason_text}</div>
+            <div className="text-xs text-gray-700 mt-0.5">{attendance.reason_text}</div>
           )}
           {attendance.gps_lat && attendance.gps_lng && (
-            <div className="text-[10px] text-gray-500 mt-0.5">
+            <div className="text-xs text-gray-600 mt-0.5">
               GPS: {attendance.gps_lat.toFixed(6)}, {attendance.gps_lng.toFixed(6)}
               {attendance.gps_accuracy_m && ` (accuracy: ${attendance.gps_accuracy_m.toFixed(0)}m)`}
             </div>
@@ -1078,13 +1078,13 @@ function PendingAttendanceRow({
                 <>
                   <button
                     onClick={onApprove}
-                    className="px-2.5 py-1 rounded text-xs font-medium bg-green-600 text-white"
+                    className="px-2.5 py-1 rounded text-sm font-semibold bg-green-600 text-white"
                   >
                     Approve
                   </button>
                   <button
                     onClick={() => setShowReject(true)}
-                    className="px-2.5 py-1 rounded text-xs font-medium bg-red-600 text-white"
+                    className="px-2.5 py-1 rounded text-sm font-semibold bg-red-600 text-white"
                   >
                     Reject
                   </button>
@@ -1106,7 +1106,7 @@ function PendingAttendanceRow({
                   value={rejectReason}
                   onChange={(e) => setRejectReason(e.target.value)}
                   placeholder="Rejection reason"
-                  className="border rounded px-2 py-1 text-xs w-32"
+                  className="border rounded px-2 py-1 text-sm w-32"
                 />
               )}
               {designSystem ? (
@@ -1149,7 +1149,7 @@ function PendingAttendanceRow({
                       setShowReject(false);
                       setRejectReason('');
                     }}
-                    className="px-2.5 py-1 rounded text-xs font-medium bg-red-600 text-white"
+                    className="px-2.5 py-1 rounded text-sm font-semibold bg-red-600 text-white"
                   >
                     Confirm
                   </button>
@@ -1158,7 +1158,7 @@ function PendingAttendanceRow({
                       setShowReject(false);
                       setRejectReason('');
                     }}
-                    className="px-2.5 py-1 rounded text-xs font-medium bg-gray-100 text-gray-700"
+                    className="px-2.5 py-1 rounded text-sm font-semibold bg-gray-100 text-gray-700"
                   >
                     Cancel
                   </button>
@@ -1784,12 +1784,12 @@ export function CreateShiftModal({
 
           {overlapWarnings.length > 0 && (
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-              <div className="font-medium">Schedule conflicts detected</div>
-              <p className="mt-1 text-xs text-amber-800">
+              <div className="font-semibold">Schedule conflicts detected</div>
+              <p className="mt-1 text-sm text-amber-800">
                 These shifts can still be created, but this worker already has overlapping time on
                 another shift.
               </p>
-              <ul className="mt-2 list-disc space-y-1 pl-4 text-xs">
+              <ul className="mt-2 list-disc space-y-1 pl-4 text-sm">
                 {overlapWarnings.slice(0, 8).map((w) => {
                   const projectLabel =
                     w.conflicts
@@ -1825,7 +1825,7 @@ export function CreateShiftModal({
                   disabled={saving}
                   onClick={() => applyTimePreset(opt.value)}
                   className={uiCx(
-                    'rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors',
+                    'rounded-lg border px-3 py-1.5 text-sm font-semibold transition-colors',
                     timePreset === opt.value
                       ? 'border-[#7f1010] bg-red-50 text-[#7f1010]'
                       : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50',
@@ -1892,7 +1892,7 @@ export function CreateShiftModal({
             </button>
             <div>
               <h2 className="text-sm font-semibold text-gray-900">Create Shift</h2>
-              <p className="text-xs text-gray-500 mt-0.5">Add shifts for workers on the project</p>
+              <p className="text-sm text-gray-600 mt-0.5">Add shifts for workers on the project</p>
             </div>
           </div>
         </div>
@@ -1909,7 +1909,7 @@ export function CreateShiftModal({
             )}
 
             <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
+              <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">
                 Workers {(Array.isArray(selectedWorkers) ? selectedWorkers.length : 0) > 0 && `(${Array.isArray(selectedWorkers) ? selectedWorkers.length : 0} selected)`}
               </label>
               <div className="relative" ref={workerDropdownRef}>
@@ -1923,7 +1923,7 @@ export function CreateShiftModal({
                       ? 'Select workers...'
                       : `${Array.isArray(selectedWorkers) ? selectedWorkers.length : 0} worker${(Array.isArray(selectedWorkers) ? selectedWorkers.length : 0) > 1 ? 's' : ''} selected`}
                   </span>
-                <span className="text-gray-400">{workerDropdownOpen ? '▲' : '▼'}</span>
+                <span className="text-gray-600">{workerDropdownOpen ? '▲' : '▼'}</span>
               </button>
               {workerDropdownOpen && (
                 <div
@@ -1954,7 +1954,7 @@ export function CreateShiftModal({
                             return Array.from(newSet);
                           });
                         }}
-                        className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
+                        className="text-sm px-2 py-1 rounded border hover:bg-gray-50"
                       >
                         Select All
                       </button>
@@ -1966,7 +1966,7 @@ export function CreateShiftModal({
                           e.stopPropagation();
                           setSelectedWorkers([]);
                         }}
-                        className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
+                        className="text-sm px-2 py-1 rounded border hover:bg-gray-50"
                       >
                         Clear All
                       </button>
@@ -2035,7 +2035,7 @@ export function CreateShiftModal({
             {onsiteLeadSection}
 
             <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Date Selection</label>
+              <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">Date Selection</label>
               <div className="flex items-center gap-4 mb-2">
                 <label className="flex items-center gap-2">
                   <input
@@ -2072,7 +2072,7 @@ export function CreateShiftModal({
                 <div className="space-y-2">
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">From</label>
+                      <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">From</label>
                       <input
                         type="date"
                         value={dateFrom}
@@ -2081,7 +2081,7 @@ export function CreateShiftModal({
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">To</label>
+                      <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">To</label>
                       <input
                         type="date"
                         value={dateTo}
@@ -2097,10 +2097,10 @@ export function CreateShiftModal({
                       onChange={(e) => setExcludeWeekends(e.target.checked)}
                       className="rounded border-gray-200"
                     />
-                    <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Exclude weekends</span>
+                    <span className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Exclude weekends</span>
                   </label>
                 {dateRangeSummary ? (
-                  <div className="text-xs text-gray-600">{dateRangeSummary}</div>
+                  <div className="text-sm text-gray-600">{dateRangeSummary}</div>
                 ) : null}
               </div>
             )}
@@ -2108,8 +2108,8 @@ export function CreateShiftModal({
 
             {overlapWarnings.length > 0 && (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-                <div className="font-medium">Schedule conflicts detected</div>
-                <p className="mt-1 text-xs text-amber-800">
+                <div className="font-semibold">Schedule conflicts detected</div>
+                <p className="mt-1 text-sm text-amber-800">
                   These shifts can still be created, but this worker already has overlapping time on
                   another shift.
                 </p>
@@ -2125,7 +2125,7 @@ export function CreateShiftModal({
                     type="button"
                     disabled={saving}
                     onClick={() => applyTimePreset(opt.value)}
-                    className={`rounded-lg border px-3 py-1.5 text-xs font-medium ${
+                    className={`rounded-lg border px-3 py-1.5 text-sm font-semibold ${
                       timePreset === opt.value
                         ? 'border-[#7f1010] bg-red-50 text-[#7f1010]'
                         : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
@@ -2138,7 +2138,7 @@ export function CreateShiftModal({
               {timePreset === 'custom' ? (
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
+                    <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">
                       Start Time
                     </label>
                     <input
@@ -2153,7 +2153,7 @@ export function CreateShiftModal({
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
+                    <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">
                       End Time
                     </label>
                     <input
@@ -2172,8 +2172,8 @@ export function CreateShiftModal({
             </div>
 
             <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                Job Type <span className="text-gray-400 normal-case">(optional)</span>
+              <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">
+                Job Type <span className="text-gray-600 normal-case">(optional)</span>
               </label>
               <select
                 value={jobType}
@@ -2195,7 +2195,7 @@ export function CreateShiftModal({
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
+            className="px-3 py-1.5 rounded-lg text-sm font-semibold text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
           >
             Cancel
           </button>

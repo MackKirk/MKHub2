@@ -12,7 +12,7 @@ export default function Proposals(){
       <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
         <div>
           <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Proposals</div>
-          <div className="text-sm text-gray-500 font-medium">Create, edit and track proposals.</div>
+          <div className="text-sm text-gray-600 font-semibold">Create, edit and track proposals.</div>
         </div>
       </div>
       <div className="rounded-xl border bg-white overflow-hidden">

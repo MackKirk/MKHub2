@@ -5,7 +5,7 @@ import { sortByLabel } from '@/lib/sortOptions';
 import { AppControlLabelRow } from './AppControlLabel';
 import { AppFieldHint } from './AppFieldHint';
 import { SelectDropdownCheckbox } from './SelectDropdownCheckbox';
-import { uiCx, uiDropdown, uiUserSelect } from './tokens';
+import { uiCx, uiDropdown, uiTypography, uiUserSelect } from './tokens';
 import { comboboxMenuStyle, useComboboxDropdown, type ComboboxMenuRect } from './useComboboxDropdown';
 import {
   getClientPickerLabel,
@@ -265,7 +265,7 @@ function AppClientSelectSingle({
           )}
         />
       </div>
-      {helperText ? <p className="text-xs text-gray-600">{helperText}</p> : null}
+      {helperText ? <p className={uiTypography.helper}>{helperText}</p> : null}
       {typeof document !== 'undefined' && dropdown ? createPortal(dropdown, document.body) : null}
     </div>
   );
@@ -393,7 +393,7 @@ function AppClientSelectMultiple({
             <>
               {label}
               {value.length > 0 ? (
-                <span className="ml-1 font-normal normal-case text-gray-500">({value.length} selected)</span>
+                <span className="ml-1 font-normal normal-case text-gray-600">({value.length} selected)</span>
               ) : null}
             </>
           }
@@ -456,7 +456,7 @@ function AppClientSelectMultiple({
           ))}
         </div>
       ) : null}
-      {helperText ? <p className="text-xs text-gray-600">{helperText}</p> : null}
+      {helperText ? <p className={uiTypography.helper}>{helperText}</p> : null}
       {typeof document !== 'undefined' && dropdown ? createPortal(dropdown, document.body) : null}
     </div>
   );
@@ -531,7 +531,7 @@ function renderClientListbox({
                 onClick={() => onCreateNew?.(searchQuery.trim())}
               >
                 <Plus className="h-4 w-4 shrink-0 text-gray-400" aria-hidden />
-                <span className="truncate text-xs font-medium">{createNewLabel}</span>
+                <span className={uiCx('truncate font-semibold', uiTypography.controlValue)}>{createNewLabel}</span>
               </button>
             </li>
           ) : null}
@@ -549,8 +549,8 @@ function renderClientListbox({
 
             const optionContent = (
               <div className="min-w-0 flex-1">
-                <div className="truncate text-xs text-gray-900">{getClientPickerLabel(client)}</div>
-                {subtitle ? <div className="mt-0.5 truncate text-xs text-gray-500">{subtitle}</div> : null}
+                <div className={uiCx('truncate', uiTypography.controlValue)}>{getClientPickerLabel(client)}</div>
+                {subtitle ? <div className="mt-0.5 truncate text-sm text-gray-600">{subtitle}</div> : null}
               </div>
             );
 

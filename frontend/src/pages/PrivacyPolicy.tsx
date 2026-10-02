@@ -115,7 +115,7 @@ export default function PrivacyPolicy() {
           <p className="mt-4 max-w-2xl text-base leading-7 text-white/90">
             This policy explains how MK Hub handles information for the web and mobile applications.
           </p>
-          <p className="mt-4 text-sm font-medium text-white/80">Last updated: {lastUpdated}</p>
+          <p className="mt-4 text-sm font-semibold text-white/80">Last updated: {lastUpdated}</p>
         </div>
       </section>
 

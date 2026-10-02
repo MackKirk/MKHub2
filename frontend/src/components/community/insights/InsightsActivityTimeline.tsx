@@ -21,7 +21,7 @@ function getSeriesToggleClassName(active: boolean) {
     uiTypography.controlLabel,
     active
       ? uiCx(uiBorders.strong, 'bg-white text-gray-900 shadow-sm')
-      : uiCx(uiBorders.subtle, 'bg-gray-50 text-gray-400 line-through hover:bg-gray-100 hover:text-gray-500'),
+      : uiCx(uiBorders.subtle, 'bg-gray-50 text-gray-600 line-through hover:bg-gray-100 hover:text-gray-600'),
   );
 }
 /**

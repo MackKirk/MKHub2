@@ -46,8 +46,8 @@ function StatusLabelBadge({
     <span
       className={
         compact
-          ? 'inline-block rounded px-1.5 py-0.5 text-[9px] font-medium'
-          : 'inline-block rounded px-2 py-0.5 text-[10px] font-medium'
+          ? 'inline-block rounded px-1.5 py-0.5 text-[9px] font-semibold'
+          : 'inline-block rounded px-2 py-0.5 text-xs font-semibold'
       }
       style={{
         backgroundColor: statusColorForLabel(label, statusColors),
@@ -95,7 +95,7 @@ export function ReportStatusChangeBadges({
           statusColors={statusColors}
           compact={compact}
         />
-        <span className={compact ? 'text-[10px] text-gray-400' : 'text-xs text-gray-400'}>→</span>
+        <span className={compact ? 'text-xs text-gray-600' : 'text-sm text-gray-600'}>→</span>
         <StatusLabelBadge
           label={toLabel}
           designSystem={designSystem}

@@ -206,7 +206,7 @@ export default function ProjectCategoryPermissionsModal({
             <div className="rounded-lg bg-gray-50/80 p-2.5">{categories.map(renderRow)}</div>
           )}
           {hasBlockedAll ? (
-            <div className="mt-2 text-xs text-red-600">
+            <div className="mt-2 text-sm text-red-600">
               At least one category must be allowed, or enable “Allow all categories”.
             </div>
           ) : null}

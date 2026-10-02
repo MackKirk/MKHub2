@@ -33,7 +33,8 @@ export function AppInput({
         <input
           id={id}
           className={uiCx(
-            'w-full bg-white text-xs text-gray-900 outline-none transition-colors placeholder:text-gray-400 focus:border-gray-400 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-gray-400/35 disabled:cursor-not-allowed disabled:bg-gray-100',
+            'w-full bg-white outline-none transition-colors placeholder:text-gray-400 focus:border-gray-400 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-gray-400/35 disabled:cursor-not-allowed disabled:bg-gray-100',
+            uiTypography.controlValue,
             uiSpacing.controlX,
             uiSpacing.controlY,
             uiRadius.control,
@@ -48,7 +49,7 @@ export function AppInput({
           <span className="absolute inset-y-0 right-1.5 flex items-center text-gray-400">{rightIcon}</span>
         ) : null}
       </span>
-      {error ? <span className="block text-xs text-red-600">{error}</span> : helperText ? <span className={uiTypography.helper}>{helperText}</span> : null}
+      {error ? <span className="block text-sm text-red-600">{error}</span> : helperText ? <span className={uiTypography.helper}>{helperText}</span> : null}
     </label>
   );
 }

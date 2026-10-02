@@ -236,7 +236,7 @@ function deriveBaselineFromExistingPost(existingPost: Record<string, unknown>): 
 
 function priorityPillClass(value: string, active: boolean) {
   const base =
-    'flex-1 min-w-[4.5rem] px-2 py-2 rounded-lg text-xs font-semibold border transition text-center';
+    'flex-1 min-w-[4.5rem] px-2 py-2 rounded-lg text-sm font-semibold border transition text-center';
   if (!active) return `${base} border-gray-200 bg-gray-50/80 text-gray-600 hover:border-gray-300`;
   if (value === 'critical') return `${base} border-red-900 bg-red-900 text-white`;
   if (value === 'urgent') return `${base} border-red-400 bg-red-50 text-red-900`;
@@ -839,7 +839,7 @@ export default function CommunityNewPost() {
           maxLength={280}
           required
           helperText={
-            <span className={title.length > TITLE_SOFT_MAX ? 'font-medium text-amber-600' : undefined}>
+            <span className={title.length > TITLE_SOFT_MAX ? 'font-semibold text-amber-600' : undefined}>
               {title.length} / {TITLE_SOFT_MAX}
             </span>
           }
@@ -859,7 +859,7 @@ export default function CommunityNewPost() {
             className={uiCx(
               uiTypography.helper,
               'tabular-nums',
-              plainBodyLen > CONTENT_SOFT_MAX && 'font-medium text-amber-600',
+              plainBodyLen > CONTENT_SOFT_MAX && 'font-semibold text-amber-600',
             )}
           >
             {plainBodyLen.toLocaleString()} chars
@@ -971,8 +971,8 @@ export default function CommunityNewPost() {
                     : 'border-gray-200 bg-white hover:border-gray-300'
                 }`}
               >
-                <div className="text-xs font-semibold text-gray-900">{opt.label}</div>
-                <div className="text-[10px] text-gray-500 mt-0.5 leading-snug">{opt.sub}</div>
+                <div className="text-sm font-semibold text-gray-900">{opt.label}</div>
+                <div className="text-xs text-gray-600 mt-0.5 leading-snug">{opt.sub}</div>
               </button>
             ))}
           </div>
@@ -984,7 +984,7 @@ export default function CommunityNewPost() {
                 onChange={setScheduledAt}
                 required
               />
-              {scheduleError && <p className="mt-1 text-xs text-red-600">Select a valid schedule time.</p>}
+              {scheduleError && <p className="mt-1 text-sm text-red-600">Select a valid schedule time.</p>}
             </div>
           )}
         </AppCard>
@@ -1040,8 +1040,8 @@ export default function CommunityNewPost() {
               className="h-4 w-4 border-gray-300 text-brand-red focus:ring-brand-red"
             />
             <div>
-              <div className="text-sm font-medium text-gray-900">All employees</div>
-              <div className="text-xs text-gray-500">Company-wide visibility</div>
+              <div className="text-sm font-semibold text-gray-900">All employees</div>
+              <div className="text-sm text-gray-600">Company-wide visibility</div>
             </div>
           </label>
           <label className={audienceOptionClass(targetType === 'divisions')}>
@@ -1057,8 +1057,8 @@ export default function CommunityNewPost() {
               className="h-4 w-4 border-gray-300 text-brand-red focus:ring-brand-red"
             />
             <div>
-              <div className="text-sm font-medium text-gray-900">Specific divisions</div>
-              <div className="text-xs text-gray-500">Limit to selected teams</div>
+              <div className="text-sm font-semibold text-gray-900">Specific divisions</div>
+              <div className="text-sm text-gray-600">Limit to selected teams</div>
             </div>
           </label>
           <label className={audienceOptionClass(targetType === 'users')}>
@@ -1074,8 +1074,8 @@ export default function CommunityNewPost() {
               className="h-4 w-4 border-gray-300 text-brand-red focus:ring-brand-red"
             />
             <div>
-              <div className="text-sm font-medium text-gray-900">Specific employees</div>
-              <div className="text-xs text-gray-500">Only selected people see this in the feed</div>
+              <div className="text-sm font-semibold text-gray-900">Specific employees</div>
+              <div className="text-sm text-gray-600">Only selected people see this in the feed</div>
             </div>
           </label>
           <label className={audienceOptionClass(targetType === 'groups')}>
@@ -1091,8 +1091,8 @@ export default function CommunityNewPost() {
               className="h-4 w-4 border-gray-300 text-brand-red focus:ring-brand-red"
             />
             <div>
-              <div className="text-sm font-medium text-gray-900">Community groups</div>
-              <div className="text-xs text-gray-500">Everyone in the selected groups</div>
+              <div className="text-sm font-semibold text-gray-900">Community groups</div>
+              <div className="text-sm text-gray-600">Everyone in the selected groups</div>
             </div>
           </label>
 
@@ -1101,7 +1101,7 @@ export default function CommunityNewPost() {
             className={`rounded-lg border p-3 ${divisionError ? 'border-red-300 bg-red-50/20' : 'border-gray-100 bg-gray-50/80'}`}
           >
             <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-              <span className="text-xs font-medium text-gray-600">Divisions</span>
+              <span className="text-sm font-semibold text-gray-600">Divisions</span>
               {divisions.length > 0 && (
                 <div className={uiCx(uiLayout.actionsRow, 'gap-2')}>
                   <AppButton type="button" variant="ghost" size="sm" onClick={() => setSelectedDivisions(divisions.map((d) => d.id))}>
@@ -1114,9 +1114,9 @@ export default function CommunityNewPost() {
               )}
             </div>
             {divisions.length === 0 ? (
-              <p className="text-xs text-gray-500">
+              <p className="text-sm text-gray-600">
                 No divisions configured.{' '}
-                <a href="/settings" className="font-medium text-brand-red underline">
+                <a href="/settings" className="font-semibold text-brand-red underline">
                   System Settings
                 </a>
               </p>
@@ -1130,7 +1130,7 @@ export default function CommunityNewPost() {
                       key={div.id}
                       type="button"
                       onClick={() => toggleDivision(div.id)}
-                      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-semibold transition ${
                         isSelected
                           ? 'border-brand-red bg-white text-brand-red shadow-sm'
                           : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
@@ -1143,7 +1143,7 @@ export default function CommunityNewPost() {
                 })}
               </div>
             )}
-            {divisionError && <p className="text-xs text-red-600 mt-2">Select at least one division.</p>}
+            {divisionError && <p className="text-sm text-red-600 mt-2">Select at least one division.</p>}
           </div>
         )}
 
@@ -1161,7 +1161,7 @@ export default function CommunityNewPost() {
               helperText={`Search and select employees. Up to ${MAX_AUDIENCE_EMPLOYEES} recipients.`}
               showSelectedChips
             />
-            {usersAudienceError && <p className="text-xs text-red-600 mt-2">Select at least one employee.</p>}
+            {usersAudienceError && <p className="text-sm text-red-600 mt-2">Select at least one employee.</p>}
           </div>
         )}
 
@@ -1170,7 +1170,7 @@ export default function CommunityNewPost() {
             className={`rounded-lg border p-3 ${groupsAudienceError ? 'border-red-300 bg-red-50/20' : 'border-gray-100 bg-gray-50/80'}`}
           >
             <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-              <span className="text-xs font-medium text-gray-600">Groups</span>
+              <span className="text-sm font-semibold text-gray-600">Groups</span>
               <div className="flex flex-wrap items-center gap-2">
                 {communityGroups.length > 0 && (
                   <div className={uiCx(uiLayout.actionsRow, 'gap-2')}>
@@ -1189,16 +1189,16 @@ export default function CommunityNewPost() {
                 )}
                 <Link
                   to="/community/groups"
-                  className="text-xs font-medium text-brand-red hover:underline"
+                  className="text-sm font-semibold text-brand-red hover:underline"
                 >
                   Manage groups
                 </Link>
               </div>
             </div>
             {communityGroups.length === 0 ? (
-              <p className="text-xs text-gray-500">
+              <p className="text-sm text-gray-600">
                 No community groups yet.{' '}
-                <Link to="/community/groups" className="font-medium text-brand-red underline">
+                <Link to="/community/groups" className="font-semibold text-brand-red underline">
                   Create a group
                 </Link>
               </p>
@@ -1211,7 +1211,7 @@ export default function CommunityNewPost() {
                       key={g.id}
                       type="button"
                       onClick={() => toggleCommunityGroup(g.id)}
-                      className={`inline-flex max-w-full items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                      className={`inline-flex max-w-full items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-semibold transition ${
                         isSelected
                           ? 'border-brand-red bg-white text-brand-red shadow-sm'
                           : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
@@ -1220,17 +1220,17 @@ export default function CommunityNewPost() {
                     >
                       <span className="truncate">{g.name}</span>
                       {g.member_count != null ? (
-                        <span className="shrink-0 text-[10px] font-normal text-gray-500">({g.member_count})</span>
+                        <span className="shrink-0 text-xs font-normal text-gray-600">({g.member_count})</span>
                       ) : null}
                     </button>
                   );
                 })}
               </div>
             )}
-            <p className="text-[11px] text-gray-500 mt-2">
+            <p className="text-xs text-gray-600 mt-2">
               Recipients are fixed when you publish (up to {MAX_AUDIENCE_EMPLOYEES} active members across selected groups).
             </p>
-            {groupsAudienceError && <p className="text-xs text-red-600 mt-2">Select at least one community group.</p>}
+            {groupsAudienceError && <p className="text-sm text-red-600 mt-2">Select at least one community group.</p>}
           </div>
         )}
         </div>

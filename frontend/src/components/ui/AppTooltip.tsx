@@ -13,6 +13,7 @@ import { getOverlayRoot } from '@/lib/overlayRoot';
 import { uiTooltip, uiCx } from './tokens';
 
 const TOOLTIP_GAP_PX = 4;
+const CURSOR_TOOLTIP_GAP_PX = 18;
 const VIEWPORT_PAD_PX = 8;
 
 export type AppTooltipPlacement = 'top' | 'bottom';
@@ -26,6 +27,8 @@ export type AppTooltipProps = {
   disabled?: boolean;
   /** Wrap long copy instead of single-line `whitespace-nowrap` (disabled actions, hints). */
   wrap?: boolean;
+  /** Place the tip just above the pointer instead of the center of the anchor. */
+  followCursor?: boolean;
   /**
    * Stretch to the parent width and allow children to shrink.
    * Use around truncated grid/list text so `truncate` still clips.
@@ -51,6 +54,7 @@ function computeTooltipCoords(
   placement: AppTooltipPlacement,
   tipWidth: number,
   tipHeight: number,
+  gapPx = TOOLTIP_GAP_PX,
 ): TooltipCoords {
   const centerX = anchor.left + anchor.width / 2;
   const maxLeft = Math.max(VIEWPORT_PAD_PX, window.innerWidth - tipWidth - VIEWPORT_PAD_PX);
@@ -61,16 +65,16 @@ function computeTooltipCoords(
   const spaceAbove = anchor.top - VIEWPORT_PAD_PX;
   let resolvedPlacement = placement;
 
-  if (placement === 'bottom' && tipHeight + TOOLTIP_GAP_PX > spaceBelow && spaceAbove > spaceBelow) {
+  if (placement === 'bottom' && tipHeight + gapPx > spaceBelow && spaceAbove > spaceBelow) {
     resolvedPlacement = 'top';
-  } else if (placement === 'top' && tipHeight + TOOLTIP_GAP_PX > spaceAbove && spaceBelow > spaceAbove) {
+  } else if (placement === 'top' && tipHeight + gapPx > spaceAbove && spaceBelow > spaceAbove) {
     resolvedPlacement = 'bottom';
   }
 
   const top =
     resolvedPlacement === 'bottom'
-      ? anchor.bottom + TOOLTIP_GAP_PX
-      : anchor.top - TOOLTIP_GAP_PX - tipHeight;
+      ? anchor.bottom + gapPx
+      : anchor.top - gapPx - tipHeight;
 
   return { top, left, arrowLeft, resolvedPlacement };
 }
@@ -86,12 +90,14 @@ export function AppTooltip({
   placement = 'top',
   disabled = false,
   wrap = false,
+  followCursor = false,
   constrain = false,
   className,
 }: AppTooltipProps) {
   const tipId = useId();
   const anchorRef = useRef<HTMLSpanElement>(null);
   const tipRef = useRef<HTMLSpanElement>(null);
+  const pointerRef = useRef<{ x: number; y: number } | null>(null);
   const [open, setOpen] = useState(false);
   const [coords, setCoords] = useState<TooltipCoords | null>(null);
 
@@ -104,13 +110,23 @@ export function AppTooltip({
     // First paint may have 0 size — still place roughly; layout effect remeasures.
     const w = tipWidth || 160;
     const h = tipHeight || 28;
-    setCoords(computeTooltipCoords(el.getBoundingClientRect(), placement, w, h));
-  }, [placement]);
+    const pointer = pointerRef.current;
+    const anchor =
+      followCursor && pointer ? new DOMRect(pointer.x, pointer.y, 0, 0) : el.getBoundingClientRect();
+    const gap = followCursor && pointer ? CURSOR_TOOLTIP_GAP_PX : TOOLTIP_GAP_PX;
+    setCoords(computeTooltipCoords(anchor, placement, w, h, gap));
+  }, [followCursor, placement]);
 
   const show = () => {
     if (disabled || content == null || content === '') return;
     updateCoords();
     setOpen(true);
+  };
+
+  const trackPointer = (event: { clientX: number; clientY: number }) => {
+    if (!followCursor) return;
+    pointerRef.current = { x: event.clientX, y: event.clientY };
+    if (open) updateCoords();
   };
 
   const hide = () => setOpen(false);
@@ -166,7 +182,11 @@ export function AppTooltip({
       <span
         ref={anchorRef}
         className={uiCx(constrain ? 'flex w-full min-w-0 max-w-full' : 'inline-flex', className)}
-        onMouseEnter={show}
+        onMouseEnter={(event) => {
+          trackPointer(event);
+          show();
+        }}
+        onMouseMove={trackPointer}
         onMouseLeave={hide}
         onFocus={show}
         onBlur={hide}

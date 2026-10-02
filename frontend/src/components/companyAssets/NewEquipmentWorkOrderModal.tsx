@@ -216,8 +216,8 @@ export default function NewEquipmentWorkOrderModal({
           disabled={createMutation.isPending || uploading}
         />
 
-        <div className={uiCx('rounded-lg border border-sky-200 bg-sky-50/80 px-3 py-2 text-xs text-gray-700')}>
-          <strong className="font-medium text-gray-800">Tip:</strong> add line-item costs and invoices from the work
+        <div className={uiCx('rounded-lg border border-sky-200 bg-sky-50/80 px-3 py-2 text-sm text-gray-700')}>
+          <strong className="font-semibold text-gray-800">Tip:</strong> add line-item costs and invoices from the work
           order detail page after creation.
         </div>
       </form>

@@ -305,7 +305,7 @@ export default function ProjectMapView({
         <ProjectMapFetchingOverlay visible={isInitialMapLoading && mapReady} />
       </div>
       {!data && isFetched && !isFetching && !fetchError ? (
-        <p className="px-3 py-2 text-center text-sm text-gray-500">{labels.noMatchFilters}</p>
+        <p className="px-3 py-2 text-center text-sm text-gray-600">{labels.noMatchFilters}</p>
       ) : null}
     </div>
   );

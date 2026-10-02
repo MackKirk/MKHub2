@@ -374,7 +374,7 @@ export function AppDatePicker({
         {triggerButton}
         {!isCardTrigger ? <Calendar className={uiDatePicker.triggerIcon} aria-hidden /> : null}
       </div>
-      {error ? <span className="block text-xs text-red-600">{error}</span> : helperText ? <span className={uiTypography.helper}>{helperText}</span> : null}
+      {error ? <span className="block text-sm text-red-600">{error}</span> : helperText ? <span className={uiTypography.helper}>{helperText}</span> : null}
       {typeof document !== 'undefined' && panel ? createPortal(panel, document.body) : null}
     </div>
   );

@@ -79,7 +79,7 @@ export function WidgetWrapper({ widget, isEditMode, onRemove, onOpenConfig, chil
       >
         <span
           className={uiCx(
-            'flex min-w-0 items-center gap-1.5 truncate font-medium text-gray-800',
+            'flex min-w-0 items-center gap-1.5 truncate font-semibold text-gray-800',
             'text-[clamp(0.625rem,5.5cqw,0.8125rem)]',
           )}
           title={typeof title === 'string' ? title : undefined}

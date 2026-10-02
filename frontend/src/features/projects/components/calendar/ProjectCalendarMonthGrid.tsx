@@ -90,7 +90,7 @@ export function ProjectCalendarMonthGrid({
             key={day}
             className={uiCx(
               uiTypography.overline,
-              isWidget && !useLargerChips ? 'py-1 text-center text-[10px]' : 'py-1.5 text-center',
+              isWidget && !useLargerChips ? 'py-1 text-center !text-xs' : 'py-1.5 text-center',
               isWeekendHeader && 'text-gray-400',
             )}
           >
@@ -138,22 +138,21 @@ export function ProjectCalendarMonthGrid({
             <div className="flex items-center justify-between gap-1">
               <span
                 className={uiCx(
-                  'font-medium',
-                  isWidget && !useLargerChips ? 'text-[10px]' : 'text-xs',
+                  'font-semibold text-sm',
                   dayIsToday ? 'text-brand-red' : holidayName ? 'text-red-700' : 'text-gray-700',
                 )}
               >
                 {date.getDate()}
               </span>
               {entries.length > 0 ? (
-                <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[9px] font-semibold text-gray-600">
+                <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[11px] font-semibold text-gray-600">
                   {entries.length}
                 </span>
               ) : null}
             </div>
             {holidayName ? (
               <span
-                className="mt-0.5 truncate text-[9px] font-medium leading-tight text-red-700"
+                className="mt-0.5 truncate text-[11px] font-semibold leading-tight text-red-700"
                 title={holidayName}
               >
                 {holidayName}
@@ -176,7 +175,7 @@ export function ProjectCalendarMonthGrid({
               {overflow ? (
                 <button
                   type="button"
-                  className="w-full text-left text-[10px] font-medium text-brand-red hover:underline"
+                  className="w-full text-left text-xs font-semibold text-brand-red hover:underline"
                   onClick={(e) => {
                     e.stopPropagation();
                     onDayClick(date, entries);

@@ -97,15 +97,15 @@ export default function SafetyDynamicFileField({
         void ingestFileList(pasted);
       }}
     >
-      {!hideTitle && <div className="text-sm font-medium text-gray-600 mb-2">{field.label}</div>}
+      {!hideTitle && <div className="text-sm font-semibold text-gray-600 mb-2">{field.label}</div>}
       <div className="flex items-center gap-2 mb-2 flex-wrap rounded-xl border-2 border-gray-200 bg-white px-3 py-2">
-          <label className="block text-xs text-gray-600 flex-1 min-w-0 cursor-pointer">
+          <label className="block text-sm text-gray-600 flex-1 min-w-0 cursor-pointer">
             <input
               type="file"
               disabled={disabled || busy || !projectId}
               accept={field.type === 'image_view' ? 'image/*' : 'application/pdf'}
               multiple={multi}
-              className="text-sm max-w-full file:mr-3 file:rounded-lg file:border-0 file:bg-gray-100 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-gray-700 hover:file:bg-gray-200"
+              className="text-sm max-w-full file:mr-3 file:rounded-lg file:border-0 file:bg-gray-100 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-gray-700 hover:file:bg-gray-200"
               onChange={(e) => void addFiles(e.target.files)}
             />
           </label>
@@ -125,7 +125,7 @@ export default function SafetyDynamicFileField({
                 href={withFileAccessToken(`/files/${encodeURIComponent(id)}`)}
                 target="_blank"
                 rel="noreferrer"
-                className="text-xs text-blue-600 underline"
+                className="text-sm text-blue-600 underline"
               >
                 PDF
               </a>
@@ -133,7 +133,7 @@ export default function SafetyDynamicFileField({
             {!disabled && (
               <button
                 type="button"
-                className="absolute -top-1 -right-1 w-5 h-5 bg-black/60 text-white rounded-full text-xs"
+                className="absolute -top-1 -right-1 w-5 h-5 bg-black/60 text-white rounded-full text-sm"
                 onClick={() => {
                   const n = ids.filter((x) => x !== id);
                   setKey(k, multi ? { file_object_ids: n } : '');
@@ -145,7 +145,7 @@ export default function SafetyDynamicFileField({
           </div>
         ))}
       </div>
-      {!projectId && <p className="text-xs text-amber-700 mt-1">Open from a project to upload files.</p>}
+      {!projectId && <p className="text-sm text-amber-700 mt-1">Open from a project to upload files.</p>}
     </div>
   );
 }

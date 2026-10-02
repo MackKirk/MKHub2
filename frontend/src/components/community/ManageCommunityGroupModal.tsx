@@ -336,7 +336,7 @@ export function ManageCommunityGroupModal({
         label="Members"
         fieldHint={<AppFieldHint hint={communityGroupFieldHints.members} />}
       />
-      <div className={uiCx(uiLayout.actionsRow, 'justify-between text-xs')}>
+      <div className={uiCx(uiLayout.actionsRow, 'justify-between text-sm')}>
         <AppButton type="button" variant="ghost" size="sm" onClick={selectAllFiltered}>
           {allFilteredSelected ? 'Clear filtered selection' : 'Select all in filter'}
         </AppButton>
@@ -344,7 +344,7 @@ export function ManageCommunityGroupModal({
       </div>
       <div className={uiCx(uiRadius.control, uiBorders.subtle, 'max-h-[min(42vh,22rem)] divide-y divide-gray-100 overflow-y-auto')}>
         {filteredEmployees.length === 0 ? (
-          <div className={uiCx(uiSpacing.cardPadding, 'text-center text-sm text-gray-500')}>No employees match.</div>
+          <div className={uiCx(uiSpacing.cardPadding, 'text-center text-sm text-gray-600')}>No employees match.</div>
         ) : (
           filteredEmployees.map((employee) => {
             const id = String(employee.id);
@@ -362,11 +362,11 @@ export function ManageCommunityGroupModal({
                       className="h-9 w-9 shrink-0 rounded-full object-cover"
                     />
                   ) : (
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-200 text-xs text-gray-600">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-200 text-sm text-gray-600">
                       {(employee.name || '?')[0].toUpperCase()}
                     </div>
                   )}
-                  <span className="truncate text-sm font-medium text-gray-900">{employee.name}</span>
+                  <span className="truncate text-sm font-semibold text-gray-900">{employee.name}</span>
                 </div>
                 <AppCheckboxControl
                   checked={checked}
@@ -385,7 +385,7 @@ export function ManageCommunityGroupModal({
         label="Delete this group"
         fieldHint={<AppFieldHint hint={communityGroupFieldHints.deleteGroup} />}
       />
-      <p className="text-xs leading-relaxed text-red-800">
+      <p className="text-sm leading-relaxed text-red-800">
         Removes the group and member assignments. Announcements already sent are unaffected.
       </p>
       <AppButton type="button" variant="danger" size="sm" onClick={() => void handleDeleteGroup()}>

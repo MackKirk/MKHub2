@@ -1001,7 +1001,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                     {canEdit && (
                       <button
                         onClick={() => handleOpenAdjust(b)}
-                        className="absolute top-1.5 right-1.5 p-1 rounded hover:bg-gray-100 text-gray-500 hover:text-brand-red transition-colors"
+                        className="absolute top-1.5 right-1.5 p-1 rounded hover:bg-gray-100 text-gray-600 hover:text-brand-red transition-colors"
                         title="Adjust Balance"
                       >
                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1037,11 +1037,11 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                       <div className={`text-sm font-semibold ${isNegative ? 'text-red-600' : isSickLeave ? 'text-red-600' : isVacation ? 'text-blue-600' : 'text-green-600'}`}>
                         {isNegative ? '-' : ''}{balanceDays} Days
                       </div>
-                      <div className="text-xs font-medium text-gray-700 mt-0.5">
+                      <div className="text-sm font-semibold text-gray-700 mt-0.5">
                         {b.policy_name}
                       </div>
                       {b.isDefault && (
-                        <div className="text-[10px] text-orange-600 mt-0.5">(Not yet created)</div>
+                        <div className="text-xs text-orange-600 mt-0.5">(Not yet created)</div>
                       )}
                     </div>
                   </div>
@@ -1062,7 +1062,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
             {canEdit && availablePolicies.length > 0 ? (
               <button
               onClick={() => setShowRequestForm(true)}
-              className="px-2 py-1 rounded bg-brand-red text-white text-xs hover:bg-red-700"
+              className="px-2 py-1 rounded bg-brand-red text-white text-sm hover:bg-red-700"
             >
               Request Time Off
             </button>
@@ -1070,13 +1070,13 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
               <div className="flex gap-2">
                 <Link
                   to="/time-off"
-                  className="rounded bg-orange-600 px-2 py-1 text-xs font-medium text-white hover:bg-orange-700"
+                  className="rounded bg-orange-600 px-2 py-1 text-sm font-semibold text-white hover:bg-orange-700"
                 >
                   Request time off
                 </Link>
                 <Link
                   to="/sick-leave"
-                  className="rounded bg-red-600 px-2 py-1 text-xs font-medium text-white hover:bg-red-700"
+                  className="rounded bg-red-600 px-2 py-1 text-sm font-semibold text-white hover:bg-red-700"
                 >
                   Report sick leave
                 </Link>
@@ -1089,12 +1089,12 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                 <div key={r.id} className="p-2 border rounded text-sm">
                   <div className="flex items-center justify-between">
                     <div>
-                      <div className="font-medium">{r.policy_name}</div>
-                      <div className="text-xs text-gray-600">
+                      <div className="font-semibold">{r.policy_name}</div>
+                      <div className="text-sm text-gray-600">
                         {new Date(r.start_date).toLocaleDateString()} - {new Date(r.end_date).toLocaleDateString()}
                       </div>
                     </div>
-                    <span className={`px-2 py-0.5 rounded text-xs ${getStatusColor(r.status)}`}>
+                    <span className={`px-2 py-0.5 rounded text-sm ${getStatusColor(r.status)}`}>
                       {r.status}
                     </span>
                   </div>
@@ -1156,11 +1156,11 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b bg-gray-50">
-                          <th className="text-left py-2 px-3 font-semibold text-xs">Date</th>
-                          <th className="text-left py-2 px-3 font-semibold text-xs">Description</th>
-                          <th className="text-right py-2 px-3 font-semibold text-xs">Used Days (-)</th>
-                          <th className="text-right py-2 px-3 font-semibold text-xs">Earned Days (+)</th>
-                          <th className="text-right py-2 px-3 font-semibold text-xs">Balance</th>
+                          <th className="text-left py-2 px-3 font-semibold text-sm">Date</th>
+                          <th className="text-left py-2 px-3 font-semibold text-sm">Description</th>
+                          <th className="text-right py-2 px-3 font-semibold text-sm">Used Days (-)</th>
+                          <th className="text-right py-2 px-3 font-semibold text-sm">Earned Days (+)</th>
+                          <th className="text-right py-2 px-3 font-semibold text-sm">Balance</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1179,7 +1179,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                               <td className="py-2 px-3">
                                 <div className="flex items-center gap-2">
                                   {isAdjustment && (
-                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-sm font-semibold bg-blue-100 text-blue-800">
                                       <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
                                         <path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z" />
                                         <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z" />
@@ -1187,19 +1187,19 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                                       Adjustment
                                     </span>
                                   )}
-                                  <span className="whitespace-pre-line text-xs">{h.description || 'Time off transaction'}</span>
+                                  <span className="whitespace-pre-line text-sm">{h.description || 'Time off transaction'}</span>
                                 </div>
                               </td>
                               <td className="py-2 px-3 text-right">
                                 {h.used_days ? (
-                                  <span className="text-red-600 font-medium">
+                                  <span className="text-red-600 font-semibold">
                                     {h.used_days < 0 ? parseFloat(h.used_days).toFixed(2) : `-${parseFloat(h.used_days).toFixed(2)}`}
                                   </span>
                                 ) : '—'}
                               </td>
                               <td className="py-2 px-3 text-right">
                                 {h.earned_days ? (
-                                  <span className="text-green-600 font-medium">
+                                  <span className="text-green-600 font-semibold">
                                     +{parseFloat(h.earned_days).toFixed(2)}
                                   </span>
                                 ) : '—'}
@@ -1237,7 +1237,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                       <td className="py-2 px-2">{new Date(r.requested_at).toLocaleDateString()}</td>
                       <td className="py-2 px-2">
                         {r.policy_name} - {r.status}
-                        {r.notes && <div className="text-xs text-gray-500">{r.notes}</div>}
+                        {r.notes && <div className="text-sm text-gray-600">{r.notes}</div>}
                       </td>
                       <td className="py-2 px-2 text-right">
                         {r.status === 'approved' ? `-${days}` : '—'}
@@ -1263,7 +1263,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
             <div className="text-lg font-semibold mb-4">Request Time Off</div>
             <div className="space-y-3">
               <div>
-                <label className="text-xs text-gray-600">Policy*</label>
+                <label className="text-sm text-gray-600">Policy*</label>
                 <select
                   className="w-full border rounded px-3 py-2"
                   value={policyName}
@@ -1280,7 +1280,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                   if (selectedBalance) {
                     const availableDays = hoursToDays(selectedBalance.balance_hours);
                     return (
-                      <div className={`mt-1 text-xs ${parseFloat(availableDays) >= 0 ? 'text-gray-600' : 'text-orange-600'}`}>
+                      <div className={`mt-1 text-sm ${parseFloat(availableDays) >= 0 ? 'text-gray-600' : 'text-orange-600'}`}>
                         Available balance: {availableDays} days
                         {isSickLeave && (
                           <div className="mt-1 p-2 bg-blue-50 border border-blue-200 rounded text-blue-800">
@@ -1298,7 +1298,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-xs text-gray-600">Start Date*</label>
+                  <label className="text-sm text-gray-600">Start Date*</label>
                   <input
                     type="date"
                     className="w-full border rounded px-3 py-2"
@@ -1307,7 +1307,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-600">End Date*</label>
+                  <label className="text-sm text-gray-600">End Date*</label>
                   <input
                     type="date"
                     className="w-full border rounded px-3 py-2"
@@ -1324,17 +1324,17 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                 const hasEnoughBalance = isSickLeave || availableDays >= days;
                 return (
                   <div className={`p-3 rounded-lg border ${hasEnoughBalance ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200'}`}>
-                    <div className="text-sm font-medium text-gray-700">
+                    <div className="text-sm font-semibold text-gray-700">
                       Request Summary
                     </div>
-                    <div className="text-xs text-gray-600 mt-1">
+                    <div className="text-sm text-gray-600 mt-1">
                       You are requesting <strong>{days} days</strong> of {policyName}
                     </div>
-                    <div className="text-xs text-gray-600">
+                    <div className="text-sm text-gray-600">
                       Available balance: <strong>{availableDays.toFixed(1)} days</strong>
                     </div>
                     {!hasEnoughBalance && !isSickLeave && (
-                      <div className="text-xs text-red-600 mt-1 font-medium">
+                      <div className="text-sm text-red-600 mt-1 font-semibold">
                         Insufficient balance. You need {days} days but only have {availableDays.toFixed(1)} days available.
                       </div>
                     )}
@@ -1342,7 +1342,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                 );
               })()}
               <div>
-                <label className="text-xs text-gray-600">Hours (auto-calculated)</label>
+                <label className="text-sm text-gray-600">Hours (auto-calculated)</label>
                 <input
                   type="number"
                   step="0.5"
@@ -1352,7 +1352,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                 />
               </div>
               <div>
-                <label className="text-xs text-gray-600">
+                <label className="text-sm text-gray-600">
                   {policyName?.toLowerCase().includes('sick') ? 'Reason/Justification*' : 'Notes (optional)'}
                 </label>
                 <textarea
@@ -1403,7 +1403,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                   setAdjustingBalance(null);
                   setSelectedPolicyName('');
                 }}
-                className="text-gray-400 hover:text-gray-600"
+                className="text-gray-600 hover:text-gray-600"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -1416,7 +1416,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
               {/* Policy Selection - always show if multiple balances exist, or if no policy selected */}
               {((displayedBalances && displayedBalances.length > 1) || !adjustingBalance.policy_name) && (
                 <div>
-                  <label className="text-sm font-medium text-gray-700 mb-1 block">Policy*</label>
+                  <label className="text-sm font-semibold text-gray-700 mb-1 block">Policy*</label>
                   <select
                     value={selectedPolicyName || adjustingBalance.policy_name || ''}
                     onChange={(e) => {
@@ -1449,7 +1449,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
               )}
               
               <div>
-                <label className="text-sm font-medium text-gray-700 mb-1 block">Amount*</label>
+                <label className="text-sm font-semibold text-gray-700 mb-1 block">Amount*</label>
                 <div className="flex gap-2">
                   <select
                     value={adjustmentType}
@@ -1473,7 +1473,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
               </div>
               
               <div>
-                <label className="text-sm font-medium text-gray-700 mb-1 block">Effective Date*</label>
+                <label className="text-sm font-semibold text-gray-700 mb-1 block">Effective Date*</label>
                 <input
                   type="date"
                   value={effectiveDate}
@@ -1483,7 +1483,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
               </div>
               
               <div>
-                <label className="text-sm font-medium text-gray-700 mb-1 block">Note*</label>
+                <label className="text-sm font-semibold text-gray-700 mb-1 block">Note*</label>
                 <textarea
                   value={adjustmentNote}
                   onChange={(e) => setAdjustmentNote(e.target.value)}

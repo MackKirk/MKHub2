@@ -110,14 +110,14 @@ export function ElementOptionsPopover({
   return (
     <div className="absolute right-4 top-14 z-20 w-56 rounded-xl border border-gray-200 bg-white shadow-lg p-3 space-y-3">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">
+        <span className="text-sm font-semibold text-gray-600 uppercase tracking-wide">
           {typeLabel(element)}
         </span>
         <div className="flex items-center gap-1">
           <button
             type="button"
             onClick={onClose}
-            className="p-1 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+            className="p-1 rounded text-gray-600 hover:text-gray-600 hover:bg-gray-100"
             aria-label="Close"
           >
             ✕
@@ -133,7 +133,7 @@ export function ElementOptionsPopover({
               if (choice !== 'confirm') return;
               onRemove(id);
             }}
-            className="text-xs text-red-600 hover:text-red-700 font-medium"
+            className="text-sm text-red-600 hover:text-red-700 font-semibold"
           >
             Delete
           </button>
@@ -160,16 +160,16 @@ export function ElementOptionsPopover({
           </button>
           {element.content && (
             <div className="space-y-2">
-              <span className="block text-xs text-gray-600 mb-0.5">Edit position</span>
+              <span className="block text-sm text-gray-600 mb-0.5">Edit position</span>
               <div>
-                <span className="block text-xs text-gray-500 mb-0.5">Fit</span>
+                <span className="block text-sm text-gray-600 mb-0.5">Fit</span>
                 <div className="flex flex-wrap gap-px w-fit rounded overflow-hidden border border-gray-200 bg-gray-200">
                   {(['contain', 'cover', 'fill', 'none'] as const).map((fit) => (
                     <button
                       key={fit}
                       type="button"
                       onClick={() => onUpdate(id, (el) => ({ ...el, imageFit: fit }))}
-                      className={`min-w-[2.25rem] h-7 px-1.5 rounded-none first:rounded-l last:rounded-r text-[10px] capitalize ${(element.imageFit ?? 'contain') === fit ? 'bg-white shadow-sm text-gray-900' : 'bg-gray-50 text-gray-500 hover:bg-gray-100 hover:text-gray-700'}`}
+                      className={`min-w-[2.25rem] h-7 px-1.5 rounded-none first:rounded-l last:rounded-r text-xs capitalize ${(element.imageFit ?? 'contain') === fit ? 'bg-white shadow-sm text-gray-900' : 'bg-gray-50 text-gray-500 hover:bg-gray-100 hover:text-gray-700'}`}
                       title={fit}
                     >
                       {fit}
@@ -178,7 +178,7 @@ export function ElementOptionsPopover({
                 </div>
               </div>
               <div>
-                <span className="block text-xs text-gray-500 mb-0.5">Position</span>
+                <span className="block text-sm text-gray-600 mb-0.5">Position</span>
                 <div className="grid grid-cols-3 gap-px w-fit rounded overflow-hidden border border-gray-200 bg-gray-200">
                   {[
                     { value: '0% 0%', title: 'Top left' },
@@ -211,7 +211,7 @@ export function ElementOptionsPopover({
       {element.type === 'text' && (
         <div className="space-y-3">
           <div>
-            <label className="block text-xs text-gray-600 mb-1">Font</label>
+            <label className="block text-sm text-gray-600 mb-1">Font</label>
             <select
               value={element.fontFamily ?? 'Montserrat'}
               onChange={(e) =>
@@ -227,7 +227,7 @@ export function ElementOptionsPopover({
             </select>
           </div>
           <div>
-            <label className="block text-xs text-gray-600 mb-1">Text color</label>
+            <label className="block text-sm text-gray-600 mb-1">Text color</label>
             <div className="flex items-center gap-2 flex-wrap">
               <input
                 type="color"
@@ -243,13 +243,13 @@ export function ElementOptionsPopover({
                   const v = e.target.value.trim();
                   if (/^#[0-9A-Fa-f]{6}$/.test(v) || v === '') onUpdate(id, (el) => ({ ...el, color: v || '#000000' }));
                 }}
-                className="flex-1 min-w-0 w-20 px-2 py-1 rounded border border-gray-300 text-xs font-mono"
+                className="flex-1 min-w-0 w-20 px-2 py-1 rounded border border-gray-300 text-sm font-mono"
                 placeholder="#000000"
               />
             </div>
           </div>
           <div>
-            <span className="block text-xs text-gray-600 mb-1.5">Horizontal</span>
+            <span className="block text-sm text-gray-600 mb-1.5">Horizontal</span>
             <div className="flex gap-1 p-0.5 rounded bg-gray-100">
               <button
                 type="button"
@@ -278,7 +278,7 @@ export function ElementOptionsPopover({
             </div>
           </div>
           <div>
-            <span className="block text-xs text-gray-600 mb-1.5">Vertical</span>
+            <span className="block text-sm text-gray-600 mb-1.5">Vertical</span>
             <div className="flex gap-1 p-0.5 rounded bg-gray-100">
               <button
                 type="button"
@@ -307,7 +307,7 @@ export function ElementOptionsPopover({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-600">Style</span>
+            <span className="text-sm text-gray-600">Style</span>
             <button
               type="button"
               onClick={() =>
@@ -344,7 +344,7 @@ export function ElementOptionsPopover({
             </button>
           </div>
           <div>
-            <label className="block text-xs text-gray-600 mb-0.5">Font size</label>
+            <label className="block text-sm text-gray-600 mb-0.5">Font size</label>
             <div className="flex items-center gap-2">
               <input
                 type="range"
@@ -356,14 +356,14 @@ export function ElementOptionsPopover({
                 }
                 className="flex-1 h-2 rounded accent-brand-red"
               />
-              <span className="text-xs text-gray-500 w-6">{element.fontSize ?? 12}</span>
+              <span className="text-sm text-gray-600 w-6">{element.fontSize ?? 12}</span>
             </div>
           </div>
         </div>
       )}
 
       {(element.type === 'image' || element.type === 'block') && (
-        <p className="text-xs text-gray-500">
+        <p className="text-sm text-gray-600">
           Drag to move, use handles to resize.
         </p>
       )}

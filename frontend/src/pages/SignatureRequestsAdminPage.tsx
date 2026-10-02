@@ -322,10 +322,10 @@ function ParticipantsStatusTooltipContent({ participants }: { participants: Admi
     return <span>No signers</span>;
   }
   return (
-    <ul className="space-y-1 text-left text-xs">
+    <ul className="space-y-1 text-left text-sm">
       {participants.map((p) => (
         <li key={p.id}>
-          <span className="font-medium">{p.name || p.role_label || 'Signer'}</span>
+          <span className="font-semibold">{p.name || p.role_label || 'Signer'}</span>
           {p.role_label && p.name ? <span className="text-gray-300"> · {p.role_label}</span> : null}
           <span className="text-gray-300"> — {participantStatusLabel(p.status)}</span>
         </li>
@@ -884,7 +884,7 @@ export default function SignatureRequestsAdminPage() {
                       }}
                     >
                       <td className="min-w-0 max-w-[220px] px-3 py-3 align-top">
-                        <span className={uiCx('block truncate font-medium', uiTypography.helper, uiColors.textStrong)}>
+                        <span className={uiCx('block truncate font-semibold', uiTypography.helper, uiColors.textStrong)}>
                           {row.display_name}
                         </span>
                       </td>
@@ -900,7 +900,7 @@ export default function SignatureRequestsAdminPage() {
                       <td className={uiCx('px-3 py-3 align-top', uiTypography.helper)}>
                         <div className="space-y-0.5">
                           <div className="whitespace-nowrap">{fmtDateTime(row.sent_at || row.created_at)}</div>
-                          <div className={uiCx(uiTypography.helper, 'text-gray-500')}>
+                          <div className={uiCx(uiTypography.helper, 'text-gray-600')}>
                             To {sentToNames(row)}
                           </div>
                         </div>
@@ -921,7 +921,7 @@ export default function SignatureRequestsAdminPage() {
                             >
                               <button
                                 type="button"
-                                className="inline-flex rounded p-0.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-red/40 focus:ring-offset-1"
+                                className="inline-flex rounded p-0.5 text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-red/40 focus:ring-offset-1"
                                 aria-label="View signers and status"
                                 onClick={(e) => e.stopPropagation()}
                               >
@@ -956,7 +956,7 @@ export default function SignatureRequestsAdminPage() {
                         {isDocumentEnvelopeSource(row.source) ? (
                           <button
                             type="button"
-                            className="inline-flex rounded p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-red/40 focus:ring-offset-1"
+                            className="inline-flex rounded p-1.5 text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-red/40 focus:ring-offset-1"
                             aria-label={`Preview ${row.display_name}`}
                             title="Preview current document"
                             onClick={(e) => {
@@ -1091,7 +1091,7 @@ export default function SignatureRequestsAdminPage() {
                 value={
                   <>
                     {fmtDateTime(selectedFromList.sent_at || selectedFromList.created_at)}
-                    <span className="mt-1 block text-gray-500">
+                    <span className="mt-1 block text-gray-600">
                       To {sentToNames(selectedFromList)}
                     </span>
                   </>
@@ -1117,7 +1117,7 @@ export default function SignatureRequestsAdminPage() {
                     className={uiCx(uiBorders.subtle, uiRadius.card, uiSpacing.cardPadding, 'space-y-2')}
                   >
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className={uiCx(uiTypography.body, 'font-medium', uiColors.textStrong)}>{p.name}</span>
+                      <span className={uiCx(uiTypography.body, 'font-semibold', uiColors.textStrong)}>{p.name}</span>
                       <span className={uiTypography.helper}>{p.role_label || p.role}</span>
                       <AppBadge variant="neutral">{p.status}</AppBadge>
                       {p.is_overdue ? <AppBadge variant="danger">Overdue</AppBadge> : null}

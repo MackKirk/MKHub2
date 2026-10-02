@@ -166,7 +166,7 @@ function AdditionalSignersSummaryModalBody({ signRequests }: { signRequests: Saf
     return (
       <div className="space-y-2 text-sm text-gray-600 leading-relaxed">
         <p>No additional signers were designated for this inspection.</p>
-        <p className="text-xs text-gray-500">
+        <p className="text-sm text-gray-600">
           If a list should appear here, confirm that signers were selected when the inspection was submitted, then refresh
           the page.
         </p>
@@ -187,41 +187,41 @@ function AdditionalSignersSummaryModalBody({ signRequests }: { signRequests: Saf
     <div className="space-y-4 max-h-[min(70vh,30rem)] overflow-y-auto pr-0.5">
       <p className="text-sm text-gray-700 leading-relaxed">
         The following people were{' '}
-        <span className="font-medium text-gray-900">designated to provide an additional signature</span> when this
+        <span className="font-semibold text-gray-900">designated to provide an additional signature</span> when this
         inspection was submitted. The inspection cannot be finalized until every outstanding signature is completed.
       </p>
 
       <dl className="grid grid-cols-3 gap-2 rounded-lg border border-gray-200 bg-gray-50/90 p-3 text-center">
         <div className="px-1">
-          <dt className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Requested</dt>
+          <dt className="text-xs font-semibold uppercase tracking-wide text-gray-600">Requested</dt>
           <dd className="mt-1 text-xl font-semibold tabular-nums text-gray-900">{list.length}</dd>
         </div>
         <div className="px-1 border-x border-gray-200/80">
-          <dt className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Completed</dt>
+          <dt className="text-xs font-semibold uppercase tracking-wide text-gray-600">Completed</dt>
           <dd className="mt-1 text-xl font-semibold tabular-nums text-emerald-800">{signed.length}</dd>
         </div>
         <div className="px-1">
-          <dt className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Outstanding</dt>
+          <dt className="text-xs font-semibold uppercase tracking-wide text-gray-600">Outstanding</dt>
           <dd className="mt-1 text-xl font-semibold tabular-nums text-amber-900">{pending.length}</dd>
         </div>
       </dl>
 
       <div>
-        <h4 className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Designated signers</h4>
+        <h4 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Designated signers</h4>
         <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
           <table className="w-full min-w-[280px] text-sm text-left border-collapse">
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50">
-                <th scope="col" className="px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-600">
+                <th scope="col" className="px-3 py-2.5 text-sm font-semibold uppercase tracking-wide text-gray-600">
                   Signer
                 </th>
                 <th
                   scope="col"
-                  className="px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-600 w-[7.5rem]"
+                  className="px-3 py-2.5 text-sm font-semibold uppercase tracking-wide text-gray-600 w-[7.5rem]"
                 >
                   Status
                 </th>
-                <th scope="col" className="px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-600">
+                <th scope="col" className="px-3 py-2.5 text-sm font-semibold uppercase tracking-wide text-gray-600">
                   Signed on
                 </th>
               </tr>
@@ -231,14 +231,14 @@ function AdditionalSignersSummaryModalBody({ signRequests }: { signRequests: Saf
                 const done = isSignRequestComplete(r);
                 return (
                   <tr key={r.id} className="hover:bg-gray-50/90">
-                    <td className="px-3 py-2.5 font-medium text-gray-900 align-middle">{additionalSignerLabel(r)}</td>
+                    <td className="px-3 py-2.5 font-semibold text-gray-900 align-middle">{additionalSignerLabel(r)}</td>
                     <td className="px-3 py-2.5 align-middle">
                       {done ? (
-                        <span className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-900 ring-1 ring-inset ring-emerald-600/15">
+                        <span className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-0.5 text-sm font-semibold text-emerald-900 ring-1 ring-inset ring-emerald-600/15">
                           Signed
                         </span>
                       ) : (
-                        <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-950 ring-1 ring-inset ring-amber-700/20">
+                        <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-0.5 text-sm font-semibold text-amber-950 ring-1 ring-inset ring-amber-700/20">
                           Pending
                         </span>
                       )}
@@ -254,8 +254,8 @@ function AdditionalSignersSummaryModalBody({ signRequests }: { signRequests: Saf
         </div>
       </div>
 
-      <p className="text-xs text-gray-500 leading-relaxed border-t border-gray-100 pt-3">
-        Each outstanding signer must complete their own signature. The <span className="font-medium text-gray-600">Signed on</span>{' '}
+      <p className="text-sm text-gray-600 leading-relaxed border-t border-gray-100 pt-3">
+        Each outstanding signer must complete their own signature. The <span className="font-semibold text-gray-600">Signed on</span>{' '}
         column shows a timestamp once their submission is recorded.
       </p>
     </div>
@@ -303,11 +303,11 @@ function InspectionSignaturesGallery({
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
-      <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Signatures on this inspection</div>
+      <div className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Signatures on this inspection</div>
       <div className="space-y-4">
         {workerFileId && (
           <div className="rounded-lg border border-gray-100 bg-gray-50/80 p-3">
-            <div className="text-xs font-medium text-gray-500 mb-2">Worker</div>
+            <div className="text-sm font-semibold text-gray-600 mb-2">Worker</div>
             <div className="flex flex-wrap gap-4 items-start">
               <a
                 href={withFileAccessToken(`/files/${encodeURIComponent(workerFileId)}/thumbnail?w=640`)}
@@ -323,15 +323,15 @@ function InspectionSignaturesGallery({
               </a>
               <div className="text-sm text-gray-800 space-y-1 min-w-0 flex-1">
                 <div>
-                  <span className="text-gray-500">Signed by: </span>
-                  <span className="font-medium">{workerName || '—'}</span>
+                  <span className="text-gray-600">Signed by: </span>
+                  <span className="font-semibold">{workerName || '—'}</span>
                 </div>
                 <div>
-                  <span className="text-gray-500">Time: </span>
+                  <span className="text-gray-600">Time: </span>
                   <span>{formatInspectionSignedAt(workerSignedAt)}</span>
                 </div>
                 <div>
-                  <span className="text-gray-500">Location: </span>
+                  <span className="text-gray-600">Location: </span>
                   <span>{workerLoc || 'Not captured'}</span>
                 </div>
               </div>
@@ -340,7 +340,7 @@ function InspectionSignaturesGallery({
         )}
         {customSigned.map((c) => (
           <div key={c.id} className="rounded-lg border border-gray-100 bg-gray-50/80 p-3">
-            <div className="text-xs font-medium text-gray-500 mb-2">Custom Signer</div>
+            <div className="text-sm font-semibold text-gray-600 mb-2">Custom Signer</div>
             <div className="flex flex-wrap gap-4 items-start">
               <a
                 href={withFileAccessToken(`/files/${encodeURIComponent(c.file_id!)}/thumbnail?w=640`)}
@@ -356,27 +356,27 @@ function InspectionSignaturesGallery({
               </a>
               <div className="text-sm text-gray-800 space-y-1 min-w-0 flex-1">
                 <div>
-                  <span className="text-gray-500">Signed by: </span>
-                  <span className="font-medium">{(c.name || '').trim() || '—'}</span>
+                  <span className="text-gray-600">Signed by: </span>
+                  <span className="font-semibold">{(c.name || '').trim() || '—'}</span>
                 </div>
                 {(c.company || '').trim() ? (
                   <div>
-                    <span className="text-gray-500">Company: </span>
+                    <span className="text-gray-600">Company: </span>
                     <span>{(c.company || '').trim()}</span>
                   </div>
                 ) : null}
                 {(c.occupation || '').trim() ? (
                   <div>
-                    <span className="text-gray-500">Occupation: </span>
+                    <span className="text-gray-600">Occupation: </span>
                     <span>{(c.occupation || '').trim()}</span>
                   </div>
                 ) : null}
                 <div>
-                  <span className="text-gray-500">Time: </span>
+                  <span className="text-gray-600">Time: </span>
                   <span>{formatInspectionSignedAt(c.signed_at)}</span>
                 </div>
                 <div>
-                  <span className="text-gray-500">Location: </span>
+                  <span className="text-gray-600">Location: </span>
                   <span>{(c.location_label || '').trim() || 'Not captured'}</span>
                 </div>
               </div>
@@ -385,7 +385,7 @@ function InspectionSignaturesGallery({
         ))}
         {additionalSigned.map((r) => (
           <div key={r.id} className="rounded-lg border border-gray-100 bg-gray-50/80 p-3">
-            <div className="text-xs font-medium text-gray-500 mb-2">Additional signer</div>
+            <div className="text-sm font-semibold text-gray-600 mb-2">Additional signer</div>
             <div className="flex flex-wrap gap-4 items-start">
               <a
                 href={withFileAccessToken(`/files/${encodeURIComponent(r.signature_file_object_id!)}/thumbnail?w=640`)}
@@ -401,15 +401,15 @@ function InspectionSignaturesGallery({
               </a>
               <div className="text-sm text-gray-800 space-y-1 min-w-0 flex-1">
                 <div>
-                  <span className="text-gray-500">Signed by: </span>
-                  <span className="font-medium">{(r.signer_display_name_snapshot || '').trim() || '—'}</span>
+                  <span className="text-gray-600">Signed by: </span>
+                  <span className="font-semibold">{(r.signer_display_name_snapshot || '').trim() || '—'}</span>
                 </div>
                 <div>
-                  <span className="text-gray-500">Time: </span>
+                  <span className="text-gray-600">Time: </span>
                   <span>{formatInspectionSignedAt(r.signed_at)}</span>
                 </div>
                 <div>
-                  <span className="text-gray-500">Location: </span>
+                  <span className="text-gray-600">Location: </span>
                   <span>{(r.signature_location_label || '').trim() || 'Not captured'}</span>
                 </div>
               </div>
@@ -573,10 +573,10 @@ function YnCommentPhotoDropzone({
           dragActive ? 'border-brand-red bg-red-50/40' : 'border-gray-300 bg-gray-50/30 hover:border-gray-400'
         } disabled:opacity-50 disabled:cursor-not-allowed`}
       >
-        <p className="text-sm font-medium text-gray-800">
+        <p className="text-sm font-semibold text-gray-800">
           {uploading ? 'Uploading…' : 'Drag photos here or click to choose'}
         </p>
-        <p className="text-xs text-gray-500 mt-2">
+        <p className="text-sm text-gray-600 mt-2">
           Drag-and-drop images here, choose files, or paste with Ctrl+V (click this area first).
         </p>
       </button>
@@ -1249,28 +1249,28 @@ export default function ProjectSafetyTab({
     if (item.kind === 'subheading') {
       return (
         <div key={item.id} className="px-4 py-2.5 bg-slate-100/90 border-y border-slate-200/80">
-          <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wide">{item.label}</h4>
+          <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wide">{item.label}</h4>
         </div>
       );
     }
     if (item.kind === 'hint') {
       return (
         <div key={item.id} className="p-4 bg-amber-50/60 border-b border-amber-100/80">
-          <p className="text-xs text-gray-700 leading-relaxed">{item.text}</p>
+          <p className="text-sm text-gray-700 leading-relaxed">{item.text}</p>
         </div>
       );
     }
     if (item.kind === 'text') {
       return (
         <div key={item.key} className={`p-4 ${rowBg}`}>
-          <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">{item.label}</label>
+          <label className="block text-sm font-semibold text-gray-600 uppercase tracking-wide mb-1">{item.label}</label>
           <input
             type="text"
             value={getTextValue(formPayload, item.key)}
             onChange={(e) => setTextField(item.key, e.target.value)}
             disabled={!w}
             placeholder={item.placeholder}
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm disabled:bg-gray-50 disabled:text-gray-500"
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm disabled:bg-gray-50 disabled:text-gray-600"
           />
         </div>
       );
@@ -1278,14 +1278,14 @@ export default function ProjectSafetyTab({
     if (item.kind === 'textarea') {
       return (
         <div key={item.key} className={`p-4 ${rowBg}`}>
-          <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">{item.label}</label>
+          <label className="block text-sm font-semibold text-gray-600 uppercase tracking-wide mb-1">{item.label}</label>
           <textarea
             value={getTextValue(formPayload, item.key)}
             onChange={(e) => setTextField(item.key, e.target.value)}
             disabled={!w}
             placeholder={item.placeholder}
             rows={3}
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm resize-y disabled:bg-gray-50 disabled:text-gray-500"
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm resize-y disabled:bg-gray-50 disabled:text-gray-600"
           />
         </div>
       );
@@ -1294,7 +1294,7 @@ export default function ProjectSafetyTab({
       const selected = getCheckboxValues(formPayload, item.key);
       return (
         <div key={item.key} className={`p-4 ${rowBg}`}>
-          <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">{item.label}</div>
+          <div className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">{item.label}</div>
           <div className="flex flex-wrap gap-3">
             {item.options.map((opt) => (
               <label key={opt} className="inline-flex items-center gap-2 text-sm text-gray-800 cursor-pointer">
@@ -1328,7 +1328,7 @@ export default function ProjectSafetyTab({
       <div key={item.key} className={`p-4 transition-colors ${rowBg}`}>
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex-1 min-w-0">
-            <div className="font-medium text-gray-900 text-sm">{item.label}</div>
+            <div className="font-semibold text-gray-900 text-sm">{item.label}</div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {YNA_OPTIONS.map((opt) => (
@@ -1389,7 +1389,7 @@ export default function ProjectSafetyTab({
                 uploading={uploadingImages}
                 onFiles={(files) => void processYnCommentImages(item.key, files)}
               />
-              <p className="text-xs text-gray-500 text-center">
+              <p className="text-sm text-gray-600 text-center">
                 {yn.comment_image_ids.length}/{MAX_YN_COMMENT_IMAGES} photos
               </p>
             </div>
@@ -1436,18 +1436,18 @@ export default function ProjectSafetyTab({
               onClick={() => setShowCreateModal(true)}
               className="w-full border-2 border-dashed border-gray-300 rounded-t-xl p-2.5 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center min-h-[60px] min-w-0"
             >
-              <span className="font-medium text-xs text-gray-700">+ New Inspection</span>
+              <span className="font-semibold text-sm text-gray-700">+ New Inspection</span>
             </button>
           )}
           {listLoading ? (
             <div
-              className={`p-8 text-center text-gray-500 text-sm ${canWrite ? 'border-t border-gray-100' : ''}`}
+              className={`p-8 text-center text-gray-600 text-sm ${canWrite ? 'border-t border-gray-100' : ''}`}
             >
               Loading…
             </div>
           ) : list.length === 0 ? (
             <div
-              className={`p-8 text-center text-gray-500 text-sm ${canWrite ? 'border-t border-gray-100' : ''}`}
+              className={`p-8 text-center text-gray-600 text-sm ${canWrite ? 'border-t border-gray-100' : ''}`}
             >
               No inspections yet. Create one to get started.
             </div>
@@ -1471,7 +1471,7 @@ export default function ProjectSafetyTab({
                       className="w-full text-left px-4 py-3 hover:bg-gray-50 flex items-center justify-between gap-3"
                     >
                       <div className="min-w-0 text-left">
-                        <div className="text-sm font-medium text-gray-900">
+                        <div className="text-sm font-semibold text-gray-900">
                           {row.inspection_date
                             ? new Date(row.inspection_date).toLocaleString(undefined, {
                                 dateStyle: 'medium',
@@ -1479,10 +1479,10 @@ export default function ProjectSafetyTab({
                               })
                             : '—'}
                         </div>
-                        <div className="text-[11px] text-gray-500 truncate mt-0.5">{tmpl}</div>
+                        <div className="text-xs text-gray-600 truncate mt-0.5">{tmpl}</div>
                       </div>
                       <span
-                        className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${
+                        className={`text-xs font-semibold px-2 py-0.5 rounded-full shrink-0 ${
                           st === 'finalized'
                             ? 'bg-green-100 text-green-800'
                             : st === 'pending_signatures'
@@ -1566,7 +1566,7 @@ export default function ProjectSafetyTab({
                 setSelectedId(null);
               })();
             }}
-            className="text-sm text-brand-red hover:underline font-medium"
+            className="text-sm text-brand-red hover:underline font-semibold"
           >
             ← All inspections
           </button>
@@ -1574,31 +1574,31 @@ export default function ProjectSafetyTab({
       )}
 
       {detailLoading && !detail ? (
-        <div className="rounded-xl border bg-white p-8 text-center text-gray-500">Loading…</div>
+        <div className="rounded-xl border bg-white p-8 text-center text-gray-600">Loading…</div>
       ) : (
         <>
           <div className="rounded-xl border border-gray-200 bg-white p-4 flex flex-wrap items-center justify-between gap-4">
             <div className="min-w-0 flex-1">
-              <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Inspection</div>
+              <div className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-1">Inspection</div>
               <h2 className="text-base sm:text-lg font-semibold text-gray-900 truncate" title={inspectionDisplayName}>
                 {inspectionDisplayName || 'Safety inspection'}
               </h2>
             </div>
             {detail && (
               <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
-                <span className="text-xs text-gray-500">Status</span>
+                <span className="text-sm text-gray-600">Status</span>
                 {detail.status === 'pending_signatures' ? (
                   <button
                     type="button"
                     onClick={() => setSignersStatusModalOpen(true)}
                     title="View who was asked to sign and who is still pending"
-                    className="text-xs font-semibold px-2.5 py-1 rounded-full bg-sky-100 text-sky-900 border border-sky-200/80 shadow-sm hover:bg-sky-200/90 hover:border-sky-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/50 focus-visible:ring-offset-1 transition-colors"
+                    className="text-sm font-semibold px-2.5 py-1 rounded-full bg-sky-100 text-sky-900 border border-sky-200/80 shadow-sm hover:bg-sky-200/90 hover:border-sky-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/50 focus-visible:ring-offset-1 transition-colors"
                   >
                     Awaiting signatures
                   </button>
                 ) : (
                   <span
-                    className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+                    className={`text-sm font-semibold px-2.5 py-1 rounded-full ${
                       detail.status === 'finalized' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-900'
                     }`}
                   >
@@ -1615,7 +1615,7 @@ export default function ProjectSafetyTab({
                         ? 'Rebuilds the PDF from the saved inspection and adds it back to Project files'
                         : undefined
                     }
-                    className="text-xs font-medium px-2.5 py-1 rounded-lg border border-gray-300 text-gray-800 bg-white hover:bg-gray-50 disabled:opacity-50"
+                    className="text-sm font-semibold px-2.5 py-1 rounded-lg border border-gray-300 text-gray-800 bg-white hover:bg-gray-50 disabled:opacity-50"
                   >
                     {pdfLinkOpening
                       ? inspectionPdfFileObjectId
@@ -1682,7 +1682,7 @@ export default function ProjectSafetyTab({
               <div key={section.id} className="rounded-xl border border-gray-200 bg-white overflow-visible">
                 <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/80">
                   <h3 className="text-sm font-semibold text-gray-800">{section.title}</h3>
-                  {section.subtitle && <p className="text-xs text-gray-500 mt-1">{section.subtitle}</p>}
+                  {section.subtitle && <p className="text-sm text-gray-600 mt-1">{section.subtitle}</p>}
                 </div>
                 <div className="divide-y divide-gray-100">
                   {section.items.map((item, idx) => renderItem(item, idx, true))}
@@ -1711,7 +1711,7 @@ export default function ProjectSafetyTab({
                   type="button"
                   disabled={finalizeMutation.isPending || saveMutation.isPending}
                   onClick={() => setFormPayload((p) => appendCustomSignatureSlot(p))}
-                  className="px-5 py-2.5 border border-gray-300 text-gray-800 bg-white rounded-lg font-medium text-sm hover:bg-gray-50 disabled:opacity-50"
+                  className="px-5 py-2.5 border border-gray-300 text-gray-800 bg-white rounded-lg font-semibold text-sm hover:bg-gray-50 disabled:opacity-50"
                 >
                   Add custom signature
                 </button>
@@ -1724,7 +1724,7 @@ export default function ProjectSafetyTab({
                   setExtraSignerQuery('');
                   setFinalizeModalOpen(true);
                 }}
-                className="px-5 py-2.5 border border-green-600 text-green-800 bg-green-50 rounded-lg font-medium text-sm hover:bg-green-100 disabled:opacity-50"
+                className="px-5 py-2.5 border border-green-600 text-green-800 bg-green-50 rounded-lg font-semibold text-sm hover:bg-green-100 disabled:opacity-50"
               >
                 {finalizeMutation.isPending ? 'Finalizing…' : saveMutation.isPending ? 'Saving…' : 'Finalize inspection'}
               </button>
@@ -1733,7 +1733,7 @@ export default function ProjectSafetyTab({
 
           {detail?.status === 'pending_signatures' && myPendingSignRequest && (
             <div className="rounded-xl border border-sky-200 bg-sky-50/80 px-4 py-4 text-sm text-sky-900 space-y-3">
-              <p className="text-xs font-medium text-sky-950">Your signature is requested</p>
+              <p className="text-sm font-semibold text-sky-950">Your signature is requested</p>
               <SafetySignaturePad
                 projectId={projectId}
                 disabled={completeSignatureMutation.isPending}
@@ -1808,18 +1808,18 @@ export default function ProjectSafetyTab({
                             }}
                           />
                           <span className="min-w-0">
-                            <span className="font-medium text-gray-900">{u.name}</span>
-                            <span className="text-xs text-gray-500 block truncate">{u.username}</span>
+                            <span className="font-semibold text-gray-900">{u.name}</span>
+                            <span className="text-sm text-gray-600 block truncate">{u.username}</span>
                           </span>
                         </label>
                       );
                     })}
                     {userPickOptions.length === 0 && (
-                      <div className="px-3 py-4 text-xs text-gray-500 text-center">Type to search users.</div>
+                      <div className="px-3 py-4 text-sm text-gray-600 text-center">Type to search users.</div>
                     )}
                   </div>
                   {extraSignerIds.length > 0 && (
-                    <p className="mt-2 text-xs text-gray-600">{extraSignerIds.length} additional signer(s) selected.</p>
+                    <p className="mt-2 text-sm text-gray-600">{extraSignerIds.length} additional signer(s) selected.</p>
                   )}
                 </SafetyFormModalLayout>
               </SafetyModalOverlayBackdrop>

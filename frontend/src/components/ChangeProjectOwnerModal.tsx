@@ -254,8 +254,8 @@ export default function ChangeProjectOwnerModal({
               'rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950',
             )}
           >
-            <p className="font-medium">This will:</p>
-            <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs">
+            <p className="font-semibold">This will:</p>
+            <ul className="mt-1 list-disc space-y-0.5 pl-4 text-sm">
               <li>Clear the current site and contact (they belong to the old customer)</li>
               <li>Move this record&apos;s folders and files to the new customer</li>
               {!isBidding ? (
@@ -266,7 +266,7 @@ export default function ChangeProjectOwnerModal({
           </div>
 
           <p className={uiTypography.helper}>
-            Current owner: <span className="font-medium text-gray-900">{currentLabel}</span>
+            Current owner: <span className="font-semibold text-gray-900">{currentLabel}</span>
           </p>
 
           <AppClientSelect

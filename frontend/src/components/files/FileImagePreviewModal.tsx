@@ -109,7 +109,7 @@ export default function FileImagePreviewModal({
   const current = items[index] ?? null;
   const showNav = items.length > 1;
   const counter = showNav ? (
-    <span className="ml-2 text-xs font-normal tabular-nums text-gray-500">
+    <span className="ml-2 text-sm font-normal tabular-nums text-gray-600">
       {index + 1} / {items.length}
     </span>
   ) : null;
@@ -165,7 +165,7 @@ export default function FileImagePreviewModal({
                   <button
                     type="button"
                     onClick={() => void downloadCurrent()}
-                    className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
+                    className="rounded border px-2 py-1 text-sm hover:bg-gray-50"
                     title="Download"
                   >
                     ⬇️
@@ -177,7 +177,7 @@ export default function FileImagePreviewModal({
                     href={current.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
+                    className="rounded border px-2 py-1 text-sm hover:bg-gray-50"
                     title="Open in new tab"
                   >
                     🔗

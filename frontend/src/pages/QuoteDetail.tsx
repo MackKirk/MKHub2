@@ -203,7 +203,7 @@ function QuoteDetailHero({
                   <button
                     type="button"
                     onClick={onChangeCover}
-                    className="absolute inset-0 flex items-center justify-center bg-black/40 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100"
+                    className="absolute inset-0 flex items-center justify-center bg-black/40 text-sm text-white opacity-0 transition-opacity group-hover:opacity-100"
                   >
                     Change
                   </button>
@@ -221,15 +221,15 @@ function QuoteDetailHero({
               <div className={uiCx('grid grid-cols-3', 'gap-x-2.5 gap-y-1')}>
                 <div className="min-w-0 space-y-1">
                   <HeroField label="Code">
-                    <div className="text-xs font-semibold text-gray-900">
+                    <div className="text-sm font-semibold text-gray-900">
                       {quote.code || quote.order_number || '—'}
                     </div>
                   </HeroField>
                   <HeroField label="Created">
-                    <div className="text-xs font-semibold text-gray-900">{created || '—'}</div>
+                    <div className="text-sm font-semibold text-gray-900">{created || '—'}</div>
                   </HeroField>
                   <HeroField label="Updated">
-                    <div className="text-xs font-semibold text-gray-900">{updated || '—'}</div>
+                    <div className="text-sm font-semibold text-gray-900">{updated || '—'}</div>
                   </HeroField>
                 </div>
 
@@ -238,22 +238,22 @@ function QuoteDetailHero({
                     {quote.client_id ? (
                       <Link
                         to={`/customers/${encodeURIComponent(String(quote.client_id))}`}
-                        className="block break-words text-xs font-semibold text-brand-red hover:underline"
+                        className="block break-words text-sm font-semibold text-brand-red hover:underline"
                       >
                         {client?.display_name || client?.name || 'Open record'}
                       </Link>
                     ) : (
-                      <div className="text-xs font-semibold text-gray-400">—</div>
+                      <div className="text-sm font-semibold text-gray-600">—</div>
                     )}
                   </HeroField>
                   <HeroField label="Estimated Value">
-                    <div className="text-xs font-semibold text-brand-red">
+                    <div className="text-sm font-semibold text-brand-red">
                       {formatQuoteValueDisplay(estimatedValue)}
                     </div>
                   </HeroField>
                   {outcomeAt ? (
                     <HeroField label="Outcome date">
-                      <div className="text-xs font-semibold text-gray-900">{outcomeAt}</div>
+                      <div className="text-sm font-semibold text-gray-900">{outcomeAt}</div>
                     </HeroField>
                   ) : null}
                 </div>
@@ -264,23 +264,23 @@ function QuoteDetailHero({
                       <div className="flex items-center gap-2">
                         <AppUserAvatar user={estimatorUser} size="sm" showTooltip />
                         <div className="min-w-0 flex-1">
-                          <div className="truncate text-xs font-semibold text-gray-900">
+                          <div className="truncate text-sm font-semibold text-gray-900">
                             {getUserDisplayName(estimatorUser)}
                           </div>
                         </div>
                       </div>
                     ) : (
-                      <div className="text-xs text-gray-400">—</div>
+                      <div className="text-sm text-gray-600">—</div>
                     )}
                   </HeroField>
                   {lostReasonLabel ? (
                     <HeroField label="Lost reason">
-                      <div className="text-xs font-semibold text-gray-900">{lostReasonLabel}</div>
+                      <div className="text-sm font-semibold text-gray-900">{lostReasonLabel}</div>
                     </HeroField>
                   ) : null}
                   {quote.outcome_note ? (
                     <HeroField label="Outcome note">
-                      <div className="text-xs text-gray-700 line-clamp-3">{quote.outcome_note}</div>
+                      <div className="text-sm text-gray-700 line-clamp-3">{quote.outcome_note}</div>
                     </HeroField>
                   ) : null}
                 </div>
@@ -340,12 +340,12 @@ function QuoteDetailHero({
               {estimatorUser ? (
                 <div className="flex items-center gap-2">
                   <AppUserAvatar user={estimatorUser} size="sm" showTooltip />
-                  <div className="text-xs font-semibold text-gray-700">
+                  <div className="text-sm font-semibold text-gray-700">
                     {getUserDisplayName(estimatorUser)}
                   </div>
                 </div>
               ) : (
-                <div className="text-xs text-gray-400">—</div>
+                <div className="text-sm text-gray-600">—</div>
               )}
               {hasEditPermission ? (
                 <>

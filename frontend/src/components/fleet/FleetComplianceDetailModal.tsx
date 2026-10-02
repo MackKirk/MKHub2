@@ -43,7 +43,7 @@ function ReadOnlyDetailField({ label, value }: { label: string; value: ReactNode
   return (
     <div className="space-y-1">
       <div className={uiTypography.controlLabel}>{label}</div>
-      <div className={uiCx(uiTypography.body, 'break-words font-medium text-gray-900')}>{display}</div>
+      <div className={uiCx(uiTypography.body, 'break-words font-semibold text-gray-900')}>{display}</div>
     </div>
   );
 }
@@ -91,7 +91,7 @@ function AttachmentThumb({
             }}
           />
         ) : (
-          <span className="flex h-full w-full flex-col items-center justify-center bg-gray-100 p-1 text-center text-[10px] font-medium text-gray-600">
+          <span className="flex h-full w-full flex-col items-center justify-center bg-gray-100 p-1 text-center text-[10px] font-semibold text-gray-600">
             Doc
           </span>
         )}
@@ -230,7 +230,7 @@ export default function FleetComplianceDetailModal({
           <div className="space-y-1">
             <div className={uiTypography.controlLabel}>Attachments</div>
             {documentIds.length === 0 ? (
-              <div className={uiCx(uiTypography.body, 'font-medium text-gray-900')}>{EM_DASH}</div>
+              <div className={uiCx(uiTypography.body, 'font-semibold text-gray-900')}>{EM_DASH}</div>
             ) : (
               <div className="flex flex-wrap gap-2 p-1 pt-0.5">
                 {documentIds.map((fid) => (

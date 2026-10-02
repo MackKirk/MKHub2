@@ -684,7 +684,7 @@ export function WorkOrderFilesTab({ workOrderId, canEdit = true }: Props) {
                       >
                         <span className="flex items-center gap-2">
                           <span className="truncate">{cat.label}</span>
-                          <span className={uiCx(uiTypography.helper, 'ml-auto shrink-0 text-gray-500')}>
+                          <span className={uiCx(uiTypography.helper, 'ml-auto shrink-0 text-gray-600')}>
                             ({filesByCategory[cat.id]?.length ?? 0})
                           </span>
                         </span>
@@ -705,7 +705,7 @@ export function WorkOrderFilesTab({ workOrderId, canEdit = true }: Props) {
                     >
                       <span className="flex items-center gap-2">
                         <span className="truncate">{WO_ALL_FILES_CATEGORY.label}</span>
-                        <span className={uiCx(uiTypography.helper, 'ml-auto shrink-0 text-gray-500')}>
+                        <span className={uiCx(uiTypography.helper, 'ml-auto shrink-0 text-gray-600')}>
                           ({filesByCategory[WO_ALL_FILES_CATEGORY.id]?.length ?? 0})
                         </span>
                       </span>
@@ -736,12 +736,12 @@ export function WorkOrderFilesTab({ workOrderId, canEdit = true }: Props) {
                     <AppButton type="button" variant="ghost" size="sm" onClick={openFilesHome}>
                       ← Files Home
                     </AppButton>
-                    <span className={uiCx(uiTypography.helper, 'hidden sm:inline text-gray-500')}>
+                    <span className={uiCx(uiTypography.helper, 'hidden sm:inline text-gray-600')}>
                       Files Home
                       {selectedCategory !== 'all' ? (
                         <>
                           {' / '}
-                          <span className="font-medium text-gray-800">{selectedCategoryLabel}</span>
+                          <span className="font-semibold text-gray-800">{selectedCategoryLabel}</span>
                         </>
                       ) : null}
                     </span>
@@ -759,7 +759,7 @@ export function WorkOrderFilesTab({ workOrderId, canEdit = true }: Props) {
                       </div>
                       <p className={uiCx(uiTypography.helper, 'shrink-0 font-semibold text-gray-800')}>
                         {selectedCategoryLabel}
-                        <span className="ml-1 font-normal text-gray-500">({currentFiles.length})</span>
+                        <span className="ml-1 font-normal text-gray-600">({currentFiles.length})</span>
                       </p>
                     </div>
                     <div className={uiCx(uiLayout.actionsRow, 'shrink-0 flex-wrap gap-2')}>
@@ -833,7 +833,7 @@ export function WorkOrderFilesTab({ workOrderId, canEdit = true }: Props) {
                                         >
                                           <div />
                                           <div className="flex justify-center">
-                                            <div className={uiCx('flex h-10 w-8 items-center justify-center text-[10px] font-extrabold text-white', uiRadius.control, icon.color)}>
+                                            <div className={uiCx('flex h-10 w-8 items-center justify-center text-xs font-extrabold text-white', uiRadius.control, icon.color)}>
                                               {icon.label}
                                             </div>
                                           </div>
@@ -944,7 +944,7 @@ export function WorkOrderFilesTab({ workOrderId, canEdit = true }: Props) {
                                     type="button"
                                     onClick={() => void handleFilePreview(f)}
                                     className={uiCx(
-                                      'flex h-10 w-8 items-center justify-center text-[10px] font-extrabold text-white hover:opacity-90',
+                                      'flex h-10 w-8 items-center justify-center text-xs font-extrabold text-white hover:opacity-90',
                                       uiRadius.control,
                                       icon.color,
                                     )}

@@ -23,7 +23,7 @@ function ReadOnlyField({ label, value }: { label: ReactNode; value?: ReactNode }
   return (
     <div className="space-y-1">
       <div className={uiTypography.controlLabel}>{label}</div>
-      <div className={uiCx(uiTypography.helper, 'break-words font-medium text-gray-900')}>{display}</div>
+      <div className={uiCx(uiTypography.helper, 'break-words font-semibold text-gray-900')}>{display}</div>
     </div>
   );
 }

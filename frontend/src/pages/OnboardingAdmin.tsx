@@ -667,7 +667,7 @@ export default function OnboardingAdmin() {
           />
           {usersPickerLoading ? <p className={uiTypography.helper}>Loading users…</p> : null}
           {!usersPickerLoading && userPickerList.length === 0 ? (
-            <p className="text-xs text-amber-800">No users found.</p>
+            <p className="text-sm text-amber-800">No users found.</p>
           ) : null}
         </div>
       </AppFormModal>

@@ -77,24 +77,24 @@ export function InsightsEngagementByPriority({
                       className="inline-block w-2.5 h-2.5 rounded-sm flex-shrink-0"
                       style={{ background: color }}
                     />
-                    <span className="text-xs font-medium text-gray-900 truncate">{formatPriorityLabel(id)}</span>
+                    <span className="text-sm font-semibold text-gray-900 truncate">{formatPriorityLabel(id)}</span>
                   </div>
-                  <div className="flex items-center gap-2 text-xs tabular-nums shrink-0">
-                    <span className="text-gray-700 font-medium">{value.toLocaleString()}</span>
-                    <span className="text-[10px] text-gray-400">{pct.toFixed(0)}%</span>
+                  <div className="flex items-center gap-2 text-sm tabular-nums shrink-0">
+                    <span className="text-gray-700 font-semibold">{value.toLocaleString()}</span>
+                    <span className="text-xs text-gray-600">{pct.toFixed(0)}%</span>
                   </div>
                 </div>
                 <div className="min-w-0">
                   <HorizontalBar value={value} max={max} color={color} height={8} ariaLabel={`${id} ${value}`} />
                 </div>
-                <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[11px] text-gray-500 leading-snug">
+                <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-xs text-gray-600 leading-snug">
                   <span>{bucket.posts} posts</span>
                   <span className="text-gray-300">·</span>
                   <span>{bucket.views} views</span>
                   <span className="text-gray-300">·</span>
                   <span>{bucket.likes + bucket.comments} engagement</span>
                   <span className="text-gray-300">·</span>
-                  <span className="text-gray-500">avg read {bucket.read_rate_pct.toFixed(0)}%</span>
+                  <span className="text-gray-600">avg read {bucket.read_rate_pct.toFixed(0)}%</span>
                 </div>
               </li>
             );

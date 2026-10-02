@@ -85,8 +85,8 @@ export default function OffboardingWorkTab({ detail }: { detail: OffboardingDeta
                     className={uiCx(uiLayout.actionsRow, 'flex-wrap items-center justify-between gap-2')}
                   >
                     <span className={uiTypography.body}>
-                      <span className="font-medium text-gray-900">{p.project_name}</span>
-                      <span className="text-gray-500"> — {p.role}</span>
+                      <span className="font-semibold text-gray-900">{p.project_name}</span>
+                      <span className="text-gray-600"> — {p.role}</span>
                     </span>
                     <Link
                       className={uiCx(uiTypography.helper, 'text-brand-red hover:underline')}

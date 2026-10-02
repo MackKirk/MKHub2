@@ -210,8 +210,8 @@ const estimateSectionShell = uiCx(uiRadius.card, uiBorders.subtle, uiColors.surf
 const estimateSectionHeader = 'flex items-center gap-2 border-b border-gray-100 px-4 py-3';
 const estimateSummaryInnerCard = 'rounded-lg border border-gray-200 bg-white p-3';
 const estimateSummaryRow = 'flex items-center justify-between rounded px-1 py-1 -mx-1 hover:bg-gray-50';
-const estimateSummaryLabel = 'text-xs';
-const estimateSummaryLabelBold = 'text-xs font-semibold';
+const estimateSummaryLabel = 'text-sm';
+const estimateSummaryLabelBold = 'text-sm font-semibold';
 
 /** Dense line-item table input chrome for designSystem path (ProposalInlineInput pattern). */
 function EstimateInlineInput({
@@ -221,7 +221,7 @@ function EstimateInlineInput({
   return (
     <input
       className={uiCx(
-        'box-border bg-white text-xs text-gray-900 outline-none transition-colors placeholder:text-gray-400 focus:border-gray-400 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-gray-400/35 disabled:cursor-not-allowed disabled:bg-gray-100',
+        'box-border bg-white text-sm text-gray-900 outline-none transition-colors placeholder:text-gray-400 focus:border-gray-400 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-gray-400/35 disabled:cursor-not-allowed disabled:bg-gray-100',
         uiSpacing.controlX,
         ESTIMATE_INLINE_CONTROL_H,
         'py-0',
@@ -355,7 +355,7 @@ function EstimateProductListRow({
               {item.added_via_report_id && (
                 <div className="relative group/alert inline-flex shrink-0 items-center">
                   <EstimateChangesAlertIcon className="h-4 w-4" />
-                  <div className="pointer-events-none absolute bottom-full left-0 z-50 mb-2 whitespace-nowrap rounded-lg bg-gray-900 px-3 py-2 text-xs text-white opacity-0 shadow-lg transition-opacity group-hover/alert:opacity-100">
+                  <div className="pointer-events-none absolute bottom-full left-0 z-50 mb-2 whitespace-nowrap rounded-lg bg-gray-900 px-3 py-2 text-sm text-white opacity-0 shadow-lg transition-opacity group-hover/alert:opacity-100">
                     Added via Report (Estimate Changes) on{' '}
                     {item.added_via_report_date
                       ? new Date(item.added_via_report_date).toLocaleDateString()
@@ -368,18 +368,18 @@ function EstimateProductListRow({
                 <button
                   type="button"
                   onClick={onViewProduct}
-                  className="min-w-0 flex-1 truncate text-left text-xs font-medium text-gray-900 hover:text-brand-red"
+                  className="min-w-0 flex-1 truncate text-left text-sm font-semibold text-gray-900 hover:text-brand-red"
                 >
                   {item.name}
                 </button>
               ) : (
-                <span className="min-w-0 flex-1 truncate text-xs text-gray-900">{item.name}</span>
+                <span className="min-w-0 flex-1 truncate text-sm text-gray-900">{item.name}</span>
               )}
               {canEdit && (
                 <button
                   type="button"
                   onClick={onReplaceProduct}
-                  className="shrink-0 p-1 text-gray-500 hover:text-gray-700"
+                  className="shrink-0 p-1 text-gray-600 hover:text-gray-700"
                   title="Browse Products by Supplier"
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -405,7 +405,7 @@ function EstimateProductListRow({
               }}
             />
           ) : (
-            <div className="w-full truncate px-2 text-left text-xs text-gray-900">
+            <div className="w-full truncate px-2 text-left text-sm text-gray-900">
               ${formatAccounting(item.unit_price ?? 0)}
             </div>
           )}
@@ -418,7 +418,7 @@ function EstimateProductListRow({
               min={1}
               step={1}
               className={uiCx(
-                'min-w-0 flex-1 appearance-none border-0 bg-transparent px-2 text-xs text-gray-900 [-moz-appearance:textfield] focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none',
+                'min-w-0 flex-1 appearance-none border-0 bg-transparent px-2 text-sm text-gray-900 [-moz-appearance:textfield] focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none',
                 !canEdit && 'cursor-not-allowed bg-gray-100',
                 ESTIMATE_INLINE_CONTROL_H,
                 'py-0',
@@ -456,7 +456,7 @@ function EstimateProductListRow({
         </EstimateProductListControlSpacer>
 
         <EstimateProductListControlSpacer className={ESTIMATE_PRODUCT_TOTAL_FIELD}>
-          <div className="w-full overflow-hidden whitespace-nowrap text-right text-xs font-medium text-gray-700">
+          <div className="w-full overflow-hidden whitespace-nowrap text-right text-sm font-semibold text-gray-700">
             ${formatAccounting(lineTotal)}
           </div>
         </EstimateProductListControlSpacer>
@@ -498,7 +498,7 @@ function EstimateProductListRow({
       </div>
 
       {(unitInfo || item.supplier_name) ? (
-        <div className="px-2 pb-0.5 pt-0.5 text-xs leading-tight text-gray-500">
+        <div className="px-2 pb-0.5 pt-0.5 text-sm leading-tight text-gray-600">
           {unitInfo ? <span>{unitInfo}</span> : null}
           {unitInfo && item.supplier_name ? <span className="mx-2 text-gray-300">·</span> : null}
           {item.supplier_name ? <span>Supplier: {item.supplier_name}</span> : null}
@@ -573,7 +573,7 @@ function EstimateLabourStyleListRow({
               {item.added_via_report_id && (
                 <div className="relative group/alert inline-flex shrink-0 items-center">
                   <EstimateChangesAlertIcon className="h-4 w-4" />
-                  <div className="pointer-events-none absolute bottom-full left-0 z-50 mb-2 whitespace-nowrap rounded-lg bg-gray-900 px-3 py-2 text-xs text-white opacity-0 shadow-lg transition-opacity group-hover/alert:opacity-100">
+                  <div className="pointer-events-none absolute bottom-full left-0 z-50 mb-2 whitespace-nowrap rounded-lg bg-gray-900 px-3 py-2 text-sm text-white opacity-0 shadow-lg transition-opacity group-hover/alert:opacity-100">
                     Added via Report (Estimate Changes) on{' '}
                     {item.added_via_report_date
                       ? new Date(item.added_via_report_date).toLocaleDateString()
@@ -582,7 +582,7 @@ function EstimateLabourStyleListRow({
                   </div>
                 </div>
               )}
-              <span className="min-w-0 flex-1 truncate text-xs text-gray-900">{item.description || item.name}</span>
+              <span className="min-w-0 flex-1 truncate text-sm text-gray-900">{item.description || item.name}</span>
             </div>
           </EstimateProductListControlSpacer>
         </div>
@@ -605,7 +605,7 @@ function EstimateLabourStyleListRow({
                     onUpdate({ labour_journey: v === '' ? 0 : Number(v) || 0 });
                   }}
                 />
-                <span className="shrink-0 text-xs text-gray-500">{item.unit || ''}</span>
+                <span className="shrink-0 text-sm text-gray-600">{item.unit || ''}</span>
               </div>
             ) : (
               <div className="flex w-full items-center gap-1">
@@ -626,8 +626,8 @@ function EstimateLabourStyleListRow({
                     });
                   }}
                 />
-                <span className="shrink-0 text-xs text-gray-500">{item.labour_journey_type}</span>
-                <span className="text-xs text-gray-400">×</span>
+                <span className="shrink-0 text-sm text-gray-600">{item.labour_journey_type}</span>
+                <span className="text-sm text-gray-600">×</span>
                 <EstimateInlineInput
                   type="number"
                   className="w-12"
@@ -652,7 +652,7 @@ function EstimateLabourStyleListRow({
                     onUpdate(patch);
                   }}
                 />
-                <span className="shrink-0 text-xs text-gray-500">men</span>
+                <span className="shrink-0 text-sm text-gray-600">men</span>
               </div>
             )
           ) : (
@@ -663,7 +663,7 @@ function EstimateLabourStyleListRow({
                   min={0}
                   step={isShopOrMisc ? 1 : 0.01}
                   className={uiCx(
-                    'min-w-0 flex-1 appearance-none border-0 bg-transparent px-2 text-xs text-gray-900 [-moz-appearance:textfield] focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none',
+                    'min-w-0 flex-1 appearance-none border-0 bg-transparent px-2 text-sm text-gray-900 [-moz-appearance:textfield] focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none',
                     !canEdit && 'cursor-not-allowed bg-gray-100',
                     ESTIMATE_INLINE_CONTROL_H,
                     'py-0',
@@ -678,7 +678,7 @@ function EstimateLabourStyleListRow({
                   }}
                 />
               </div>
-              <span className="shrink-0 text-xs text-gray-500">{item.unit || ''}</span>
+              <span className="shrink-0 text-sm text-gray-600">{item.unit || ''}</span>
             </div>
           )}
         </EstimateProductListControlSpacer>
@@ -696,14 +696,14 @@ function EstimateLabourStyleListRow({
               }}
             />
           ) : (
-            <div className="w-full truncate px-2 text-left text-xs text-gray-900">
+            <div className="w-full truncate px-2 text-left text-sm text-gray-900">
               ${formatAccounting(item.unit_price ?? 0)}
             </div>
           )}
         </EstimateProductListControlSpacer>
 
         <EstimateProductListControlSpacer className={ESTIMATE_PRODUCT_TOTAL_FIELD}>
-          <div className="w-full overflow-hidden whitespace-nowrap text-right text-xs font-medium text-gray-700">
+          <div className="w-full overflow-hidden whitespace-nowrap text-right text-sm font-semibold text-gray-700">
             ${formatAccounting(lineTotal)}
           </div>
         </EstimateProductListControlSpacer>
@@ -745,7 +745,7 @@ function EstimateLabourStyleListRow({
       </div>
 
       {richComposition ? (
-        <div className="px-2 pb-0.5 pt-0.5 text-xs leading-tight text-gray-500" title={richComposition}>
+        <div className="px-2 pb-0.5 pt-0.5 text-sm leading-tight text-gray-600" title={richComposition}>
           {richComposition}
         </div>
       ) : null}
@@ -1611,12 +1611,12 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
   
   const estimateThClass = designSystem ? uiCx('p-2 text-left', uiTypography.controlLabel) : 'p-2 text-left';
   const estimateThCenterClass = designSystem ? uiCx('p-2 text-center', uiTypography.controlLabel) : 'p-2 text-center';
-  const estimateTableClass = designSystem ? 'w-full text-xs' : 'w-full text-sm';
+  const estimateTableClass = designSystem ? 'w-full text-sm' : 'w-full text-sm';
   const estimateTfootClass = designSystem ? uiColors.surfaceSubtle : 'bg-gray-50';
 
   const addSectionToolbar = (
     <>
-      <div className={uiCx('mb-2', designSystem ? uiTypography.controlLabel : 'text-sm font-medium text-gray-700')}>+ Add Section for:</div>
+      <div className={uiCx('mb-2', designSystem ? uiTypography.controlLabel : 'text-sm font-semibold text-gray-700')}>+ Add Section for:</div>
       <div className="flex items-center gap-2">
       {designSystem ? (
         <AppButton
@@ -2156,7 +2156,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                       setEditingSectionNameValue('');
                       setEditingSectionNameOriginal(currentDisplayName);
                     }}
-                    className="px-2 py-1 rounded text-gray-500 hover:text-blue-600"
+                    className="px-2 py-1 rounded text-gray-600 hover:text-blue-600"
                     title="Edit section name"
                     disabled={!canEdit}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -2205,7 +2205,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                     </>
                   ) : (
                     <>
-                      <label className="text-xs text-gray-600">PST (%)</label>
+                      <label className="text-sm text-gray-600">PST (%)</label>
                       <input
                         type="number"
                         className="w-16 rounded border px-2 py-1 text-sm"
@@ -2221,7 +2221,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                         }}
                         disabled={!canEdit}
                       />
-                      <label className="text-xs text-gray-600">GST (%)</label>
+                      <label className="text-sm text-gray-600">GST (%)</label>
                       <input
                         type="number"
                         className="w-16 rounded border px-2 py-1 text-sm"
@@ -2272,7 +2272,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                           e.stopPropagation();
                           handleRemoveSection(section);
                         }}
-                        className="px-2 py-1 rounded text-gray-500 hover:text-red-600"
+                        className="px-2 py-1 rounded text-gray-600 hover:text-red-600"
                         title="Remove section"
                         disabled={!canEdit}>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -2374,7 +2374,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                         {productEstimateChangesTotal > 0 ? (
                           <div className="relative group/alert inline-flex items-center">
                             <EstimateChangesAlertIcon className="h-4 w-4" />
-                            <div className="pointer-events-none absolute bottom-full right-0 z-50 mb-2 whitespace-nowrap rounded-lg bg-gray-900 px-3 py-2 text-xs text-white opacity-0 shadow-lg transition-opacity group-hover/alert:opacity-100">
+                            <div className="pointer-events-none absolute bottom-full right-0 z-50 mb-2 whitespace-nowrap rounded-lg bg-gray-900 px-3 py-2 text-sm text-white opacity-0 shadow-lg transition-opacity group-hover/alert:opacity-100">
                               Amount for items added via Report (Estimate Changes): ${productEstimateChangesTotal.toFixed(2)}
                               <div className="absolute -bottom-1 right-4 h-2 w-2 rotate-45 bg-gray-900" />
                             </div>
@@ -2387,7 +2387,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                       <div className={uiCx(ESTIMATE_PRODUCT_PRICE_FIELD, ESTIMATE_PRODUCT_PRICE_CELL)} aria-hidden />
                       <div className={uiCx(ESTIMATE_PRODUCT_QTY_FIELD, ESTIMATE_PRODUCT_QUANTITY_CELL)} aria-hidden />
                       <div className={uiCx(ESTIMATE_PRODUCT_TOTAL_FIELD, 'flex min-h-8 items-center justify-end')}>
-                        <span className="text-xs font-bold tabular-nums text-gray-900">
+                        <span className="text-sm font-bold tabular-nums text-gray-900">
                           ${productSectionSubtotal.toFixed(2)}
                         </span>
                       </div>
@@ -2475,7 +2475,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                             {labourEstimateChangesTotal > 0 ? (
                               <div className="relative group/alert inline-flex items-center">
                                 <EstimateChangesAlertIcon className="h-4 w-4" />
-                                <div className="pointer-events-none absolute bottom-full right-0 z-50 mb-2 whitespace-nowrap rounded-lg bg-gray-900 px-3 py-2 text-xs text-white opacity-0 shadow-lg transition-opacity group-hover/alert:opacity-100">
+                                <div className="pointer-events-none absolute bottom-full right-0 z-50 mb-2 whitespace-nowrap rounded-lg bg-gray-900 px-3 py-2 text-sm text-white opacity-0 shadow-lg transition-opacity group-hover/alert:opacity-100">
                                   Amount for items added via Report (Estimate Changes): ${labourEstimateChangesTotal.toFixed(2)}
                                   <div className="absolute -bottom-1 right-4 h-2 w-2 rotate-45 bg-gray-900" />
                                 </div>
@@ -2488,7 +2488,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                           <div className={ESTIMATE_LABOUR_COMPOSITION_FIELD} aria-hidden />
                           <div className={ESTIMATE_LABOUR_PRICE_FIELD} aria-hidden />
                           <div className={uiCx(ESTIMATE_PRODUCT_TOTAL_FIELD, 'flex min-h-8 items-center justify-end')}>
-                            <span className="text-xs font-bold tabular-nums text-gray-900">
+                            <span className="text-sm font-bold tabular-nums text-gray-900">
                               ${labourSectionSubtotal.toFixed(2)}
                             </span>
                           </div>
@@ -2553,7 +2553,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                 <tbody>
                   {sectionItems.length === 0 ? (
                     <tr>
-                      <td colSpan={!isLabourSection ? 11 : 7} className={uiCx('p-4 text-center', designSystem ? uiTypography.helper : 'text-gray-500')}>
+                      <td colSpan={!isLabourSection ? 11 : 7} className={uiCx('p-4 text-center', designSystem ? uiTypography.helper : 'text-gray-600')}>
                         No items yet. Add your first item below.
                       </td>
                     </tr>
@@ -2588,7 +2588,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                                 {it.added_via_report_id && (
                                   <div className="relative group/alert inline-flex items-center">
                                     <EstimateChangesAlertIcon />
-                                    <div className="absolute left-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover/alert:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
+                                    <div className="absolute left-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg whitespace-nowrap opacity-0 group-hover/alert:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
                                       Added via Report (Estimate Changes) on {it.added_via_report_date ? new Date(it.added_via_report_date).toLocaleDateString() : 'unknown date'}
                                       <div className="absolute -bottom-1 left-4 w-2 h-2 bg-gray-900 rotate-45"></div>
                                     </div>
@@ -2677,7 +2677,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                               {designSystem ? (
                                 <AppSelect
                                   className="w-24"
-                                  triggerClassName="w-24 !h-8 text-xs"
+                                  triggerClassName="w-24 !h-8 text-sm"
                                   value={it.unit_required||''}
                                   placeholder="—"
                                   options={[
@@ -2798,7 +2798,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                                 {it.added_via_report_id && (
                                   <div className="relative group/alert inline-flex items-center">
                                     <EstimateChangesAlertIcon />
-                                    <div className="absolute left-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover/alert:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
+                                    <div className="absolute left-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg whitespace-nowrap opacity-0 group-hover/alert:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
                                       Added via Report (Estimate Changes) on {it.added_via_report_date ? new Date(it.added_via_report_date).toLocaleDateString() : 'unknown date'}
                                       <div className="absolute -bottom-1 left-4 w-2 h-2 bg-gray-900 rotate-45"></div>
                                     </div>
@@ -2986,7 +2986,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                                     <span>men</span>
                                   </div>
                                     {formatLabourRichComposition(it) ? (
-                                      <div className="truncate text-xs leading-tight text-gray-500" title={formatLabourRichComposition(it) || undefined}>
+                                      <div className="truncate text-sm leading-tight text-gray-600" title={formatLabourRichComposition(it) || undefined}>
                                         {formatLabourRichComposition(it)}
                                       </div>
                                     ) : null}
@@ -3172,7 +3172,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                             ) : (
                             <button 
                               onClick={()=> handleRemoveItem(originalIdx, it.name || it.description || 'this item')} 
-                              className="px-2 py-1 rounded text-gray-500 hover:text-red-600" 
+                              className="px-2 py-1 rounded text-gray-600 hover:text-red-600" 
                               title="Remove item">
                               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                                 <path d="M9 3h6a1 1 0 0 1 1 1v2h4v2h-1l-1 13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 8H4V6h4V4a1 1 0 0 1 1-1Zm1 3h4V5h-4v1Zm-2 2 1 12h8l1-12H8Z"></path>
@@ -3216,7 +3216,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                           return estimateChangesTotal > 0 ? (
                             <div className="relative group/alert inline-flex items-center">
                               <EstimateChangesAlertIcon className="w-4 h-4" />
-                              <div className="absolute right-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover/alert:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
+                              <div className="absolute right-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg whitespace-nowrap opacity-0 group-hover/alert:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
                               Amount for items added via Report (Estimate Changes): ${estimateChangesTotal.toFixed(2)}
                                 <div className="absolute -bottom-1 right-4 w-2 h-2 bg-gray-900 rotate-45"></div>
                               </div>
@@ -3252,7 +3252,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                 return (
                   <button
                     type="button"
-                    className="mt-3 flex min-h-[60px] w-full items-center justify-center rounded border-2 border-dashed border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:border-gray-400 hover:bg-gray-50"
+                    className="mt-3 flex min-h-[60px] w-full items-center justify-center rounded border-2 border-dashed border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:border-gray-400 hover:bg-gray-50"
                     onClick={() => setAddingToSection({ section, type: labourMeta.type })}
                     disabled={!canEdit}
                   >
@@ -3281,7 +3281,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
       <div className="mt-6">
         {designSystem ? (
           <div className={estimateSummaryShell}>
-            <div className={uiCx('bg-gray-500 px-4 py-3 text-xs font-semibold text-white')}>
+            <div className={uiCx('bg-gray-500 px-4 py-3 text-sm font-semibold text-white')}>
               Summary
             </div>
             <div className="p-3">
@@ -3295,7 +3295,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                         {estimateChangesProductsTotal > 0 && (
                           <div className="relative group/alert inline-flex items-center">
                             <EstimateChangesAlertIcon className="w-4 h-4" />
-                            <div className="absolute right-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover/alert:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
+                            <div className="absolute right-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg whitespace-nowrap opacity-0 group-hover/alert:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
                             Amount for items added via Report (Estimate Changes): ${estimateChangesProductsTotal.toFixed(2)}
                               <div className="absolute -bottom-1 right-4 w-2 h-2 bg-gray-900 rotate-45"></div>
                             </div>
@@ -3310,7 +3310,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                         {estimateChangesLabourTotal > 0 && (
                           <div className="relative group/alert inline-flex items-center">
                             <EstimateChangesAlertIcon className="w-4 h-4" />
-                            <div className="absolute right-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover/alert:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
+                            <div className="absolute right-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg whitespace-nowrap opacity-0 group-hover/alert:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
                             Amount for items added via Report (Estimate Changes): ${estimateChangesLabourTotal.toFixed(2)}
                               <div className="absolute -bottom-1 right-4 w-2 h-2 bg-gray-900 rotate-45"></div>
                             </div>
@@ -3325,7 +3325,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                         {estimateChangesSubContractorsTotal > 0 && (
                           <div className="relative group/alert inline-flex items-center">
                             <EstimateChangesAlertIcon className="w-4 h-4" />
-                            <div className="absolute right-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover/alert:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
+                            <div className="absolute right-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg whitespace-nowrap opacity-0 group-hover/alert:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
                             Amount for items added via Report (Estimate Changes): ${estimateChangesSubContractorsTotal.toFixed(2)}
                               <div className="absolute -bottom-1 right-4 w-2 h-2 bg-gray-900 rotate-45"></div>
                             </div>
@@ -3340,7 +3340,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                         {estimateChangesShopTotal > 0 && (
                           <div className="relative group/alert inline-flex items-center">
                             <EstimateChangesAlertIcon className="w-4 h-4" />
-                            <div className="absolute right-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover/alert:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
+                            <div className="absolute right-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg whitespace-nowrap opacity-0 group-hover/alert:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
                             Amount for items added via Report (Estimate Changes): ${estimateChangesShopTotal.toFixed(2)}
                               <div className="absolute -bottom-1 right-4 w-2 h-2 bg-gray-900 rotate-45"></div>
                             </div>
@@ -3355,7 +3355,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                         {estimateChangesMiscellaneousTotal > 0 && (
                           <div className="relative group/alert inline-flex items-center">
                             <EstimateChangesAlertIcon className="w-4 h-4" />
-                            <div className="absolute right-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover/alert:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
+                            <div className="absolute right-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg whitespace-nowrap opacity-0 group-hover/alert:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
                             Amount for items added via Report (Estimate Changes): ${estimateChangesMiscellaneousTotal.toFixed(2)}
                               <div className="absolute -bottom-1 right-4 w-2 h-2 bg-gray-900 rotate-45"></div>
                             </div>
@@ -3458,7 +3458,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                       {estimateChangesProductsTotal > 0 && (
                         <div className="relative group/alert inline-flex items-center">
                           <EstimateChangesAlertIcon className="w-4 h-4" />
-                          <div className="absolute right-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover/alert:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
+                          <div className="absolute right-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg whitespace-nowrap opacity-0 group-hover/alert:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
                           Amount for items added via Report (Estimate Changes): ${estimateChangesProductsTotal.toFixed(2)}
                             <div className="absolute -bottom-1 right-4 w-2 h-2 bg-gray-900 rotate-45"></div>
                           </div>
@@ -3473,7 +3473,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                       {estimateChangesLabourTotal > 0 && (
                         <div className="relative group/alert inline-flex items-center">
                           <EstimateChangesAlertIcon className="w-4 h-4" />
-                          <div className="absolute right-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover/alert:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
+                          <div className="absolute right-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg whitespace-nowrap opacity-0 group-hover/alert:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
                           Amount for items added via Report (Estimate Changes): ${estimateChangesLabourTotal.toFixed(2)}
                             <div className="absolute -bottom-1 right-4 w-2 h-2 bg-gray-900 rotate-45"></div>
                           </div>
@@ -3488,7 +3488,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                       {estimateChangesSubContractorsTotal > 0 && (
                         <div className="relative group/alert inline-flex items-center">
                           <EstimateChangesAlertIcon className="w-4 h-4" />
-                          <div className="absolute right-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover/alert:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
+                          <div className="absolute right-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg whitespace-nowrap opacity-0 group-hover/alert:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
                           Amount for items added via Report (Estimate Changes): ${estimateChangesSubContractorsTotal.toFixed(2)}
                             <div className="absolute -bottom-1 right-4 w-2 h-2 bg-gray-900 rotate-45"></div>
                           </div>
@@ -3503,7 +3503,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                       {estimateChangesShopTotal > 0 && (
                         <div className="relative group/alert inline-flex items-center">
                           <EstimateChangesAlertIcon className="w-4 h-4" />
-                          <div className="absolute right-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover/alert:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
+                          <div className="absolute right-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg whitespace-nowrap opacity-0 group-hover/alert:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
                           Amount for items added via Report (Estimate Changes): ${estimateChangesShopTotal.toFixed(2)}
                             <div className="absolute -bottom-1 right-4 w-2 h-2 bg-gray-900 rotate-45"></div>
                           </div>
@@ -3518,7 +3518,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                       {estimateChangesMiscellaneousTotal > 0 && (
                         <div className="relative group/alert inline-flex items-center">
                           <EstimateChangesAlertIcon className="w-4 h-4" />
-                          <div className="absolute right-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover/alert:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
+                          <div className="absolute right-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg whitespace-nowrap opacity-0 group-hover/alert:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
                           Amount for items added via Report (Estimate Changes): ${estimateChangesMiscellaneousTotal.toFixed(2)}
                             <div className="absolute -bottom-1 right-4 w-2 h-2 bg-gray-900 rotate-45"></div>
                           </div>
@@ -3588,7 +3588,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
         >
           {/* Arrow indicator when footer is hidden */}
           {!footerVisible && (
-            <div className="absolute bottom-0 left-1/2 -translate-x-1/2 flex items-center justify-center gap-1 px-3 py-1 bg-white/90 backdrop-blur-sm border-t border-x rounded-t-lg shadow-sm text-xs text-gray-600 font-medium">
+            <div className="absolute bottom-0 left-1/2 -translate-x-1/2 flex items-center justify-center gap-1 px-3 py-1 bg-white/90 backdrop-blur-sm border-t border-x rounded-t-lg shadow-sm text-sm text-gray-600 font-semibold">
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
               </svg>
@@ -3616,7 +3616,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                   {dirty ? 'Unsaved changes' : 'All changes saved'}
                 </AppBadge>
               ) : (
-              <div className={dirty ? 'text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2.5 py-1 font-medium' : 'text-xs text-green-700 bg-green-50 border border-green-200 rounded-full px-2.5 py-1 font-medium'}>
+              <div className={dirty ? 'text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2.5 py-1 font-semibold' : 'text-sm text-green-700 bg-green-50 border border-green-200 rounded-full px-2.5 py-1 font-semibold'}>
                 {dirty ? 'Unsaved changes' : 'All changes saved'}
               </div>
               )
@@ -3637,7 +3637,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                 ) : (
                 <button
                   onClick={()=>setSummaryOpen(true)}
-                  className="px-3 py-1.5 text-sm rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium transition-colors">
+                  className="px-3 py-1.5 text-sm rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold transition-colors">
                   Analysis
                 </button>
                 )}
@@ -3820,7 +3820,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                     }
                   }}
                   disabled={isLoading || items.length === 0}
-                  className="px-3 py-1.5 text-sm rounded-lg bg-gray-400 hover:bg-gray-500 text-white font-medium disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
+                  className="px-3 py-1.5 text-sm rounded-lg bg-gray-400 hover:bg-gray-500 text-white font-semibold disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
                   {isLoading ? 'Generating...' : 'Generate PDF'}
                 </button>
                 )}
@@ -4032,7 +4032,7 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
   if (!open) return null;
 
   if (designSystem) {
-    const summaryAnalysisHeader = 'bg-gray-500 px-4 py-3 text-xs font-semibold text-white';
+    const summaryAnalysisHeader = 'bg-gray-500 px-4 py-3 text-sm font-semibold text-white';
     const costBreakdownRows = Object.keys(costsBySection).sort().map((section) => {
       const sectionTotal = costsBySection[section];
       const percentage = totalCost > 0 ? (sectionTotal / totalCost * 100) : 0;
@@ -4062,7 +4062,7 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
               rows={costBreakdownRows}
               className="!rounded-none !border-0"
             />
-            <div className={uiCx(uiColors.surfaceSubtle, 'grid grid-cols-3 gap-2 border-t border-gray-200 px-2.5 py-2 text-xs font-semibold')}>
+            <div className={uiCx(uiColors.surfaceSubtle, 'grid grid-cols-3 gap-2 border-t border-gray-200 px-2.5 py-2 text-sm font-semibold')}>
               <span>Total</span>
               <span className="text-right">${totalCost.toFixed(2)}</span>
               <span className="text-right">100.00%</span>
@@ -4072,7 +4072,7 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
           {laborTotal > 0 && (
             <div className={estimateSummaryShell}>
               <div className={summaryAnalysisHeader}>Labor Analysis</div>
-              <div className="border-b border-gray-100 bg-blue-50 px-4 py-2 text-xs">Total Labor Cost: ${laborTotal.toFixed(2)}</div>
+              <div className="border-b border-gray-100 bg-blue-50 px-4 py-2 text-sm">Total Labor Cost: ${laborTotal.toFixed(2)}</div>
               <AppTable
                 columns={['Labor Item', 'Cost']}
                 rows={items.filter(it => it.item_type === 'labour').map((it) => {
@@ -4087,7 +4087,7 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
           {productTotal > 0 && (
             <div className={estimateSummaryShell}>
               <div className={summaryAnalysisHeader}>Product Analysis</div>
-              <div className="border-b border-gray-100 bg-blue-50 px-4 py-2 text-xs">Total Product Cost: ${productTotal.toFixed(2)}</div>
+              <div className="border-b border-gray-100 bg-blue-50 px-4 py-2 text-sm">Total Product Cost: ${productTotal.toFixed(2)}</div>
               <AppTable
                 columns={['Product Item', 'Cost']}
                 rows={items.filter(it => {
@@ -4109,7 +4109,7 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
           {subcontractorItemsTotal > 0 && (
             <div className={estimateSummaryShell}>
               <div className={summaryAnalysisHeader}>Sub-Contractor Analysis</div>
-              <div className="border-b border-gray-100 bg-blue-50 px-4 py-2 text-xs">Total Sub-Contractor Cost: ${subcontractorItemsTotal.toFixed(2)}</div>
+              <div className="border-b border-gray-100 bg-blue-50 px-4 py-2 text-sm">Total Sub-Contractor Cost: ${subcontractorItemsTotal.toFixed(2)}</div>
               <AppTable
                 columns={['Sub-Contractor Item', 'Cost']}
                 rows={items.filter(it => {
@@ -4127,7 +4127,7 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
           {shopItemsTotal > 0 && (
             <div className={estimateSummaryShell}>
               <div className={summaryAnalysisHeader}>Shop Analysis</div>
-              <div className="border-b border-gray-100 bg-blue-50 px-4 py-2 text-xs">Total Shop Cost: ${shopItemsTotal.toFixed(2)}</div>
+              <div className="border-b border-gray-100 bg-blue-50 px-4 py-2 text-sm">Total Shop Cost: ${shopItemsTotal.toFixed(2)}</div>
               <AppTable
                 columns={['Shop Item', 'Cost']}
                 rows={items.filter(it => {
@@ -4145,7 +4145,7 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
           {miscellaneousItemsTotal > 0 && (
             <div className={estimateSummaryShell}>
               <div className={summaryAnalysisHeader}>Miscellaneous Analysis</div>
-              <div className="border-b border-gray-100 bg-blue-50 px-4 py-2 text-xs">Total Miscellaneous Cost: ${miscellaneousItemsTotal.toFixed(2)}</div>
+              <div className="border-b border-gray-100 bg-blue-50 px-4 py-2 text-sm">Total Miscellaneous Cost: ${miscellaneousItemsTotal.toFixed(2)}</div>
               <AppTable
                 columns={['Miscellaneous Item', 'Cost']}
                 rows={items.filter(it => {
@@ -4163,15 +4163,15 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
           <div className={estimateSummaryShell}>
             <div className={summaryAnalysisHeader}>Final Summary</div>
             <div className="space-y-2 p-4 text-sm">
-              <div className="flex items-center justify-between"><span>Total Direct Costs:</span><span className="font-medium">${totalCost.toFixed(2)}</span></div>
-              <div className="flex items-center justify-between border-t pt-2"><span>Total PST:</span><span className="font-medium">${pst.toFixed(2)}</span></div>
+              <div className="flex items-center justify-between"><span>Total Direct Costs:</span><span className="font-semibold">${totalCost.toFixed(2)}</span></div>
+              <div className="flex items-center justify-between border-t pt-2"><span>Total PST:</span><span className="font-semibold">${pst.toFixed(2)}</span></div>
               <div className="flex items-center justify-between">
                 <span>Profit (%):</span>
-                <span className="font-medium">{profitRate.toFixed(1)}%</span>
+                <span className="font-semibold">{profitRate.toFixed(1)}%</span>
               </div>
-              <div className="flex items-center justify-between"><span>Total Profit:</span><span className="font-medium">${profitValue.toFixed(2)}</span></div>
-              <div className="flex items-center justify-between"><span>Total Estimate:</span><span className="font-medium">${totalEstimate.toFixed(2)}</span></div>
-              <div className="flex items-center justify-between"><span>GST:</span><span className="font-medium">${gst.toFixed(2)}</span></div>
+              <div className="flex items-center justify-between"><span>Total Profit:</span><span className="font-semibold">${profitValue.toFixed(2)}</span></div>
+              <div className="flex items-center justify-between"><span>Total Estimate:</span><span className="font-semibold">${totalEstimate.toFixed(2)}</span></div>
+              <div className="flex items-center justify-between"><span>GST:</span><span className="font-semibold">${gst.toFixed(2)}</span></div>
               {(() => {
                 const additionalIncome = financialTotals?.additional_income || 0;
                 const additionalExpense = financialTotals?.additional_expense || 0;
@@ -4179,10 +4179,10 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
                   return (
                     <>
                       {additionalIncome > 0 && (
-                        <div className="flex items-center justify-between"><span>Additional Income:</span><span className="font-medium">${additionalIncome.toFixed(2)}</span></div>
+                        <div className="flex items-center justify-between"><span>Additional Income:</span><span className="font-semibold">${additionalIncome.toFixed(2)}</span></div>
                       )}
                       {additionalExpense > 0 && (
-                        <div className="flex items-center justify-between"><span>Additional Expense:</span><span className="font-medium">${additionalExpense.toFixed(2)}</span></div>
+                        <div className="flex items-center justify-between"><span>Additional Expense:</span><span className="font-semibold">${additionalExpense.toFixed(2)}</span></div>
                       )}
                     </>
                   );
@@ -4395,15 +4395,15 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
           <div className="rounded-xl border bg-white overflow-hidden">
             <div className="bg-gray-50 px-4 py-2 border-b font-semibold">Final Summary</div>
             <div className="p-4 space-y-2 text-sm">
-              <div className="flex items-center justify-between"><span>Total Direct Costs:</span><span className="font-medium">${totalCost.toFixed(2)}</span></div>
-              <div className="flex items-center justify-between border-t pt-2"><span>Total PST:</span><span className="font-medium">${pst.toFixed(2)}</span></div>
+              <div className="flex items-center justify-between"><span>Total Direct Costs:</span><span className="font-semibold">${totalCost.toFixed(2)}</span></div>
+              <div className="flex items-center justify-between border-t pt-2"><span>Total PST:</span><span className="font-semibold">${pst.toFixed(2)}</span></div>
               <div className="flex items-center justify-between">
                 <span>Profit (%):</span>
-                <span className="font-medium">{profitRate.toFixed(1)}%</span>
+                <span className="font-semibold">{profitRate.toFixed(1)}%</span>
               </div>
-              <div className="flex items-center justify-between"><span>Total Profit:</span><span className="font-medium">${profitValue.toFixed(2)}</span></div>
-              <div className="flex items-center justify-between"><span>Total Estimate:</span><span className="font-medium">${totalEstimate.toFixed(2)}</span></div>
-                  <div className="flex items-center justify-between"><span>GST:</span><span className="font-medium">${gst.toFixed(2)}</span></div>
+              <div className="flex items-center justify-between"><span>Total Profit:</span><span className="font-semibold">${profitValue.toFixed(2)}</span></div>
+              <div className="flex items-center justify-between"><span>Total Estimate:</span><span className="font-semibold">${totalEstimate.toFixed(2)}</span></div>
+                  <div className="flex items-center justify-between"><span>GST:</span><span className="font-semibold">${gst.toFixed(2)}</span></div>
                   {(() => {
                     const additionalIncome = financialTotals?.additional_income || 0;
                     const additionalExpense = financialTotals?.additional_expense || 0;
@@ -4411,10 +4411,10 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
                       return (
                         <>
                           {additionalIncome > 0 && (
-                            <div className="flex items-center justify-between"><span>Additional Income:</span><span className="font-medium">${additionalIncome.toFixed(2)}</span></div>
+                            <div className="flex items-center justify-between"><span>Additional Income:</span><span className="font-semibold">${additionalIncome.toFixed(2)}</span></div>
                           )}
                           {additionalExpense > 0 && (
-                            <div className="flex items-center justify-between"><span>Additional Expense:</span><span className="font-medium">${additionalExpense.toFixed(2)}</span></div>
+                            <div className="flex items-center justify-between"><span>Additional Expense:</span><span className="font-semibold">${additionalExpense.toFixed(2)}</span></div>
                           )}
                         </>
                       );
@@ -4466,26 +4466,26 @@ function ProductViewModal({ product, onClose, designSystem }: { product: Materia
           <div className="grid grid-cols-2 gap-4">
               {product.unit && (
                 <div className={uiCx('rounded-lg border p-4', uiBorders.subtle, uiColors.surface)}>
-                  <div className="mb-1 text-xs font-semibold text-gray-600">Sell Unit</div>
+                  <div className="mb-1 text-sm font-semibold text-gray-600">Sell Unit</div>
                   <div className="text-gray-900">{product.unit}</div>
                 </div>
               )}
               {product.unit_type && (
                 <div className={uiCx('rounded-lg border p-4', uiBorders.subtle, uiColors.surface)}>
-                  <div className="mb-1 text-xs font-semibold text-gray-600">Unit Type</div>
+                  <div className="mb-1 text-sm font-semibold text-gray-600">Unit Type</div>
                   <div className="text-gray-900">{product.unit_type}</div>
                 </div>
               )}
             </div>
             {typeof product.price === 'number' && (
               <div className={uiCx('rounded-lg border p-4', uiBorders.subtle, uiColors.surface)}>
-                <div className="mb-1 text-xs font-semibold text-gray-600">Price</div>
+                <div className="mb-1 text-sm font-semibold text-gray-600">Price</div>
                 <div className="text-lg font-semibold text-gray-900">${product.price.toFixed(2)}</div>
               </div>
             )}
             {product.units_per_package && (
               <div className={uiCx('rounded-lg border p-4', uiBorders.subtle, uiColors.surface)}>
-                <div className="mb-1 text-xs font-semibold text-gray-600">Units per Package</div>
+                <div className="mb-1 text-sm font-semibold text-gray-600">Units per Package</div>
                 <div className="text-gray-900">{product.units_per_package}</div>
               </div>
             )}
@@ -4554,26 +4554,26 @@ function ProductViewModal({ product, onClose, designSystem }: { product: Materia
             <div className="grid grid-cols-2 gap-4">
               {product.unit && (
                 <div className="bg-white border rounded-lg p-4">
-                  <div className="text-xs font-semibold text-gray-600 mb-1">Sell Unit</div>
+                  <div className="text-sm font-semibold text-gray-600 mb-1">Sell Unit</div>
                   <div className="text-gray-900">{product.unit}</div>
                 </div>
               )}
               {product.unit_type && (
                 <div className="bg-white border rounded-lg p-4">
-                  <div className="text-xs font-semibold text-gray-600 mb-1">Unit Type</div>
+                  <div className="text-sm font-semibold text-gray-600 mb-1">Unit Type</div>
                   <div className="text-gray-900">{product.unit_type}</div>
                 </div>
               )}
             </div>
             {typeof product.price === 'number' && (
               <div className="bg-white border rounded-lg p-4">
-                <div className="text-xs font-semibold text-gray-600 mb-1">Price</div>
+                <div className="text-sm font-semibold text-gray-600 mb-1">Price</div>
                 <div className="text-gray-900 font-semibold text-lg">${product.price.toFixed(2)}</div>
               </div>
             )}
             {product.units_per_package && (
               <div className="bg-white border rounded-lg p-4">
-                <div className="text-xs font-semibold text-gray-600 mb-1">Units per Package</div>
+                <div className="text-sm font-semibold text-gray-600 mb-1">Units per Package</div>
                 <div className="text-gray-900">{product.units_per_package}</div>
               </div>
             )}
@@ -4794,7 +4794,7 @@ function AddProductModal({ onAdd, disabled, open: openProp, onClose: onCloseProp
                   </div>
                   <div className="flex-1 space-y-2">
                     <div className="flex items-center justify-between">
-                      <div className="font-medium">{selection.name}</div>
+                      <div className="font-semibold">{selection.name}</div>
                       <AppButton type="button" variant="secondary" size="sm" onClick={() => setCompareModalOpen(true)}>
                         Compare
                       </AppButton>
@@ -4888,12 +4888,12 @@ function AddProductModal({ onAdd, disabled, open: openProp, onClose: onCloseProp
             <div className="p-4 space-y-3 overflow-y-auto flex-1">
               <div className="flex items-center gap-2">
                 <div className="flex-1">
-                  <label className="text-xs text-gray-600">Search Product:</label>
+                  <label className="text-sm text-gray-600">Search Product:</label>
                   <input className="w-full border rounded px-3 py-2" placeholder="Type product name..." value={q} onChange={e=>setQ(e.target.value)} />
                 </div>
                 <button
                   onClick={() => setSupplierModalOpen(true)}
-                  className="px-2 py-1 rounded text-gray-500 hover:text-blue-600 mt-6"
+                  className="px-2 py-1 rounded text-gray-600 hover:text-blue-600 mt-6"
                   title="Browse by supplier">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <circle cx="11" cy="11" r="8"></circle>
@@ -4905,8 +4905,8 @@ function AddProductModal({ onAdd, disabled, open: openProp, onClose: onCloseProp
                 <div className="max-h-64 overflow-auto rounded border divide-y">
                   {list.map(p=> (
                     <button key={p.id} onClick={()=>setSelection(p)} className={`w-full text-left px-3 py-2 bg-white hover:bg-gray-50 ${selection?.id===p.id? 'ring-2 ring-brand-red':''}`}>
-                      <div className="font-medium">{p.name}</div>
-                      <div className="text-xs text-gray-500">{p.supplier_name||''} · {p.unit||''} · ${Number(p.price||0).toFixed(2)}</div>
+                      <div className="font-semibold">{p.name}</div>
+                      <div className="text-sm text-gray-600">{p.supplier_name||''} · {p.unit||''} · ${Number(p.price||0).toFixed(2)}</div>
                     </button>
                   ))}
                   {hasMore && (
@@ -4927,7 +4927,7 @@ function AddProductModal({ onAdd, disabled, open: openProp, onClose: onCloseProp
                     onClick={() => {
                       setNewProductModalOpen(true);
                     }}
-                    className="w-full px-4 py-2 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 font-medium text-sm"
+                    className="w-full px-4 py-2 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold text-sm"
                   >
                     + Create new product: "{q}"
                   </button>
@@ -4958,7 +4958,7 @@ function AddProductModal({ onAdd, disabled, open: openProp, onClose: onCloseProp
                     </div>
                     <div className="flex-1 space-y-2">
                       <div className="flex items-center justify-between">
-                        <div className="font-medium">{selection.name}</div>
+                        <div className="font-semibold">{selection.name}</div>
                         <button
                           onClick={() => setCompareModalOpen(true)}
                           className="px-3 py-1.5 rounded bg-gray-700 text-white hover:bg-gray-800 text-sm">
@@ -4968,12 +4968,12 @@ function AddProductModal({ onAdd, disabled, open: openProp, onClose: onCloseProp
                       <div className="text-sm text-gray-600">Supplier: {selection.supplier_name||'N/A'}</div>
                       <div className="text-sm text-gray-600">Unit: {selection.unit||'-'} · Price: ${Number(selection.price||0).toFixed(2)}</div>
                       {selection.unit_type === 'coverage' && (
-                        <div className="text-xs text-gray-600 mt-1">
+                        <div className="text-sm text-gray-600 mt-1">
                           Coverage: {selection.coverage_sqs ? `${selection.coverage_sqs} SQS · ` : ''}{selection.coverage_ft2 ? `${selection.coverage_ft2} ft² · ` : ''}{selection.coverage_m2 ? `${selection.coverage_m2} m²` : ''}
                         </div>
                       )}
                       {selection.unit_type === 'multiple' && selection.units_per_package && (
-                        <div className="text-xs text-gray-600 mt-1">
+                        <div className="text-sm text-gray-600 mt-1">
                           {selection.units_per_package} units per package
                         </div>
                       )}
@@ -4983,7 +4983,7 @@ function AddProductModal({ onAdd, disabled, open: openProp, onClose: onCloseProp
               )}
               {selection && !sectionProp && (
                 <div>
-                  <label className="text-xs text-gray-600">Section:</label>
+                  <label className="text-sm text-gray-600">Section:</label>
                   <select className="w-full border rounded px-3 py-2" value={section} onChange={e=>setSection(e.target.value)}>
                     {['Roof System','Wood Blocking / Accessories','Flashing'].map(s=> <option key={s} value={s}>{s}</option>)}
                   </select>
@@ -5142,7 +5142,7 @@ function SupplierProductModal({ open, onClose, onSelect, designSystem }: { open:
           {/* Right: Products Grid */}
           <div className="flex-1 overflow-y-auto p-4">
             {!selectedSupplier ? (
-              <div className="flex items-center justify-center h-full text-gray-500">
+              <div className="flex items-center justify-center h-full text-gray-600">
                 Select a supplier to view products
               </div>
             ) : (
@@ -5156,9 +5156,9 @@ function SupplierProductModal({ open, onClose, onSelect, designSystem }: { open:
                       <button
                         onClick={() => setNewProductModalOpen(true)}
                         className="border-2 border-dashed border-gray-300 rounded-lg p-3 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex flex-col items-center justify-center min-h-[200px]">
-                        <div className="text-4xl text-gray-400 mb-2">+</div>
-                        <div className="font-medium text-sm text-gray-700">New Product</div>
-                        <div className="text-xs text-gray-500 mt-1">Add new product to {suppliers?.find(s => s.id === selectedSupplier)?.name || 'supplier'}</div>
+                        <div className="text-4xl text-gray-600 mb-2">+</div>
+                        <div className="font-semibold text-sm text-gray-700">New Product</div>
+                        <div className="text-sm text-gray-600 mt-1">Add new product to {suppliers?.find(s => s.id === selectedSupplier)?.name || 'supplier'}</div>
                       </button>
                       {products.map(product => (
                       <button
@@ -5185,9 +5185,9 @@ function SupplierProductModal({ open, onClose, onSelect, designSystem }: { open:
                             style={{ display: product.image_base64 ? 'none' : 'block' }}
                           />
                         </div>
-                        <div className="font-medium text-sm mb-1 line-clamp-2">{product.name}</div>
+                        <div className="font-semibold text-sm mb-1 line-clamp-2">{product.name}</div>
                         {product.category && (
-                          <div className="text-xs text-gray-500 mb-1">{product.category}</div>
+                          <div className="text-sm text-gray-600 mb-1">{product.category}</div>
                         )}
                         <div className="text-sm font-semibold text-brand-red">${Number(product.price || 0).toFixed(2)}</div>
                       </button>
@@ -5203,13 +5203,13 @@ function SupplierProductModal({ open, onClose, onSelect, designSystem }: { open:
                   </>
                 ) : (
                   <div className="text-center py-8">
-                    <div className="text-gray-500 mb-4">No products found for this supplier</div>
+                    <div className="text-gray-600 mb-4">No products found for this supplier</div>
                     <button
                       onClick={() => setNewProductModalOpen(true)}
                       className="border-2 border-dashed border-gray-300 rounded-lg p-6 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex flex-col items-center justify-center mx-auto w-64">
-                      <div className="text-4xl text-gray-400 mb-2">+</div>
-                      <div className="font-medium text-sm text-gray-700">New Product</div>
-                      <div className="text-xs text-gray-500 mt-1">Add new product to {suppliers?.find(s => s.id === selectedSupplier)?.name || 'supplier'}</div>
+                      <div className="text-4xl text-gray-600 mb-2">+</div>
+                      <div className="font-semibold text-sm text-gray-700">New Product</div>
+                      <div className="text-sm text-gray-600 mt-1">Add new product to {suppliers?.find(s => s.id === selectedSupplier)?.name || 'supplier'}</div>
                     </button>
                   </div>
                 )}
@@ -5245,7 +5245,7 @@ function SupplierProductModal({ open, onClose, onSelect, designSystem }: { open:
       </div>
       <div className="flex-1 overflow-y-auto p-3 sm:p-4">
         {!selectedSupplier ? (
-          <div className="flex h-full items-center justify-center text-gray-500">Select a supplier to view products</div>
+          <div className="flex h-full items-center justify-center text-gray-600">Select a supplier to view products</div>
         ) : (
           <div>
             <div className={uiCx(uiTypography.sectionTitle, 'mb-4')}>
@@ -5262,8 +5262,8 @@ function SupplierProductModal({ open, onClose, onSelect, designSystem }: { open:
                       uiBorders.subtle,
                     )}
                   >
-                    <div className="mb-2 text-4xl text-gray-400">+</div>
-                    <div className="text-sm font-medium text-gray-700">New Product</div>
+                    <div className="mb-2 text-4xl text-gray-600">+</div>
+                    <div className="text-sm font-semibold text-gray-700">New Product</div>
                     <div className={uiCx(uiTypography.helper, 'mt-1')}>
                       Add new product to {suppliers?.find((s) => s.id === selectedSupplier)?.name || 'supplier'}
                     </div>
@@ -5298,7 +5298,7 @@ function SupplierProductModal({ open, onClose, onSelect, designSystem }: { open:
                           style={{ display: product.image_base64 ? 'none' : 'block' }}
                         />
                       </div>
-                      <div className="mb-1 line-clamp-2 text-sm font-medium">{product.name}</div>
+                      <div className="mb-1 line-clamp-2 text-sm font-semibold">{product.name}</div>
                       {product.category && <div className={uiTypography.helper}>{product.category}</div>}
                       <div className="text-sm font-semibold text-brand-red">${Number(product.price || 0).toFixed(2)}</div>
                     </button>
@@ -5312,7 +5312,7 @@ function SupplierProductModal({ open, onClose, onSelect, designSystem }: { open:
               </>
             ) : (
               <div className="py-8 text-center">
-                <div className="mb-4 text-gray-500">No products found for this supplier</div>
+                <div className="mb-4 text-gray-600">No products found for this supplier</div>
                 <AppButton type="button" variant="secondary" onClick={() => setNewProductModalOpen(true)}>
                   + New Product
                 </AppButton>
@@ -5420,7 +5420,7 @@ function CompareProductsModal({ open, onClose, selectedProduct, onSelect, design
       >
         <div className="space-y-3">
           <div className={uiCx('rounded border bg-gray-50 p-3', uiBorders.subtle)}>
-            <div className="mb-2 font-medium">Selected: {selectedProduct.name}</div>
+            <div className="mb-2 font-semibold">Selected: {selectedProduct.name}</div>
             <div className={uiTypography.helper}>
               ${Number(selectedProduct.price || 0).toFixed(2)} · {selectedProduct.supplier_name || 'N/A'}
             </div>
@@ -5431,7 +5431,7 @@ function CompareProductsModal({ open, onClose, selectedProduct, onSelect, design
               <div className={uiCx('max-h-64 divide-y overflow-auto rounded border', uiBorders.subtle)}>
                 {(relatedProducts || []).map((p) => (
                   <button key={p.id} type="button" onClick={() => onSelect(p)} className="w-full bg-white px-3 py-2 text-left hover:bg-gray-50">
-                    <div className="font-medium">{p.name}</div>
+                    <div className="font-semibold">{p.name}</div>
                     <div className={uiTypography.helper}>
                       {p.supplier_name || ''} · ${Number(p.price || 0).toFixed(2)}
                     </div>
@@ -5488,12 +5488,12 @@ function CompareProductsModal({ open, onClose, selectedProduct, onSelect, design
                   <div className="text-sm text-gray-600 mb-1">Unit: {selectedProduct.unit || '-'}</div>
                   <div className="text-lg font-bold text-brand-red mb-2">${Number(selectedProduct.price || 0).toFixed(2)}</div>
                   {selectedProduct.unit_type === 'coverage' && (
-                    <div className="text-xs text-gray-600">
+                    <div className="text-sm text-gray-600">
                       Coverage: {selectedProduct.coverage_sqs ? `${selectedProduct.coverage_sqs} SQS · ` : ''}{selectedProduct.coverage_ft2 ? `${selectedProduct.coverage_ft2} ft² · ` : ''}{selectedProduct.coverage_m2 ? `${selectedProduct.coverage_m2} m²` : ''}
                     </div>
                   )}
                   {selectedProduct.unit_type === 'multiple' && selectedProduct.units_per_package && (
-                    <div className="text-xs text-gray-600">
+                    <div className="text-sm text-gray-600">
                       {selectedProduct.units_per_package} units per package
                     </div>
                   )}
@@ -5532,9 +5532,9 @@ function CompareProductsModal({ open, onClose, selectedProduct, onSelect, design
                         />
                       </div>
                       <div>
-                        <div className="font-medium text-sm mb-1 line-clamp-2">{product.name}</div>
-                        <div className="text-xs text-gray-500 mb-1">{product.supplier_name || 'N/A'}</div>
-                        <div className="text-xs text-gray-500 mb-1">{product.category || 'N/A'}</div>
+                        <div className="font-semibold text-sm mb-1 line-clamp-2">{product.name}</div>
+                        <div className="text-sm text-gray-600 mb-1">{product.supplier_name || 'N/A'}</div>
+                        <div className="text-sm text-gray-600 mb-1">{product.category || 'N/A'}</div>
                         <div className="text-sm font-semibold text-brand-red">${Number(product.price || 0).toFixed(2)}</div>
                       </div>
                     </div>
@@ -5542,7 +5542,7 @@ function CompareProductsModal({ open, onClose, selectedProduct, onSelect, design
                 ))}
               </div>
             ) : (
-              <div className="text-center text-gray-500 py-8">
+              <div className="text-center text-gray-600 py-8">
                 No related products found. Add related products in the Products page.
               </div>
             )}
@@ -5831,7 +5831,7 @@ function NewProductModal({ open, onClose, onProductCreated, initialSupplier, ini
                 </AppButton>
               </div>
               {supplierError && !newSupplier.trim() && (
-                <div className="mt-1 text-[11px] text-red-600">This field is required</div>
+                <div className="mt-1 text-xs text-red-600">This field is required</div>
               )}
             </div>
             <AppInput label="Category" value={newCategory} onChange={(e) => setNewCategory(e.target.value)} />
@@ -5897,10 +5897,10 @@ function NewProductModal({ open, onClose, onProductCreated, initialSupplier, ini
                 <div className="mt-1.5 flex items-center gap-2">
                   <AppInput placeholder="0" value={covSqs} onChange={(e) => onCoverageChange('sqs', e.target.value)} />
                   <span className={uiTypography.helper}>SQS</span>
-                  <span className="text-gray-400">=</span>
+                  <span className="text-gray-600">=</span>
                   <AppInput placeholder="0" value={covFt2} onChange={(e) => onCoverageChange('ft2', e.target.value)} />
                   <span className={uiTypography.helper}>ft²</span>
-                  <span className="text-gray-400">=</span>
+                  <span className="text-gray-600">=</span>
                   <AppInput placeholder="0" value={covM2} onChange={(e) => onCoverageChange('m2', e.target.value)} />
                   <span className={uiTypography.helper}>m²</span>
                 </div>
@@ -5981,7 +5981,7 @@ function NewProductModal({ open, onClose, onProductCreated, initialSupplier, ini
           <div className="flex-1 overflow-y-auto p-6">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="col-span-2">
-                <label className="text-xs font-semibold text-gray-700">
+                <label className="text-sm font-semibold text-gray-700">
                   Name <span className="text-red-600">*</span>
                 </label>
                 <input 
@@ -5995,16 +5995,16 @@ function NewProductModal({ open, onClose, onProductCreated, initialSupplier, ini
                   }} 
                 />
                 {nameError && !name.trim() && (
-                  <div className="text-[11px] text-red-600 mt-1">This field is required</div>
+                  <div className="text-xs text-red-600 mt-1">This field is required</div>
                 )}
                 {duplicateError && (
-                  <div className="text-[11px] text-red-600 mt-1">
+                  <div className="text-xs text-red-600 mt-1">
                     A product with this name already exists for supplier "{newSupplier}". Please use a different name or select a different supplier.
                   </div>
                 )}
               </div>
               <div>
-                <label className="text-xs font-semibold text-gray-700">
+                <label className="text-sm font-semibold text-gray-700">
                   Supplier <span className="text-red-600">*</span>
                 </label>
                 <div className="mt-1">
@@ -6022,13 +6022,13 @@ function NewProductModal({ open, onClose, onProductCreated, initialSupplier, ini
                   />
                 </div>
                 {supplierError && !newSupplier.trim() && (
-                  <div className="text-[11px] text-red-600 mt-1">This field is required</div>
+                  <div className="text-xs text-red-600 mt-1">This field is required</div>
                 )}
               </div>
-              <div><label className="text-xs font-semibold text-gray-700">Category</label><input className="w-full border rounded px-3 py-2 mt-1" value={newCategory} onChange={e=>setNewCategory(e.target.value)} /></div>
-              <div><label className="text-xs font-semibold text-gray-700">Sell Unit</label><input className="w-full border rounded px-3 py-2 mt-1" placeholder="e.g., Roll, Pail (20L), Box" value={unit} onChange={e=>setUnit(e.target.value)} /></div>
+              <div><label className="text-sm font-semibold text-gray-700">Category</label><input className="w-full border rounded px-3 py-2 mt-1" value={newCategory} onChange={e=>setNewCategory(e.target.value)} /></div>
+              <div><label className="text-sm font-semibold text-gray-700">Sell Unit</label><input className="w-full border rounded px-3 py-2 mt-1" placeholder="e.g., Roll, Pail (20L), Box" value={unit} onChange={e=>setUnit(e.target.value)} /></div>
               <div>
-                <label className="text-xs font-semibold text-gray-700">
+                <label className="text-sm font-semibold text-gray-700">
                   Price ($) <span className="text-red-600">*</span>
                 </label>
                 <input 
@@ -6053,11 +6053,11 @@ function NewProductModal({ open, onClose, onProductCreated, initialSupplier, ini
                   }}
                 />
                 {priceError && (!price || !price.trim() || Number(parseCurrency(price)) <= 0) && (
-                  <div className="text-[11px] text-red-600 mt-1">This field is required</div>
+                  <div className="text-xs text-red-600 mt-1">This field is required</div>
                 )}
               </div>
               <div className="col-span-2">
-                <label className="text-xs font-semibold text-gray-700">Unit Type</label>
+                <label className="text-sm font-semibold text-gray-700">Unit Type</label>
                 <div className="flex items-center gap-6 mt-1">
                   <label className="flex items-center gap-2 text-sm"><input type="radio" name="unit-type-estimate" checked={unitType==='unitary'} onChange={()=>{ setUnitType('unitary'); setUnitsPerPackage(''); setCovSqs(''); setCovFt2(''); setCovM2(''); }} /> Unitary</label>
                   <label className="flex items-center gap-2 text-sm"><input type="radio" name="unit-type-estimate" checked={unitType==='multiple'} onChange={()=>{ setUnitType('multiple'); setCovSqs(''); setCovFt2(''); setCovM2(''); }} /> Multiple</label>
@@ -6066,13 +6066,13 @@ function NewProductModal({ open, onClose, onProductCreated, initialSupplier, ini
               </div>
               {unitType==='multiple' && (
                 <div className="col-span-2">
-                  <label className="text-xs font-semibold text-gray-700">Units per Package</label>
+                  <label className="text-sm font-semibold text-gray-700">Units per Package</label>
                   <input type="number" step="0.01" className="w-full border rounded px-3 py-2 mt-1" value={unitsPerPackage} onChange={e=>setUnitsPerPackage(e.target.value)} />
                 </div>
               )}
               {unitType==='coverage' && (
                 <div className="col-span-2">
-                  <label className="text-xs font-semibold text-gray-700">Coverage Area</label>
+                  <label className="text-sm font-semibold text-gray-700">Coverage Area</label>
                   <div className="flex items-center gap-2 mt-1">
                     <div className="flex-1 flex items-center gap-1">
                       <input 
@@ -6083,7 +6083,7 @@ function NewProductModal({ open, onClose, onProductCreated, initialSupplier, ini
                       />
                       <span className="text-sm text-gray-600 whitespace-nowrap">SQS</span>
                     </div>
-                    <span className="text-gray-400">=</span>
+                    <span className="text-gray-600">=</span>
                     <div className="flex-1 flex items-center gap-1">
                       <input 
                         className="w-full border rounded px-3 py-2" 
@@ -6093,7 +6093,7 @@ function NewProductModal({ open, onClose, onProductCreated, initialSupplier, ini
                       />
                       <span className="text-sm text-gray-600 whitespace-nowrap">ft²</span>
                     </div>
-                    <span className="text-gray-400">=</span>
+                    <span className="text-gray-600">=</span>
                     <div className="flex-1 flex items-center gap-1">
                       <input 
                         className="w-full border rounded px-3 py-2" 
@@ -6106,9 +6106,9 @@ function NewProductModal({ open, onClose, onProductCreated, initialSupplier, ini
                   </div>
                 </div>
               )}
-              <div className="col-span-2"><label className="text-xs font-semibold text-gray-700">Description / Notes</label><textarea className="w-full border rounded px-3 py-2 mt-1" rows={3} value={desc} onChange={e=>setDesc(e.target.value)} /></div>
+              <div className="col-span-2"><label className="text-sm font-semibold text-gray-700">Description / Notes</label><textarea className="w-full border rounded px-3 py-2 mt-1" rows={3} value={desc} onChange={e=>setDesc(e.target.value)} /></div>
               <div className="col-span-2">
-                <label className="text-xs font-semibold text-gray-700">Technical Manual URL</label>
+                <label className="text-sm font-semibold text-gray-700">Technical Manual URL</label>
                 <input 
                   className="w-full border rounded px-3 py-2 mt-1" 
                   type="url"
@@ -6118,7 +6118,7 @@ function NewProductModal({ open, onClose, onProductCreated, initialSupplier, ini
                 />
               </div>
               <div className="col-span-2">
-                <label className="text-xs font-semibold text-gray-700">Product Image</label>
+                <label className="text-sm font-semibold text-gray-700">Product Image</label>
                 <div className="mt-1 space-y-2">
                   <button
                     type="button"
@@ -6132,7 +6132,7 @@ function NewProductModal({ open, onClose, onProductCreated, initialSupplier, ini
                       <button
                         type="button"
                         onClick={() => setImageDataUrl('')}
-                        className="mt-2 px-2 py-1 text-xs rounded bg-red-100 text-red-700 hover:bg-red-200">
+                        className="mt-2 px-2 py-1 text-sm rounded bg-red-100 text-red-700 hover:bg-red-200">
                         Remove Image
                       </button>
                     </div>
@@ -6468,11 +6468,11 @@ function AddLabourModal({ onAdd, disabled, open: openProp, onClose: onCloseProp,
   ) : (
     <div className="space-y-3">
       <div>
-        <label className="text-xs text-gray-600">Labour:</label>
+        <label className="text-sm text-gray-600">Labour:</label>
         <input type="text" className="w-full border rounded px-3 py-2" placeholder="Enter labour function name..." value={labour} onChange={e=>setLabour(e.target.value)} />
       </div>
       <div>
-        <label className="text-xs text-gray-600">Type:</label>
+        <label className="text-sm text-gray-600">Type:</label>
         <select className="w-full border rounded px-3 py-2" value={mode} onChange={e=>setMode(e.target.value as 'time'|'contract')}>
           <option value="time">Time-based</option>
           <option value="contract">Contract</option>
@@ -6481,19 +6481,19 @@ function AddLabourModal({ onAdd, disabled, open: openProp, onClose: onCloseProp,
       {showTime && (
         <>
           <div>
-            <label className="text-xs text-gray-600">Quantity (Men):</label>
+            <label className="text-sm text-gray-600">Quantity (Men):</label>
             <input type="number" className="w-full border rounded px-3 py-2" value={men} min={1} step={1} onChange={e=>setMen(e.target.value)} />
           </div>
           <div>
-            <label className="text-xs text-gray-600">Number of Days:</label>
+            <label className="text-sm text-gray-600">Number of Days:</label>
             <input type="number" className="w-full border rounded px-3 py-2" value={days} min={0} step={0.5} onChange={e=>setDays(e.target.value)} />
           </div>
           <div>
-            <label className="text-xs text-gray-600">{priceUnit === 'hour' ? 'Hours per Day:' : 'Hours per Day (optional):'}</label>
+            <label className="text-sm text-gray-600">{priceUnit === 'hour' ? 'Hours per Day:' : 'Hours per Day (optional):'}</label>
             <input type="number" className="w-full border rounded px-3 py-2" value={hoursPerDay} min={0} step={0.5} onChange={e=>setHoursPerDay(e.target.value)} />
           </div>
           <div>
-            <label className="text-xs text-gray-600">Price basis:</label>
+            <label className="text-sm text-gray-600">Price basis:</label>
             <select className="w-full border rounded px-3 py-2" value={priceUnit} onChange={e=>setPriceUnit(e.target.value as 'day'|'hour')}>
               <option value="day">Per day</option>
               <option value="hour">Per hour</option>
@@ -6504,11 +6504,11 @@ function AddLabourModal({ onAdd, disabled, open: openProp, onClose: onCloseProp,
       {showContract && (
         <>
           <div>
-            <label className="text-xs text-gray-600">Quantity (Men):</label>
+            <label className="text-sm text-gray-600">Quantity (Men):</label>
             <input type="number" className="w-full border rounded px-3 py-2" value={men} min={1} step={1} onChange={e=>setMen(e.target.value)} />
           </div>
           <div>
-            <label className="text-xs text-gray-600">Number:</label>
+            <label className="text-sm text-gray-600">Number:</label>
             <div className="flex gap-2 items-center">
               <input type="number" className="w-24 border rounded px-3 py-2" value={contractNumber} min={0} step={0.01} onChange={e=>setContractNumber(e.target.value)} />
               <input type="text" className="flex-1 border rounded px-3 py-2" placeholder="Unit (e.g., each, sqs)" value={contractUnit} onChange={e=>setContractUnit(e.target.value)} />
@@ -6517,7 +6517,7 @@ function AddLabourModal({ onAdd, disabled, open: openProp, onClose: onCloseProp,
         </>
       )}
       <div>
-        <label className="text-xs text-gray-600">{priceLabel}</label>
+        <label className="text-sm text-gray-600">{priceLabel}</label>
         <input type="number" className="w-full border rounded px-3 py-2" value={price} min={0} step={0.01} onChange={e=>setPrice(e.target.value)} />
       </div>
       <div className="bg-gray-100 p-3 rounded">
@@ -6791,7 +6791,7 @@ function AddSubContractorModal({ onAdd, disabled, open: openProp, onClose: onClo
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
               <div>
-                <label className="text-xs text-gray-600">Sub-Contractor Type:</label>
+                <label className="text-sm text-gray-600">Sub-Contractor Type:</label>
                 <select className="w-full border rounded px-3 py-2" value={type} onChange={e=>setType(e.target.value as any)}>
                   <option value="">Select type...</option>
                   <option value="debris-cartage">Debris Cartage</option>
@@ -6803,11 +6803,11 @@ function AddSubContractorModal({ onAdd, disabled, open: openProp, onClose: onClo
               {showDebris && (
                 <>
                   <div>
-                    <label className="text-xs text-gray-600">Description:</label>
+                    <label className="text-sm text-gray-600">Description:</label>
                     <input type="text" className="w-full border rounded px-3 py-2" placeholder="Enter description..." value={debrisDesc} onChange={e=>setDebrisDesc(e.target.value)} />
                   </div>
                   <div>
-                    <label className="text-xs text-gray-600">Input Type:</label>
+                    <label className="text-sm text-gray-600">Input Type:</label>
                     <select className="w-full border rounded px-3 py-2" value={debrisInputType} onChange={e=>setDebrisInputType(e.target.value as any)}>
                       <option value="area">Insert Area (SQS) and Area per Load (SQS/Load)</option>
                       <option value="loads">Insert Number of Loads</option>
@@ -6816,23 +6816,23 @@ function AddSubContractorModal({ onAdd, disabled, open: openProp, onClose: onClo
                   {debrisInputType === 'area' && (
                     <>
                       <div>
-                        <label className="text-xs text-gray-600">SQS:</label>
+                        <label className="text-sm text-gray-600">SQS:</label>
                         <input type="number" className="w-full border rounded px-3 py-2" placeholder="Enter area in SQS" value={debrisSqs} min={0} step={1} onChange={e=>setDebrisSqs(e.target.value)} />
                       </div>
                       <div>
-                        <label className="text-xs text-gray-600">SQS/Load:</label>
+                        <label className="text-sm text-gray-600">SQS/Load:</label>
                         <input type="number" className="w-full border rounded px-3 py-2" placeholder="Enter area per load in SQS/Load" value={debrisSqsPerLoad} min={0} step={1} onChange={e=>setDebrisSqsPerLoad(e.target.value)} />
                       </div>
                     </>
                   )}
                   {debrisInputType === 'loads' && (
                     <div>
-                      <label className="text-xs text-gray-600">Number of Loads:</label>
+                      <label className="text-sm text-gray-600">Number of Loads:</label>
                       <input type="number" className="w-full border rounded px-3 py-2" value={debrisLoads} min={0} step={1} onChange={e=>setDebrisLoads(e.target.value)} />
                     </div>
                   )}
                   <div>
-                    <label className="text-xs text-gray-600">Price per Load ($):</label>
+                    <label className="text-sm text-gray-600">Price per Load ($):</label>
                     <input type="number" className="w-full border rounded px-3 py-2" placeholder="Enter price per load ($)" value={debrisPricePerLoad} min={0} step={0.01} onChange={e=>setDebrisPricePerLoad(e.target.value)} />
                   </div>
                 </>
@@ -6841,18 +6841,18 @@ function AddSubContractorModal({ onAdd, disabled, open: openProp, onClose: onClo
               {showWashroom && (
                 <>
                   <div>
-                    <label className="text-xs text-gray-600">Period:</label>
+                    <label className="text-sm text-gray-600">Period:</label>
                     <select className="w-full border rounded px-3 py-2" value={washroomPeriod} onChange={e=>setWashroomPeriod(e.target.value as any)}>
                       <option value="days">Days</option>
                       <option value="months">Months</option>
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs text-gray-600">{washroomPeriodLabel}</label>
+                    <label className="text-sm text-gray-600">{washroomPeriodLabel}</label>
                     <input type="number" className="w-full border rounded px-3 py-2" value={washroomPeriodCount} min={0} step={0.5} onChange={e=>setWashroomPeriodCount(e.target.value)} />
                   </div>
                   <div>
-                    <label className="text-xs text-gray-600">{washroomPriceLabel}</label>
+                    <label className="text-sm text-gray-600">{washroomPriceLabel}</label>
                     <input type="number" className="w-full border rounded px-3 py-2" value={washroomPrice} min={0} step={0.01} onChange={e=>setWashroomPrice(e.target.value)} />
                   </div>
                 </>
@@ -6861,19 +6861,19 @@ function AddSubContractorModal({ onAdd, disabled, open: openProp, onClose: onClo
               {showOther && (
                 <>
                   <div>
-                    <label className="text-xs text-gray-600">Description:</label>
+                    <label className="text-sm text-gray-600">Description:</label>
                     <input type="text" className="w-full border rounded px-3 py-2" placeholder="Enter description..." value={otherDesc} onChange={e=>setOtherDesc(e.target.value)} />
                   </div>
                   <div>
-                    <label className="text-xs text-gray-600">Number:</label>
+                    <label className="text-sm text-gray-600">Number:</label>
                     <input type="number" className="w-28 border rounded px-3 py-2" value={otherNumber} min={0} step={0.01} onChange={e=>setOtherNumber(e.target.value)} />
                   </div>
                   <div>
-                    <label className="text-xs text-gray-600">Unit:</label>
+                    <label className="text-sm text-gray-600">Unit:</label>
                     <input type="text" className="w-full border rounded px-3 py-2" placeholder="Unit (e.g., each, sqs)" value={otherUnit} onChange={e=>setOtherUnit(e.target.value)} />
                   </div>
                   <div>
-                    <label className="text-xs text-gray-600">Price per Unit ($):</label>
+                    <label className="text-sm text-gray-600">Price per Unit ($):</label>
                     <input type="number" className="w-full border rounded px-3 py-2" value={otherPrice} min={0} step={0.01} onChange={e=>setOtherPrice(e.target.value)} />
                   </div>
                 </>
@@ -7002,18 +7002,18 @@ function AddMiscellaneousModal({ onAdd, disabled, open: openProp, onClose: onClo
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
               <div>
-                <label className="text-xs text-gray-600">Name/Description:</label>
+                <label className="text-sm text-gray-600">Name/Description:</label>
                 <input type="text" className="w-full border rounded px-3 py-2" placeholder="Enter miscellaneous name or description..." value={name} onChange={e=>setName(e.target.value)} />
               </div>
               <div>
-                <label className="text-xs text-gray-600">Quantity:</label>
+                <label className="text-sm text-gray-600">Quantity:</label>
                 <div className="flex gap-2 items-center">
                   <input type="number" className="w-28 border rounded px-3 py-2" value={quantity} min={0} step={0.01} onChange={e=>setQuantity(e.target.value)} />
                   <input type="text" className="flex-1 border rounded px-3 py-2" placeholder="Unit (e.g., each, sqs)" value={unit} onChange={e=>setUnit(e.target.value)} />
                 </div>
               </div>
               <div>
-                <label className="text-xs text-gray-600">Price per Unit ($):</label>
+                <label className="text-sm text-gray-600">Price per Unit ($):</label>
                 <input type="number" className="w-full border rounded px-3 py-2" value={price} min={0} step={0.01} onChange={e=>setPrice(e.target.value)} />
               </div>
               <div className="bg-gray-100 p-3 rounded">
@@ -7113,18 +7113,18 @@ function AddShopModal({ onAdd, disabled, open: openProp, onClose: onCloseProp, s
             </div>
             <div className="p-4 space-y-3 overflow-y-auto flex-1">
               <div>
-                <label className="text-xs text-gray-600">Name/Description:</label>
+                <label className="text-sm text-gray-600">Name/Description:</label>
                 <input type="text" className="w-full border rounded px-3 py-2" placeholder="Enter shop name or description..." value={name} onChange={e=>setName(e.target.value)} />
               </div>
               <div>
-                <label className="text-xs text-gray-600">Quantity:</label>
+                <label className="text-sm text-gray-600">Quantity:</label>
                 <div className="flex gap-2 items-center">
                   <input type="number" className="w-28 border rounded px-3 py-2" value={quantity} min={0} step={0.01} onChange={e=>setQuantity(e.target.value)} />
                   <input type="text" className="flex-1 border rounded px-3 py-2" placeholder="Unit (e.g., each, sqs)" value={unit} onChange={e=>setUnit(e.target.value)} />
                 </div>
               </div>
               <div>
-                <label className="text-xs text-gray-600">Price per Unit ($):</label>
+                <label className="text-sm text-gray-600">Price per Unit ($):</label>
                 <input type="number" className="w-full border rounded px-3 py-2" value={price} min={0} step={0.01} onChange={e=>setPrice(e.target.value)} />
               </div>
               <div className="bg-gray-100 p-3 rounded">

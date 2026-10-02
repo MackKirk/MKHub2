@@ -65,14 +65,14 @@ function AttachmentThumb({
           onError={() => setShowImage(false)}
         />
       ) : (
-        <div className="flex h-full w-full flex-col items-center justify-center rounded-lg border border-gray-200 bg-gray-100 p-1 text-center text-[10px] font-medium text-gray-600">
+        <div className="flex h-full w-full flex-col items-center justify-center rounded-lg border border-gray-200 bg-gray-100 p-1 text-center text-[10px] font-semibold text-gray-600">
           File
         </div>
       )}
       {!disabled ? (
         <button
           type="button"
-          className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-xs leading-5 text-white hover:bg-black/80"
+          className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-sm leading-5 text-white hover:bg-black/80"
           onClick={onRemove}
           aria-label="Remove file"
         >
@@ -129,7 +129,7 @@ export function FuelCardAssignmentAttachmentsPicker({
       {fieldHint ? (
         <AppControlLabelRow label={label} fieldHint={<AppFieldHint hint={fieldHint} />} />
       ) : (
-        <div className="mb-1 text-sm font-medium text-gray-700">{label}</div>
+        <div className="mb-1 text-sm font-semibold text-gray-700">{label}</div>
       )}
       <div
         className={`rounded-lg border-2 border-dashed px-3 py-4 transition-colors ${
@@ -166,12 +166,12 @@ export function FuelCardAssignmentAttachmentsPicker({
             type="button"
             disabled={disabled}
             onClick={() => fileInputRef.current?.click()}
-            className="flex h-20 w-20 shrink-0 items-center justify-center rounded-lg border border-gray-300 bg-white text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed"
+            className="flex h-20 w-20 shrink-0 items-center justify-center rounded-lg border border-gray-300 bg-white text-sm font-semibold text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed"
           >
             Add
           </button>
         </div>
-        <p className="mt-2 text-xs text-gray-500">Optional — images, PDF, or Word. Drag, paste, or choose files.</p>
+        <p className="mt-2 text-sm text-gray-600">Optional — images, PDF, or Word. Drag, paste, or choose files.</p>
         <input
           ref={fileInputRef}
           type="file"

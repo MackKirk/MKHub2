@@ -2402,7 +2402,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
                   [key]: Number(e.target.value),
                 })
               }
-              className="h-8 w-11 rounded-lg border border-slate-200 bg-white px-1.5 text-center text-xs font-medium text-slate-800 shadow-sm focus:border-brand-red/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/25"
+              className="h-8 w-11 rounded-lg border border-slate-200 bg-white px-1.5 text-center text-xs font-semibold text-slate-800 shadow-sm focus:border-brand-red/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/25"
               title={key.replace('_pct', '')}
             />
           ))}
@@ -2416,7 +2416,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
       {editLockStatus === 'pending' && !isTemplate ? (
         <OverlayPortal>
           <div className="fixed inset-0 z-[225] flex items-center justify-center bg-white/70 backdrop-blur-[1px]">
-            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 shadow-sm">
+            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm">
               Opening document…
             </div>
           </div>
@@ -2876,7 +2876,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
           </div>
           <div className={`${editorSidePanelBodyClass} space-y-2`}>
             {elements.length === 0 && (
-              <div className="rounded-lg border border-dashed border-slate-200/90 bg-white px-2 py-4 text-center text-[11px] font-medium text-slate-500">
+              <div className="rounded-lg border border-dashed border-slate-200/90 bg-white px-2 py-4 text-center text-[11px] font-semibold text-slate-500">
                 No elements on this page.
               </div>
             )}
@@ -2989,7 +2989,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
                         {typeIcon}
                         <span className="text-[9px] font-semibold uppercase tracking-wide text-slate-500">{typeLabel}</span>
                       </span>
-                      <span className="flex-1 truncate text-[12px] font-medium leading-snug text-slate-800">{label}</span>
+                      <span className="flex-1 truncate text-[12px] font-semibold leading-snug text-slate-800">{label}</span>
                     </button>
                   </div>
                   {isSel && selectedElementIds.length === 1 && el.type !== 'block' && (
