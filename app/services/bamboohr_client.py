@@ -22,6 +22,157 @@ def _normalize_bamboohr_id(value: Any) -> str:
     return str(value).strip()
 
 
+# BambooHR compensation table column order when Accept is omitted (array rows).
+# Matches GET /meta/tables labels for this tenant + official field aliases.
+COMPENSATION_ARRAY_FIELDS = (
+    "startDate",
+    "rate",
+    "type",
+    "exempt",
+    "reason",
+    "comment",
+    "paidPer",
+    "paySchedule",
+    "overtimeRate",
+)
+
+
+def normalize_compensation_rate(rate: Any) -> str:
+    """Extract a numeric pay-rate string from Bamboo rate field (dict or scalar)."""
+    if rate is None:
+        return ""
+    if isinstance(rate, dict):
+        value = rate.get("value")
+        if value is None or value == "":
+            return ""
+        return str(value).strip()
+    text = str(rate).strip()
+    if not text:
+        return ""
+    # "21.00 CAD" / "$27.00" → keep leading numeric token
+    cleaned = text.replace("$", "").replace(",", "").strip()
+    parts = cleaned.split()
+    return parts[0] if parts else cleaned
+
+
+def normalize_compensation_pay_type(raw: Any) -> Optional[str]:
+    """Map Bamboo pay type labels onto Hub conventions (hourly|salary|contract)."""
+    if isinstance(raw, dict):
+        raw = raw.get("name") or raw.get("label") or raw.get("_text") or ""
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    lower = text.lower()
+    if lower in ("hourly", "hour", "hours"):
+        return "hourly"
+    if lower in ("salary", "salaried", "annual", "yearly", "year", "exempt"):
+        return "salary"
+    if lower in ("contract", "contractor", "commission"):
+        return "contract"
+    return lower
+
+
+def normalize_compensation_row(row: Any) -> Optional[Dict[str, Any]]:
+    """
+    Normalize a Bamboo compensation table row into a dict with stable keys.
+
+    Handles both named JSON objects (Accept: application/json) and positional
+    arrays returned when Accept is omitted.
+    """
+    if isinstance(row, list):
+        mapped: Dict[str, Any] = {}
+        for i, name in enumerate(COMPENSATION_ARRAY_FIELDS):
+            if i < len(row):
+                mapped[name] = row[i]
+        row = mapped
+    if not isinstance(row, dict):
+        return None
+
+    start = row.get("startDate") or row.get("start_date") or row.get("date")
+    if not start:
+        return None
+
+    rate_raw = row.get("rate") or row.get("payRate") or row.get("pay_rate")
+    rate = normalize_compensation_rate(rate_raw)
+    if not rate:
+        return None
+
+    pay_type = normalize_compensation_pay_type(row.get("type") or row.get("payType"))
+    reason = row.get("reason") or row.get("changeReason") or ""
+    if isinstance(reason, dict):
+        reason = reason.get("name") or reason.get("label") or ""
+    comment = row.get("comment") or row.get("comments") or ""
+    if comment is None:
+        comment = ""
+
+    bamboo_id = _normalize_bamboohr_id(row.get("id") or row.get("rowId"))
+    employee_id = _normalize_bamboohr_id(
+        row.get("employeeId") or row.get("employee_id") or row.get("employee")
+    )
+
+    return {
+        "id": bamboo_id or None,
+        "employeeId": employee_id or None,
+        "startDate": str(start).split("T")[0].strip(),
+        "endDate": (str(row.get("endDate") or "").split("T")[0].strip() or None),
+        "rate": rate,
+        "type": pay_type,
+        "type_raw": str(row.get("type") or "").strip() or None,
+        "reason": str(reason or "").strip(),
+        "comment": str(comment or "").strip(),
+        "paidPer": str(row.get("paidPer") or row.get("paid_per") or "").strip() or None,
+        "paySchedule": str(row.get("paySchedule") or "").strip() or None,
+        "currency": (
+            (rate_raw.get("currency") if isinstance(rate_raw, dict) else None)
+            or row.get("currency")
+        ),
+        "_raw": row,
+    }
+
+
+def coerce_compensation_rows(result: Any, employee_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Flatten Bamboo compensation table payloads into normalized row dicts."""
+    rows: List[Any] = []
+    if isinstance(result, list):
+        rows = result
+    elif isinstance(result, dict):
+        if "employees" in result and isinstance(result["employees"], dict):
+            employees_data = result["employees"]
+            if employee_id and employee_id in employees_data:
+                emp_data = employees_data[employee_id]
+                if isinstance(emp_data, dict) and "rows" in emp_data:
+                    rows = emp_data["rows"] if isinstance(emp_data["rows"], list) else [emp_data["rows"]]
+                elif isinstance(emp_data, list):
+                    rows = emp_data
+            else:
+                for emp_data in employees_data.values():
+                    if isinstance(emp_data, dict) and "rows" in emp_data:
+                        chunk = emp_data["rows"]
+                        rows.extend(chunk if isinstance(chunk, list) else [chunk])
+                    elif isinstance(emp_data, list):
+                        rows.extend(emp_data)
+        elif "rows" in result:
+            rows = result["rows"] if isinstance(result["rows"], list) else [result["rows"]]
+        elif "employee" in result and isinstance(result["employee"], dict):
+            emp_data = result["employee"]
+            if "rows" in emp_data:
+                rows = emp_data["rows"] if isinstance(emp_data["rows"], list) else [emp_data["rows"]]
+            elif "compensation" in emp_data:
+                comp = emp_data["compensation"]
+                rows = comp if isinstance(comp, list) else [comp]
+        elif any(k in result for k in ("startDate", "rate", "type")):
+            rows = [result]
+
+    out: List[Dict[str, Any]] = []
+    for row in rows:
+        normalized = normalize_compensation_row(row)
+        if normalized:
+            out.append(normalized)
+
+    out.sort(key=lambda r: (r.get("startDate") or "", r.get("id") or ""))
+    return out
+
+
 def extract_time_off_request_employee_id(req: Dict[str, Any]) -> str:
     """Return the BambooHR employee id from a time-off request payload."""
     if not isinstance(req, dict):
@@ -108,16 +259,59 @@ def normalize_time_off_policy_name(raw: Any) -> str:
 
 
 def parse_time_off_request_notes(req: Dict[str, Any]) -> str:
+    """
+    Bamboo list-requests returns notes as:
+      {"employee": "...", "manager": "..."}  # keys omitted when empty
+    Create payloads sometimes use [{"from":"employee","note":"..."}].
+    """
     notes_raw = req.get("notes") or req.get("note") or req.get("comment") or ""
     try:
+        if isinstance(notes_raw, list):
+            parts: List[str] = []
+            for item in notes_raw:
+                if not isinstance(item, dict):
+                    continue
+                text = (
+                    item.get("note")
+                    or item.get("notes")
+                    or item.get("comment")
+                    or item.get("text")
+                    or ""
+                )
+                text = str(text).strip()
+                if not text:
+                    continue
+                who = str(item.get("from") or item.get("author") or "").strip().lower()
+                if who == "manager":
+                    parts.append(f"Manager: {text}")
+                elif who == "employee":
+                    parts.append(text)
+                else:
+                    parts.append(text)
+            return "\n".join(parts).strip()
+
         if isinstance(notes_raw, dict):
-            return str(
-                notes_raw.get("note")
+            employee = str(
+                notes_raw.get("employee")
+                or notes_raw.get("employeeNote")
+                or notes_raw.get("note")
                 or notes_raw.get("notes")
                 or notes_raw.get("comment")
                 or notes_raw.get("reason")
                 or ""
             ).strip()
+            manager = str(
+                notes_raw.get("manager")
+                or notes_raw.get("managerNote")
+                or ""
+            ).strip()
+            parts = []
+            if employee:
+                parts.append(employee)
+            if manager:
+                parts.append(f"Manager: {manager}")
+            return "\n".join(parts).strip()
+
         if isinstance(notes_raw, str):
             return notes_raw.strip()
         return str(notes_raw).strip() if notes_raw else ""
@@ -491,88 +685,50 @@ class BambooHRClient:
         
         return None
     
+    def get_compensation_history(self, employee_id: str) -> List[Dict[str, Any]]:
+        """
+        Full compensation table for an employee (all historical rows), oldest→newest.
+
+        Prefer Accept: application/json so Bamboo returns named fields + row ids.
+        Falls back to array-shaped responses and normalizes both.
+        """
+        endpoints = [
+            f"/employees/{employee_id}/tables/compensation",
+            f"/employees/{employee_id}/table/compensation",
+        ]
+        last_error = None
+        for endpoint in endpoints:
+            for accept in ("application/json", None):
+                try:
+                    kwargs = {"headers": {"Accept": accept}} if accept else {}
+                    result = self._request("GET", endpoint, **kwargs)
+                    if result is None or (isinstance(result, str) and not result.strip()):
+                        continue
+                    rows = coerce_compensation_rows(result, employee_id)
+                    if rows:
+                        return rows
+                except Exception as exc:
+                    last_error = exc
+                    continue
+        return []
+
     def get_compensation(self, employee_id: str) -> Optional[Dict[str, Any]]:
         """
-        Get compensation data for an employee from the compensation table
-        
-        Returns the most recent active compensation record (endDate is null or most recent)
+        Most recent active compensation row for an employee.
+
+        Prefers rows with no endDate; otherwise the latest startDate.
+        Returns a normalized dict (rate as string, type as Hub pay_type).
         """
         try:
-            # Try different possible endpoints
-            endpoints = [
-                f"/employees/{employee_id}/tables/compensation",
-                f"/employees/{employee_id}/table/compensation",
-            ]
-            
-            result = None
-            for endpoint in endpoints:
-                try:
-                    result = self._request("GET", endpoint)
-                    if result and (isinstance(result, (dict, list)) or (isinstance(result, str) and result.strip())):
-                        break
-                except Exception:
-                    continue
-            
-            if not result or (isinstance(result, str) and not result.strip()):
-                return None
-            
-            # Handle different response formats
-            rows = []
-            
-            if isinstance(result, list):
-                rows = result
-            elif isinstance(result, dict):
-                # Check if it's the format from the documentation: { "table": "compensation", "employees": { "id": { "rows": [...] } } }
-                if "employees" in result:
-                    employees_data = result["employees"]
-                    if isinstance(employees_data, dict) and employee_id in employees_data:
-                        emp_data = employees_data[employee_id]
-                        if isinstance(emp_data, dict) and "rows" in emp_data:
-                            rows = emp_data["rows"] if isinstance(emp_data["rows"], list) else [emp_data["rows"]]
-                # Check if it's a direct rows format
-                elif "rows" in result:
-                    rows = result["rows"] if isinstance(result["rows"], list) else [result["rows"]]
-                # Check if it's wrapped in employee
-                elif "employee" in result:
-                    emp_data = result["employee"]
-                    if isinstance(emp_data, dict):
-                        if "rows" in emp_data:
-                            rows = emp_data["rows"] if isinstance(emp_data["rows"], list) else [emp_data["rows"]]
-                        elif "compensation" in emp_data:
-                            comp_data = emp_data["compensation"]
-                            rows = comp_data if isinstance(comp_data, list) else [comp_data]
-            
+            rows = self.get_compensation_history(employee_id)
             if not rows:
                 return None
-            
-            # Find the most recent active compensation (endDate is null or most recent)
-            active_compensation = None
-            most_recent_date = None
-            
-            for row in rows:
-                if isinstance(row, dict):
-                    end_date = row.get("endDate")
-                    start_date = row.get("startDate")
-                    
-                    # Prefer records with no end date (active)
-                    if end_date is None or end_date == "":
-                        if active_compensation is None or (start_date and start_date > (most_recent_date or "")):
-                            active_compensation = row
-                            most_recent_date = start_date
-                    # Otherwise, use the most recent one
-                    elif start_date and (most_recent_date is None or start_date > most_recent_date):
-                        if active_compensation is None or active_compensation.get("endDate"):
-                            active_compensation = row
-                            most_recent_date = start_date
-            
-            # If no active record found, use the most recent one
-            if active_compensation is None and rows:
-                active_compensation = rows[0]
-            
-            return active_compensation
-            
-        except Exception as e:
-            # Compensation table might not exist or employee might not have compensation data
+
+            active = [r for r in rows if not r.get("endDate")]
+            pool = active or rows
+            # Already sorted oldest→newest; last is most recent
+            return pool[-1]
+        except Exception:
             return None
     
     def get_reports(self, report_id: str, format: str = "JSON") -> Any:

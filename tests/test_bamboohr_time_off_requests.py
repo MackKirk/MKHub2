@@ -8,6 +8,7 @@ from app.services.bamboohr_client import (
     normalize_time_off_policy_name,
     normalize_time_off_status,
     parse_time_off_request_days,
+    parse_time_off_request_notes,
 )
 from app.services.bamboohr_time_off_sync import (
     _is_bamboo_sourced_history,
@@ -86,6 +87,24 @@ class TestBambooHRTimeOffRequests(unittest.TestCase):
             3.0,
         )
 
+    def test_parse_request_notes_employee_manager_dict(self):
+        self.assertEqual(
+            parse_time_off_request_notes({"notes": {"employee": "Birthday!"}}),
+            "Birthday!",
+        )
+        self.assertEqual(
+            parse_time_off_request_notes(
+                {"notes": {"employee": "Leaving at noon", "manager": "1/2 day off"}}
+            ),
+            "Leaving at noon\nManager: 1/2 day off",
+        )
+        self.assertEqual(
+            parse_time_off_request_notes(
+                {"notes": [{"from": "employee", "note": "Appointments"}]}
+            ),
+            "Appointments",
+        )
+
     def test_clean_keeps_manual_adjustments(self):
         manual = _FakeHistory(description="Bonus day (Adjusted by Jane)")
         self.assertTrue(_is_manual_history_row(manual))
@@ -140,6 +159,46 @@ class TestBambooHRTimeOffRequests(unittest.TestCase):
         self.assertIn("Accrual", rows[1]["description"])
         self.assertEqual(rows[1]["earned"], 5.0)
         self.assertEqual(rows[1]["balance"], 5.0)
+
+        # Balance went UP (forfeit 10 + accrue 15) — still expand fully
+        up = _entries_for_calculator_day_change(
+            {"Vacation": (10.0, 0.0)},
+            {"Vacation": (15.0, 0.0)},
+            date(2026, 1, 1),
+            set(),
+        )
+        self.assertEqual(len(up), 2)
+        self.assertEqual(up[0]["used"], -10.0)
+        self.assertEqual(up[1]["earned"], 15.0)
+        self.assertEqual(up[1]["balance"], 15.0)
+
+        # Net-zero rollover (forfeit 5 + accrue 5)
+        flat = _entries_for_calculator_day_change(
+            {"Sick Leave": (5.0, 3.0)},
+            {"Sick Leave": (5.0, 0.0)},
+            date(2025, 1, 1),
+            set(),
+        )
+        self.assertEqual(len(flat), 2)
+        self.assertEqual(flat[0]["used"], -5.0)
+        self.assertEqual(flat[1]["earned"], 5.0)
+
+    def test_calculator_same_day_usage_plus_half_day_clawback(self):
+        from datetime import date
+
+        from app.services.bamboohr_time_off_sync import (
+            _calculator_delta_is_interesting,
+            _entries_for_calculator_day_change,
+        )
+
+        prev = {"Sick Leave": (5.0, 0.0)}
+        cur = {"Sick Leave": (4.5, 1.0)}  # -1 used request +0.5 Gabi clawback
+        self.assertTrue(_calculator_delta_is_interesting(prev, cur, date(2025, 2, 27)))
+        rows = _entries_for_calculator_day_change(prev, cur, date(2025, 2, 27), set())
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["description"], "Balance adjusted")
+        self.assertEqual(rows[0]["earned"], 0.5)
+        self.assertEqual(rows[0]["balance"], 4.5)
 
     def test_calculator_delta_opening_and_adjustment(self):
         from datetime import date

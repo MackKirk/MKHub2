@@ -12,6 +12,7 @@ import {
   isSickPolicy,
   isVacationPolicy,
   matchesTimeOffMode,
+  splitTimeOffHistoryDescription,
   type TimeOffBalance,
   type TimeOffHistoryItem,
   type TimeOffMode,
@@ -221,20 +222,28 @@ export function MyTimeOffPanel({ mode }: MyTimeOffPanelProps) {
           <p className={uiTypography.helper}>No history yet.</p>
         ) : (
           <div className="divide-y divide-gray-100">
-            {historyRows.map((row) => (
+            {historyRows.map((row) => {
+              const { title, note } = splitTimeOffHistoryDescription(row.description);
+              return (
               <div key={row.id} className="flex items-center justify-between gap-3 py-2.5">
                 <div className="min-w-0">
                   <div className="text-sm font-semibold text-gray-900">{row.policy_name}</div>
-                  <div className="mt-0.5 text-xs text-gray-500">
+                  <div className="mt-0.5 text-xs text-gray-600">
                     {formatShortDate(row.transaction_date)}
-                    {row.description ? ` · ${row.description}` : ''}
+                    {title ? ` · ${title}` : ''}
                   </div>
+                  {note ? (
+                    <div className="mt-0.5 whitespace-pre-line text-[11px] leading-snug text-gray-500">
+                      {note}
+                    </div>
+                  ) : null}
                 </div>
                 <div className="shrink-0 text-sm font-semibold tabular-nums text-gray-900">
                   {Number(row.balance_after).toFixed(1)} days
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </AppCard>

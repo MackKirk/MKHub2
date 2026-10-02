@@ -48,6 +48,14 @@ sync_time_off_mod = importlib.util.module_from_spec(spec_to)
 spec_to.loader.exec_module(sync_time_off_mod)
 sync_all_time_off = sync_time_off_mod.sync_all_time_off
 
+# Import compensation history sync
+spec_comp = importlib.util.spec_from_file_location(
+    "sync_compensation", os.path.join(script_dir, "sync_bamboohr_compensation.py")
+)
+sync_compensation_mod = importlib.util.module_from_spec(spec_comp)
+spec_comp.loader.exec_module(sync_compensation_mod)
+sync_all_compensation = sync_compensation_mod.sync_all_compensation
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -62,7 +70,7 @@ Examples:
   python scripts/sync_bamboohr_all.py
   
   # Sync only employees and documents
-  python scripts/sync_bamboohr_all.py --skip-training --skip-time-off
+  python scripts/sync_bamboohr_all.py --skip-training --skip-time-off --skip-compensation
   
   # Sync first 10 employees only
   python scripts/sync_bamboohr_all.py --limit 10
@@ -73,6 +81,7 @@ Examples:
     parser.add_argument("--skip-training", action="store_true", help="Skip training synchronization")
     parser.add_argument("--skip-documents", action="store_true", help="Skip document synchronization")
     parser.add_argument("--skip-time-off", action="store_true", help="Skip time-off / sick leave synchronization")
+    parser.add_argument("--skip-compensation", action="store_true", help="Skip compensation / salary history synchronization")
     parser.add_argument("--limit", type=int, help="Limit number of employees to process")
     parser.add_argument("--no-photos", dest="include_photos", action="store_false", help="Skip profile photos in document sync")
     parser.add_argument("--force-update-photos", action="store_true", help="Update profile photos even if they already exist")
@@ -163,8 +172,27 @@ Examples:
             print(f"\n[ERROR] Error syncing time off: {e}")
             import traceback
             traceback.print_exc()
+            if not args.dry_run:
+                print("\n[WARN]  Continuing with other syncs...")
     else:
         print("\n[Skipping time-off synchronization]")
+
+    # 5. Sync Compensation / Salary History
+    if not args.skip_compensation:
+        print("\n" + "="*70)
+        print("STEP 5: Syncing Compensation History")
+        print("="*70)
+        try:
+            sync_all_compensation(
+                dry_run=args.dry_run,
+                limit=args.limit,
+            )
+        except Exception as e:
+            print(f"\n[ERROR] Error syncing compensation history: {e}")
+            import traceback
+            traceback.print_exc()
+    else:
+        print("\n[Skipping compensation synchronization]")
     
     print("\n" + "="*70)
     print("Synchronization Complete!")

@@ -9,6 +9,8 @@ import {
   formatTimeOffDateRange,
   hoursToDays as hoursToDaysShared,
   isTimeOffEndOnOrAfterToday,
+  splitTimeOffHistoryDescription,
+  compareTimeOffHistoryDesc,
 } from '@/lib/timeOff';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
 import UserLoans from '@/components/UserLoans';
@@ -1140,6 +1142,9 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
             acc[h.policy_name].push(h);
             return acc;
           }, {});
+          Object.keys(groupedHistory).forEach((policy) => {
+            groupedHistory[policy].sort(compareTimeOffHistoryDesc);
+          });
           
           // Check if entry is a manual adjustment
           const isManualAdjustment = (desc: string) => {
@@ -1178,6 +1183,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                       <tbody>
                         {entries.map((h: any) => {
                           const isAdjustment = isManualAdjustment(h.description || '');
+                          const { title, note } = splitTimeOffHistoryDescription(h.description);
                           return (
                             <tr key={h.id} className={`border-b ${isAdjustment ? 'bg-blue-50' : ''}`}>
                               <td className="py-2 px-3">
@@ -1189,7 +1195,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                                 })}
                               </td>
                               <td className="py-2 px-3">
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-start gap-2">
                                   {isAdjustment && (
                                     <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
                                       <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
@@ -1199,7 +1205,14 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                                       Adjustment
                                     </span>
                                   )}
-                                  <span className="whitespace-pre-line text-xs">{h.description || 'Time off transaction'}</span>
+                                  <div className="min-w-0">
+                                    <div className="text-xs text-gray-900">{title}</div>
+                                    {note ? (
+                                      <div className="mt-0.5 whitespace-pre-line text-[11px] leading-snug text-gray-500">
+                                        {note}
+                                      </div>
+                                    ) : null}
+                                  </div>
                                 </div>
                               </td>
                               <td className="py-2 px-3 text-right">

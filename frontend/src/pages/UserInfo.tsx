@@ -11,6 +11,8 @@ import {
   formatTimeOffDateRange,
   hoursToDays as hoursToDaysShared,
   isTimeOffEndOnOrAfterToday,
+  splitTimeOffHistoryDescription,
+  compareTimeOffHistoryDesc,
 } from '@/lib/timeOff';
 import toast from 'react-hot-toast';
 import GeoSelect from '@/components/GeoSelect';
@@ -4818,6 +4820,14 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
       toast.error('A justification is required for sick leave');
       return;
     }
+    const hoursNum = hours ? parseFloat(hours) : undefined;
+    if (hoursNum != null && Number.isFinite(hoursNum)) {
+      const daysNum = hoursNum / 8;
+      if (Math.abs(daysNum - Math.round(daysNum)) > 1e-6) {
+        toast.error('Time off must be in whole days (half days are not allowed)');
+        return;
+      }
+    }
     
     setSubmitting(true);
     try {
@@ -4885,6 +4895,10 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
     }
     
     const days = parseFloat(adjustmentDays);
+    if (!Number.isFinite(days) || days <= 0 || Math.abs(days - Math.round(days)) > 1e-6) {
+      toast.error('Adjustments must be in whole days (no half days)');
+      return;
+    }
     if (isNaN(days) || days <= 0) {
       toast.error('Amount must be greater than 0');
       return;
@@ -5190,6 +5204,9 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
             acc[h.policy_name].push(h);
             return acc;
           }, {});
+          Object.keys(groupedHistory).forEach((policy) => {
+            groupedHistory[policy].sort(compareTimeOffHistoryDesc);
+          });
           
           // Check if entry is a manual adjustment or manual history entry
           const isManualAdjustment = (desc: string) => {
@@ -5229,13 +5246,14 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                       <tbody>
                         {entries.map((h: any) => {
                           const isAdjustment = isManualAdjustment(h.description || '');
+                          const { title, note } = splitTimeOffHistoryDescription(h.description);
                           return (
                             <tr key={h.id} className={`border-b ${isAdjustment ? 'bg-blue-50' : ''}`}>
                               <td className="py-2 px-3">
                                 {formatTimeOffDate(h.transaction_date)}
                               </td>
                               <td className="py-2 px-3">
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-start gap-2">
                                   {isAdjustment && (
                                     <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
                                       <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
@@ -5245,7 +5263,14 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                                       Adjustment
                                     </span>
                                   )}
-                                  <span className="whitespace-pre-line text-xs">{h.description || 'Time off transaction'}</span>
+                                  <div className="min-w-0">
+                                    <div className="text-xs text-gray-900">{title}</div>
+                                    {note ? (
+                                      <div className="mt-0.5 whitespace-pre-line text-[11px] leading-snug text-gray-500">
+                                        {note}
+                                      </div>
+                                    ) : null}
+                                  </div>
                                 </div>
                               </td>
                               <td className="py-2 px-3 text-right">
@@ -5460,9 +5485,10 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                 );
               })()}
               <AppInput
-                label="Hours (auto-calculated)"
+                label="Hours (auto-calculated, whole days only)"
                 type="number"
-                step="0.5"
+                step="8"
+                min="8"
                 value={hours}
                 onChange={(e) => setHours(e.target.value)}
               />
@@ -5573,8 +5599,8 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                   <AppInput
                     className="min-w-0 flex-1"
                     type="number"
-                    step="0.5"
-                    min="0.5"
+                    step="1"
+                    min="1"
                     value={adjustmentDays}
                     onChange={(e) => setAdjustmentDays(e.target.value)}
                     placeholder="0"

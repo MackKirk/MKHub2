@@ -123,3 +123,56 @@ export function isTimeOffEndOnOrAfterToday(endDate: string, from = new Date()): 
   const today = new Date(from.getFullYear(), from.getMonth(), from.getDate());
   return end >= today;
 }
+
+/** Split synced history text: first line = title, remaining lines = Bamboo-style note. */
+export function splitTimeOffHistoryDescription(description?: string | null): {
+  title: string;
+  note: string;
+} {
+  const raw = String(description || '').trim() || 'Time off transaction';
+  const nl = raw.indexOf('\n');
+  if (nl < 0) return { title: raw, note: '' };
+  return {
+    title: raw.slice(0, nl).trim() || 'Time off transaction',
+    note: raw.slice(nl + 1).trim(),
+  };
+}
+
+/** Same-day rank for DESC lists: later events first (accrual above carryover loss). */
+export function timeOffHistorySameDayRank(row: {
+  bamboohr_transaction_id?: string | null;
+  description?: string | null;
+  used_days?: number | null;
+}): number {
+  const id = String(row.bamboohr_transaction_id || '').toLowerCase();
+  const desc = String(row.description || '').toLowerCase();
+  if (id.includes('carryover') || desc.includes('lost days that exceeded')) return 2;
+  const used = Number(row.used_days);
+  if (Number.isFinite(used) && used !== 0) return 1;
+  return 0;
+}
+
+/** Newest date first; within a day, accrual/adjust before carryover loss. */
+export function compareTimeOffHistoryDesc(
+  a: {
+    transaction_date?: string | null;
+    balance_after?: number | null;
+    bamboohr_transaction_id?: string | null;
+    description?: string | null;
+    used_days?: number | null;
+  },
+  b: {
+    transaction_date?: string | null;
+    balance_after?: number | null;
+    bamboohr_transaction_id?: string | null;
+    description?: string | null;
+    used_days?: number | null;
+  },
+): number {
+  const da = toDateOnlyString(a.transaction_date || '');
+  const db = toDateOnlyString(b.transaction_date || '');
+  if (da !== db) return db.localeCompare(da);
+  const rankDiff = timeOffHistorySameDayRank(a) - timeOffHistorySameDayRank(b);
+  if (rankDiff !== 0) return rankDiff;
+  return Number(b.balance_after ?? 0) - Number(a.balance_after ?? 0);
+}

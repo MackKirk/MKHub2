@@ -1278,6 +1278,27 @@ def _is_sick_leave_policy(policy_name: Optional[str]) -> bool:
     return value in {"sick leave", "sick"} or "sick" in value
 
 
+def _require_whole_time_off_days(amount_days: float, *, label: str = "Time off") -> float:
+    """Hub policy: new requests/adjustments are whole days only. Imported history may still be fractional."""
+    try:
+        days = float(amount_days)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=f"{label} days must be a number") from exc
+    if days <= 0:
+        raise HTTPException(status_code=400, detail=f"{label} days must be greater than 0")
+    if abs(days - round(days)) > 1e-6:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{label} must be in whole days (half days are not allowed).",
+        )
+    return float(round(days))
+
+
+def _require_whole_time_off_hours(hours: float) -> float:
+    days = _require_whole_time_off_days(float(hours) / 8.0, label="Time off")
+    return days * 8.0
+
+
 def _has_any_time_off_perm(user: User, perms: tuple) -> bool:
     if _user_is_admin(user):
         return True
@@ -1415,6 +1436,7 @@ def adjust_time_off_balance(
         raise HTTPException(status_code=400, detail="adjustment_type must be 'add' or 'subtract'")
     if not amount_days or float(amount_days) <= 0:
         raise HTTPException(status_code=400, detail="amount_days must be greater than 0")
+    amount_days = _require_whole_time_off_days(amount_days, label="Balance adjustment")
     if not effective_date_str:
         raise HTTPException(status_code=400, detail="effective_date is required")
     if not note or not note.strip():
@@ -1591,13 +1613,12 @@ def create_time_off_request(
                 detail="Time off must be requested at least 24 hours in advance.",
             )
     
-    # Calculate hours if not provided
+    # Calculate hours if not provided — Hub only allows whole days going forward
     if not hours:
         days = (end_date - start_date).days + 1
-        # Assume 8 hours per day (can be made configurable)
-        hours = days * 8.0
+        hours = _require_whole_time_off_days(days, label="Time off") * 8.0
     else:
-        hours = float(hours)
+        hours = _require_whole_time_off_hours(float(hours))
     
     # Check if user has enough balance
     # For "Sick Leave", allow request even without sufficient balance
@@ -1732,12 +1753,26 @@ def get_time_off_history(
     
     history = query.order_by(
         TimeOffHistory.transaction_date.desc(),
-        # Same calendar day: show later events first under DESC date sort
-        # (carryover loss before accrual chronologically → accrual above carryover here).
+        # Same calendar day under DESC: accrual/adjust first, then usage, then
+        # carryover loss last — so the top row's balance matches Bamboo's end-of-day.
         case(
-            (TimeOffHistory.bamboohr_transaction_id.ilike("%carryover%"), 1),
+            (
+                or_(
+                    TimeOffHistory.bamboohr_transaction_id.ilike("%carryover%"),
+                    TimeOffHistory.description.ilike("%Lost days that exceeded%"),
+                ),
+                2,
+            ),
+            (
+                and_(
+                    TimeOffHistory.used_days.isnot(None),
+                    TimeOffHistory.used_days != 0,
+                ),
+                1,
+            ),
             else_=0,
         ).asc(),
+        TimeOffHistory.balance_after.desc(),
         TimeOffHistory.created_at.desc(),
     ).all()
 

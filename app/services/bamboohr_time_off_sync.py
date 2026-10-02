@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import uuid as uuid_lib
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import and_, func, or_
@@ -460,7 +460,7 @@ def _calculator_delta_is_interesting(
     cur: Dict[str, Tuple[float, float]],
     cur_date: date,
 ) -> bool:
-    """True when balance moved for a reason other than time-off usage."""
+    """True when balance moved for a reason other than pure time-off usage."""
     names = set(prev) | set(cur)
     for name in names:
         pb, pu = prev.get(name, (0.0, 0.0))
@@ -471,15 +471,22 @@ def _calculator_delta_is_interesting(
         bal_d = cb - pb
         used_d = cu - pu
 
-        # Year-boundary balance moves (carryover / new accrual)
-        if cur_date.month == 1 and cur_date.day == 1 and abs(bal_d) > 0.001:
-            return True
+        # New-year rollover (incl. forfeit+accrual that nets to the same balance)
+        if cur_date.month == 1 and cur_date.day == 1:
+            if pb > 0.001 or cb > 0.001 or abs(bal_d) > 0.001 or cu + 0.001 < pu:
+                return True
         # Unexpected YTD reset mid-year
         if cu + 0.001 < pu:
             return True
-        # Bamboo deducts multi-day requests from balance up front while usedYTD
-        # ticks one day at a time — treat any balance↓ + used↑ as usage.
-        if bal_d < -0.001 and used_d > 0.001:
+        # Pure usage: balance down ~= usedYTD up (multi-day: bal drops up front)
+        if used_d > 0.001 and bal_d < 0.001:
+            residual = bal_d + used_d
+            if abs(residual) < 0.05:
+                continue
+            # Positive residual = same-day clawback (e.g. -1 used +0.5 put back).
+            # Large negative residual = multi-day request front-loading — skip.
+            if residual > 0.05:
+                return True
             continue
         if abs(bal_d) < 0.001 and used_d > 0.001:
             continue
@@ -503,32 +510,29 @@ def _entries_for_calculator_day_change(
         pb, pu = prev.get(name, (0.0, 0.0))
         cb, cu = cur.get(name, (0.0, 0.0))
         if abs(cb - pb) < 0.001 and abs(cu - pu) < 0.001:
-            continue
+            # Flat calculator day — still expand Jan 1 forfeit+accrual when prior > 0
+            if not (cur_date.month == 1 and cur_date.day == 1 and pb > 0.001):
+                continue
 
         bal_d = round(cb - pb, 2)
         used_d = round(cu - pu, 2)
 
-        # Usage (incl. multi-day: balance drops up front, usedYTD daily) — requests cover these
-        if not (cur_date.month == 1 and cur_date.day == 1):
-            if bal_d < -0.001 and used_d > 0.001:
-                continue
-            if abs(bal_d) < 0.001 and used_d > 0.001:
-                continue
-
-        # Year start: expand net change into carryover loss + accrual when possible
-        if cur_date.month == 1 and cur_date.day == 1 and abs(bal_d) > 0.001:
-            if pb > 0.001 and cb + 0.001 < pb:
-                entries.append(
-                    {
-                        "date": ds,
-                        "policyName": name,
-                        "description": "Lost days that exceeded the carryover allowance",
-                        "used": -round(pb, 2),
-                        "earned": None,
-                        "balance": 0.0,
-                        "id": f"calc:carryover:{name}:{ds}",
-                    }
-                )
+        # Year start: this Bamboo tenant forfeits prior balance then grants the
+        # new-year accrual (calculator only shows the net end balance).
+        if cur_date.month == 1 and cur_date.day == 1:
+            if pb > 0.001 or cb > 0.001 or abs(bal_d) > 0.001:
+                if pb > 0.001:
+                    entries.append(
+                        {
+                            "date": ds,
+                            "policyName": name,
+                            "description": "Lost days that exceeded the carryover allowance",
+                            "used": -round(pb, 2),
+                            "earned": None,
+                            "balance": 0.0,
+                            "id": f"calc:carryover:{name}:{ds}",
+                        }
+                    )
                 if cb > 0.001:
                     entries.append(
                         {
@@ -544,27 +548,27 @@ def _entries_for_calculator_day_change(
                         }
                     )
                 continue
-            if bal_d > 0.001:
+
+        # Usage days are covered by request history. Positive residual after a
+        # usedYTD bump is a same-day clawback (Bamboo: -1 request +0.5 adjust).
+        if used_d > 0.001:
+            residual = round(bal_d + used_d, 2)
+            if residual > 0.05:
                 entries.append(
                     {
                         "date": ds,
                         "policyName": name,
-                        "description": (
-                            f"Accrual for 01/01/{cur_date.year} to 12/31/{cur_date.year}"
-                        ),
+                        "description": "Balance adjusted",
                         "used": None,
-                        "earned": round(bal_d, 2),
+                        "earned": residual,
                         "balance": round(cb, 2),
-                        "id": f"calc:accrual:{name}:{ds}",
+                        "id": f"calc:adjust:{name}:{ds}",
                     }
                 )
-                continue
+            continue
 
         if bal_d > 0.001:
-            if cur_date.month == 1 and pb < 0.001:
-                desc = f"Accrual for 01/01/{cur_date.year} to 12/31/{cur_date.year}"
-                tid = f"calc:accrual:{name}:{ds}"
-            elif name not in seen_opening and pb < 0.001:
+            if name not in seen_opening and pb < 0.001:
                 desc = "Added opening balance"
                 seen_opening.add(name)
                 tid = f"calc:opening:{name}:{ds}"
@@ -655,14 +659,21 @@ def _history_entries_from_calculator_deltas(
         )
         return []
 
+    # Force Jan 1 evaluation — Bamboo often forfeits+re-accrues with no net
+    # calculator change, so bisect would never visit those days.
+    y = start.year
+    while y <= end.year:
+        jan1 = date(y, 1, 1)
+        if start < jan1 <= end:
+            change_days.append(jan1)
+        y += 1
+
     if not change_days:
         return []
 
     change_days = sorted(set(change_days))
     entries: List[Dict[str, Any]] = []
     seen_opening: set = set()
-    prev_day = start
-    prev_snap = _calculator_policy_snapshot(client, employee_id, prev_day, cache)
 
     for day in change_days:
         # Snapshot the day before the change for a clean delta
@@ -672,7 +683,6 @@ def _history_entries_from_calculator_deltas(
         entries.extend(
             _entries_for_calculator_day_change(prev_snap, cur_snap, day, seen_opening)
         )
-        prev_day = day
 
     entries.sort(
         key=lambda x: (
@@ -682,6 +692,33 @@ def _history_entries_from_calculator_deltas(
         )
     )
     return entries
+
+
+def _history_same_day_kind(trans: Dict[str, Any]) -> int:
+    """
+    Chronological order within one calendar day (Bamboo Balance History):
+      0 = carryover / lost days
+      1 = time-off usage
+      2 = earned / accrual / positive adjust
+    """
+    tid = str(trans.get("id") or trans.get("transactionId") or "").lower()
+    desc = str(trans.get("description") or "").lower()
+    if "carryover" in tid or "lost days that exceeded" in desc:
+        return 0
+    used_raw = trans.get("used")
+    try:
+        used_val = float(used_raw) if used_raw is not None else 0.0
+    except (TypeError, ValueError):
+        used_val = 0.0
+    if used_val != 0:
+        return 1
+    return 2
+
+
+def _history_created_at_for_order(trans_date: date, kind: int) -> datetime:
+    """Stable created_at so DESC(created_at) shows accrual above same-day carryover."""
+    # Noon + kind seconds: carryover@12:00:00, usage@12:00:01, accrual@12:00:02
+    return datetime.combine(trans_date, time(12, 0, min(max(kind, 0), 59)), tzinfo=timezone.utc)
 
 
 def _apply_history_transactions(
@@ -695,7 +732,7 @@ def _apply_history_transactions(
     balances = db.query(TimeOffBalance).filter(TimeOffBalance.user_id == user.id).all()
     policy_map = {b.policy_name: b for b in balances}
 
-    def get_trans_date(trans: Dict[str, Any]):
+    def get_trans_sort_key(trans: Dict[str, Any]):
         date_str = (
             trans.get("date")
             or trans.get("transactionDate")
@@ -710,12 +747,11 @@ def _apply_history_transactions(
         except Exception:
             d = date(1900, 1, 1)
         tid = str(trans.get("id") or trans.get("transactionId") or "")
-        # Same-day carryover rows must precede accruals
-        same_day_rank = 0 if "carryover" in tid else 1
-        return (d, same_day_rank, tid)
+        kind = _history_same_day_kind(trans)
+        return (d, kind, tid)
 
     transactions_sorted = sorted(
-        [t for t in transactions if isinstance(t, dict)], key=get_trans_date
+        [t for t in transactions if isinstance(t, dict)], key=get_trans_sort_key
     )
 
     incoming_sync_ids = set()
@@ -815,6 +851,8 @@ def _apply_history_transactions(
         bamboohr_trans_id = (
             trans_data.get("id") or trans_data.get("transactionId") or trans_data.get("transaction_id")
         )
+        same_day_kind = _history_same_day_kind(trans_data)
+        row_created_at = _history_created_at_for_order(trans_date, same_day_kind)
 
         if dry_run:
             synced_count += 1
@@ -877,6 +915,7 @@ def _apply_history_transactions(
             existing.bamboohr_transaction_id = (
                 str(bamboohr_trans_id) if bamboohr_trans_id else existing.bamboohr_transaction_id
             )
+            existing.created_at = row_created_at
             existing.last_synced_at = datetime.now(timezone.utc)
         else:
             db.add(
@@ -890,7 +929,7 @@ def _apply_history_transactions(
                     earned_days=earned_days,
                     balance_after=balance_after,
                     bamboohr_transaction_id=str(bamboohr_trans_id) if bamboohr_trans_id else None,
-                    created_at=datetime.now(timezone.utc),
+                    created_at=row_created_at,
                     last_synced_at=datetime.now(timezone.utc),
                 )
             )
