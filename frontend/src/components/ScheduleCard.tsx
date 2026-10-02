@@ -411,12 +411,12 @@ export default function ScheduleCard() {
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <div className={`text-sm font-semibold ${
-                      dayShifts.length > 0 ? 'text-gray-900' : 'text-gray-500'
+                      dayShifts.length > 0 ? 'text-gray-900' : 'text-gray-600'
                     }`}>
                       {dayName}
                     </div>
-                    <div className={`text-xs ${
-                      dayShifts.length > 0 ? 'text-gray-500' : 'text-gray-400'
+                    <div className={`text-sm ${
+                      dayShifts.length > 0 ? 'text-gray-600' : 'text-gray-600'
                     }`}>
                       {dateFormatted}
                     </div>
@@ -480,7 +480,7 @@ export default function ScheduleCard() {
                             )}
                             
                             {/* Address - Muted */}
-                            <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-2">
+                            <div className="flex items-center gap-1.5 text-sm text-gray-600 mb-2">
                               <MapPin className="h-3.5 w-3.5 flex-shrink-0" />
                               <span className="line-clamp-1">{projectAddress}</span>
                             </div>
@@ -491,7 +491,7 @@ export default function ScheduleCard() {
                                 {shiftClockIn && (
                                   <AppBadge
                                     variant={attendanceBadgeVariant(shiftClockIn.status)}
-                                    className="normal-case tracking-normal text-xs"
+                                    className="normal-case tracking-normal text-sm"
                                   >
                                     In: {shiftClockIn.clock_in_time ? new Date(shiftClockIn.clock_in_time).toLocaleTimeString('en-US', {
                                       hour: 'numeric',
@@ -507,7 +507,7 @@ export default function ScheduleCard() {
                                 {shiftClockOut && (
                                   <AppBadge
                                     variant={attendanceBadgeVariant(shiftClockOut.status)}
-                                    className="normal-case tracking-normal text-xs"
+                                    className="normal-case tracking-normal text-sm"
                                   >
                                     Out: {shiftClockOut.clock_out_time ? new Date(shiftClockOut.clock_out_time).toLocaleTimeString('en-US', {
                                       hour: 'numeric',
@@ -654,7 +654,7 @@ export default function ScheduleCard() {
                     <div className="flex items-center gap-2">
                       <AppBadge
                         variant={attendanceBadgeVariant(clockIn.status)}
-                        className="normal-case tracking-normal text-xs"
+                        className="normal-case tracking-normal text-sm"
                       >
                         {clockIn.status === 'approved' ? 'Approved' : clockIn.status === 'pending' ? 'Pending' : 'Rejected'}
                       </AppBadge>
@@ -671,7 +671,7 @@ export default function ScheduleCard() {
                       </span>
                     </div>
                   ) : (
-                    <span className="text-sm text-gray-500">Not clocked in</span>
+                    <span className="text-sm text-gray-600">Not clocked in</span>
                   )}
                 </div>
                 <div className="flex items-center justify-between">
@@ -683,7 +683,7 @@ export default function ScheduleCard() {
                     <div className="flex items-center gap-2">
                       <AppBadge
                         variant={attendanceBadgeVariant(clockOut.status)}
-                        className="normal-case tracking-normal text-xs"
+                        className="normal-case tracking-normal text-sm"
                       >
                         {clockOut.status === 'approved' ? 'Approved' : clockOut.status === 'pending' ? 'Pending' : 'Rejected'}
                       </AppBadge>
@@ -700,7 +700,7 @@ export default function ScheduleCard() {
                       </span>
                     </div>
                   ) : (
-                    <span className="text-sm text-gray-500">Not clocked out</span>
+                    <span className="text-sm text-gray-600">Not clocked out</span>
                   )}
                 </div>
               </div>

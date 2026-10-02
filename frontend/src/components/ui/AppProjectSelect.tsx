@@ -20,9 +20,9 @@ export { formatProjectAddressLine, formatProjectPrimaryLine } from './projectPic
 function ProjectOptionLabel({ project }: { project: ProjectPickerItem }) {
   const code = project.code?.trim();
   return (
-    <div className="min-w-0 text-xs text-gray-900">
-      <span className="font-medium">{project.name}</span>
-      {code ? <span className="font-normal text-gray-500">{` (${code})`}</span> : null}
+    <div className={uiCx('min-w-0', uiTypography.controlValue)}>
+      <span className="font-semibold">{project.name}</span>
+      {code ? <span className="font-normal text-gray-600">{` (${code})`}</span> : null}
     </div>
   );
 }
@@ -177,7 +177,7 @@ export function AppProjectSelect({
                   }}
                 >
                   <ProjectOptionLabel project={project} />
-                  {addr ? <div className="mt-0.5 truncate text-xs text-gray-500">{addr}</div> : null}
+                  {addr ? <div className="mt-0.5 truncate text-sm text-gray-600">{addr}</div> : null}
                 </button>
               </li>
             );

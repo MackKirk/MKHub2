@@ -73,7 +73,7 @@ function TemplateTabButtons({
         type="button"
         disabled={disabled}
         onClick={() => onTabChange('template')}
-        className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+        className={`flex items-center gap-2 px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${
           tab === 'template'
             ? 'border-brand-red text-brand-red'
             : 'border-transparent text-gray-600 hover:text-gray-900'
@@ -85,7 +85,7 @@ function TemplateTabButtons({
         type="button"
         disabled={disabled}
         onClick={() => onTabChange('background')}
-        className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+        className={`flex items-center gap-2 px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${
           tab === 'background'
             ? 'border-brand-red text-brand-red'
             : 'border-transparent text-gray-600 hover:text-gray-900'
@@ -369,7 +369,7 @@ export function DocumentTemplateSelectionPanel({
       <button
         type="button"
         onClick={() => setView('options')}
-        className="inline-flex items-center gap-1 text-sm font-medium text-gray-600 hover:text-gray-900 w-fit"
+        className="inline-flex items-center gap-1 text-sm font-semibold text-gray-600 hover:text-gray-900 w-fit"
       >
         <ChevronLeft className="h-4 w-4" />
         {selectedType.name}
@@ -379,7 +379,7 @@ export function DocumentTemplateSelectionPanel({
         <div className="flex gap-2 shrink-0">
           <button
             type="button"
-            className="text-xs font-medium text-brand-red hover:underline"
+            className="text-sm font-semibold text-brand-red hover:underline"
             onClick={() =>
               setSelectedPageIndices(
                 new Set(Array.from({ length: pagePickerPreviewPages.length }, (_, i) => i)),
@@ -390,7 +390,7 @@ export function DocumentTemplateSelectionPanel({
           </button>
           <button
             type="button"
-            className="text-xs font-medium text-gray-600 hover:underline"
+            className="text-sm font-semibold text-gray-600 hover:underline"
             onClick={() => setSelectedPageIndices(new Set())}
           >
             Clear
@@ -441,8 +441,8 @@ export function DocumentTemplateSelectionPanel({
                   />
                 </div>
                 <div className="px-2 pb-2 pt-1 min-w-0">
-                  <span className="text-sm font-medium text-gray-900 truncate block leading-tight">{label}</span>
-                  <span className="text-[11px] text-gray-500 truncate block leading-tight mt-0.5">
+                  <span className="text-sm font-semibold text-gray-900 truncate block leading-tight">{label}</span>
+                  <span className="text-xs text-gray-600 truncate block leading-tight mt-0.5">
                     Page {index + 1}
                   </span>
                 </div>
@@ -456,7 +456,7 @@ export function DocumentTemplateSelectionPanel({
 
   const templateGrid =
     visibleDocumentTypes.length === 0 && !isLoading ? (
-      <p className="text-sm text-gray-500 py-8 text-center">
+      <p className="text-sm text-gray-600 py-8 text-center">
         {emptyPresetsMessage ||
           (showBackground
             ? 'No document templates yet. Use "From background" to start with a single page, or create templates in Document templates.'

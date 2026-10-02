@@ -205,7 +205,7 @@ export function UserEducationSection({
   const renderEducationEditCardField = (label: string, value: ReactNode) => (
     <div className="min-w-0 space-y-1">
       <div className={uiTypography.controlLabel}>{label}</div>
-      <div className={uiCx(uiTypography.helper, 'truncate font-medium text-gray-900')}>{value}</div>
+      <div className={uiCx(uiTypography.helper, 'truncate font-semibold text-gray-900')}>{value}</div>
     </div>
   );
 
@@ -215,7 +215,7 @@ export function UserEducationSection({
       {renderEducationEditCardField('Degree', educationDegreeLine(e) || '—')}
       <div className="min-w-0 space-y-1">
         <div className={uiTypography.controlLabel}>Dates</div>
-        <div className={uiCx(uiTypography.helper, 'whitespace-nowrap font-medium text-gray-900')}>
+        <div className={uiCx(uiTypography.helper, 'whitespace-nowrap font-semibold text-gray-900')}>
           {formatEducationPeriod(e.start_date, e.end_date)}
         </div>
       </div>

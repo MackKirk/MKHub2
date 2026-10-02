@@ -49,7 +49,7 @@ function ToolbarButton({
       title={title}
       onClick={onClick}
       disabled={disabled}
-      className={`px-2 py-1 text-xs rounded border transition-colors ${
+      className={`px-2 py-1 text-sm rounded border transition-colors ${
         active ? 'bg-[#7f1010] text-white border-[#7f1010]' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
       } ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
     >
@@ -233,7 +233,7 @@ export default function LessonRichTextEditor({
   };
 
   if (!editor) {
-    return <div className="text-sm text-gray-500 py-8">Loading editor…</div>;
+    return <div className="text-sm text-gray-600 py-8">Loading editor…</div>;
   }
 
   return (
@@ -242,14 +242,14 @@ export default function LessonRichTextEditor({
         <div className="flex flex-wrap gap-1 mr-2">
           <button
             type="button"
-            className={`px-2 py-1 text-xs rounded font-medium ${mode === 'visual' ? 'bg-gray-800 text-white' : 'bg-white border border-gray-200'}`}
+            className={`px-2 py-1 text-sm rounded font-semibold ${mode === 'visual' ? 'bg-gray-800 text-white' : 'bg-white border border-gray-200'}`}
             onClick={() => (mode === 'html' ? setModeVisual() : undefined)}
           >
             Visual
           </button>
           <button
             type="button"
-            className={`px-2 py-1 text-xs rounded font-medium ${mode === 'html' ? 'bg-gray-800 text-white' : 'bg-white border border-gray-200'}`}
+            className={`px-2 py-1 text-sm rounded font-semibold ${mode === 'html' ? 'bg-gray-800 text-white' : 'bg-white border border-gray-200'}`}
             onClick={() => (mode === 'visual' ? setModeHtml() : undefined)}
           >
             HTML
@@ -360,7 +360,7 @@ export default function LessonRichTextEditor({
               }}
             />
             <span className="w-px h-5 bg-gray-200 mx-1" />
-            <label className="flex items-center gap-1 text-xs text-gray-600 px-1" title="Text color">
+            <label className="flex items-center gap-1 text-sm text-gray-600 px-1" title="Text color">
               <span>A</span>
               <input
                 type="color"
@@ -371,7 +371,7 @@ export default function LessonRichTextEditor({
             <ToolbarButton title="Clear color" onClick={() => editor.chain().focus().unsetColor().run()}>
               A̶
             </ToolbarButton>
-            <label className="flex items-center gap-1 text-xs text-gray-600 px-1" title="Highlight">
+            <label className="flex items-center gap-1 text-sm text-gray-600 px-1" title="Highlight">
               <span>Hi</span>
               <input
                 type="color"
@@ -395,7 +395,7 @@ export default function LessonRichTextEditor({
           </>
         )}
 
-        <span className="ml-auto text-[10px] uppercase tracking-wide text-gray-400">
+        <span className="ml-auto text-xs uppercase tracking-wide text-gray-600">
           {saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : 'Auto-save'}
         </span>
       </div>
@@ -419,7 +419,7 @@ export default function LessonRichTextEditor({
         />
       )}
 
-      <p className="text-[11px] text-gray-500 px-3 py-2 border-t border-gray-100 bg-slate-50">
+      <p className="text-xs text-gray-600 px-3 py-2 border-t border-gray-100 bg-slate-50">
         Images use <code className="bg-white px-1 rounded">/files/…</code> for learners. Insert the next image while the cursor is still right after the previous one (same paragraph) — two or more images in one paragraph form a row; drag corners to set width (e.g. ~33% each).
         Align icons move the whole row when the paragraph has only images. <strong>YouTube</strong>: toolbar or paste URL. Paste screenshots in visual mode.
       </p>

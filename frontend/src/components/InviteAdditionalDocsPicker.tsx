@@ -91,8 +91,8 @@ function CategoryNavButton({
 }) {
   const base =
     layout === 'sidebar'
-      ? 'w-full flex items-center justify-between gap-1 px-2 py-1.5 rounded-md text-xs transition-colors border'
-      : 'shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs transition-colors border whitespace-nowrap';
+      ? 'w-full flex items-center justify-between gap-1 px-2 py-1.5 rounded-md text-sm transition-colors border'
+      : 'shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-sm transition-colors border whitespace-nowrap';
 
   return (
     <button
@@ -107,7 +107,7 @@ function CategoryNavButton({
       )}
     >
       <span className="truncate min-w-0">{item.label}</span>
-      <span className={uiCx('tabular-nums shrink-0', selected ? 'text-brand-red/80' : 'text-gray-400')}>
+      <span className={uiCx('tabular-nums shrink-0', selected ? 'text-brand-red/80' : 'text-gray-600')}>
         {item.count}
       </span>
     </button>
@@ -274,7 +274,7 @@ export default function InviteAdditionalDocsPicker({ value, onChange, jobTitle, 
         <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span>
-              Suggested for <span className="font-medium">{jobTitle}</span>: {suggestion.name}
+              Suggested for <span className="font-semibold">{jobTitle}</span>: {suggestion.name}
             </span>
             <div className={uiLayout.actionsRow}>
               <AppButton
@@ -307,15 +307,15 @@ export default function InviteAdditionalDocsPicker({ value, onChange, jobTitle, 
           {value.map((ref) => (
             <span
               key={selectedKey(ref)}
-              className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-gray-200 bg-white px-2.5 py-1 text-xs text-gray-800"
+              className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-gray-200 bg-white px-2.5 py-1 text-sm text-gray-800"
             >
-              <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-gray-600">
+              <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs font-semibold uppercase text-gray-600">
                 {sourceBadge(ref.source)}
               </span>
               <span className="truncate">{ref.name}</span>
               <button
                 type="button"
-                className="rounded p-0.5 text-gray-500 hover:bg-gray-100 hover:text-gray-800 disabled:opacity-50"
+                className="rounded p-0.5 text-gray-600 hover:bg-gray-100 hover:text-gray-800 disabled:opacity-50"
                 disabled={disabled}
                 aria-label={`Remove ${ref.name}`}
                 onClick={() => removeDoc(ref)}
@@ -473,10 +473,10 @@ export default function InviteAdditionalDocsPicker({ value, onChange, jobTitle, 
                           )}
                         </InvitePickerPreviewFrame>
                         <div className="px-2 pb-2 pt-1 min-w-0">
-                          <span className="text-sm font-medium text-gray-900 truncate block leading-tight">
+                          <span className="text-sm font-semibold text-gray-900 truncate block leading-tight">
                             {item.name}
                           </span>
-                          <span className="text-[11px] text-gray-500 truncate block leading-tight mt-0.5">
+                          <span className="text-xs text-gray-600 truncate block leading-tight mt-0.5">
                             {subtitle}
                           </span>
                         </div>

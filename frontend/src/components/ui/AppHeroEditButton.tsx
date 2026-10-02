@@ -32,7 +32,7 @@ export function AppHeroEditButton({ size = 'field', className, type = 'button', 
   return (
     <button
       type={type}
-      className={uiCx('text-gray-400 hover:text-brand-red transition-colors', s.button, className)}
+      className={uiCx('text-gray-600 hover:text-brand-red transition-colors', s.button, className)}
       {...props}
     >
       <AppHeroEditIcon className={s.icon} />

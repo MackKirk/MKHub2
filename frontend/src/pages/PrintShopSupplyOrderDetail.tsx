@@ -249,7 +249,7 @@ export default function PrintShopSupplyOrderDetail() {
                 <button
                   type="button"
                   onClick={() => openFile(f.file_object_id)}
-                  className="h-16 w-16 flex items-center justify-center rounded bg-gray-50 text-xs text-gray-500 hover:bg-gray-100"
+                  className="h-16 w-16 flex items-center justify-center rounded bg-gray-50 text-sm text-gray-500 hover:bg-gray-100"
                   title="Open file"
                 >
                   PDF
@@ -268,21 +268,21 @@ export default function PrintShopSupplyOrderDetail() {
                   <button
                     type="button"
                     onClick={() => openFile(f.file_object_id)}
-                    className="inline-flex items-center gap-1 text-xs text-brand-red hover:underline"
+                    className="inline-flex items-center gap-1 text-sm text-brand-red hover:underline"
                   >
                     Open
                   </button>
                   <button
                     type="button"
                     onClick={() => downloadFile(f.file_object_id)}
-                    className="inline-flex items-center gap-1 text-xs text-brand-red hover:underline"
+                    className="inline-flex items-center gap-1 text-sm text-brand-red hover:underline"
                   >
                     <Download className="h-3.5 w-3.5" /> Download
                   </button>
                   {canAct ? (
                     <button
                       type="button"
-                      className="inline-flex items-center gap-1 text-xs text-rose-600 hover:underline"
+                      className="inline-flex items-center gap-1 text-sm text-rose-600 hover:underline"
                       onClick={() => {
                         if (!window.confirm('Remove this file?')) return;
                         deleteFileMut.mutate(f.id);
@@ -423,7 +423,7 @@ export default function PrintShopSupplyOrderDetail() {
                   <span className={uiCx(uiTypography.body, uiColors.textStrong)}>
                     {it.product_name}
                   </span>
-                  <span className="font-medium text-gray-900 whitespace-nowrap">{it.quantity}x</span>
+                  <span className="font-semibold text-gray-900 whitespace-nowrap">{it.quantity}x</span>
                 </li>
               ))}
             </ul>

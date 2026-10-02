@@ -1128,7 +1128,7 @@ export default function InventoryProducts(){
                                   Estimate #{usage.estimate_id} - Project was deleted
                                 </div>
                                 {usage.created_at && (
-                                  <div className={uiCx(uiTypography.helper, 'mt-1 text-gray-400')}>
+                                  <div className={uiCx(uiTypography.helper, 'mt-1 text-gray-600')}>
                                     Created: {new Date(usage.created_at).toLocaleDateString()}
                                   </div>
                                 )}
@@ -1145,7 +1145,7 @@ export default function InventoryProducts(){
                                       <div className={uiTypography.helper}>Client: {usage.client_name}</div>
                                     )}
                                     {usage.created_at && (
-                                      <div className={uiCx(uiTypography.helper, 'mt-1 text-gray-400')}>
+                                      <div className={uiCx(uiTypography.helper, 'mt-1 text-gray-600')}>
                                         Created: {new Date(usage.created_at).toLocaleDateString()}
                                       </div>
                                     )}
@@ -1276,7 +1276,7 @@ export default function InventoryProducts(){
                 className="[&_button]:text-sm"
               />
               {supplierError && !newSupplier.trim() && (
-                <p className="text-[11px] text-red-600">This field is required</p>
+                <p className="text-xs text-red-600">This field is required</p>
               )}
             </div>
             <AppInput
@@ -1383,10 +1383,10 @@ export default function InventoryProducts(){
                 <div className={uiCx(uiLayout.actionsRow, 'items-center gap-2')}>
                   <AppInput placeholder="0" value={covSqs} onChange={(e) => onCoverageChange('sqs', e.target.value)} />
                   <span className={uiTypography.body}>SQS</span>
-                  <span className="text-gray-400">=</span>
+                  <span className="text-gray-600">=</span>
                   <AppInput placeholder="0" value={covFt2} onChange={(e) => onCoverageChange('ft2', e.target.value)} />
                   <span className={uiTypography.body}>ft²</span>
-                  <span className="text-gray-400">=</span>
+                  <span className="text-gray-600">=</span>
                   <AppInput placeholder="0" value={covM2} onChange={(e) => onCoverageChange('m2', e.target.value)} />
                   <span className={uiTypography.body}>m²</span>
                 </div>

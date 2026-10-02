@@ -44,7 +44,7 @@ function Avatar({ name, url }: { name: string | null; url: string | null }) {
   const src = url ? withFileAccessTokenIfNeeded(url) : '';
   if (!url || imgFailed) {
     return (
-      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center text-[11px] font-semibold text-gray-700 flex-shrink-0">
+      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center text-xs font-semibold text-gray-700 flex-shrink-0">
         {getInitials(name)}
       </div>
     );
@@ -63,7 +63,7 @@ function Avatar({ name, url }: { name: string | null; url: string | null }) {
 function MiniStat({ icon, value, label }: { icon: React.ReactNode; value: number | string; label: string }) {
   return (
     <span
-      className="inline-flex items-center gap-1 text-[11px] text-gray-600 tabular-nums"
+      className="inline-flex items-center gap-1 text-xs text-gray-600 tabular-nums"
       title={label}
       aria-label={label}
     >
@@ -136,21 +136,21 @@ export function InsightsTopPosts({ posts }: { posts: TopPost[] }) {
                   className="w-full min-w-0 text-left flex items-start gap-3"
                 >
                   <div className="flex flex-col items-center pt-1 flex-shrink-0">
-                    <span className="text-[11px] font-bold text-gray-400 tabular-nums">{idx + 1}</span>
+                    <span className="text-xs font-bold text-gray-600 tabular-nums">{idx + 1}</span>
                   </div>
                   <Avatar name={p.author_name} url={p.author_avatar_url} />
                   <div className="flex-1 min-w-0 overflow-hidden">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-semibold text-gray-900 min-w-0 break-words">{p.title}</span>
                       <span
-                        className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold"
+                        className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-semibold"
                         style={{ background: `${areaColor}1f`, color: areaColor }}
                       >
                         {formatAreaLabel(p.related_area)}
                       </span>
                       {p.priority !== 'normal' ? (
                         <span
-                          className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold"
+                          className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-semibold"
                           style={{ background: `${priorityColor}1f`, color: priorityColor }}
                         >
                           {formatPriorityLabel(p.priority)}
@@ -162,7 +162,7 @@ export function InsightsTopPosts({ posts }: { posts: TopPost[] }) {
                         </AppBadge>
                       ) : null}
                     </div>
-                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-gray-500">
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-600">
                       <span className="shrink-0">{p.author_name ?? 'Unknown'}</span>
                       <span className="text-gray-300">·</span>
                       <span className="shrink-0">{formatRelativeDate(p.published_at)}</span>
@@ -180,7 +180,7 @@ export function InsightsTopPosts({ posts }: { posts: TopPost[] }) {
                           ariaLabel={`Read rate ${p.read_rate_pct}%`}
                         />
                       </div>
-                      <span className="text-[11px] text-gray-600 tabular-nums shrink-0 sm:text-right">
+                      <span className="text-xs text-gray-600 tabular-nums shrink-0 sm:text-right">
                         {p.read_rate_pct.toFixed(0)}% of {p.audience}
                       </span>
                     </div>

@@ -355,7 +355,7 @@ function HoursPanel() {
           <div className={uiCx('text-sm font-semibold', isCurrentWeek ? 'text-emerald-800' : 'text-gray-900')}>
             {weekRangeLabel || 'This week'}
           </div>
-          {isCurrentWeek ? <div className="text-[10px] font-medium text-emerald-700">this week</div> : null}
+          {isCurrentWeek ? <div className="text-xs font-semibold text-emerald-700">this week</div> : null}
         </button>
         <AppButton
           variant="ghost"
@@ -396,7 +396,7 @@ function HoursPanel() {
                         <div className="text-sm font-semibold text-gray-900">
                           {capitalizeWeekday(day.day_name)} · {formatShortDate(day.date)}
                         </div>
-                        {range ? <div className="mt-0.5 text-xs text-gray-500">{range}</div> : null}
+                        {range ? <div className="mt-0.5 text-sm text-gray-600">{range}</div> : null}
                       </div>
                       <div className="text-sm font-semibold tabular-nums text-gray-900">
                         {day.hours_worked_formatted || '0h 00m'}
@@ -406,7 +406,7 @@ function HoursPanel() {
                 })}
               </div>
             ) : (
-              <p className="mt-3 text-center text-sm text-gray-500">No hours logged this week</p>
+              <p className="mt-3 text-center text-sm text-gray-600">No hours logged this week</p>
             )}
           </>
         ) : (
@@ -451,7 +451,7 @@ function WeekMetric({
       <span className={uiCx('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', tint)}>{icon}</span>
       <div className="min-w-0">
         <div className="text-sm font-semibold tabular-nums text-gray-900">{value}</div>
-        <div className="text-[11px] text-gray-500">{label}</div>
+        <div className="text-xs text-gray-600">{label}</div>
       </div>
     </div>
   );

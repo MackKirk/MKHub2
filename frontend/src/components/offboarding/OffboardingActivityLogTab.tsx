@@ -70,7 +70,7 @@ export default function OffboardingActivityLogTab({ caseId }: { caseId: string }
                   <div className={uiCx(uiLayout.actionsRow, 'items-start justify-between gap-3')}>
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className={uiCx(uiTypography.body, 'font-medium text-gray-900')}>
+                        <span className={uiCx(uiTypography.body, 'font-semibold text-gray-900')}>
                           {message}
                         </span>
                         <AppBadge variant={getFleetHistoryEntryBadgeVariant(meta.badge)}>
@@ -81,7 +81,7 @@ export default function OffboardingActivityLogTab({ caseId }: { caseId: string }
                         Performed by {row.performed_by_name || 'System'}
                       </p>
                     </div>
-                    <p className={uiCx(uiTypography.body, 'shrink-0 text-right text-gray-500')}>
+                    <p className={uiCx(uiTypography.body, 'shrink-0 text-right text-gray-600')}>
                       {row.created_at ? new Date(row.created_at).toLocaleString() : '—'}
                     </p>
                   </div>

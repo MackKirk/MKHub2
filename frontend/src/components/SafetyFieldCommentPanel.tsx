@@ -41,7 +41,7 @@ function ImageThumbStrip({
           {!disabled && onRemove ? (
             <button
               type="button"
-              className="absolute -top-1 -right-1 w-5 h-5 bg-black/60 text-white rounded-full text-xs leading-5 hover:bg-black/80"
+              className="absolute -top-1 -right-1 w-5 h-5 bg-black/60 text-white rounded-full text-sm leading-5 hover:bg-black/80"
               onClick={() => onRemove(id)}
               aria-label="Remove image"
             >
@@ -243,18 +243,18 @@ export function SafetyFieldCommentPanel({
                   e.target.value = '';
                 }}
               />
-              <p className="text-xs text-gray-600 mb-2">Images (optional)</p>
+              <p className="text-sm text-gray-600 mb-2">Images (optional)</p>
               <button
                 type="button"
                 disabled={disabled || busy || !projectId}
                 onClick={() => fileInputRef.current?.click()}
-                className="text-sm font-medium text-brand-red hover:underline disabled:opacity-50 disabled:no-underline"
+                className="text-sm font-semibold text-brand-red hover:underline disabled:opacity-50 disabled:no-underline"
               >
                 Upload images
               </button>
-              <p className="text-xs text-gray-500 mt-1">or drag and drop here, or paste (Ctrl+V) in this box or in the comment field above</p>
+              <p className="text-sm text-gray-600 mt-1">or drag and drop here, or paste (Ctrl+V) in this box or in the comment field above</p>
               {!projectId ? (
-                <p className="text-xs text-amber-700 mt-2">Open this inspection from a project to attach images.</p>
+                <p className="text-sm text-amber-700 mt-2">Open this inspection from a project to attach images.</p>
               ) : null}
             </div>
             <ImageThumbStrip ids={imageIds} disabled={false} onRemove={removeImage} />

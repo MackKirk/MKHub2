@@ -115,7 +115,7 @@ function ReviewDetailField({ label, children }: { label: string; children: React
       )}
     >
       <dt className={uiTypography.helper}>{label}</dt>
-      <dd className={uiCx(uiTypography.body, 'min-w-0 break-words font-medium text-gray-900')}>{children}</dd>
+      <dd className={uiCx(uiTypography.body, 'min-w-0 break-words font-semibold text-gray-900')}>{children}</dd>
     </div>
   );
 }
@@ -581,7 +581,7 @@ export function UserEmployeeReviewsSection({
             }}
             placeholder='[ { "type": "scale", "question": "…", "value": 5 }, … ]'
             rows={8}
-            className="font-mono text-xs"
+            className="font-mono text-sm"
             fieldHint={USER_REVIEWS_IMPORT_FIELD_HINTS.legacy_json}
           />
 
@@ -623,7 +623,7 @@ export function UserEmployeeReviewsSection({
                 </p>
                 {preview.unmapped_questions.length > 0 ? (
                   <div>
-                    <div className="font-medium text-amber-900">
+                    <div className="font-semibold text-amber-900">
                       Unmapped questions ({preview.unmapped_questions.length})
                     </div>
                     <ul className="mt-1 max-h-24 list-inside list-disc overflow-y-auto text-amber-950/90">
@@ -636,7 +636,7 @@ export function UserEmployeeReviewsSection({
                 ) : null}
                 {preview.warnings.length > 0 ? (
                   <div>
-                    <div className="font-medium text-gray-800">Warnings</div>
+                    <div className="font-semibold text-gray-800">Warnings</div>
                     <ul className="mt-1 max-h-28 list-inside list-disc overflow-y-auto text-gray-700">
                       {preview.warnings.slice(0, 30).map((w, i) => (
                         <li key={i}>{w}</li>
@@ -674,7 +674,7 @@ export function UserEmployeeReviewsSection({
             <p className={uiCx(uiTypography.helper, 'mb-4')}>
               <Link
                 to={`/reviews/compare?cycle=${encodeURIComponent(viewingAssignmentRow.cycle_id)}&reviewee=${encodeURIComponent(String(userId))}`}
-                className="font-medium text-[#7f1010] hover:underline"
+                className="font-semibold text-[#7f1010] hover:underline"
               >
                 Open compare for this cycle
               </Link>

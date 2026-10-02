@@ -70,7 +70,7 @@ function CategorySectionHeader({
       className={
         designSystem
           ? uiCx(uiTypography.overline, 'mb-2')
-          : 'text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2'
+          : 'text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2'
       }
     >
       {title}
@@ -107,8 +107,8 @@ function DocumentTypeGridCard({
         />
       </div>
       <div className="px-2 pb-2 pt-1 min-w-0">
-        <span className="text-sm font-medium text-gray-900 truncate block leading-tight">{name}</span>
-        <span className="text-[11px] text-gray-500 truncate block leading-tight mt-0.5">{subtitle}</span>
+        <span className="text-sm font-semibold text-gray-900 truncate block leading-tight">{name}</span>
+        <span className="text-xs text-gray-600 truncate block leading-tight mt-0.5">{subtitle}</span>
       </div>
     </button>
   );
@@ -183,8 +183,8 @@ function CategoryNavButton({
 }) {
   const base =
     layout === 'sidebar'
-      ? 'w-full flex items-center justify-between gap-1 px-2 py-1.5 rounded-md text-xs transition-colors border'
-      : 'shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs transition-colors border whitespace-nowrap';
+      ? 'w-full flex items-center justify-between gap-1 px-2 py-1.5 rounded-md text-sm transition-colors border'
+      : 'shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-sm transition-colors border whitespace-nowrap';
 
   return (
     <button
@@ -199,7 +199,7 @@ function CategoryNavButton({
       )}
     >
       <span className="truncate min-w-0">{item.label}</span>
-      <span className={uiCx('tabular-nums shrink-0', selected ? 'text-brand-red/80' : 'text-gray-400')}>
+      <span className={uiCx('tabular-nums shrink-0', selected ? 'text-brand-red/80' : 'text-gray-600')}>
         {item.count}
       </span>
     </button>
@@ -295,7 +295,7 @@ export function DocumentTypePicker({
     return designSystem ? (
       <p className={uiCx(uiTypography.helper, 'py-6 text-center')}>Loading...</p>
     ) : (
-      <div className="text-sm text-gray-500 py-6 text-center">Loading...</div>
+      <div className="text-sm text-gray-600 py-6 text-center">Loading...</div>
     );
   }
 
@@ -316,7 +316,7 @@ export function DocumentTypePicker({
         className={
           designSystem
             ? uiCx(uiTypography.helper, 'py-2 text-center')
-            : 'text-sm text-gray-500 py-2 text-center'
+            : 'text-sm text-gray-600 py-2 text-center'
         }
       >
         No templates match your search.

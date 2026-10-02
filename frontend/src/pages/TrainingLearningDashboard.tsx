@@ -156,7 +156,7 @@ function EmployeeTrainingLink({ userId, label }: { userId: string; label: string
   return (
     <Link
       to={`/users/${encodeURIComponent(userId)}?tab=training`}
-      className="text-xs font-medium text-brand-red hover:underline"
+      className="text-sm font-semibold text-brand-red hover:underline"
     >
       {label}
     </Link>
@@ -170,7 +170,7 @@ function MatrixCellDot({ cell, userId }: { cell: MatrixCellPayload | undefined; 
   const tooltip = [`Date taken: ${taken ? taken.slice(0, 10) : '—'}`, `Expires: ${exp ? exp.slice(0, 10) : '—'}`].join('\n');
 
   if (!c?.tone) {
-    return <span className="inline-flex h-8 w-10 select-none items-center justify-center text-xs text-gray-300">—</span>;
+    return <span className="inline-flex h-8 w-10 select-none items-center justify-center text-sm text-gray-300">—</span>;
   }
 
   const bgClass =
@@ -617,23 +617,23 @@ export default function TrainingLearningDashboard() {
                   <tbody className="divide-y divide-gray-100">
                     {scheduleRows.map((r, idx) => (
                       <tr key={String(r.id)} className="align-top hover:bg-gray-50">
-                        <td className="px-2 py-2 text-xs text-gray-500">{idx + 1}</td>
-                        <td className="px-2 py-2 text-xs font-medium text-gray-900">{String(r.title || '—')}</td>
-                        <td className="max-w-[120px] px-2 py-2 text-xs text-gray-800">{r.crew || '—'}</td>
-                        <td className="max-w-[160px] px-2 py-2 text-xs text-gray-800">{r.provider || '—'}</td>
-                        <td className="whitespace-nowrap px-2 py-2 text-xs text-gray-800">{formatScheduleDate(r)}</td>
-                        <td className="max-w-[100px] px-2 py-2 text-xs text-gray-800">{r.session_time || '—'}</td>
-                        <td className="max-w-[180px] px-2 py-2 text-xs text-gray-800">{r.location || '—'}</td>
-                        <td className="px-2 py-2 text-xs">
+                        <td className="px-2 py-2 text-sm text-gray-600">{idx + 1}</td>
+                        <td className="px-2 py-2 text-sm font-semibold text-gray-900">{String(r.title || '—')}</td>
+                        <td className="max-w-[120px] px-2 py-2 text-sm text-gray-800">{r.crew || '—'}</td>
+                        <td className="max-w-[160px] px-2 py-2 text-sm text-gray-800">{r.provider || '—'}</td>
+                        <td className="whitespace-nowrap px-2 py-2 text-sm text-gray-800">{formatScheduleDate(r)}</td>
+                        <td className="max-w-[100px] px-2 py-2 text-sm text-gray-800">{r.session_time || '—'}</td>
+                        <td className="max-w-[180px] px-2 py-2 text-sm text-gray-800">{r.location || '—'}</td>
+                        <td className="px-2 py-2 text-sm">
                           <EmployeeTrainingLink
                             userId={String(r.user_id)}
                             label={String(r.employee_name || r.user_id || '—')}
                           />
                         </td>
-                        <td className="px-2 py-2 text-xs">
+                        <td className="px-2 py-2 text-sm">
                           <TrainingStatusBadge status={r.status as string} />
                         </td>
-                        <td className="max-w-[220px] px-2 py-2 text-xs text-gray-600">
+                        <td className="max-w-[220px] px-2 py-2 text-sm text-gray-600">
                           {r.notes ? (
                             <span className="line-clamp-3" title={String(r.notes)}>
                               {String(r.notes)}
@@ -722,7 +722,7 @@ export default function TrainingLearningDashboard() {
                         </tr>
                         {group.rows.map((row) => (
                           <tr key={row.user_id} className="border-b border-gray-100 align-middle hover:bg-gray-50">
-                            <td className="border-r border-gray-100/80 px-3 py-2.5 text-sm font-medium text-gray-900">
+                            <td className="border-r border-gray-100/80 px-3 py-2.5 text-sm font-semibold text-gray-900">
                               <EmployeeTrainingLink userId={row.user_id} label={row.employee || '—'} />
                             </td>
                             {matrixColumns.map((col) => (

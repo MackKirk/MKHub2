@@ -48,7 +48,7 @@ export function CustomerOverviewActivity({
             <button
               type="button"
               onClick={onCreateOpportunity}
-              className="mt-2 text-xs font-medium text-brand-red hover:underline"
+              className="mt-2 text-sm font-semibold text-brand-red hover:underline"
             >
               Create opportunity
             </button>
@@ -58,21 +58,21 @@ export function CustomerOverviewActivity({
         <div className="max-h-[280px] overflow-y-auto space-y-4 pr-1">
           {groups.map((g) => (
             <div key={g.day}>
-              <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-2">{g.day}</div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-gray-600 mb-2">{g.day}</div>
               <ul className="space-y-2">
                 {g.events.map((e, idx) => (
-                  <li key={`${e.id}-${idx}`} className="flex gap-2 text-xs">
+                  <li key={`${e.id}-${idx}`} className="flex gap-2 text-sm">
                     <span className="shrink-0" aria-hidden>
                       {EVENT_ICONS[e.type] || '•'}
                     </span>
                     <div className="min-w-0 flex-1">
                       <Link
                         to={`/projects/${encodeURIComponent(e.id)}`}
-                        className="font-medium text-gray-800 hover:text-brand-red"
+                        className="font-semibold text-gray-800 hover:text-brand-red"
                       >
                         {e.label}
                       </Link>
-                      <div className="text-[11px] text-gray-500">{formatDateForDisplay(e.date)}</div>
+                      <div className="text-xs text-gray-600">{formatDateForDisplay(e.date)}</div>
                     </div>
                   </li>
                 ))}

@@ -42,7 +42,7 @@ function GallerySection({
 
   return (
     <section>
-      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600">{label}</h3>
+      <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-600">{label}</h3>
       {files.length === 0 ? (
         <p className="py-4 text-sm text-slate-400">{emptyMessage}</p>
       ) : (
@@ -132,7 +132,7 @@ export default function ImagePickerGalleryDialog({
                 type="button"
                 disabled={isLoading}
                 onClick={onReload}
-                className={`${selectionToolButtonGhostClass} h-8 shrink-0 px-2 text-xs`}
+                className={`${selectionToolButtonGhostClass} h-8 shrink-0 px-2 text-sm`}
               >
                 Reload
               </button>

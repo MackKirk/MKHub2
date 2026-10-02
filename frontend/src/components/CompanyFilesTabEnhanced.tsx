@@ -1185,7 +1185,7 @@ export default function CompanyFilesTabEnhanced() {
 
   const deletedFilesBody = (
     <div className="overflow-hidden rounded-xl border border-amber-100 bg-amber-50/50">
-          <p className="border-b border-amber-100/80 px-3 py-2 text-xs text-amber-900">
+          <p className="border-b border-amber-100/80 px-3 py-2 text-sm text-amber-900">
             Same previews and downloads as the library. Restore returns the file to Company Files, or purge to remove it
             permanently.
           </p>
@@ -1196,12 +1196,12 @@ export default function CompanyFilesTabEnhanced() {
                   <table className="w-full">
                     <thead className="border-b bg-gray-50">
                       <tr>
-                        <th className="w-12 px-3 py-2 text-left text-[10px] font-semibold text-gray-700" aria-hidden />
-                        <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700">Name</th>
-                        <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700">Type</th>
-                        <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700">Folder</th>
-                        <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700">Removed</th>
-                        <th className="w-52 px-3 py-2 text-left text-[10px] font-semibold text-gray-700">Actions</th>
+                        <th className="w-12 px-3 py-2 text-left text-xs font-semibold text-gray-700" aria-hidden />
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">Name</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">Type</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">Folder</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">Removed</th>
+                        <th className="w-52 px-3 py-2 text-left text-xs font-semibold text-gray-700">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
@@ -1228,7 +1228,7 @@ export default function CompanyFilesTabEnhanced() {
                               ) : (
                                 <button
                                   type="button"
-                                  className={`flex h-10 w-8 items-center justify-center rounded-lg ${icon.color} text-[10px] font-extrabold text-white`}
+                                  className={`flex h-10 w-8 items-center justify-center rounded-lg ${icon.color} text-xs font-extrabold text-white`}
                                   onClick={() => handleFilePreview(df)}
                                   title="Open / preview"
                                 >
@@ -1239,15 +1239,15 @@ export default function CompanyFilesTabEnhanced() {
                             <td className="px-3 py-2">
                               <button
                                 type="button"
-                                className="max-w-xs truncate text-left text-xs font-semibold text-gray-900 hover:text-brand-red"
+                                className="max-w-xs truncate text-left text-sm font-semibold text-gray-900 hover:text-brand-red"
                                 onClick={() => handleFilePreview(df)}
                               >
                                 {name}
                               </button>
                             </td>
-                            <td className="px-3 py-2 text-xs text-gray-600">{getFileTypeLabel(df)}</td>
-                            <td className="px-3 py-2 text-xs text-gray-600">{df.department_label || '—'}</td>
-                            <td className="px-3 py-2 text-xs text-gray-600">
+                            <td className="px-3 py-2 text-sm text-gray-600">{getFileTypeLabel(df)}</td>
+                            <td className="px-3 py-2 text-sm text-gray-600">{df.department_label || '—'}</td>
+                            <td className="px-3 py-2 text-sm text-gray-600">
                               {df.deleted_at ? new Date(df.deleted_at).toLocaleString() : '—'}
                             </td>
                             <td className="px-3 py-2">
@@ -1266,7 +1266,7 @@ export default function CompanyFilesTabEnhanced() {
                                   type="button"
                                   onClick={() => handleRestoreDeletedFile(df.id)}
                                   title="Restore to library"
-                                  className="rounded bg-emerald-600 px-2 py-1 text-[10px] font-medium text-white hover:bg-emerald-700"
+                                  className="rounded bg-emerald-600 px-2 py-1 text-xs font-semibold text-white hover:bg-emerald-700"
                                 >
                                   Restore
                                 </button>
@@ -1274,7 +1274,7 @@ export default function CompanyFilesTabEnhanced() {
                                   type="button"
                                   onClick={() => handlePermanentDeleteFile(df.id)}
                                   title="Delete permanently"
-                                  className="rounded border border-red-200 px-2 py-1 text-[10px] font-medium text-red-700 hover:bg-red-50"
+                                  className="rounded border border-red-200 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-50"
                                 >
                                   Purge
                                 </button>
@@ -1299,7 +1299,7 @@ export default function CompanyFilesTabEnhanced() {
           <div className="flex h-[calc(100vh-400px)]">
             <div className="flex w-64 flex-col border-r bg-gray-50">
               <div className="border-b p-3">
-                <div className="text-xs font-semibold text-gray-700">File Categories</div>
+                <div className="text-sm font-semibold text-gray-700">File Categories</div>
               </div>
               <div className="flex-1 overflow-y-auto">
                 {visibleDepartments.map((d) => (
@@ -1317,9 +1317,9 @@ export default function CompanyFilesTabEnhanced() {
                     }`}
                   >
                     <div className="flex items-center gap-2">
-                      <span className="text-xs">📁</span>
-                      <span className="truncate text-xs">{d.label}</span>
-                      <span className="ml-auto text-[10px] text-gray-500">({deptDocCounts[d.id] ?? 0})</span>
+                      <span className="text-sm">📁</span>
+                      <span className="truncate text-sm">{d.label}</span>
+                      <span className="ml-auto text-xs text-gray-600">({deptDocCounts[d.id] ?? 0})</span>
                     </div>
                   </button>
                 ))}
@@ -1398,8 +1398,8 @@ export default function CompanyFilesTabEnhanced() {
                     <AppButton type="button" variant="ghost" size="sm" onClick={openFilesHome}>
                       ← Files Home
                     </AppButton>
-                    <span className="hidden text-xs text-gray-500 sm:inline">
-                      Files Home / <span className="font-medium text-gray-800">{selectedDeptLabel}</span>
+                    <span className="hidden text-sm text-gray-600 sm:inline">
+                      Files Home / <span className="font-semibold text-gray-800">{selectedDeptLabel}</span>
                     </span>
                   </div>
                   <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1411,9 +1411,9 @@ export default function CompanyFilesTabEnhanced() {
                         placeholder="Search by file name..."
                         fieldHint="Search\n\nFilter the file list by name in the current category or folder."
                       />
-                      <div className="whitespace-nowrap text-xs font-semibold text-gray-700">
+                      <div className="whitespace-nowrap text-sm font-semibold text-gray-700">
                         {selectedDeptLabel}
-                        <span className="ml-1 text-gray-500">({currentFiles.length})</span>
+                        <span className="ml-1 text-gray-600">({currentFiles.length})</span>
                       </div>
                     </div>
                     <div className="flex flex-shrink-0 items-center gap-2">
@@ -1443,15 +1443,15 @@ export default function CompanyFilesTabEnhanced() {
                   </div>
 
                   <div className="mb-3 flex flex-wrap items-center gap-1">
-                    <span className="text-xs text-gray-500">Location:</span>
+                    <span className="text-sm text-gray-600">Location:</span>
                     {locationBreadcrumb.map((item, index) => (
                       <span key={item.id ?? 'root'} className="inline-flex items-center gap-1">
-                        {index > 0 && <span className="text-xs text-gray-400">/</span>}
+                        {index > 0 && <span className="text-sm text-gray-600">/</span>}
                         <button
                           type="button"
                           onClick={() => setSelectedFolderId(item.id)}
                           className={uiCx(
-                            'max-w-[140px] truncate rounded px-2 py-1 text-xs font-medium',
+                            'max-w-[140px] truncate rounded px-2 py-1 text-sm font-semibold',
                             (item.id === selectedFolderId || (item.id === null && selectedFolderId === null))
                               ? 'bg-brand-red text-white'
                               : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -1568,7 +1568,7 @@ export default function CompanyFilesTabEnhanced() {
                                           <tr key={d.id} className="hover:bg-gray-50">
                                             <td className="px-3 py-2">
                                               <div
-                                                className={`flex h-10 w-8 items-center justify-center rounded-lg ${icon.color} text-[10px] font-extrabold text-white cursor-pointer`}
+                                                className={`flex h-10 w-8 items-center justify-center rounded-lg ${icon.color} text-xs font-extrabold text-white cursor-pointer`}
                                                 onClick={() => handleFilePreview(d)}
                                               >
                                                 {icon.label}
@@ -1577,13 +1577,13 @@ export default function CompanyFilesTabEnhanced() {
                                             <td className="px-3 py-2">
                                               <button
                                                 type="button"
-                                                className="max-w-xs truncate text-left text-xs font-semibold"
+                                                className="max-w-xs truncate text-left text-sm font-semibold"
                                                 onClick={() => handleFilePreview(d)}
                                               >
                                                 {name}
                                               </button>
                                             </td>
-                                            <td className="px-3 py-2 text-xs text-gray-600">{getFileTypeLabel(d)}</td>
+                                            <td className="px-3 py-2 text-sm text-gray-600">{getFileTypeLabel(d)}</td>
                                           </tr>
                                         );
                                       })}
@@ -1612,37 +1612,37 @@ export default function CompanyFilesTabEnhanced() {
                                   />
                                 </th>
                               ) : null}
-                              <th className="w-12 px-3 py-2 text-left text-[10px] font-semibold text-gray-700" />
+                              <th className="w-12 px-3 py-2 text-left text-xs font-semibold text-gray-700" />
                               <th
-                                className="w-full cursor-pointer select-none px-3 py-2 text-left text-[10px] font-semibold text-gray-700 hover:bg-gray-100"
+                                className="w-full cursor-pointer select-none px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-100"
                                 onClick={() => handleSort('name')}
                               >
                                 <div className="flex items-center gap-1">
                                   Name
-                                  {sortBy === 'name' && <span className="text-xs">{sortOrder === 'asc' ? '↑' : '↓'}</span>}
+                                  {sortBy === 'name' && <span className="text-sm">{sortOrder === 'asc' ? '↑' : '↓'}</span>}
                                 </div>
                               </th>
                               <th
-                                className="cursor-pointer select-none whitespace-nowrap px-3 py-2 text-left text-[10px] font-semibold text-gray-700 hover:bg-gray-100"
+                                className="cursor-pointer select-none whitespace-nowrap px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-100"
                                 onClick={() => handleSort('type')}
                               >
                                 <div className="flex items-center gap-1">
                                   Type
-                                  {sortBy === 'type' && <span className="text-xs">{sortOrder === 'asc' ? '↑' : '↓'}</span>}
+                                  {sortBy === 'type' && <span className="text-sm">{sortOrder === 'asc' ? '↑' : '↓'}</span>}
                                 </div>
                               </th>
                               <th
-                                className="cursor-pointer select-none whitespace-nowrap px-3 py-2 text-left text-[10px] font-semibold text-gray-700 hover:bg-gray-100"
+                                className="cursor-pointer select-none whitespace-nowrap px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-100"
                                 onClick={() => handleSort('uploaded_at')}
                               >
                                 <div className="flex items-center gap-1">
                                   Upload Date
                                   {sortBy === 'uploaded_at' && (
-                                    <span className="text-xs">{sortOrder === 'asc' ? '↑' : '↓'}</span>
+                                    <span className="text-sm">{sortOrder === 'asc' ? '↑' : '↓'}</span>
                                   )}
                                 </div>
                               </th>
-                              <th className="w-[1%] whitespace-nowrap px-3 py-2 text-right text-[10px] font-semibold text-gray-700">Actions</th>
+                              <th className="w-[1%] whitespace-nowrap px-3 py-2 text-right text-xs font-semibold text-gray-700">Actions</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y">
@@ -1664,9 +1664,9 @@ export default function CompanyFilesTabEnhanced() {
                                     </svg>
                                   </div>
                                 </td>
-                                <td className="px-3 py-2 text-xs font-semibold text-gray-600">..</td>
-                                <td className="px-3 py-2 text-xs text-gray-500">—</td>
-                                <td className="px-3 py-2 text-xs text-gray-500">—</td>
+                                <td className="px-3 py-2 text-sm font-semibold text-gray-600">..</td>
+                                <td className="px-3 py-2 text-sm text-gray-600">—</td>
+                                <td className="px-3 py-2 text-sm text-gray-600">—</td>
                                 <td className="px-3 py-2" />
                               </tr>
                             )}
@@ -1709,14 +1709,14 @@ export default function CompanyFilesTabEnhanced() {
                                 </td>
                                 <td className="px-3 py-2">
                                   <div className="flex max-w-xs items-center gap-2">
-                                    <span className="truncate text-xs font-semibold">{folder.name}</span>
-                                    <span className="ml-auto shrink-0 text-[10px] font-normal text-gray-500">
+                                    <span className="truncate text-sm font-semibold">{folder.name}</span>
+                                    <span className="ml-auto shrink-0 text-xs font-normal text-gray-600">
                                       ({folderFileCounts[folder.id] ?? 0})
                                     </span>
                                   </div>
                                 </td>
-                                <td className="px-3 py-2 text-xs text-gray-600">Folder</td>
-                                <td className="px-3 py-2 text-xs text-gray-500">—</td>
+                                <td className="px-3 py-2 text-sm text-gray-600">Folder</td>
+                                <td className="px-3 py-2 text-sm text-gray-600">—</td>
                                 <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
                                   <div className="flex items-center justify-end gap-0.5">
                                     {canMoveInDept ? (
@@ -1788,7 +1788,7 @@ export default function CompanyFilesTabEnhanced() {
                                       </div>
                                     ) : (
                                       <div
-                                        className={`flex h-10 w-8 flex-shrink-0 cursor-pointer select-none items-center justify-center rounded-lg ${icon.color} text-[10px] font-extrabold text-white`}
+                                        className={`flex h-10 w-8 flex-shrink-0 cursor-pointer select-none items-center justify-center rounded-lg ${icon.color} text-xs font-extrabold text-white`}
                                         onClick={() => handleFilePreview(d)}
                                       >
                                         {icon.label}
@@ -1841,7 +1841,7 @@ export default function CompanyFilesTabEnhanced() {
                                       </div>
                                     ) : (
                                       <div className="flex items-center gap-1">
-                                        <div className="max-w-xs cursor-pointer truncate text-xs font-semibold">{name}</div>
+                                        <div className="max-w-xs cursor-pointer truncate text-sm font-semibold">{name}</div>
                                         {canMoveInDept ? (
                                           <AppListRowIconButton
                                             preset="edit"
@@ -1856,10 +1856,10 @@ export default function CompanyFilesTabEnhanced() {
                                     )}
                                   </td>
                                   <td className="cursor-pointer px-3 py-2" onClick={() => handleFilePreview(d)}>
-                                    <div className="text-xs text-gray-600">{getFileTypeLabel(d)}</div>
+                                    <div className="text-sm text-gray-600">{getFileTypeLabel(d)}</div>
                                   </td>
                                   <td className="cursor-pointer px-3 py-2" onClick={() => handleFilePreview(d)}>
-                                    <div className="text-xs text-gray-600">
+                                    <div className="text-sm text-gray-600">
                                       {d.created_at ? new Date(d.created_at).toLocaleDateString('pt-BR') : '-'}
                                     </div>
                                   </td>
@@ -2093,7 +2093,7 @@ export default function CompanyFilesTabEnhanced() {
             {newFolderParentId ? (
               <p className={uiTypography.helper}>
                 Creating inside{' '}
-                <span className="font-medium text-gray-900">
+                <span className="font-semibold text-gray-900">
                   {allFolders.find((f) => f.id === newFolderParentId)?.name ?? 'folder'}
                 </span>
               </p>
@@ -2197,7 +2197,7 @@ export default function CompanyFilesTabEnhanced() {
           }
         >
           {loadingPermissions ? (
-            <div className="py-8 text-center text-sm text-gray-500">Loading permissions...</div>
+            <div className="py-8 text-center text-sm text-gray-600">Loading permissions...</div>
           ) : permissionsData ? (
             <div className={uiSpacing.sectionStack}>
               <AppCheckbox
@@ -2230,7 +2230,7 @@ export default function CompanyFilesTabEnhanced() {
                             label={
                               <span>
                                 {u.username}
-                                {u.email ? <span className="text-gray-500"> ({u.email})</span> : null}
+                                {u.email ? <span className="text-gray-600"> ({u.email})</span> : null}
                               </span>
                             }
                             checked={selectedUserIds.includes(u.id)}
@@ -2275,7 +2275,7 @@ export default function CompanyFilesTabEnhanced() {
               ) : null}
             </div>
           ) : (
-            <div className="py-8 text-center text-sm text-gray-500">Failed to load permissions</div>
+            <div className="py-8 text-center text-sm text-gray-600">Failed to load permissions</div>
           )}
         </AppFormModal>
       ) : null}

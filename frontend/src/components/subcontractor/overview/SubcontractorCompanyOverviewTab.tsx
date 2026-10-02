@@ -94,8 +94,8 @@ export function SubcontractorCompanyOverviewTab({
           {companySince ? (
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-gray-600 min-w-0">
               <span>
-                <span className="text-gray-500">Company since:</span>{' '}
-                <span className="font-medium text-gray-900">{companySince}</span>
+                <span className="text-gray-600">Company since:</span>{' '}
+                <span className="font-semibold text-gray-900">{companySince}</span>
               </span>
             </div>
           ) : null}
@@ -110,7 +110,7 @@ export function SubcontractorCompanyOverviewTab({
                 >
                   {primaryContact.name}
                   {primaryContact.email ? (
-                    <span className="text-gray-500 font-normal"> · {primaryContact.email}</span>
+                    <span className="text-gray-600 font-normal"> · {primaryContact.email}</span>
                   ) : null}
                 </button>
               </span>
@@ -119,7 +119,7 @@ export function SubcontractorCompanyOverviewTab({
                 <Briefcase className="h-3.5 w-3.5 shrink-0 text-gray-400" />
                 <span className="truncate">
                   {company.contact_name}
-                  {company.email ? <span className="text-gray-500 font-normal"> · {company.email}</span> : null}
+                  {company.email ? <span className="text-gray-600 font-normal"> · {company.email}</span> : null}
                 </span>
               </span>
             ) : null}
@@ -146,13 +146,13 @@ export function SubcontractorCompanyOverviewTab({
           <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
             {snapshotMetrics.map((m) => (
               <div key={m.label} className="min-w-0">
-                <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">{m.label}</div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-gray-600">{m.label}</div>
                 <div className="text-lg font-semibold text-gray-900 tabular-nums truncate">{m.value}</div>
-                {m.sub ? <div className="text-[11px] text-gray-500 truncate">{m.sub}</div> : null}
+                {m.sub ? <div className="text-xs text-gray-600 truncate">{m.sub}</div> : null}
               </div>
             ))}
           </div>
-          <p className="text-xs text-gray-600 mt-3 border-t border-gray-100 pt-3">{summaryLine}</p>
+          <p className="text-sm text-gray-600 mt-3 border-t border-gray-100 pt-3">{summaryLine}</p>
         </div>
       </div>
 

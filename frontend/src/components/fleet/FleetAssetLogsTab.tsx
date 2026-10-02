@@ -198,7 +198,7 @@ export function FleetAssetLogsTab({
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className={uiCx(uiTypography.body, 'font-medium text-gray-900')}>
+                        <span className={uiCx(uiTypography.body, 'font-semibold text-gray-900')}>
                           {summaryList}
                         </span>
                         <AppBadge variant={getFleetHistoryEntryBadgeVariant(badge)}>{badge}</AppBadge>
@@ -224,7 +224,7 @@ export function FleetAssetLogsTab({
                         </div>
                       )}
                     </div>
-                    <div className={uiCx(uiTypography.body, 'shrink-0 text-right text-gray-500')}>
+                    <div className={uiCx(uiTypography.body, 'shrink-0 text-right text-gray-600')}>
                       {item.occurred_at ? new Date(item.occurred_at).toLocaleString() : '—'}
                     </div>
                   </div>

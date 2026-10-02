@@ -21,7 +21,7 @@ export function AppBadge({ children, variant = 'neutral', className }: AppBadgeP
   return (
     <span
       className={uiCx(
-        'inline-flex items-center px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
+        'inline-flex items-center px-2 py-0.5 text-sm font-semibold',
         uiRadius.badge,
         variantClasses[variant],
         className,

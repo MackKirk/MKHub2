@@ -27,7 +27,7 @@ import QuizBuilderSection from '@/pages/training/QuizBuilderSection';
 const FIELD =
   'w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 transition-shadow focus:border-brand-red focus:outline-none focus:ring-2 focus:ring-brand-red/20';
 const BTN_ICON =
-  'inline-flex h-7 min-w-[1.75rem] items-center justify-center rounded-md border border-slate-200 bg-white text-xs font-semibold text-gray-600 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40';
+  'inline-flex h-7 min-w-[1.75rem] items-center justify-center rounded-md border border-slate-200 bg-white text-sm font-semibold text-gray-600 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40';
 
 const LESSON_TYPE_LABEL: Record<string, string> = {
   text: 'Rich text',
@@ -124,12 +124,12 @@ function SortableModuleCard({
           onClick={onSelect}
           className="flex min-w-0 flex-1 items-start gap-2 rounded-lg py-0.5 pl-0.5 text-left transition-colors hover:bg-slate-50/90"
         >
-          <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-bold text-slate-700">
+          <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-700">
             {indexDisplay}
           </span>
           <span className="min-w-0 flex-1">
             <span className="block truncate font-semibold text-gray-900">{mod.title}</span>
-            <span className="mt-0.5 block text-[11px] text-gray-500">
+            <span className="mt-0.5 block text-xs text-gray-600">
               {mod.lessons.length} {mod.lessons.length === 1 ? 'lesson' : 'lessons'}
             </span>
           </span>
@@ -412,7 +412,7 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
     return (
       <div className="flex min-h-[200px] flex-col items-center justify-center rounded-xl border border-slate-200 bg-slate-50/50 px-6 py-10">
         <div className="h-9 w-9 animate-spin rounded-full border-2 border-slate-200 border-t-brand-red" />
-        <p className="mt-3 text-sm font-medium text-gray-600">Loading course structure…</p>
+        <p className="mt-3 text-sm font-semibold text-gray-600">Loading course structure…</p>
       </div>
     );
   }
@@ -422,7 +422,7 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
       {course.modules.length === 0 ? (
         <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/40 px-6 py-10 text-center">
           <p className="text-base font-semibold text-gray-800">Start with a module</p>
-          <p className="mx-auto mt-2 max-w-md text-sm text-gray-500">
+          <p className="mx-auto mt-2 max-w-md text-sm text-gray-600">
             Modules are chapters or sections. Each module has its own lesson list — add one here to begin building content.
           </p>
           <button
@@ -440,14 +440,14 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
       <div className="flex flex-col items-start gap-6 xl:flex-row">
         <aside className="max-h-[min(70vh,calc(100vh-12rem))] w-full shrink-0 overflow-y-auto rounded-xl border border-slate-200/90 bg-gradient-to-b from-slate-50/95 to-slate-50/60 p-3 shadow-sm xl:w-[300px]">
           <div className="mb-3 flex items-center justify-between gap-2 px-1">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Modules</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-600">Modules</span>
             <button
               type="button"
               onClick={() => {
                 setNewModuleTitle('');
                 setModuleModalOpen(true);
               }}
-              className="rounded-lg bg-white px-2.5 py-1.5 text-xs font-semibold text-brand-red shadow-sm ring-1 ring-slate-200 transition-colors hover:bg-slate-50"
+              className="rounded-lg bg-white px-2.5 py-1.5 text-sm font-semibold text-brand-red shadow-sm ring-1 ring-slate-200 transition-colors hover:bg-slate-50"
             >
               + Add module
             </button>
@@ -474,8 +474,8 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
             <div className="mt-5 border-t border-slate-200 pt-4">
               <div className="mb-2 flex items-start justify-between gap-2 px-1">
                 <div className="min-w-0">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Lessons</div>
-                  <p className="mt-0.5 truncate text-xs font-medium text-gray-700" title={activeModule.title}>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-600">Lessons</div>
+                  <p className="mt-0.5 truncate text-sm font-semibold text-gray-700" title={activeModule.title}>
                     {activeModule.title}
                   </p>
                 </div>
@@ -483,7 +483,7 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
                   type="button"
                   onClick={() => setLessonModalOpen(true)}
                   disabled={!activeModuleId}
-                  className="shrink-0 rounded-lg bg-slate-800 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-slate-900 disabled:opacity-40"
+                  className="shrink-0 rounded-lg bg-slate-800 px-2.5 py-1.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-900 disabled:opacity-40"
                 >
                   + Add lesson
                 </button>
@@ -500,11 +500,11 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
                         : 'text-gray-800 hover:bg-white'
                     }`}
                   >
-                    <div className="truncate font-medium">{les.title}</div>
+                    <div className="truncate font-semibold">{les.title}</div>
                     <div className="mt-1 flex items-center gap-1.5">
                       <span
-                        className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-                          activeLessonId === les.id ? 'bg-white/20 text-white' : 'bg-slate-100 text-gray-500'
+                        className={`inline-flex rounded px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide ${
+                          activeLessonId === les.id ? 'bg-white/20 text-white' : 'bg-slate-100 text-gray-600'
                         }`}
                       >
                         {LESSON_TYPE_LABEL[les.lesson_type] ?? les.lesson_type}
@@ -559,7 +559,7 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                  <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-gray-600">
                     {LESSON_TYPE_LABEL[activeEntry.lesson.lesson_type] ?? activeEntry.lesson.lesson_type}
                   </span>
                   {(() => {
@@ -590,7 +590,7 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
                   })()}
                   <button
                     type="button"
-                    className="ml-auto rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-red-600 shadow-sm transition-colors hover:bg-red-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300/50"
+                    className="ml-auto rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-sm font-semibold text-red-600 shadow-sm transition-colors hover:bg-red-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300/50"
                     onClick={() =>
                       void handleDeleteLesson(
                         activeEntry.moduleId,
@@ -633,13 +633,13 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
                 )}
                 {activeEntry.lesson.lesson_type === 'pdf' && (
                   <div className="space-y-3">
-                    <p className="text-xs text-gray-500">
+                    <p className="text-sm text-gray-600">
                       Upload a PDF below (stored as course content). The ID updates automatically; learners see the same preview.
                     </p>
                     <input
                       type="file"
                       accept="application/pdf"
-                      className="w-full max-w-md text-sm file:mr-2 file:rounded-md file:border-0 file:bg-slate-200 file:px-2 file:py-1.5 file:text-xs file:font-semibold file:text-gray-700"
+                      className="w-full max-w-md text-sm file:mr-2 file:rounded-md file:border-0 file:bg-slate-200 file:px-2 file:py-1.5 file:text-sm file:font-semibold file:text-gray-700"
                       onChange={async (e) => {
                         const f = e.target.files?.[0];
                         if (!f) return;
@@ -658,9 +658,9 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
                       }}
                     />
                     <div>
-                      <label className="text-xs font-semibold text-gray-600">File ID (optional manual edit)</label>
+                      <label className="text-sm font-semibold text-gray-600">File ID (optional manual edit)</label>
                       <input
-                        className={`${FIELD} mt-0.5 font-mono text-xs`}
+                        className={`${FIELD} mt-0.5 font-mono text-sm`}
                         defaultValue={String((activeEntry.lesson.content as { pdf_file_id?: string })?.pdf_file_id || '')}
                         key={(activeEntry.lesson.content as { pdf_file_id?: string })?.pdf_file_id || 'empty'}
                         onBlur={(e) => {
@@ -681,14 +681,14 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
                           src={`${withFileAccessToken(`/files/${(activeEntry.lesson.content as { pdf_file_id: string }).pdf_file_id}`)}#view=FitH`}
                           className="w-full h-[min(65vh,680px)] min-h-[400px] border-0"
                         />
-                        <div className="border-t border-slate-100 bg-slate-50 px-3 py-2 text-xs">
+                        <div className="border-t border-slate-100 bg-slate-50 px-3 py-2 text-sm">
                           <a
                             href={withFileAccessToken(
                               `/files/${(activeEntry.lesson.content as { pdf_file_id: string }).pdf_file_id}`,
                             )}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="font-medium text-brand-red underline-offset-2 hover:underline"
+                            className="font-semibold text-brand-red underline-offset-2 hover:underline"
                           >
                             Open in new tab
                           </a>
@@ -701,7 +701,7 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
                 )}
                 {activeEntry.lesson.lesson_type === 'image' && (
                   <div className="space-y-2">
-                    <p className="text-xs text-gray-500">Comma-separated image file IDs</p>
+                    <p className="text-sm text-gray-600">Comma-separated image file IDs</p>
                     <input
                       className={FIELD}
                       defaultValue={((activeEntry.lesson.content as { images?: string[] })?.images || []).join(', ')}
@@ -737,8 +737,8 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
                 </svg>
               </div>
               <p className="text-lg font-semibold text-gray-800">This module has no lessons yet</p>
-              <p className="mx-auto mt-2 max-w-md text-sm text-gray-500">
-                Create the first lesson for <span className="font-medium text-gray-700">{activeModule.title}</span>. You
+              <p className="mx-auto mt-2 max-w-md text-sm text-gray-600">
+                Create the first lesson for <span className="font-semibold text-gray-700">{activeModule.title}</span>. You
                 can add rich text, video, PDF, images, or a quiz.
               </p>
               <button
@@ -752,7 +752,7 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
           ) : (
             <div className="flex min-h-[320px] flex-col items-center justify-center px-6 py-16 text-center">
               <p className="text-sm font-semibold text-gray-700">Select a lesson</p>
-              <p className="mt-2 max-w-sm text-sm text-gray-500">
+              <p className="mt-2 max-w-sm text-sm text-gray-600">
                 Choose a module, then pick a lesson in the sidebar — or add a new lesson.
               </p>
             </div>
@@ -777,8 +777,8 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
             <h2 id="module-modal-title" className="text-lg font-bold text-gray-900">
               New module
             </h2>
-            <p className="mt-1 text-sm text-gray-500">Give this section a clear name (e.g. “Safety basics”).</p>
-            <label className="mt-4 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+            <p className="mt-1 text-sm text-gray-600">Give this section a clear name (e.g. “Safety basics”).</p>
+            <label className="mt-4 block text-sm font-semibold uppercase tracking-wide text-gray-600">
               Module title
               <input
                 autoFocus
@@ -829,11 +829,11 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
             <h2 id="lesson-modal-title" className="text-lg font-bold text-gray-900">
               New lesson
             </h2>
-            <p className="mt-1 truncate text-sm text-gray-500">
+            <p className="mt-1 truncate text-sm text-gray-600">
               Module: <span className="font-semibold text-gray-700">{activeModule?.title}</span>
             </p>
             <div className="mt-4 space-y-3">
-              <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">
+              <label className="block text-sm font-semibold uppercase tracking-wide text-gray-600">
                 Lesson title
                 <input
                   autoFocus
@@ -843,7 +843,7 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
                   onChange={(e) => setDraft(activeModuleId, { title: e.target.value })}
                 />
               </label>
-              <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">
+              <label className="block text-sm font-semibold uppercase tracking-wide text-gray-600">
                 Content type
                 <select
                   className={`${FIELD} mt-1`}
@@ -858,7 +858,7 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
                 </select>
               </label>
               {getDraft(activeModuleId).lesson_type === 'video' && (
-                <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                <label className="block text-sm font-semibold uppercase tracking-wide text-gray-600">
                   Embed URL
                   <input
                     className={`${FIELD} mt-1`}
@@ -871,7 +871,7 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
               {(getDraft(activeModuleId).lesson_type === 'pdf' ||
                 getDraft(activeModuleId).lesson_type === 'image') && (
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  <label className="block text-sm font-semibold uppercase tracking-wide text-gray-600">
                     Upload file
                   </label>
                   <input
@@ -879,7 +879,7 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
                     accept={
                       getDraft(activeModuleId).lesson_type === 'pdf' ? 'application/pdf' : 'image/*'
                     }
-                    className="mt-1 w-full text-sm file:mr-2 file:rounded-md file:border-0 file:bg-slate-200 file:px-2 file:py-1.5 file:text-xs file:font-semibold file:text-gray-700"
+                    className="mt-1 w-full text-sm file:mr-2 file:rounded-md file:border-0 file:bg-slate-200 file:px-2 file:py-1.5 file:text-sm file:font-semibold file:text-gray-700"
                     onChange={async (e) => {
                       const f = e.target.files?.[0];
                       if (!f) return;
@@ -892,7 +892,7 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
                       }
                     }}
                   />
-                  <p className="mt-1 truncate font-mono text-[10px] text-gray-500">
+                  <p className="mt-1 truncate font-mono text-xs text-gray-600">
                     File ID: {getDraft(activeModuleId).body || '—'}
                   </p>
                 </div>

@@ -217,7 +217,7 @@ export function FleetAssetComplianceTab({
                         }
                       }}
                     >
-                      <span className={uiCx(uiTypography.body, 'whitespace-nowrap font-medium text-gray-900')}>
+                      <span className={uiCx(uiTypography.body, 'whitespace-nowrap font-semibold text-gray-900')}>
                         {rec.record_type}
                       </span>
                       <span

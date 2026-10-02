@@ -1078,14 +1078,14 @@ export default function Users(){
           label={
             bambooSyncModal === 'photos' ? (
               <>
-                <span className="font-medium">Replace existing profile photos</span>
+                <span className="font-semibold">Replace existing profile photos</span>
                 <span className={uiCx(uiTypography.helper, 'mt-0.5 block')}>
                   When unchecked, users who already have a photo are skipped. When checked, photos are re-downloaded from BambooHR and overwritten.
                 </span>
               </>
             ) : (
               <>
-                <span className="font-medium">Replace documents already imported</span>
+                <span className="font-semibold">Replace documents already imported</span>
                 <span className={uiCx(uiTypography.helper, 'mt-0.5 block')}>
                   When unchecked, each Bamboo file ID is imported at most once. When checked, existing imports are removed and re-downloaded from BambooHR.
                 </span>
@@ -1163,15 +1163,15 @@ function UserListRow({
           )}
         </div>
         <div className="min-w-0">
-          <div className={uiCx(uiTypography.sectionTitle, 'truncate text-xs')}>{u.name || u.username}</div>
+          <div className={uiCx(uiTypography.sectionTitle, 'truncate text-sm')}>{u.name || u.username}</div>
           <div className={uiCx(uiTypography.helper, 'truncate sm:hidden')}>{u.email || '—'}</div>
         </div>
       </div>
       <div className="flex min-w-0 items-center overflow-hidden">
-        <span className={uiCx(uiTypography.body, 'truncate text-xs')}>{u.job_title || '—'}</span>
+        <span className={uiCx(uiTypography.body, 'truncate text-sm')}>{u.job_title || '—'}</span>
       </div>
       <div className="flex min-w-0 items-center overflow-hidden">
-        <span className={uiCx(uiTypography.helper, 'truncate text-xs')}>{u.email || '—'}</span>
+        <span className={uiCx(uiTypography.helper, 'truncate text-sm')}>{u.email || '—'}</span>
       </div>
       <div className="flex min-w-0 items-center">
         <UserStatusBadge isActive={u.is_active} />
@@ -1215,13 +1215,13 @@ function UserCard({
         )}
       </div>
       <div className="w-full min-w-0">
-        <div className={uiCx(uiTypography.sectionTitle, 'flex items-center justify-center gap-1 truncate text-xs')}>
+        <div className={uiCx(uiTypography.sectionTitle, 'flex items-center justify-center gap-1 truncate text-sm')}>
           {u.name || u.username}
         </div>
         {u.job_title ? (
-          <div className={uiCx(uiTypography.helper, 'mt-0.5 truncate text-[10px]')}>{u.job_title}</div>
+          <div className={uiCx(uiTypography.helper, 'mt-0.5 truncate text-xs')}>{u.job_title}</div>
         ) : null}
-        <div className={uiCx(uiTypography.helper, 'mt-0.5 truncate text-[10px]')}>{u.email || ''}</div>
+        <div className={uiCx(uiTypography.helper, 'mt-0.5 truncate text-xs')}>{u.email || ''}</div>
         {u.is_active === false ? (
           <div className="mt-1">
             <UserStatusBadge isActive={false} />

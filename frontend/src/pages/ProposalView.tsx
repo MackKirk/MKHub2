@@ -19,11 +19,11 @@ export default function ProposalView(){
           <div className="grid grid-cols-2 gap-3">
             <div>
               <div className="text-sm text-gray-600 mb-1">Cover</div>
-              {coverThumb? <img src={coverThumb} className="w-full max-w-[400px] rounded border" /> : <div className="text-sm text-gray-500">No cover</div>}
+              {coverThumb? <img src={coverThumb} className="w-full max-w-[400px] rounded border" /> : <div className="text-sm text-gray-600">No cover</div>}
             </div>
             <div>
               <div className="text-sm text-gray-600 mb-1">Page 2</div>
-              {page2Thumb? <img src={page2Thumb} className="w-full max-w-[400px] rounded border" /> : <div className="text-sm text-gray-500">No image</div>}
+              {page2Thumb? <img src={page2Thumb} className="w-full max-w-[400px] rounded border" /> : <div className="text-sm text-gray-600">No image</div>}
             </div>
           </div>
           <div className="flex items-center gap-2">

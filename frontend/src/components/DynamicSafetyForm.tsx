@@ -93,10 +93,10 @@ const STATUS_CHOICE_BTN =
 const FILE_CAT = 'safety-form';
 
 /** Field question title — gray, natural case (matches template text). */
-const FIELD_QUESTION_CLASS = 'block text-sm font-medium text-gray-600 mb-2';
+const FIELD_QUESTION_CLASS = 'block text-sm font-semibold text-gray-600 mb-2';
 
 /** Inline question text (e.g. checkbox row). */
-const FIELD_QUESTION_INLINE = 'text-sm font-medium text-gray-600';
+const FIELD_QUESTION_INLINE = 'text-sm font-semibold text-gray-600';
 
 const CONTROL_FIELD_WRAP = 'flex-1 min-w-0 block';
 
@@ -104,7 +104,7 @@ function ControlLoadingPlaceholder({ message }: { message: string }) {
   return (
     <div
       className={uiCx(
-        'flex min-h-[2.25rem] items-center bg-gray-50 text-sm text-gray-500',
+        'flex min-h-[2.25rem] items-center bg-gray-50 text-sm text-gray-600',
         uiSpacing.controlX,
         uiSpacing.controlY,
         uiRadius.control,
@@ -1304,7 +1304,7 @@ export default function DynamicSafetyForm({
                     () => {}
                   );
                 }}
-                className="min-h-[2.75rem] px-3 py-2 text-xs font-medium border-2 border-gray-200 rounded-xl bg-gray-50 hover:border-gray-300 disabled:opacity-50"
+                className="min-h-[2.75rem] px-3 py-2 text-sm font-semibold border-2 border-gray-200 rounded-xl bg-gray-50 hover:border-gray-300 disabled:opacity-50"
               >
                 Use location
               </button>
@@ -1582,7 +1582,7 @@ export default function DynamicSafetyForm({
                   Signature on file.{' '}
                   <button
                     type="button"
-                    className="font-medium text-brand-red hover:underline"
+                    className="font-semibold text-brand-red hover:underline"
                     onClick={() => clearWorkerSignaturePersisted()}
                   >
                     Replace signature

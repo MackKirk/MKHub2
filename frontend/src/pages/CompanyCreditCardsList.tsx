@@ -288,10 +288,10 @@ export default function CompanyCreditCardsList() {
                               className="min-h-[52px] cursor-pointer border-b border-gray-100 transition-colors last:border-b-0 hover:bg-gray-50"
                               onClick={() => nav(`/company-assets/credit-cards/${row.id}`)}
                             >
-                              <td className={uiCx(uiTypography.body, 'px-3 py-3 align-top font-medium text-gray-900')}>
+                              <td className={uiCx(uiTypography.body, 'px-3 py-3 align-top font-semibold text-gray-900')}>
                                 {row.label}
                               </td>
-                              <td className="px-3 py-3 align-top font-mono text-xs tracking-wider text-gray-800">
+                              <td className="px-3 py-3 align-top font-mono text-sm tracking-wider text-gray-800">
                                 •••• {row.last_four}
                               </td>
                               <td className="px-3 py-3 align-top">

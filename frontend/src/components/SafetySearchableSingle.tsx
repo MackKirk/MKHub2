@@ -105,7 +105,7 @@ export default function SafetySearchableSingle({
   return (
     <div ref={rootRef} className="relative">
       {!hideLabel && (
-        <label className="block text-sm font-medium text-gray-600 mb-2">{label}</label>
+        <label className="block text-sm font-semibold text-gray-600 mb-2">{label}</label>
       )}
       <button
         ref={anchorRef}
@@ -116,7 +116,7 @@ export default function SafetySearchableSingle({
         onClick={() => !disabled && setOpen((o) => !o)}
         className="w-full min-h-[2.75rem] flex items-center justify-between gap-2 px-3 py-2 border-2 border-gray-200 rounded-xl text-sm text-left bg-white text-gray-900 disabled:bg-gray-50 disabled:cursor-not-allowed hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-brand-red/20 focus:border-brand-red"
       >
-        <span className={`truncate min-w-0 ${!value.trim() ? 'text-gray-500' : 'text-gray-900'}`}>{summary}</span>
+        <span className={`truncate min-w-0 ${!value.trim() ? 'text-gray-600' : 'text-gray-900'}`}>{summary}</span>
         <svg
           className={`w-4 h-4 text-gray-500 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
           fill="none"
@@ -153,15 +153,15 @@ export default function SafetySearchableSingle({
             <div className="min-h-0 flex-1 overflow-y-auto divide-y divide-gray-100">
               <button
                 type="button"
-                className="w-full px-3 py-2 text-left text-sm text-gray-500 hover:bg-gray-50"
+                className="w-full px-3 py-2 text-left text-sm text-gray-600 hover:bg-gray-50"
                 onMouseDown={pickOnMouseDown('')}
               >
                 {emptyLabel}
               </button>
               {sortedRows.length === 0 ? (
-                <div className="px-3 py-2 text-sm text-gray-500">No options</div>
+                <div className="px-3 py-2 text-sm text-gray-600">No options</div>
               ) : filteredRows.length === 0 ? (
-                <div className="px-3 py-2 text-sm text-gray-500">No matches</div>
+                <div className="px-3 py-2 text-sm text-gray-600">No matches</div>
               ) : (
                 filteredRows.map((row) => (
                   <button
@@ -171,7 +171,7 @@ export default function SafetySearchableSingle({
                     aria-selected={value === row.value}
                     onMouseDown={pickOnMouseDown(row.value)}
                     className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-50 ${
-                      value === row.value ? 'bg-blue-50 text-blue-900 font-medium' : 'text-gray-800'
+                      value === row.value ? 'bg-blue-50 text-blue-900 font-semibold' : 'text-gray-800'
                     }`}
                   >
                     {row.label}

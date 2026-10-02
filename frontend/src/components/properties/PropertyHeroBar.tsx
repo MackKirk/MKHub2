@@ -101,7 +101,7 @@ export default function PropertyHeroBar({ property, canEdit, onEdit, onDelete, o
                   <button
                     type="button"
                     onClick={() => setPickerOpen(true)}
-                    className="absolute inset-0 flex items-center justify-center bg-black/40 text-xs font-medium text-white opacity-0 transition-opacity group-hover:opacity-100"
+                    className="absolute inset-0 flex items-center justify-center bg-black/40 text-sm font-semibold text-white opacity-0 transition-opacity group-hover:opacity-100"
                   >
                     Change photo
                   </button>

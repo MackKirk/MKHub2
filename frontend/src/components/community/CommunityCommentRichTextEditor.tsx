@@ -49,7 +49,7 @@ export default function CommunityCommentRichTextEditor({
         CommunityMention.configure({
           HTMLAttributes: {
             class:
-              'rounded bg-red-50 px-1 py-0.5 font-medium text-brand-red ring-1 ring-red-100 not-italic',
+              'rounded bg-red-50 px-1 py-0.5 font-semibold text-brand-red ring-1 ring-red-100 not-italic',
           },
           suggestion: {
             char: '@',
@@ -82,7 +82,7 @@ export default function CommunityCommentRichTextEditor({
   if (!editor) {
     return (
       <div
-        className={`w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-500 ${className}`}
+        className={`w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-600 ${className}`}
       >
         Loading…
       </div>

@@ -273,7 +273,7 @@ export default function SafetySignaturePad({
           type="button"
           disabled={disabled || uploading}
           onClick={clear}
-          className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+          className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50"
         >
           Clear
         </button>
@@ -281,7 +281,7 @@ export default function SafetySignaturePad({
           type="button"
           disabled={disabled || uploading || !projectId}
           onClick={() => void saveCanvas()}
-          className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+          className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
         >
           {uploading ? 'Saving…' : 'Save signature'}
         </button>

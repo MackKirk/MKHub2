@@ -132,7 +132,7 @@ function QuickActionCard({
         >
           {icon}
         </span>
-        <span className="min-w-0 truncate text-xs font-semibold text-gray-900">{label}</span>
+        <span className="min-w-0 truncate text-sm font-semibold text-gray-900">{label}</span>
       </span>
       <QuickActionBadge
         count={badge}
@@ -346,11 +346,11 @@ export function HomeQuickAccess() {
 
         <aside className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
           <div className="flex items-center justify-between gap-2 border-b border-gray-100 px-2.5 py-1">
-            <h3 className="text-[11px] font-semibold text-gray-900">Open tasks</h3>
+            <h3 className="text-xs font-semibold text-gray-900">Open tasks</h3>
             <Link
               to="/tasks"
               state={{ fromHome: true }}
-              className="text-[10px] font-semibold text-blue-700 hover:underline"
+              className="text-xs font-semibold text-blue-700 hover:underline"
             >
               View all
             </Link>
@@ -365,7 +365,7 @@ export function HomeQuickAccess() {
                 <FileText className="h-3.5 w-3.5" />
               </span>
               <span className="text-sm font-semibold tabular-nums text-orange-600">{acceptedCount}</span>
-              <span className="truncate text-[11px] text-gray-500">Open</span>
+              <span className="truncate text-xs text-gray-600">Open</span>
             </Link>
             <div className="my-1.5 w-px self-stretch bg-gray-100" />
             <Link
@@ -377,7 +377,7 @@ export function HomeQuickAccess() {
                 <Play className="h-3.5 w-3.5" />
               </span>
               <span className="text-sm font-semibold tabular-nums text-blue-700">{inProgressCount}</span>
-              <span className="truncate text-[11px] text-gray-500">In progress</span>
+              <span className="truncate text-xs text-gray-600">In progress</span>
             </Link>
           </div>
         </aside>

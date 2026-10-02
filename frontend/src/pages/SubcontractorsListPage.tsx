@@ -574,18 +574,18 @@ function CompanyRow({ c, onOpen }: { c: Company; onOpen: () => void }) {
           alt={c.name || 'Company logo'}
         />
         <div className="flex min-w-0 flex-col justify-center">
-          <div className={uiCx(uiTypography.sectionTitle, 'truncate text-xs')}>{c.name}</div>
+          <div className={uiCx(uiTypography.sectionTitle, 'truncate text-sm')}>{c.name}</div>
           {c.contact_name ? (
-            <div className={uiCx(uiTypography.helper, 'truncate text-[10px]')}>{c.contact_name}</div>
+            <div className={uiCx(uiTypography.helper, 'truncate text-xs')}>{c.contact_name}</div>
           ) : null}
         </div>
       </div>
       <div className={uiCx(uiTypography.helper, 'min-w-0 truncate')}>{c.city || '—'}</div>
       <div className={uiCx(uiTypography.helper, 'min-w-0 truncate')}>{c.province || '—'}</div>
-      <div className={uiCx(uiTypography.body, 'min-w-0 truncate text-xs')}>{c.email || '—'}</div>
+      <div className={uiCx(uiTypography.body, 'min-w-0 truncate text-sm')}>{c.email || '—'}</div>
       <div className={uiCx(uiTypography.helper, 'min-w-0 truncate')}>{c.phone || '—'}</div>
-      <div className={uiCx(uiTypography.body, 'min-w-0 text-xs')}>{c.worker_count ?? 0}</div>
-      <div className={uiCx(uiTypography.helper, 'min-w-0 text-[10px]')}>
+      <div className={uiCx(uiTypography.body, 'min-w-0 text-sm')}>{c.worker_count ?? 0}</div>
+      <div className={uiCx(uiTypography.helper, 'min-w-0 text-xs')}>
         {c.created_at ? new Date(c.created_at).toLocaleDateString() : '—'}
       </div>
       <div className="min-w-0">

@@ -96,7 +96,7 @@ const MAX_DEPTH = 3;
 
 /** Inline rename fields (DnD tree) — same shell as AppInput, needs native ref for focus/select. */
 const inlineControlInputClass = uiCx(
-  'w-full text-xs text-gray-900 outline-none transition-colors',
+  'w-full text-sm text-gray-900 outline-none transition-colors',
   'focus:border-gray-400 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-gray-400/35',
   uiSpacing.controlX,
   uiSpacing.controlY,
@@ -465,7 +465,7 @@ export default function FormCustomListsPage() {
                       onClick={() => setSelectedId(row.id)}
                       className={uiCx(
                         'flex-1 min-w-0 text-left px-4 py-2.5 transition-colors hover:bg-gray-50',
-                        selected && 'bg-gray-50 font-medium',
+                        selected && 'bg-gray-50 font-semibold',
                       )}
                     >
                       <span className={uiCx(uiTypography.body, 'truncate block')}>{row.name}</span>

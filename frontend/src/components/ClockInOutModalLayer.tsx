@@ -878,7 +878,7 @@ export function ClockInOutModalLayer({
                 onClick={() => void handleClockInOut()}
                 disabled={!canSubmit}
                 className={uiCx(
-                  'inline-flex h-9 items-center justify-center gap-2 px-5 text-xs font-semibold text-white shadow-sm',
+                  'inline-flex h-9 items-center justify-center gap-2 px-5 text-sm font-semibold text-white shadow-sm',
                   'bg-gradient-to-br from-green-500 via-green-600 to-emerald-800',
                   uiRadius.control,
                   'hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60',
@@ -917,7 +917,7 @@ export function ClockInOutModalLayer({
                 <div className="text-base font-semibold">
                   {clockType === 'in' ? 'Log hours' : 'Clock out'}
                 </div>
-                <div className="text-xs text-white/85">
+                <div className="text-sm text-white/85">
                   {hoursPreview ? `This entry: ${hoursPreview}` : 'Start and end time in 15-minute steps'}
                 </div>
               </div>
@@ -956,18 +956,18 @@ export function ClockInOutModalLayer({
                   <AlertTriangle className="h-3.5 w-3.5" />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs font-semibold text-amber-900">
+                  <p className="text-sm font-semibold text-amber-900">
                     {pendingPastCount === 1
                       ? '1 past day still needs attention'
                       : `${pendingPastCount} past days still need attention`}
                   </p>
-                  <p className="mt-0.5 text-[11px] text-amber-800">
+                  <p className="mt-0.5 text-xs text-amber-800">
                     Open entries from before today are missing an end time.
                   </p>
                   <button
                     type="button"
                     onClick={() => goToDate(firstPendingPastDate)}
-                    className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-amber-900 underline hover:text-amber-950"
+                    className="mt-1.5 inline-flex items-center gap-1 text-sm font-semibold text-amber-900 underline hover:text-amber-950"
                   >
                     Go to {formatDateShort(firstPendingPastDate)}
                     <ChevronRight className="h-3.5 w-3.5" />
@@ -980,7 +980,7 @@ export function ClockInOutModalLayer({
                           type="button"
                           onClick={() => goToDate(item.date)}
                           className={uiCx(
-                            'rounded-md border px-1.5 py-0.5 text-[10px] font-semibold',
+                            'rounded-md border px-1.5 py-0.5 text-xs font-semibold',
                             item.date === selectedDate
                               ? 'border-amber-400 bg-amber-100 text-amber-950'
                               : 'border-amber-200 bg-white text-amber-800 hover:bg-amber-100',
@@ -1011,7 +1011,7 @@ export function ClockInOutModalLayer({
               />
             ) : (
               <div className={uiCx('rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5', uiRadius.control)}>
-                <div className="text-[11px] font-medium text-gray-500">Job</div>
+                <div className="text-xs font-semibold text-gray-600">Job</div>
                 <div className="mt-0.5 truncate text-sm font-semibold text-gray-900">
                   {clockInJobName || 'Open entry'}
                 </div>
@@ -1050,29 +1050,29 @@ export function ClockInOutModalLayer({
               />
               {gpsLocation ? (
                 <div className={uiCx('rounded-lg border border-green-200 bg-green-50 p-3', uiRadius.control)}>
-                  <div className="flex items-center gap-2 text-xs font-medium text-green-800">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-green-800">
                     <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                     </svg>
                     <span>Location captured</span>
                   </div>
-                  <div className="mt-1 text-xs text-green-700">Accuracy: {Math.round(gpsLocation.accuracy)}m</div>
+                  <div className="mt-1 text-sm text-green-700">Accuracy: {Math.round(gpsLocation.accuracy)}m</div>
                 </div>
               ) : gpsLoading ? (
                 <div className={uiCx('rounded-lg border border-blue-200 bg-blue-50 p-3', uiRadius.control)}>
-                  <div className="flex items-center gap-2 text-xs text-blue-800">
+                  <div className="flex items-center gap-2 text-sm text-blue-800">
                     <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-blue-800 border-t-transparent" />
                     <span>Getting location...</span>
                   </div>
                 </div>
               ) : gpsError ? (
                 <div className={uiCx('rounded-lg border border-yellow-200 bg-yellow-50 p-3', uiRadius.control)}>
-                  <div className="text-xs text-yellow-800">
+                  <div className="text-sm text-yellow-800">
                     {gpsError}
                     <button
                       type="button"
                       onClick={getCurrentLocation}
-                      className="ml-2 font-medium underline hover:text-yellow-900"
+                      className="ml-2 font-semibold underline hover:text-yellow-900"
                     >
                       Try again
                     </button>
@@ -1080,7 +1080,7 @@ export function ClockInOutModalLayer({
                 </div>
               ) : (
                 <div className={uiCx('rounded-lg border border-gray-200 bg-gray-50 p-3', uiRadius.control)}>
-                  <div className="text-xs text-gray-600">No location data</div>
+                  <div className="text-sm text-gray-600">No location data</div>
                 </div>
               )}
             </div>
@@ -1099,7 +1099,7 @@ export function ClockInOutModalLayer({
                 <div className={uiCx('text-sm font-semibold', isCurrentWeek ? 'text-emerald-800' : 'text-gray-900')}>
                   {weekRangeLabel || 'This week'}
                 </div>
-                {isCurrentWeek ? <div className="text-[10px] font-medium text-emerald-700">this week</div> : null}
+                {isCurrentWeek ? <div className="text-xs font-semibold text-emerald-700">this week</div> : null}
               </div>
               <AppButton
                 variant="ghost"
@@ -1158,22 +1158,22 @@ export function ClockInOutModalLayer({
                       <div className="min-w-0 flex-1">
                         <div
                           className={uiCx(
-                            'text-xs font-semibold',
-                            hasHours ? 'text-gray-900' : 'text-gray-500',
+                            'text-sm font-semibold',
+                            hasHours ? 'text-gray-900' : 'text-gray-600',
                           )}
                         >
                           {capitalizeWeekday(day.day_name)} · {formatDateShort(day.date)}
                         </div>
                         {range ? (
-                          <div className="mt-0.5 text-[11px] text-gray-500">{range}</div>
+                          <div className="mt-0.5 text-xs text-gray-600">{range}</div>
                         ) : (
-                          <div className="mt-0.5 text-[11px] text-gray-400">No hours logged</div>
+                          <div className="mt-0.5 text-xs text-gray-600">No hours logged</div>
                         )}
                       </div>
                       <div
                         className={uiCx(
-                          'text-xs font-semibold tabular-nums',
-                          hasHours ? 'text-gray-900' : 'text-gray-400',
+                          'text-sm font-semibold tabular-nums',
+                          hasHours ? 'text-gray-900' : 'text-gray-600',
                         )}
                       >
                         {day.hours_worked_formatted || '0h 00m'}
@@ -1190,7 +1190,7 @@ export function ClockInOutModalLayer({
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-emerald-700">
                 <Info className="h-4 w-4" />
               </span>
-              <p className="pt-1 text-xs text-emerald-800">{infoBanner}</p>
+              <p className="pt-1 text-sm text-emerald-800">{infoBanner}</p>
             </div>
           </div>
         </div>
@@ -1235,8 +1235,8 @@ export function ClockInOutModalLayer({
                   shiftPickSelectedId === s.id && uiDropdown.optionSelected,
                 )}
               >
-                <span className="min-w-0 truncate text-xs text-gray-900">
-                  {s.project_name || 'Project'} <span className="text-gray-400">•</span>{' '}
+                <span className="min-w-0 truncate text-sm text-gray-900">
+                  {s.project_name || 'Project'} <span className="text-gray-600">•</span>{' '}
                   {formatTime12h(s.start_time)} - {formatTime12h(s.end_time)}
                 </span>
                 <span
@@ -1270,8 +1270,8 @@ function HoursSideMetric({
     <div className="flex items-center gap-2">
       <span className={uiCx('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', tint)}>{icon}</span>
       <div className="min-w-0">
-        <div className="text-xs font-semibold tabular-nums text-gray-900">{value}</div>
-        <div className="text-[10px] text-gray-500">{label}</div>
+        <div className="text-sm font-semibold tabular-nums text-gray-900">{value}</div>
+        <div className="text-xs text-gray-600">{label}</div>
       </div>
     </div>
   );

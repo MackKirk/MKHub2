@@ -75,7 +75,7 @@ function ReadOnlyField({ label, value }: { label: ReactNode; value?: ReactNode }
   return (
     <div className="space-y-1">
       <div className={uiTypography.controlLabel}>{label}</div>
-      <div className={uiCx(uiTypography.helper, 'break-words font-medium text-gray-900')}>{display}</div>
+      <div className={uiCx(uiTypography.helper, 'break-words font-semibold text-gray-900')}>{display}</div>
     </div>
   );
 }
@@ -136,7 +136,7 @@ export function FleetAssetGeneralTab({
           {isHoursAsset && <ReadOnlyField label="Type" value={asset.equipment_type_label} />}
           <div className="space-y-1">
             <div className={uiTypography.controlLabel}>Condition</div>
-            <div className={uiCx(uiTypography.helper, 'font-medium capitalize text-gray-900')}>
+            <div className={uiCx(uiTypography.helper, 'font-semibold capitalize text-gray-900')}>
               {asset.condition || EM_DASH}
             </div>
           </div>
@@ -167,7 +167,7 @@ export function FleetAssetGeneralTab({
                 </AppBadge>
               </span>
             ))}
-            <button type="button" onClick={onViewCompliance} className="text-xs text-brand-red hover:underline ml-1">
+            <button type="button" onClick={onViewCompliance} className="text-sm text-brand-red hover:underline ml-1">
               View all →
             </button>
           </div>
@@ -190,7 +190,7 @@ export function FleetAssetGeneralTab({
           <div className="space-y-1">
             <div className={uiTypography.controlLabel}>Propane Sticker Date</div>
             <div className="flex flex-wrap items-center gap-2">
-              <span className={uiCx(uiTypography.helper, 'font-medium text-gray-900')}>
+              <span className={uiCx(uiTypography.helper, 'font-semibold text-gray-900')}>
                 {asset.propane_sticker_date ? asset.propane_sticker_date.slice(0, 10) : EM_DASH}
               </span>
               {propaneStatus ? <AppBadge variant={propaneStatus.variant}>{propaneStatus.label}</AppBadge> : null}
@@ -262,7 +262,7 @@ export function FleetAssetGeneralTab({
                 <div className="space-y-1">
                   <div className={uiTypography.controlLabel}>Odometer Next Due At</div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className={uiCx(uiTypography.helper, 'font-medium text-gray-900')}>
+                    <span className={uiCx(uiTypography.helper, 'font-semibold text-gray-900')}>
                       {asset.odometer_next_due_at != null ? asset.odometer_next_due_at : EM_DASH}
                     </span>
                     {odometerStatus ? <AppBadge variant={odometerStatus.variant}>{odometerStatus.label}</AppBadge> : null}
@@ -286,7 +286,7 @@ export function FleetAssetGeneralTab({
                 <div className="space-y-1">
                   <div className={uiTypography.controlLabel}>Hours Next Due At</div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className={uiCx(uiTypography.helper, 'font-medium text-gray-900')}>
+                    <span className={uiCx(uiTypography.helper, 'font-semibold text-gray-900')}>
                       {asset.hours_next_due_at != null ? asset.hours_next_due_at : EM_DASH}
                     </span>
                     {hoursStatus ? <AppBadge variant={hoursStatus.variant}>{hoursStatus.label}</AppBadge> : null}
@@ -311,7 +311,7 @@ export function FleetAssetGeneralTab({
           }
         />
         <div className={uiSpacing.sectionStack}>
-          <div className={uiCx(uiTypography.helper, 'mt-4 whitespace-pre-wrap break-words font-medium text-gray-900')}>
+          <div className={uiCx(uiTypography.helper, 'mt-4 whitespace-pre-wrap break-words font-semibold text-gray-900')}>
             {asset.notes?.trim() ? asset.notes : EM_DASH}
           </div>
           {asset.photos && asset.photos.length > 1 ? (

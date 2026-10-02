@@ -119,7 +119,7 @@ export default function PostalCodeAutocomplete({
         autoComplete="off"
       />
       {loading && (
-        <div className="absolute right-2 top-1/2 transform -translate-y-1/2 text-xs text-gray-400">
+        <div className="absolute right-2 top-1/2 transform -translate-y-1/2 text-sm text-gray-600">
           …
         </div>
       )}

@@ -243,7 +243,7 @@ export default function Login() {
               alt="Mack Kirk"
               className="h-auto w-[min(100%,18rem)] object-contain lg:w-[min(100%,22rem)] xl:w-[min(100%,26rem)]"
             />
-            <ul className="mt-8 grid w-full grid-cols-2 gap-x-4 gap-y-3 text-[11px] font-semibold uppercase tracking-wide text-white/80">
+            <ul className="mt-8 grid w-full grid-cols-2 gap-x-4 gap-y-3 text-xs font-semibold uppercase tracking-wide text-white/80">
               {LOGIN_FEATURES.map(({ label, Icon }) => (
                 <li key={label} className="flex items-center justify-center gap-1.5">
                   <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />
@@ -369,8 +369,8 @@ export default function Login() {
           <div className={fieldFocused ? 'hidden md:block' : undefined}>
             <LoginAppDownloadHint />
           </div>
-          <div className="mt-6 border-t border-gray-100 pt-4 text-center text-xs text-gray-500">
-            <a href="/privacy-policy" className="font-medium underline decoration-gray-300 underline-offset-4 hover:text-brand-red">
+          <div className="mt-6 border-t border-gray-100 pt-4 text-center text-sm text-gray-600">
+            <a href="/privacy-policy" className="font-semibold underline decoration-gray-300 underline-offset-4 hover:text-brand-red">
               Privacy Policy
             </a>
           </div>

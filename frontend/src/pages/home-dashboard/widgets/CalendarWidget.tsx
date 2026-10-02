@@ -149,7 +149,7 @@ export function CalendarWidget({ config: _config }: CalendarWidgetProps) {
         onPrevious={goToPrev}
         onNext={goToNext}
         headerExtra={
-          <AppButton type="button" variant="ghost" size="sm" onClick={goToToday} className="h-6 min-h-0 px-1.5 text-[10px]">
+          <AppButton type="button" variant="ghost" size="sm" onClick={goToToday} className="h-6 min-h-0 px-1.5 text-xs">
             Today
           </AppButton>
         }
@@ -157,12 +157,12 @@ export function CalendarWidget({ config: _config }: CalendarWidgetProps) {
           'flex min-h-0 flex-1 flex-col overflow-hidden',
           '[&_header]:py-1',
           '[&_.grid.auto-rows-fr>button]:min-h-0 [&_.grid.auto-rows-fr>div]:min-h-0',
-          '[&_.grid.auto-rows-fr>button]:text-[clamp(8px,2.2cqh,10px)] [&_.grid.auto-rows-fr>div]:text-[clamp(8px,2.2cqh,10px)]',
+          '[&_.grid.auto-rows-fr>button]:text-[clamp(13px,3.4cqh,16px)] [&_.grid.auto-rows-fr>div]:text-[clamp(13px,3.4cqh,16px)]',
         )}
         footer={
-          <div className={uiCx(uiLayout.actionsRow, 'justify-between gap-2 text-[10px]')}>
+          <div className={uiCx(uiLayout.actionsRow, 'justify-between gap-2 text-xs')}>
             <span className="truncate text-gray-500">Click day → Schedule</span>
-            <Link to="/schedule" className="shrink-0 font-medium text-brand-red hover:underline">
+            <Link to="/schedule" className="shrink-0 font-semibold text-brand-red hover:underline">
               Open Schedule →
             </Link>
           </div>

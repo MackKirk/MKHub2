@@ -141,7 +141,7 @@ export function FileImageGrid({
                   className="pointer-events-none h-full w-full object-cover select-none"
                 />
                 <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2 py-2">
-                  <div className="truncate text-[11px] font-medium text-white">{file.name}</div>
+                  <div className="truncate text-xs font-semibold text-white">{file.name}</div>
                 </div>
                 {renderFileActions ? (
                   <div
@@ -170,7 +170,7 @@ export function FileGridNonImageList({
 }) {
   return (
     <div className="mt-4 border-t pt-4">
-      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">{title}</div>
+      <div className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-600">{title}</div>
       {children}
     </div>
   );

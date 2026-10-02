@@ -244,7 +244,7 @@ export default function TrainingCourse() {
           bodyClassName={uiCx(uiSpacing.cardPadding, 'flex min-h-[240px] flex-col items-center justify-center')}
         >
           <div className="h-10 w-10 animate-spin rounded-full border-2 border-gray-200 border-t-brand-red" />
-          <p className={uiCx('mt-4', uiTypography.body, 'font-medium')}>Loading course…</p>
+          <p className={uiCx('mt-4', uiTypography.body, 'font-semibold')}>Loading course…</p>
         </AppCard>
       </div>
     );
@@ -386,7 +386,7 @@ export default function TrainingCourse() {
                               aria-hidden
                             />
                           )}
-                          <span className="min-w-0 flex-1 font-medium leading-snug">{lesson.title}</span>
+                          <span className="min-w-0 flex-1 font-semibold leading-snug">{lesson.title}</span>
                           {lesson.has_quiz ? (
                             <ClipboardList
                               className={uiCx('mt-0.5 h-4 w-4 shrink-0', isSelected ? 'text-white/90' : 'text-gray-400')}
@@ -471,7 +471,7 @@ export default function TrainingCourse() {
                         href={withFileAccessToken(`/files/${selectedLesson.content.pdf_file_id}`)}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className={uiCx('mt-3 inline-block text-sm font-medium text-brand-red hover:underline')}
+                        className={uiCx('mt-3 inline-block text-sm font-semibold text-brand-red hover:underline')}
                       >
                         Open PDF in a new tab
                       </a>
@@ -577,7 +577,7 @@ export default function TrainingCourse() {
                             </div>
                           ) : isQuizMultiSelect(question.question_type) && question.options ? (
                             <div className="space-y-2">
-                              <p className="text-xs text-gray-500 mb-1">Select all that apply</p>
+                              <p className="text-sm text-gray-600 mb-1">Select all that apply</p>
                               {question.options.map((option, optIdx) => {
                                 const picked = parseAnswerIndices(quizAnswers[question.id]);
                                 const checked = picked.has(optIdx);
@@ -666,9 +666,9 @@ export default function TrainingCourse() {
                               You did not reach the minimum score. Your answers are not shown so you can retry fairly.
                             </p>
                             {quizResult.attempts_remaining != null && (
-                              <p className="text-sm mt-1 font-medium">Attempts remaining: {quizResult.attempts_remaining}</p>
+                              <p className="text-sm mt-1 font-semibold">Attempts remaining: {quizResult.attempts_remaining}</p>
                             )}
-                            <p className="text-xs mt-2 text-amber-900/90">
+                            <p className="text-sm mt-2 text-amber-900/90">
                               Score and per-question feedback appear after your last attempt or when you pass.
                             </p>
                           </>
@@ -759,7 +759,7 @@ export default function TrainingCourse() {
                   </div>
                   <Link
                     to="/training?tab=certificates"
-                    className="inline-flex h-9 items-center justify-center rounded-md border border-gray-300 bg-white px-4 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                    className="inline-flex h-9 items-center justify-center rounded-md border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50"
                   >
                     View certificates
                   </Link>

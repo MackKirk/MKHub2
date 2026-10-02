@@ -248,7 +248,7 @@ export default function SubcontractorClockModal({
         {photoUrl ? (
           <img src={photoUrl} alt="" className="w-16 h-16 rounded-full object-cover border" />
         ) : (
-          <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center text-lg font-medium text-gray-600">
+          <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center text-lg font-semibold text-gray-600">
             {resolved.worker.name?.slice(0, 1) || '?'}
           </div>
         )}
@@ -262,7 +262,7 @@ export default function SubcontractorClockModal({
                 {resolved.open_attendance ? 'Clocked in' : 'Not clocked in'}
               </AppBadge>
             ) : (
-              <span className={resolved.open_attendance ? 'text-green-700 font-medium' : 'text-gray-700'}>
+              <span className={resolved.open_attendance ? 'text-green-700 font-semibold' : 'text-gray-700'}>
                 {resolved.open_attendance ? 'Clocked in' : 'Not clocked in'}
               </span>
             )}
@@ -276,8 +276,8 @@ export default function SubcontractorClockModal({
       <div
         className={
           designSystem
-            ? uiCx(uiRadius.card, 'border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900')
-            : 'p-3 bg-amber-50 border border-amber-200 rounded text-amber-900 text-xs'
+            ? uiCx(uiRadius.card, 'border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900')
+            : 'p-3 bg-amber-50 border border-amber-200 rounded text-amber-900 text-sm'
         }
       >
         This worker has an open attendance on another project
@@ -288,7 +288,7 @@ export default function SubcontractorClockModal({
   const renderScanSection = () =>
     !resolved ? (
       <>
-        <p className={designSystem ? uiTypography.helper : 'text-gray-600 text-xs'}>
+        <p className={designSystem ? uiTypography.helper : 'text-gray-600 text-sm'}>
           Scan the worker QR code or paste the URL / token.
         </p>
         <div id={readerDomId} className="rounded border overflow-hidden min-h-[200px] bg-black" />
@@ -303,14 +303,14 @@ export default function SubcontractorClockModal({
         ) : (
           <div className="flex gap-2">
             <input
-              className="flex-1 border rounded px-2 py-1.5 text-xs"
+              className="flex-1 border rounded px-2 py-1.5 text-sm"
               placeholder="Token or full scan URL"
               value={manualToken}
               onChange={(e) => setManualToken(e.target.value)}
             />
             <button
               type="button"
-              className="px-3 py-1.5 rounded bg-[#7f1010] text-white text-xs"
+              className="px-3 py-1.5 rounded bg-[#7f1010] text-white text-sm"
               onClick={() => void handleManualLookup()}
             >
               Look up
@@ -333,7 +333,7 @@ export default function SubcontractorClockModal({
         {!designSystem ? (
           <button
             type="button"
-            className="w-full py-2 rounded bg-green-700 text-white text-sm font-medium disabled:opacity-50"
+            className="w-full py-2 rounded bg-green-700 text-white text-sm font-semibold disabled:opacity-50"
             disabled={clockInMut.isPending}
             onClick={() => clockInMut.mutate()}
           >
@@ -354,7 +354,7 @@ export default function SubcontractorClockModal({
             fieldHint="Hours confirmation\n\nRequired before clock-out. Confirms the open session times are correct."
           />
         ) : (
-          <label className="flex items-start gap-2 text-xs cursor-pointer">
+          <label className="flex items-start gap-2 text-sm cursor-pointer">
             <input
               type="checkbox"
               checked={hoursConfirm}
@@ -374,7 +374,7 @@ export default function SubcontractorClockModal({
         {!designSystem ? (
           <button
             type="button"
-            className="w-full py-2 rounded bg-red-700 text-white text-sm font-medium disabled:opacity-50"
+            className="w-full py-2 rounded bg-red-700 text-white text-sm font-semibold disabled:opacity-50"
             disabled={clockOutMut.isPending || !hoursConfirm || !sigFileId}
             onClick={() => clockOutMut.mutate()}
           >

@@ -1180,7 +1180,7 @@ export default function DirectorMeetingsPage() {
 
                     {bulkHint ? (
                       <p
-                        className={`text-xs ${/^Added |^Replaced /.test(bulkHint) ? 'text-emerald-800' : 'text-red-700'}`}
+                        className={`text-sm ${/^Added |^Replaced /.test(bulkHint) ? 'text-emerald-800' : 'text-red-700'}`}
                         role="status"
                       >
                         {bulkHint}
@@ -1200,7 +1200,7 @@ export default function DirectorMeetingsPage() {
                             <AppFieldHint hint="Shows availability rows for the selected day in your current schedule. Remove a row if needed; if someone already booked in that window, you can notify them before removing." />
                           }
                         />
-                        <p className={uiCx(uiTypography.helper, 'mt-0.5 font-medium')}>
+                        <p className={uiCx(uiTypography.helper, 'mt-0.5 font-semibold')}>
                           {formatYmdHeading(scheduleSelectedYmd)}
                         </p>
                       </div>
@@ -1228,12 +1228,12 @@ export default function DirectorMeetingsPage() {
                               >
                                 <div className="min-w-0 flex-1">
                                   <div className="tabular-nums text-gray-800">
-                                    <span className="font-medium">{normalizeTimeValue(row.startTime)}</span>
-                                    <span className="text-gray-400"> · </span>
+                                    <span className="font-semibold">{normalizeTimeValue(row.startTime)}</span>
+                                    <span className="text-gray-600"> · </span>
                                     {row.windowMinutes} min window
                                   </div>
                                   {bookedHere.length > 0 ? (
-                                    <p className="mt-1 text-xs font-medium leading-snug text-amber-900">
+                                    <p className="mt-1 text-sm font-semibold leading-snug text-amber-900">
                                       Booked:{' '}
                                       {bookedHere
                                         .map(
@@ -1304,7 +1304,7 @@ export default function DirectorMeetingsPage() {
                       uiTypography.helper,
                     )}
                   >
-                    <span className="font-medium">Scheduled:</span>{' '}
+                    <span className="font-semibold">Scheduled:</span>{' '}
                     {formatDayHeading(activeBookingSlot.starts_at)} ·{' '}
                     {formatTimeOnly(activeBookingSlot.starts_at, activeBookingSlot.ends_at)}
                   </span>
@@ -1372,7 +1372,7 @@ export default function DirectorMeetingsPage() {
         <div className="space-y-1.5">
           <span>
             Pick who this slot is for. People who already have a meeting are under{' '}
-            <span className="font-medium text-gray-800">Reschedule</span>, with their current time shown.
+            <span className="font-semibold text-gray-800">Reschedule</span>, with their current time shown.
           </span>
           {pendingBookSlotStartsAt ? (
             <span
@@ -1382,7 +1382,7 @@ export default function DirectorMeetingsPage() {
                 uiTypography.helper,
               )}
             >
-              <span className="font-medium text-gray-500">Time:</span>
+              <span className="font-semibold text-gray-600">Time:</span>
               <span className="font-semibold tabular-nums text-gray-900">
                 {formatSlotStartLabel(pendingBookSlotStartsAt)}
               </span>
@@ -1525,20 +1525,20 @@ export default function DirectorMeetingsPage() {
           {pendingDirectorNotifyModal?.kind === 'remove_row' ? (
             <>
               This row overlaps published slots that are already booked. If you continue, an{' '}
-              <span className="font-medium text-gray-900">in-app notification</span> will be sent to each affected person
+              <span className="font-semibold text-gray-900">in-app notification</span> will be sent to each affected person
               with your message below. Then the row is removed from your current schedule (publish to apply availability).
             </>
           ) : (
             <>
               This cancels the director meeting slot for this person. If you continue, an{' '}
-              <span className="font-medium text-gray-900">in-app notification</span> will be sent with your message below,
+              <span className="font-semibold text-gray-900">in-app notification</span> will be sent with your message below,
               then the booking is cleared.
             </>
           )}
         </p>
         {directorNotifyModalRecipients.length > 0 ? (
           <div className={uiCx(uiRadius.control, uiColors.surfaceSubtle, 'border border-gray-200 px-3 py-2', uiTypography.helper)}>
-            <span className="font-medium text-gray-900">Notify: </span>
+            <span className="font-semibold text-gray-900">Notify: </span>
             {directorNotifyModalRecipients.map((r) => r.label).join(' · ')}
           </div>
         ) : null}

@@ -158,7 +158,7 @@ export function CommunityNewPostPreviewModal({
                           className="flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 transition-colors hover:border-gray-300 hover:bg-gray-50"
                         >
                           <div className="min-w-0 flex-1">
-                            <div className={uiCx(uiTypography.body, 'truncate font-medium')}>{a.name}</div>
+                            <div className={uiCx(uiTypography.body, 'truncate font-semibold')}>{a.name}</div>
                             <div className={uiCx(uiTypography.helper, 'text-blue-600')}>Download</div>
                           </div>
                         </a>
@@ -168,7 +168,7 @@ export function CommunityNewPostPreviewModal({
                           className="flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 opacity-70"
                         >
                           <div className="min-w-0 flex-1">
-                            <div className={uiCx(uiTypography.body, 'truncate font-medium')}>{a.name}</div>
+                            <div className={uiCx(uiTypography.body, 'truncate font-semibold')}>{a.name}</div>
                             <div className={uiTypography.helper}>File link unavailable</div>
                           </div>
                         </div>
@@ -180,7 +180,7 @@ export function CommunityNewPostPreviewModal({
                         className="flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5"
                       >
                         <div className="min-w-0 flex-1">
-                          <div className={uiCx(uiTypography.body, 'truncate font-medium')}>{a.name}</div>
+                          <div className={uiCx(uiTypography.body, 'truncate font-semibold')}>{a.name}</div>
                           <div className={uiTypography.helper}>Will be available after publish</div>
                         </div>
                       </div>

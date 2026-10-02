@@ -74,14 +74,14 @@ export default function FleetHistoryAuditChangeModal({ open, detail, onClose }: 
         <div className={uiCx(uiLayout.sectionGrid2, 'gap-y-3')}>
           <div className="space-y-1">
             <div className={uiTypography.controlLabel}>Performed by</div>
-            <div className={uiCx(uiTypography.body, 'font-medium text-gray-900')}>
+            <div className={uiCx(uiTypography.body, 'font-semibold text-gray-900')}>
               {formatFleetHistoryPerformedBy(detail.performedBy)}
             </div>
           </div>
           {occurredDisplay && (
             <div className="space-y-1">
               <div className={uiTypography.controlLabel}>When</div>
-              <div className={uiCx(uiTypography.body, 'font-medium text-gray-900')}>{occurredDisplay}</div>
+              <div className={uiCx(uiTypography.body, 'font-semibold text-gray-900')}>{occurredDisplay}</div>
             </div>
           )}
         </div>
@@ -100,7 +100,7 @@ export default function FleetHistoryAuditChangeModal({ open, detail, onClose }: 
               <tbody className={uiColors.surface}>
                 {rows.map((r, i) => (
                   <tr key={`${r.label}-${i}`} className="border-t border-gray-200 hover:bg-gray-50">
-                    <td className={uiCx('p-2.5 align-top font-medium text-gray-900', uiTypography.body)}>
+                    <td className={uiCx('p-2.5 align-top font-semibold text-gray-900', uiTypography.body)}>
                       {r.label}
                     </td>
                     <td
@@ -132,11 +132,11 @@ export default function FleetHistoryAuditChangeModal({ open, detail, onClose }: 
       ) : (
         <div className={uiSpacing.sectionStack}>
           <p className={uiTypography.helper}>No field-by-field breakdown is available for this entry.</p>
-          <details className="text-xs">
-            <summary className="cursor-pointer font-medium text-brand-red hover:underline">Technical payload</summary>
+          <details className="text-sm">
+            <summary className="cursor-pointer font-semibold text-brand-red hover:underline">Technical payload</summary>
             <pre
               className={uiCx(
-                'mt-2 max-h-52 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-gray-200 bg-gray-50 p-3 font-mono text-[11px] text-gray-800',
+                'mt-2 max-h-52 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-gray-200 bg-gray-50 p-3 font-mono text-xs text-gray-800',
               )}
             >
               {JSON.stringify(detail.changes, null, 2)}

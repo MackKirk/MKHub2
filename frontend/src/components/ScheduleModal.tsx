@@ -293,11 +293,11 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'approved':
-        return <span className="px-1.5 py-0.5 rounded text-xs bg-green-100 text-green-800">Approved</span>;
+        return <span className="px-1.5 py-0.5 rounded text-sm bg-green-100 text-green-800">Approved</span>;
       case 'pending':
-        return <span className="px-1.5 py-0.5 rounded text-xs bg-yellow-100 text-yellow-800">Pending</span>;
+        return <span className="px-1.5 py-0.5 rounded text-sm bg-yellow-100 text-yellow-800">Pending</span>;
       case 'rejected':
-        return <span className="px-1.5 py-0.5 rounded text-xs bg-red-100 text-red-800">Rejected</span>;
+        return <span className="px-1.5 py-0.5 rounded text-sm bg-red-100 text-red-800">Rejected</span>;
       default:
         return null;
     }
@@ -778,7 +778,7 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
         <div className="bg-white rounded-xl max-w-7xl w-full max-h-[90vh] overflow-hidden flex flex-col">
           <div className="sticky top-0 bg-white border-b p-4 flex items-center justify-between">
             <h2 className="text-xl font-semibold">Schedule</h2>
-            <button onClick={onClose} className="text-2xl font-bold text-gray-400 hover:text-gray-600">
+            <button onClick={onClose} className="text-2xl font-bold text-gray-600 hover:text-gray-600">
               ×
             </button>
           </div>
@@ -850,7 +850,7 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                         <div className="text-sm font-semibold text-gray-700">
                           {dayName}
                         </div>
-                        <div className="text-xs text-gray-600">
+                        <div className="text-sm text-gray-600">
                           {dateFormatted}
                         </div>
                       </div>
@@ -882,21 +882,21 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                                 }`}
                                 title={`${shift.project_name || 'Project'}: ${formatTime12h(shift.start_time)} - ${formatTime12h(shift.end_time)}`}
                               >
-                                <div className="font-medium text-sm mb-1">
+                                <div className="font-semibold text-sm mb-1">
                                   {formatTime12h(shift.start_time)} - {formatTime12h(shift.end_time)}
                                 </div>
                                 {shift.project_name && (
-                                  <div className="text-xs text-gray-600 mb-1">
+                                  <div className="text-sm text-gray-600 mb-1">
                                     {shift.project_name}
                                   </div>
                                 )}
-                                <div className="text-xs text-gray-500 mb-2">
+                                <div className="text-sm text-gray-600 mb-2">
                                   {projectAddress}
                                 </div>
                                 <div className="space-y-1">
                                   {shiftClockIn && (
                                     <div>
-                                      <span className={`text-xs px-2 py-0.5 rounded ${
+                                      <span className={`text-sm px-2 py-0.5 rounded ${
                                         shiftClockIn.status === 'approved' ? 'bg-green-100 text-green-800' :
                                         shiftClockIn.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
                                         'bg-red-100 text-red-800'
@@ -915,7 +915,7 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                                   )}
                                   {shiftClockOut && (
                                     <div>
-                                      <span className={`text-xs px-2 py-0.5 rounded ${
+                                      <span className={`text-sm px-2 py-0.5 rounded ${
                                         shiftClockOut.status === 'approved' ? 'bg-green-100 text-green-800' :
                                         shiftClockOut.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
                                         'bg-red-100 text-red-800'
@@ -937,7 +937,7 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                             );
                           })
                         ) : (
-                          <div className="text-sm text-gray-400 italic">No shifts</div>
+                          <div className="text-sm text-gray-600 italic">No shifts</div>
                         )}
                       </div>
                     </div>
@@ -955,14 +955,14 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                   {/* Project Name */}
                   {selectedShift.project_name && (
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Project</label>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">Project</label>
                       <div className="text-gray-900">{selectedShift.project_name}</div>
                     </div>
                   )}
 
                   {/* Date and Time */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Date & Time</label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">Date & Time</label>
                     <div className="text-gray-900">
                       {new Date(selectedShift.date).toLocaleDateString()} • {formatTime12h(selectedShift.start_time)} - {formatTime12h(selectedShift.end_time)}
                     </div>
@@ -971,7 +971,7 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                   {/* Worker */}
                   {worker && (
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Worker</label>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">Worker</label>
                       <div className="text-gray-900">{worker.name || worker.username}</div>
                     </div>
                   )}
@@ -979,7 +979,7 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                   {/* Supervisor of Worker */}
                   {workerProfile?.manager_user_id && (
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Supervisor</label>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">Supervisor</label>
                       <div className="text-gray-900">
                         {(() => {
                           const supervisor = employees?.find((e: any) => e.id === workerProfile.manager_user_id);
@@ -992,7 +992,7 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                   {/* Job Type */}
                   {selectedShift.job_name && (
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Job Type</label>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">Job Type</label>
                       <div className="text-gray-900">{selectedShift.job_name}</div>
                     </div>
                   )}
@@ -1000,7 +1000,7 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                   {/* Address */}
                   {project && (
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">Address</label>
                       <div className="text-gray-900">
                         {(() => {
                           // First try to use project address fields
@@ -1032,7 +1032,7 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                   {/* On-site Lead */}
                   {project?.onsite_lead_id && (
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">On-site Lead</label>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">On-site Lead</label>
                       <div className="text-gray-900">
                         {(() => {
                           const onsiteLead = employees?.find((e: any) => e.id === project.onsite_lead_id);
@@ -1044,7 +1044,7 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
 
                   {/* Attendance Status */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Attendance Status</label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Attendance Status</label>
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <span className="text-sm text-gray-600">Clock In:</span>
@@ -1063,11 +1063,11 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                               }) : '--')}
                             </span>
                             {clockIn.source === 'supervisor' && (
-                              <span className="text-xs text-gray-500">(Supervisor)</span>
+                              <span className="text-sm text-gray-600">(Supervisor)</span>
                             )}
                           </div>
                         ) : (
-                          <span className="text-sm text-gray-400">Not clocked in</span>
+                          <span className="text-sm text-gray-600">Not clocked in</span>
                         )}
                       </div>
                       <div className="flex items-center justify-between">
@@ -1087,11 +1087,11 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                               }) : '--')}
                             </span>
                             {clockOut.source === 'supervisor' && (
-                              <span className="text-xs text-gray-500">(Supervisor)</span>
+                              <span className="text-sm text-gray-600">(Supervisor)</span>
                             )}
                           </div>
                         ) : (
-                          <span className="text-sm text-gray-400">Not clocked out</span>
+                          <span className="text-sm text-gray-600">Not clocked out</span>
                         )}
                       </div>
                     </div>
@@ -1103,10 +1103,10 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                       <button
                         onClick={() => handleClockInOut('in')}
                         disabled={!canClockIn || submitting}
-                        className={`w-full px-4 py-2 rounded font-medium transition-colors ${
+                        className={`w-full px-4 py-2 rounded font-semibold transition-colors ${
                           canClockIn
                             ? 'bg-green-600 hover:bg-green-700 text-white'
-                            : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                            : 'bg-gray-200 text-gray-600 cursor-not-allowed'
                         }`}
                       >
                         Clock In
@@ -1114,10 +1114,10 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                       <button
                         onClick={() => handleClockInOut('out')}
                         disabled={!canClockOut || submitting}
-                        className={`w-full px-4 py-2 rounded font-medium transition-colors ${
+                        className={`w-full px-4 py-2 rounded font-semibold transition-colors ${
                           canClockOut
                             ? 'bg-red-600 hover:bg-red-700 text-white'
-                            : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                            : 'bg-gray-200 text-gray-600 cursor-not-allowed'
                         }`}
                       >
                         Clock Out
@@ -1145,13 +1145,13 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                           <div className="space-y-2">
                             <button
                               disabled
-                              className="w-full px-4 py-2 rounded font-medium bg-gray-200 text-gray-400 cursor-not-allowed"
+                              className="w-full px-4 py-2 rounded font-semibold bg-gray-200 text-gray-600 cursor-not-allowed"
                             >
                               Clock In
                             </button>
                             <button
                               disabled
-                              className="w-full px-4 py-2 rounded font-medium bg-gray-200 text-gray-400 cursor-not-allowed"
+                              className="w-full px-4 py-2 rounded font-semibold bg-gray-200 text-gray-600 cursor-not-allowed"
                             >
                               Clock Out
                             </button>
@@ -1190,10 +1190,10 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                           <button
                             onClick={() => handleClockInOut('in', null)}
                             disabled={!canClockIn || submitting}
-                            className={`w-full px-4 py-2 rounded font-medium transition-colors ${
+                            className={`w-full px-4 py-2 rounded font-semibold transition-colors ${
                               canClockIn
                                 ? 'bg-green-600 hover:bg-green-700 text-white'
-                                : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                : 'bg-gray-200 text-gray-600 cursor-not-allowed'
                             }`}
                           >
                             Clock In
@@ -1201,10 +1201,10 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                           <button
                             onClick={() => handleClockInOut('out', null)}
                             disabled={!canClockOut || submitting}
-                            className={`w-full px-4 py-2 rounded font-medium transition-colors ${
+                            className={`w-full px-4 py-2 rounded font-semibold transition-colors ${
                               canClockOut
                                 ? 'bg-red-600 hover:bg-red-700 text-white'
-                                : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                : 'bg-gray-200 text-gray-600 cursor-not-allowed'
                             }`}
                           >
                             Clock Out
@@ -1272,7 +1272,7 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
 
             {/* Time selector (12h format with AM/PM) */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Time *</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Time *</label>
               <div className="flex gap-2 items-center">
                 <select
                   value={selectedHour12}
@@ -1291,7 +1291,7 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                     </option>
                   ))}
                 </select>
-                <span className="text-gray-500 font-medium">:</span>
+                <span className="text-gray-600 font-semibold">:</span>
                 <select
                   value={selectedMinute}
                   onChange={(e) => {
@@ -1323,7 +1323,7 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                   <option value="PM">PM</option>
                 </select>
               </div>
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-sm text-gray-600 mt-1">
                 Time must be in 15-minute increments (00, 15, 30, 45)
               </p>
             </div>
@@ -1336,7 +1336,7 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                     <div className="flex items-center justify-between">
                       <div>
                         <div className="text-green-800">✓ Location captured</div>
-                        <div className="text-xs text-green-600 mt-1">
+                        <div className="text-sm text-green-600 mt-1">
                           Accuracy: {Math.round(gpsLocation.accuracy)}m
                         </div>
                       </div>
@@ -1344,7 +1344,7 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                         type="button"
                         onClick={getCurrentLocation}
                         disabled={gpsLoading}
-                        className="text-xs px-2 py-1 rounded border hover:bg-gray-50 bg-white"
+                        className="text-sm px-2 py-1 rounded border hover:bg-gray-50 bg-white"
                       >
                         {gpsLoading ? 'Getting location...' : 'Try GPS again'}
                       </button>
@@ -1359,18 +1359,18 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                       }`}>
                         {geofenceStatus.inside ? (
                           <div>
-                            <div className="font-medium">✓ Great! You are at the right site to clock-in/out</div>
+                            <div className="font-semibold">✓ Great! You are at the right site to clock-in/out</div>
                             {geofenceStatus.distance !== undefined && (
-                              <div className="text-xs mt-1 opacity-75">
+                              <div className="text-sm mt-1 opacity-75">
                                 Distance from site: {geofenceStatus.distance}m (within {geofenceStatus.radius}m radius)
                               </div>
                             )}
                           </div>
                         ) : (
                           <div>
-                            <div className="font-medium">ℹ You are not at the correct site</div>
+                            <div className="font-semibold">ℹ You are not at the correct site</div>
                             {geofenceStatus.distance !== undefined && (
-                              <div className="text-xs mt-1 opacity-75">
+                              <div className="text-sm mt-1 opacity-75">
                                 Distance from site: {geofenceStatus.distance}m (within {geofenceStatus.radius}m radius). Location is captured but not mandatory.
                               </div>
                             )}
@@ -1380,8 +1380,8 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                     )
                   ) : selectedShift ? (
                     <div className="p-3 bg-blue-50 border border-blue-200 rounded text-sm text-blue-800 mt-2">
-                      <div className="font-medium">ℹ Location captured (not mandatory)</div>
-                      <div className="text-xs mt-1 opacity-75">
+                      <div className="font-semibold">ℹ Location captured (not mandatory)</div>
+                      <div className="text-sm mt-1 opacity-75">
                         No geofence is defined for this shift. Your location has been captured but is not mandatory for clock-in/out.
                       </div>
                     </div>
@@ -1407,7 +1407,7 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
 
             {/* Reason text */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-semibold text-gray-700 mb-1">
                 Reason {
                   (() => {
                     const isWorkerOwner = currentUser && selectedShift?.worker_id && String(currentUser.id) === String(selectedShift.worker_id);
@@ -1447,7 +1447,7 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                 className="w-full border rounded px-3 py-2 h-24"
                 minLength={15}
               />
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-sm text-gray-600 mt-1">
                 {(() => {
                   if (!selectedShift) {
                     return 'Optional: Reason text is recommended when clocking in/out without a scheduled shift.';
@@ -1458,7 +1458,7 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                   
                   if (isSupervisorDoingForOther) {
                     return (
-                      <span className="text-red-600 font-medium">
+                      <span className="text-red-600 font-semibold">
                         Required (minimum 15 characters): Supervisor clock-in/out for another worker always requires a reason.
                       </span>
                     );
@@ -1500,7 +1500,7 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                   // Show warning if different day from today OR future time
                   if (isFutureTime) {
                     return (
-                      <span className="text-red-600 font-medium">
+                      <span className="text-red-600 font-semibold">
                         ⚠ Clock-in/out cannot be in the future. Please select a valid time.
                       </span>
                     );
@@ -1508,7 +1508,7 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                   
                   if (isDifferentDayFromToday) {
                     return (
-                      <span className="text-orange-600 font-medium">
+                      <span className="text-orange-600 font-semibold">
                         ℹ Clock-in/out on a different day than today will require supervisor approval. Reason is optional.
                       </span>
                     );
@@ -1530,7 +1530,7 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
             </div>
 
             {/* Privacy notice */}
-            <p className="text-xs text-gray-500 mt-2">
+            <p className="text-sm text-gray-600 mt-2">
               <strong>Privacy Notice:</strong> Your location is used only for attendance validation at the time of clock-in/out.
             </p>
 

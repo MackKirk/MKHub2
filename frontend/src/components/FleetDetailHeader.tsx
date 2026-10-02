@@ -30,7 +30,7 @@ export default function FleetDetailHeader({ onBack, title, subtitle, actions, ri
           </button>
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">{title}</div>
-            {subtitle != null && <div className="text-xs text-gray-500 mt-0.5">{subtitle}</div>}
+            {subtitle != null && <div className="text-sm text-gray-600 mt-0.5">{subtitle}</div>}
           </div>
         </div>
         <div className="flex items-center gap-3 shrink-0">

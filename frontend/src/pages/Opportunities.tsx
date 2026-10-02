@@ -1122,11 +1122,11 @@ export function OpportunityListItem({ opportunity, onOpenReportModal, projectSta
           {opportunityName}
         </span>
       </AppTooltip>
-      <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-600">
+      <div className="flex items-center gap-2 mt-0.5 text-sm text-gray-600">
         <span className="truncate">{opportunity.code || '—'}</span>
         {clientName && (
           <>
-            <span className="text-gray-400">•</span>
+            <span className="text-gray-600">•</span>
             <span className="truncate">{clientName}</span>
           </>
         )}
@@ -1137,34 +1137,34 @@ export function OpportunityListItem({ opportunity, onOpenReportModal, projectSta
     <div className="min-w-0 flex items-center">
       {heroAddress ? (
         <AppTooltip content={heroAddress} wrap constrain>
-          <span className="block min-w-0 max-w-full truncate text-xs font-semibold text-gray-900">{heroAddress}</span>
+          <span className="block min-w-0 max-w-full truncate text-sm font-semibold text-gray-900">{heroAddress}</span>
         </AppTooltip>
       ) : (
-        <span className="text-xs font-semibold text-gray-900 truncate">—</span>
+        <span className="text-sm font-semibold text-gray-900 truncate">—</span>
       )}
     </div>
   );
   const createdDate = (opportunity.created_at || '').slice(0, 10);
   const colCreated = (
     <div className="min-w-0 flex items-center">
-      <span className="text-xs font-semibold text-gray-900 truncate">{createdDate || '—'}</span>
+      <span className="text-sm font-semibold text-gray-900 truncate">{createdDate || '—'}</span>
     </div>
   );
   const col2 = (
     <div className="min-w-0 flex items-center">
       {!userForAvatar && !listEstimatorName ? (
-        <span className="text-xs font-semibold text-gray-400">—</span>
+        <span className="text-sm font-semibold text-gray-600">—</span>
       ) : (
         <div className="flex items-center gap-2 min-w-0">
           <UserAvatar user={userForAvatar} size="sm" showTooltip={true} tooltipText={estimatorDisplayName} />
-          <span className="font-semibold text-gray-900 text-xs truncate min-w-0">{estimatorDisplayName}</span>
+          <span className="font-semibold text-gray-900 text-sm truncate min-w-0">{estimatorDisplayName}</span>
         </div>
       )}
     </div>
   );
   const col3 = (
     <div className="min-w-0 flex items-center">
-      <span className="font-semibold text-[#7f1010] whitespace-nowrap text-xs truncate">
+      <span className="font-semibold text-[#7f1010] whitespace-nowrap text-sm truncate">
         {estimatedValue > 0 ? `$${estimatedValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
       </span>
     </div>
@@ -1193,12 +1193,12 @@ export function OpportunityListItem({ opportunity, onOpenReportModal, projectSta
           ))}
           {projectDivIds.length > 5 && (
             <AppTooltip content={`${projectDivIds.length - 5} more divisions`}>
-              <div className="text-xs text-gray-400 cursor-pointer">+{projectDivIds.length - 5}</div>
+              <div className="text-sm text-gray-600 cursor-pointer">+{projectDivIds.length - 5}</div>
             </AppTooltip>
           )}
         </div>
       ) : (
-        <span className="text-xs font-semibold text-gray-400">—</span>
+        <span className="text-sm font-semibold text-gray-600">—</span>
       )}
     </div>
   );
@@ -1221,7 +1221,7 @@ export function OpportunityListItem({ opportunity, onOpenReportModal, projectSta
           title={btn.label}
         >
           {btn.icon}
-          <span className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/btn:opacity-100 pointer-events-none z-20 transition-opacity">
+          <span className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1 px-2 py-1 bg-gray-900 text-white text-sm rounded whitespace-nowrap opacity-0 group-hover/btn:opacity-100 pointer-events-none z-20 transition-opacity">
             {btn.label}
             <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-900 rotate-45" />
           </span>
@@ -1385,7 +1385,7 @@ function OpportunityListCard({ opportunity, onOpenReportModal, projectStatuses, 
           </svg>
 
           {/* Tooltip showing missing fields */}
-          <div className="absolute right-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover/alert:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
+          <div className="absolute right-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg whitespace-nowrap opacity-0 group-hover/alert:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
             <div className="font-semibold mb-1">Pending Data:</div>
             <div className="space-y-0.5">
               {missingFields.map((field, idx) => (
@@ -1412,13 +1412,13 @@ function OpportunityListCard({ opportunity, onOpenReportModal, projectStatuses, 
           <div className="flex-1 min-w-0">
             {/* Customer + name + code - font sizes like ProjectDetail */}
             <div className="flex items-start justify-between gap-2">
-              <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide truncate min-w-0">{clientName || 'No client'}</div>
+              <div className="text-sm font-semibold text-gray-600 uppercase tracking-wide truncate min-w-0">{clientName || 'No client'}</div>
             </div>
             <div className="min-w-0">
               <div className="text-sm font-bold text-gray-900 group-hover:text-[#7f1010] transition-colors whitespace-normal break-words">
                 {opportunity.name || 'Opportunity'}
               </div>
-              <div className="text-xs font-semibold text-gray-900 break-words">{opportunity.code || '—'}</div>
+              <div className="text-sm font-semibold text-gray-900 break-words">{opportunity.code || '—'}</div>
             </div>
 
             {/* Icons row (right below code) - same icon size as employee area */}
@@ -1439,7 +1439,7 @@ function OpportunityListCard({ opportunity, onOpenReportModal, projectStatuses, 
                   title={btn.label}
                 >
                   {btn.icon}
-                  <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/btn:opacity-100 transition-opacity pointer-events-none z-20">
+                  <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1 px-2 py-1 bg-gray-900 text-white text-sm rounded whitespace-nowrap opacity-0 group-hover/btn:opacity-100 transition-opacity pointer-events-none z-20">
                     {btn.label}
                     <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-900 rotate-45"></div>
                   </div>
@@ -1452,16 +1452,16 @@ function OpportunityListCard({ opportunity, onOpenReportModal, projectStatuses, 
         {/* Separator */}
         <div className="border-t border-black/5" />
 
-        {/* Fields - labels text-[10px] font-medium text-gray-500 uppercase, values text-xs font-semibold like ProjectDetail */}
+        {/* Fields - labels text-xs font-semibold text-gray-500 uppercase, values text-sm font-semibold like ProjectDetail */}
         <div className="grid grid-cols-2 gap-3">
           <div className="min-w-0">
-            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-0.5">Estimator</div>
+            <div className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-0.5">Estimator</div>
             {!userForAvatarCard && !listEstimatorName ? (
-              <div className="text-xs font-semibold text-gray-400">—</div>
+              <div className="text-sm font-semibold text-gray-600">—</div>
             ) : estimators.length === 1 ? (
               <div className="flex items-center gap-2">
                 <UserAvatar user={estimators[0]} size="sm" showTooltip={true} />
-                <div className="font-semibold text-gray-900 text-xs truncate">{getUserDisplayName(estimators[0])}</div>
+                <div className="font-semibold text-gray-900 text-sm truncate">{getUserDisplayName(estimators[0])}</div>
               </div>
             ) : estimators.length > 1 ? (
               <div className="flex items-center gap-1.5 flex-wrap">
@@ -1472,14 +1472,14 @@ function OpportunityListCard({ opportunity, onOpenReportModal, projectStatuses, 
             ) : (
               <div className="flex items-center gap-2">
                 <UserAvatar user={userForAvatarCard} size="sm" showTooltip={true} tooltipText={estimatorDisplayNameCard} />
-                <div className="font-semibold text-gray-900 text-xs truncate">{estimatorDisplayNameCard}</div>
+                <div className="font-semibold text-gray-900 text-sm truncate">{estimatorDisplayNameCard}</div>
               </div>
             )}
           </div>
           <div className="min-w-0">
-            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-0.5">Estimated Value</div>
+            <div className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-0.5">Estimated Value</div>
             <div className="h-5 flex items-center">
-              <div className="font-semibold text-[#7f1010] text-xs truncate w-full">
+              <div className="font-semibold text-[#7f1010] text-sm truncate w-full">
                 {estimatedValue > 0 ? `$${estimatedValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
               </div>
             </div>
@@ -1514,14 +1514,14 @@ function OpportunityListCard({ opportunity, onOpenReportModal, projectStatuses, 
                     content={`${projectDivIds.length - 5} more divisions`}
                     placement="bottom"
                   >
-                    <div className="text-sm text-gray-400 cursor-pointer">
+                    <div className="text-sm text-gray-600 cursor-pointer">
                       +{projectDivIds.length - 5}
                     </div>
                   </AppTooltip>
                 )}
               </div>
             ) : (
-              <div className="text-xs font-semibold text-gray-400">No division</div>
+              <div className="text-sm font-semibold text-gray-600">No division</div>
             )}
           </div>
 

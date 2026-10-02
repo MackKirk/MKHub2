@@ -170,13 +170,13 @@ function AccessMemberCell({
   return (
     <div className="group inline-flex items-center gap-1.5 whitespace-nowrap py-0.5 pr-1">
       <AppUserAvatar user={user} size="sm" />
-      <span className="text-xs font-medium text-gray-900">{user.name}</span>
+      <span className="text-sm font-semibold text-gray-900">{user.name}</span>
       {useDesignSystem ? (
         <AppBadge variant={isCreator ? 'info' : 'neutral'} className="shrink-0 px-1.5 py-0 text-[9px]">
           {roleLabel}
         </AppBadge>
       ) : (
-        <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-gray-500">{roleLabel}</span>
+        <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-gray-600">{roleLabel}</span>
       )}
       {canRemove ? (
         <span className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
@@ -207,15 +207,15 @@ function ScheduledShiftRow({
   const timeRange = formatShiftTimeRange(shift.start_time, shift.end_time);
   return (
     <div className="flex items-center gap-2 py-1">
-      <div className="w-[7rem] shrink-0 truncate text-[11px] font-medium leading-tight text-gray-600 sm:w-32">
+      <div className="w-[7rem] shrink-0 truncate text-xs font-semibold leading-tight text-gray-600 sm:w-32">
         {formatFriendlyDate(shift.date)}
       </div>
-      <div className="w-[9.5rem] shrink-0 whitespace-nowrap tabular-nums text-[11px] leading-tight text-gray-500 sm:w-40">
+      <div className="w-[9.5rem] shrink-0 whitespace-nowrap tabular-nums text-xs leading-tight text-gray-600 sm:w-40">
         {timeRange || '—'}
       </div>
       <div className="flex min-w-0 flex-1 items-center gap-1.5">
         <AppUserAvatar user={worker} size="sm" />
-        <span className="truncate text-xs font-medium text-gray-900">{worker.name}</span>
+        <span className="truncate text-sm font-semibold text-gray-900">{worker.name}</span>
       </div>
       {canEdit ? (
         <div className="flex shrink-0 items-center gap-0.5">
@@ -560,7 +560,7 @@ export default function ProjectTeamCard({
       <button
         type="button"
         onClick={() => setShowAddMember(true)}
-        className="rounded border bg-white px-2 py-1 text-xs hover:bg-gray-50"
+        className="rounded border bg-white px-2 py-1 text-sm hover:bg-gray-50"
       >
         + Access
       </button>
@@ -674,7 +674,7 @@ export default function ProjectTeamCard({
         description={`Add people who need access to this ${recordLabel}.`}
       />
     ) : (
-      <div className="text-sm text-gray-500">No team members assigned yet</div>
+      <div className="text-sm text-gray-600">No team members assigned yet</div>
     );
 
   const projectAccessHeader = (
@@ -713,7 +713,7 @@ export default function ProjectTeamCard({
           <button
             type="button"
             onClick={() => setShowAllShifts(true)}
-            className="text-xs font-medium text-brand-red hover:underline"
+            className="text-sm font-semibold text-brand-red hover:underline"
           >
             View all ({filteredShifts.length}) · {remainingShiftCount} more
           </button>
@@ -734,7 +734,7 @@ export default function ProjectTeamCard({
             type="button"
             onClick={() => setShowCreateShift(true)}
             disabled={!resolvedProject}
-            className="rounded bg-brand-red px-2 py-1 text-xs text-white disabled:opacity-50"
+            className="rounded bg-brand-red px-2 py-1 text-sm text-white disabled:opacity-50"
           >
             Add shift
           </button>
@@ -750,13 +750,13 @@ export default function ProjectTeamCard({
           <div className="text-sm font-semibold text-gray-900">Scheduled workers</div>
           <ShiftRangePills segments={shiftRangeSegments} />
         </div>
-        <p className="mb-2 text-xs text-gray-500">
+        <p className="mb-2 text-sm text-gray-600">
           On the schedule only — not project access unless added above.
         </p>
         {filteredShifts.length > 0 ? (
           <div className="divide-y divide-gray-50">{renderShiftList(previewShifts)}</div>
         ) : (
-          <p className="text-xs text-gray-500">
+          <p className="text-sm text-gray-600">
             {scheduledShifts.length > 0 ? `No shifts ${shiftRangeLabel}.` : 'No shifts scheduled yet.'}
           </p>
         )}
@@ -849,7 +849,7 @@ export default function ProjectTeamCard({
           {filteredShifts.length > 0 ? (
             renderShiftList(filteredShifts)
           ) : (
-            <p className="py-4 text-sm text-gray-500">
+            <p className="py-4 text-sm text-gray-600">
               {scheduledShifts.length > 0 ? `No shifts ${shiftRangeLabel}.` : 'No shifts scheduled yet.'}
             </p>
           )}

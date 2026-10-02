@@ -80,7 +80,7 @@ export default function ProjectFieldBriefCard({
   const jceValue = proj.job_completion_estimate?.trim();
 
   const materialRows = materials.map((item) => [
-    <span key={`${item.id}-name`} className="font-medium text-gray-900">
+    <span key={`${item.id}-name`} className="font-semibold text-gray-900">
       {item.name}
     </span>,
     item.quantity?.trim() || '—',
@@ -96,13 +96,13 @@ export default function ProjectFieldBriefCard({
           scopeValue ? (
             <span className="whitespace-pre-wrap">{scopeValue}</span>
           ) : (
-            <span className="italic text-gray-400">No scope defined</span>
+            <span className="italic text-gray-600">No scope defined</span>
           )
         }
       />
       <AppReadOnlyField
         label="Job Completion Estimate"
-        value={jceValue || <span className="italic text-gray-400">Not specified</span>}
+        value={jceValue || <span className="italic text-gray-600">Not specified</span>}
       />
 
       <div className="border-t border-gray-100 pt-4">
@@ -122,7 +122,7 @@ export default function ProjectFieldBriefCard({
   const legacyBody = (
     <div className="mt-3 space-y-4">
       <div>
-        <div className={uiCx(uiTypography.helper, 'mb-1 font-medium uppercase tracking-wide')}>
+        <div className={uiCx(uiTypography.helper, 'mb-1 font-semibold uppercase tracking-wide')}>
           Scope of Work
         </div>
         {scopeValue ? (
@@ -133,18 +133,18 @@ export default function ProjectFieldBriefCard({
       </div>
 
       <div>
-        <div className={uiCx(uiTypography.helper, 'mb-1 font-medium uppercase tracking-wide')}>
+        <div className={uiCx(uiTypography.helper, 'mb-1 font-semibold uppercase tracking-wide')}>
           Job Completion Estimate
         </div>
         {jceValue ? (
-          <p className={uiCx(uiTypography.body, 'font-medium text-gray-900')}>{jceValue}</p>
+          <p className={uiCx(uiTypography.body, 'font-semibold text-gray-900')}>{jceValue}</p>
         ) : (
           <p className={uiCx(uiTypography.helper, 'italic')}>Not specified</p>
         )}
       </div>
 
       <div className="border-t border-gray-100 pt-4">
-        <div className={uiCx(uiTypography.helper, 'mb-2 font-medium uppercase tracking-wide')}>Material List</div>
+        <div className={uiCx(uiTypography.helper, 'mb-2 font-semibold uppercase tracking-wide')}>Material List</div>
         <p className={uiCx(uiTypography.helper, 'mb-2')}>
           Product lines from the Costs tab. Edit materials in Costs to update this list.
         </p>
@@ -152,8 +152,8 @@ export default function ProjectFieldBriefCard({
           <ul className="space-y-2 text-sm text-gray-700">
             {materials.map((item) => (
               <li key={item.id} className="rounded-lg border border-gray-200 px-3 py-2">
-                <div className="font-medium text-gray-900">{item.name}</div>
-                <div className="text-xs text-gray-600">
+                <div className="font-semibold text-gray-900">{item.name}</div>
+                <div className="text-sm text-gray-600">
                   {[item.quantity?.trim(), item.unit?.trim()].filter(Boolean).join(' ') || 'Qty not specified'}
                   {item.notes?.trim() ? ` · ${item.notes.trim()}` : ''}
                 </div>
@@ -186,7 +186,7 @@ export default function ProjectFieldBriefCard({
       ) : (
         <div className="rounded-xl border bg-white p-4">
           <div className="mb-2 flex items-center gap-1.5">
-            <div className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Field Brief</div>
+            <div className="text-[10px] font-bold uppercase tracking-wide text-gray-600">Field Brief</div>
             {hasEditPermission ? (
               <AppHeroEditButton title="Edit Field Brief" onClick={() => setEditOpen(true)} />
             ) : null}
@@ -306,13 +306,13 @@ function EditFieldBriefModal({
         >
           <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
             <h2 className="text-sm font-semibold text-gray-900">Edit Field Brief</h2>
-            <p className="mt-0.5 text-xs text-gray-500">
+            <p className="mt-0.5 text-sm text-gray-600">
               Share scope and job completion details. Material List is managed in Costs.
             </p>
           </div>
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
             <div className="rounded-xl border border-gray-200 bg-white p-4">
-              <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-gray-500">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">
                 Scope of Work
               </label>
               <textarea
@@ -324,7 +324,7 @@ function EditFieldBriefModal({
               />
             </div>
             <div className="rounded-xl border border-gray-200 bg-white p-4">
-              <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-gray-500">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">
                 Job Completion Estimate
               </label>
               <input
@@ -334,7 +334,7 @@ function EditFieldBriefModal({
                 placeholder="e.g. 2 crews, 1 day"
               />
             </div>
-            <p className="px-1 text-xs text-gray-500">
+            <p className="px-1 text-sm text-gray-600">
               Material List is fed from product lines in the Costs tab and cannot be edited here.
             </p>
           </div>
@@ -343,7 +343,7 @@ function EditFieldBriefModal({
               type="button"
               onClick={onClose}
               disabled={saving}
-              className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
             >
               Cancel
             </button>
@@ -351,7 +351,7 @@ function EditFieldBriefModal({
               type="button"
               onClick={handleSave}
               disabled={saving}
-              className="rounded-lg bg-brand-red px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+              className="rounded-lg bg-brand-red px-3 py-1.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
             >
               {saving ? 'Saving…' : 'Save'}
             </button>

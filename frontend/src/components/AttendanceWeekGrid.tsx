@@ -174,7 +174,7 @@ export function AttendanceWeekGrid({
           >
             Next
           </AppButton>
-          <p className={uiCx(uiTypography.pageSubtitle, 'px-1 font-medium text-gray-800')}>
+          <p className={uiCx(uiTypography.pageSubtitle, 'px-1 font-semibold text-gray-800')}>
             {formatWeekRangeLabel(weekStart)}
           </p>
         </div>
@@ -189,7 +189,7 @@ export function AttendanceWeekGrid({
           <AppBadge variant="neutral">
             Week total {hoursLoading ? '…' : formatHoursShort(weekTotal)}
           </AppBadge>
-          <span className="px-1 text-[10px] uppercase tracking-wide text-gray-400">Sage</span>
+          <span className="px-1 text-xs uppercase tracking-wide text-gray-600">Sage</span>
           <AppBadge variant="info">Queued</AppBadge>
           <AppBadge variant="success">In Sage</AppBadge>
           <AppBadge variant="neutral">Paid</AppBadge>
@@ -206,7 +206,7 @@ export function AttendanceWeekGrid({
             placeholder="Search name"
           />
         </div>
-        <label className={uiCx('mb-1 flex items-center gap-2 text-xs text-gray-700')}>
+        <label className={uiCx('mb-1 flex items-center gap-2 text-sm text-gray-700')}>
           <input
             type="checkbox"
             checked={hideEmpty}
@@ -228,7 +228,7 @@ export function AttendanceWeekGrid({
         />
       ) : (
         <div className="overflow-auto rounded-xl border border-gray-200 bg-white">
-          <table className="min-w-[64rem] w-full border-collapse text-left text-xs">
+          <table className="min-w-[64rem] w-full border-collapse text-left text-sm">
             <thead>
               <tr className="bg-gray-50 text-gray-600">
                 <th className="sticky left-0 z-10 min-w-[12rem] border-b border-r border-gray-200 bg-gray-50 px-3 py-2 font-semibold">
@@ -243,7 +243,7 @@ export function AttendanceWeekGrid({
                     )}
                   >
                     <div>{weekdayShort(date)}</div>
-                    <div className="font-normal text-gray-500">{date.slice(5)}</div>
+                    <div className="font-normal text-gray-600">{date.slice(5)}</div>
                   </th>
                 ))}
                 <th className="min-w-[5.5rem] border-b border-l border-gray-200 px-2 py-2 font-semibold">
@@ -258,7 +258,7 @@ export function AttendanceWeekGrid({
                 return (
                   <tr key={emp.id} className="align-top hover:bg-gray-50/80">
                     <td className="sticky left-0 z-10 border-b border-r border-gray-100 bg-white px-3 py-2">
-                      <div className="font-medium text-gray-900">{emp.name}</div>
+                      <div className="font-semibold text-gray-900">{emp.name}</div>
                       {clockedIn ? <AppBadge variant="warning">Clocked in</AppBadge> : null}
                     </td>
                     {dates.map((date) => {
@@ -286,7 +286,7 @@ export function AttendanceWeekGrid({
                                 )}
                               >
                                 <div className="font-semibold">{formatHoursShort(entry.hours_worked)}</div>
-                                <div className="truncate text-[10px] text-gray-500">{jobLabel(entry)}</div>
+                                <div className="truncate text-xs text-gray-600">{jobLabel(entry)}</div>
                                 <AttendanceSageBadge
                                   state={entry.sage_state}
                                   recordKind={entry.record_kind}
@@ -298,7 +298,7 @@ export function AttendanceWeekGrid({
                               <button
                                 type="button"
                                 onClick={() => onAdd(emp.id, date)}
-                                className="inline-flex items-center justify-center gap-1 rounded-md border border-dashed border-gray-200 px-1 py-1 text-[10px] text-gray-500 hover:border-gray-400 hover:text-gray-800"
+                                className="inline-flex items-center justify-center gap-1 rounded-md border border-dashed border-gray-200 px-1 py-1 text-xs text-gray-600 hover:border-gray-400 hover:text-gray-800"
                               >
                                 <Plus className="h-3 w-3" />
                                 Add

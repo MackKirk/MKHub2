@@ -322,7 +322,7 @@ function BambooFilesLastSyncRow({
   };
   return (
     <div className="w-full mt-3 pt-3 border-t border-gray-100 flex flex-wrap items-center gap-3">
-      <div className="text-xs text-gray-600">
+      <div className="text-sm text-gray-600">
         <span className="font-semibold text-gray-800">Last Update Sync (Bamboo files): </span>
         <span className="text-gray-900">{display}</span>
       </div>
@@ -331,7 +331,7 @@ function BambooFilesLastSyncRow({
           type="button"
           onClick={saveToday}
           disabled={saving}
-          className="px-3 py-1.5 rounded-lg bg-white hover:bg-gray-50 text-gray-800 border border-gray-300 text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-3 py-1.5 rounded-lg bg-white hover:bg-gray-50 text-gray-800 border border-gray-300 text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {saving ? 'Saving…' : "Save today's date"}
         </button>
@@ -1343,9 +1343,9 @@ export default function UserInfo(){
             })()}
             {p?.updated_by_name ? <span className="text-gray-700"> · {p.updated_by_name}</span> : null}
           </div>
-          <p className="text-gray-500">
+          <p className="text-gray-600">
             Updates automatically when someone saves this employee (profile, departments, or account fields). This is separate from the manual{' '}
-            <span className="font-medium text-gray-700">Last Update Sync (Bamboo files)</span> field.
+            <span className="font-semibold text-gray-700">Last Update Sync (Bamboo files)</span> field.
           </p>
         </div>
       </AppCard>
@@ -1693,7 +1693,7 @@ function LabelVal({label, value}:{label:string, value:any}){
   return (
     <div>
       <div className="text-sm text-gray-600">{label}</div>
-      <div className="font-medium break-words">{String(value??'')}</div>
+      <div className="font-semibold break-words">{String(value??'')}</div>
     </div>
   );
 }
@@ -2010,7 +2010,7 @@ function AddressSection({ p, editable, selfEdit, userId, collectChanges, inlineS
                   });
                 }}
                 placeholder="Start typing an address..."
-                className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+                className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
               />
               </div>
             ) : (
@@ -2028,7 +2028,7 @@ function AddressSection({ p, editable, selfEdit, userId, collectChanges, inlineS
                   collectChanges && collectChanges({ address_line2: value });
                 }}
                 placeholder="Start typing an address..."
-                className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+                className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
               />
               </div>
             ) : (
@@ -2118,7 +2118,7 @@ function SectionGrid({ p, keys }:{ p:any, keys:string[] }){
       {keys.map((k)=> (
         <div key={k}>
           <div className="text-sm text-gray-600">{k.replace(/_/g,' ').replace(/^./,s=>s.toUpperCase())}</div>
-          <div className="font-medium break-words">{String((k==='date_of_birth'||k==='hire_date'||k==='termination_date')? (p[k]||'').slice(0,10) : (p[k]||''))}</div>
+          <div className="font-semibold break-words">{String((k==='date_of_birth'||k==='hire_date'||k==='termination_date')? (p[k]||'').slice(0,10) : (p[k]||''))}</div>
         </div>
       ))}
     </div>
@@ -2302,7 +2302,7 @@ function EducationSection({
   const renderEducationEditCardField = (label: string, value: ReactNode) => (
     <div className="min-w-0 space-y-1">
       <div className={uiTypography.controlLabel}>{label}</div>
-      <div className={uiCx(uiTypography.helper, 'truncate font-medium text-gray-900')}>{value}</div>
+      <div className={uiCx(uiTypography.helper, 'truncate font-semibold text-gray-900')}>{value}</div>
     </div>
   );
 
@@ -2312,7 +2312,7 @@ function EducationSection({
       {renderEducationEditCardField('Degree', educationDegreeLine(e) || '—')}
       <div className="min-w-0 space-y-1">
         <div className={uiTypography.controlLabel}>Dates</div>
-        <div className={uiCx(uiTypography.helper, 'whitespace-nowrap font-medium text-gray-900')}>
+        <div className={uiCx(uiTypography.helper, 'whitespace-nowrap font-semibold text-gray-900')}>
           {formatEducationPeriod(e.start_date, e.end_date)}
         </div>
       </div>
@@ -2489,10 +2489,10 @@ function JobSection({ type, p, editable, userId, collectChanges, usersOptions, s
               <div className={`text-sm font-semibold ${isActive ? 'text-green-600' : 'text-red-600'}`}>
                 {statusLabel}
               </div>
-              <div className="text-xs font-medium text-gray-700 mt-0.5">
+              <div className="text-sm font-semibold text-gray-700 mt-0.5">
                 Employment Status
               </div>
-              <p className="text-[10px] text-gray-500 mt-1 px-0.5 leading-snug max-w-[11rem] mx-auto">
+              <p className="text-xs text-gray-600 mt-1 px-0.5 leading-snug max-w-[11rem] mx-auto">
                 From termination date in HR below, not the system account badge under the photo.
               </p>
             </div>
@@ -2515,7 +2515,7 @@ function JobSection({ type, p, editable, userId, collectChanges, usersOptions, s
                   {String(p.hire_date||'').slice(0,10) || '—'}
                 </div>
               )}
-              <div className="text-xs font-medium text-gray-700 mt-0.5">
+              <div className="text-sm font-semibold text-gray-700 mt-0.5">
                 Hire Date
               </div>
             </div>
@@ -2538,7 +2538,7 @@ function JobSection({ type, p, editable, userId, collectChanges, usersOptions, s
                   {String(p.termination_date||'').slice(0,10) || '—'}
                 </div>
               )}
-              <div className="text-xs font-medium text-gray-700 mt-0.5">
+              <div className="text-sm font-semibold text-gray-700 mt-0.5">
                 Termination Date
               </div>
             </div>
@@ -2566,7 +2566,7 @@ function JobSection({ type, p, editable, userId, collectChanges, usersOptions, s
                 onClick={() => setDepartmentDropdownOpen(!departmentDropdownOpen)}
                 className="w-full rounded-lg border px-3 py-2 text-left bg-white flex items-center justify-between"
               >
-                <span className={selectedDivisions.length === 0 ? 'text-gray-400' : ''}>
+                <span className={selectedDivisions.length === 0 ? 'text-gray-600' : ''}>
                   {selectedDivisions.length === 0 
                     ? 'Select departments...' 
                     : selectedDivisions.map((id: string) => {
@@ -2574,7 +2574,7 @@ function JobSection({ type, p, editable, userId, collectChanges, usersOptions, s
                         return division?.label || '';
                       }).filter(Boolean).join(', ') || 'No departments selected'}
                 </span>
-                <span className="text-gray-400">▼</span>
+                <span className="text-gray-600">▼</span>
               </button>
               {departmentDropdownOpen && (
                 <>
@@ -2606,7 +2606,7 @@ function JobSection({ type, p, editable, userId, collectChanges, usersOptions, s
             <input className="w-full rounded-lg border px-3 py-2" value={form.division} onChange={e=>onField('division', e.target.value)} />
           ))
         ) : (
-          <div className="text-gray-900 font-medium py-1">
+          <div className="text-gray-900 font-semibold py-1">
             {userDivisions && userDivisions.length > 0
               ? userDivisions.map((d: any) => d.label).join(', ')
               : String(p.division||'') || '—'}
@@ -2625,16 +2625,16 @@ function JobSection({ type, p, editable, userId, collectChanges, usersOptions, s
             ))}
           </select>
         ) : (
-          <div className="text-gray-900 font-medium py-1">{supervisor||'—'}</div>
+          <div className="text-gray-900 font-semibold py-1">{supervisor||'—'}</div>
         )}
       </div>
       <div>
         <div className="text-sm text-gray-600">Work email</div>
-        {isEditable? <input className="w-full rounded-lg border px-3 py-2" value={form.work_email} onChange={e=>onField('work_email', e.target.value)} /> : <div className="text-gray-900 font-medium py-1">{String(p.work_email||'') || '—'}</div>}
+        {isEditable? <input className="w-full rounded-lg border px-3 py-2" value={form.work_email} onChange={e=>onField('work_email', e.target.value)} /> : <div className="text-gray-900 font-semibold py-1">{String(p.work_email||'') || '—'}</div>}
       </div>
       <div>
         <div className="text-sm text-gray-600">Work phone</div>
-        {isEditable? <input className="w-full rounded-lg border px-3 py-2" value={form.work_phone} onChange={e=>onField('work_phone', e.target.value)} /> : <div className="text-gray-900 font-medium py-1">{String(p.work_phone||'') || '—'}</div>}
+        {isEditable? <input className="w-full rounded-lg border px-3 py-2" value={form.work_phone} onChange={e=>onField('work_phone', e.target.value)} /> : <div className="text-gray-900 font-semibold py-1">{String(p.work_phone||'') || '—'}</div>}
       </div>
     </div>
   );
@@ -3381,14 +3381,14 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
 
         {/* Error message */}
         {error && (
-          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
             Error loading attendance records: {String(error)}
           </div>
         )}
 
         {canEdit && selectedEvents.size > 0 && (
           <div className="mb-4 flex items-center justify-between rounded-xl border bg-blue-50 p-3">
-            <div className={uiCx(uiTypography.helper, 'font-medium text-blue-900')}>
+            <div className={uiCx(uiTypography.helper, 'font-semibold text-blue-900')}>
               {selectedEvents.size} record(s) selected
             </div>
             <AppButton
@@ -3609,7 +3609,7 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
                 <AppFieldHint hint="Entry type\n\nClock in / out — enter start and end times. Hours worked — enter total hours for one work date." />
               }
             />
-            <div className="inline-flex overflow-hidden rounded-lg border border-gray-200 bg-gray-50 text-xs">
+            <div className="inline-flex overflow-hidden rounded-lg border border-gray-200 bg-gray-50 text-sm">
               <AppButton
                 type="button"
                 variant={formData.entry_mode === 'time' ? 'secondary' : 'ghost'}
@@ -4046,20 +4046,20 @@ function SalaryHistorySection({
 
   return (
     <div>
-      <div className="mb-2 text-xs font-medium text-gray-700">History</div>
+      <div className="mb-2 text-sm font-semibold text-gray-700">History</div>
 
       {isLoading ? (
-        <div className="text-xs text-gray-600">Loading...</div>
+        <div className="text-sm text-gray-600">Loading...</div>
       ) : (rows && rows.length > 0) ? (
         <div className="overflow-x-auto">
-          <table className="w-full text-xs">
+          <table className="w-full text-sm">
             <thead>
               <tr className="border-b">
-                <th className="text-left py-1.5 px-2 font-medium text-gray-600">Effective date</th>
-                <th className="text-left py-1.5 px-2 font-medium text-gray-600">Pay type</th>
-                <th className="text-left py-1.5 px-2 font-medium text-gray-600">Pay rate</th>
-                <th className="text-left py-1.5 px-2 font-medium text-gray-600">Change reason</th>
-                <th className="text-left py-1.5 px-2 font-medium text-gray-600">Comment</th>
+                <th className="text-left py-1.5 px-2 font-semibold text-gray-600">Effective date</th>
+                <th className="text-left py-1.5 px-2 font-semibold text-gray-600">Pay type</th>
+                <th className="text-left py-1.5 px-2 font-semibold text-gray-600">Pay rate</th>
+                <th className="text-left py-1.5 px-2 font-semibold text-gray-600">Change reason</th>
+                <th className="text-left py-1.5 px-2 font-semibold text-gray-600">Comment</th>
               </tr>
             </thead>
             <tbody>
@@ -4081,7 +4081,7 @@ function SalaryHistorySection({
           </table>
         </div>
       ) : (
-        <div className="text-xs text-gray-600 py-3 text-center">No salary history yet.</div>
+        <div className="text-sm text-gray-600 py-3 text-center">No salary history yet.</div>
       )}
 
       <AppFormModal
@@ -5090,7 +5090,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                     {hasEditPermission && (
                       <button
                         onClick={() => handleOpenAdjust(b)}
-                        className="absolute top-1.5 right-1.5 p-1 rounded hover:bg-gray-100 text-gray-500 hover:text-brand-red transition-colors"
+                        className="absolute top-1.5 right-1.5 p-1 rounded hover:bg-gray-100 text-gray-600 hover:text-brand-red transition-colors"
                         title="Adjust Balance"
                       >
                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -5126,11 +5126,11 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                       <div className={`text-sm font-semibold ${isNegative ? 'text-red-600' : isSickLeave ? 'text-red-600' : isVacation ? 'text-blue-600' : 'text-green-600'}`}>
                         {isNegative ? '-' : ''}{balanceDays} Days
                       </div>
-                      <div className="text-xs font-medium text-gray-700 mt-0.5">
+                      <div className="text-sm font-semibold text-gray-700 mt-0.5">
                         {b.policy_name}
                       </div>
                       {b.isDefault && (
-                        <div className="text-[10px] text-orange-600 mt-0.5">(Not yet created)</div>
+                        <div className="text-xs text-orange-600 mt-0.5">(Not yet created)</div>
                       )}
                     </div>
                   </div>
@@ -5152,7 +5152,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
               {availablePolicies.length > 0 && (
                 <button
                   onClick={() => setShowRequestForm(true)}
-                  className="px-2 py-1 rounded border border-blue-300 text-blue-700 text-xs font-medium hover:bg-blue-50"
+                  className="px-2 py-1 rounded border border-blue-300 text-blue-700 text-sm font-semibold hover:bg-blue-50"
                 >
                   Request Time Off
                 </button>
@@ -5164,13 +5164,13 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                 <div key={r.id} className="p-2 border rounded text-sm">
                   <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="font-medium">{r.policy_name}</div>
-                      <div className="text-xs text-gray-600">
+                      <div className="font-semibold">{r.policy_name}</div>
+                      <div className="text-sm text-gray-600">
                         {formatTimeOffDateRange(r.start_date, r.end_date)}
                       </div>
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-1">
-                      <span className={`px-2 py-0.5 rounded text-xs ${getStatusColor(r.status)}`}>
+                      <span className={`px-2 py-0.5 rounded text-sm ${getStatusColor(r.status)}`}>
                         {r.status}
                       </span>
                       {r.status === 'pending' && hasEditPermission ? (
@@ -5178,14 +5178,14 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                           <button
                             type="button"
                             onClick={() => void handleReview(r.id, 'rejected')}
-                            className="text-[11px] font-semibold text-red-600 hover:underline"
+                            className="text-xs font-semibold text-red-600 hover:underline"
                           >
                             Reject
                           </button>
                           <button
                             type="button"
                             onClick={() => void handleReview(r.id, 'approved')}
-                            className="text-[11px] font-semibold text-green-700 hover:underline"
+                            className="text-xs font-semibold text-green-700 hover:underline"
                           >
                             Approve
                           </button>
@@ -5194,7 +5194,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                         <button
                           type="button"
                           onClick={() => void handleCancel(r.id)}
-                          className="text-[11px] font-semibold text-red-600 hover:underline"
+                          className="text-xs font-semibold text-red-600 hover:underline"
                         >
                           Cancel
                         </button>
@@ -5208,7 +5208,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
             <div className="text-sm text-gray-600 py-8 text-center">
               <div className="text-4xl mb-2">🏖️</div>
               <div>No upcoming time off.</div>
-              <div className="text-xs text-gray-500 mt-1">Do you need to get away?</div>
+              <div className="text-sm text-gray-600 mt-1">Do you need to get away?</div>
             </div>
           )}
         </div>
@@ -5228,7 +5228,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                 <button
                   onClick={handleSyncHistory}
                   disabled={syncingHistory}
-                  className="px-2 py-1.5 rounded border border-gray-300 text-gray-700 text-xs font-medium hover:bg-gray-100 disabled:opacity-50"
+                  className="px-2 py-1.5 rounded border border-gray-300 text-gray-700 text-sm font-semibold hover:bg-gray-100 disabled:opacity-50"
                 >
                   {syncingHistory ? 'Syncing...' : 'Sync History'}
                 </button>
@@ -5275,12 +5275,12 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b bg-gray-50">
-                          <th className="text-left py-2 px-3 font-semibold text-xs">Date</th>
-                          <th className="text-left py-2 px-3 font-semibold text-xs">Description</th>
-                          <th className="text-right py-2 px-3 font-semibold text-xs">Used Days (-)</th>
-                          <th className="text-right py-2 px-3 font-semibold text-xs">Earned Days (+)</th>
-                          <th className="text-right py-2 px-3 font-semibold text-xs">Balance</th>
-                          {isAdmin && <th className="text-right py-2 px-3 font-semibold text-xs min-w-[5.5rem]"> </th>}
+                          <th className="text-left py-2 px-3 font-semibold text-sm">Date</th>
+                          <th className="text-left py-2 px-3 font-semibold text-sm">Description</th>
+                          <th className="text-right py-2 px-3 font-semibold text-sm">Used Days (-)</th>
+                          <th className="text-right py-2 px-3 font-semibold text-sm">Earned Days (+)</th>
+                          <th className="text-right py-2 px-3 font-semibold text-sm">Balance</th>
+                          {isAdmin && <th className="text-right py-2 px-3 font-semibold text-sm min-w-[5.5rem]"> </th>}
                         </tr>
                       </thead>
                       <tbody>
@@ -5295,7 +5295,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                               <td className="py-2 px-3">
                                 <div className="flex items-start gap-2">
                                   {isAdjustment && (
-                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-sm font-semibold bg-blue-100 text-blue-800">
                                       <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
                                         <path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z" />
                                         <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z" />
@@ -5303,10 +5303,10 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                                       Adjustment
                                     </span>
                                   )}
-                                  <div className="min-w-0">
-                                    <div className="text-xs text-gray-900">{title}</div>
+<div className="min-w-0">
+                                    <div className="text-sm text-gray-900">{title}</div>
                                     {note ? (
-                                      <div className="mt-0.5 whitespace-pre-line text-[11px] leading-snug text-gray-500">
+                                      <div className="mt-0.5 whitespace-pre-line text-xs leading-snug text-gray-500">
                                         {note}
                                       </div>
                                     ) : null}
@@ -5315,14 +5315,14 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                               </td>
                               <td className="py-2 px-3 text-right">
                                 {h.used_days ? (
-                                  <span className="text-red-600 font-medium">
+                                  <span className="text-red-600 font-semibold">
                                     {h.used_days < 0 ? parseFloat(h.used_days).toFixed(2) : `-${parseFloat(h.used_days).toFixed(2)}`}
                                   </span>
                                 ) : '—'}
                               </td>
                               <td className="py-2 px-3 text-right">
                                 {h.earned_days ? (
-                                  <span className="text-green-600 font-medium">
+                                  <span className="text-green-600 font-semibold">
                                     +{parseFloat(h.earned_days).toFixed(2)}
                                   </span>
                                 ) : '—'}
@@ -5337,7 +5337,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                                       type="button"
                                       onClick={() => openEditHistoryModal(h)}
                                       disabled={!!deletingHistoryId || savingHistoryEdit}
-                                      className="p-1 rounded text-gray-400 hover:text-blue-700 hover:bg-blue-50 disabled:opacity-50"
+                                      className="p-1 rounded text-gray-600 hover:text-blue-700 hover:bg-blue-50 disabled:opacity-50"
                                       title="Edit entry"
                                     >
                                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -5348,7 +5348,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                                       type="button"
                                       onClick={() => handleDeleteHistoryEntry(h.id)}
                                       disabled={!!deletingHistoryId || savingHistoryEdit}
-                                      className="p-1 rounded text-gray-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-50"
+                                      className="p-1 rounded text-gray-600 hover:text-red-600 hover:bg-red-50 disabled:opacity-50"
                                       title="Delete entry"
                                     >
                                       {deletingHistoryId === h.id ? (
@@ -5395,7 +5395,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                       <td className="py-2 px-2">{new Date(r.requested_at).toLocaleDateString()}</td>
                       <td className="py-2 px-2">
                         {r.policy_name} - {r.status}
-                        {r.notes && <div className="text-xs text-gray-500">{r.notes}</div>}
+                        {r.notes && <div className="text-sm text-gray-600">{r.notes}</div>}
                       </td>
                       <td className="py-2 px-2 text-right">
                         {r.status === 'approved' ? `-${days}` : '—'}
@@ -5471,7 +5471,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                   if (selectedBalance) {
                     const availableDays = hoursToDays(selectedBalance.balance_hours);
                     return (
-                      <div className={`mt-1 text-xs ${parseFloat(availableDays) >= 0 ? 'text-gray-600' : 'text-orange-600'}`}>
+                      <div className={`mt-1 text-sm ${parseFloat(availableDays) >= 0 ? 'text-gray-600' : 'text-orange-600'}`}>
                         Available balance: {availableDays} days
                         {isSickLeave && (
                           <div className="mt-1 p-2 bg-blue-50 border border-blue-200 rounded text-blue-800">
@@ -5507,17 +5507,17 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                 const hasEnoughBalance = isSickLeave || availableDays >= days;
                 return (
                   <div className={`p-3 rounded-lg border ${hasEnoughBalance ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200'}`}>
-                    <div className="text-sm font-medium text-gray-700">
+                    <div className="text-sm font-semibold text-gray-700">
                       Request Summary
                     </div>
-                    <div className="text-xs text-gray-600 mt-1">
+                    <div className="text-sm text-gray-600 mt-1">
                       You are requesting <strong>{days} days</strong> of {policyName}
                     </div>
-                    <div className="text-xs text-gray-600">
+                    <div className="text-sm text-gray-600">
                       Available balance: <strong>{availableDays.toFixed(1)} days</strong>
                     </div>
                     {!hasEnoughBalance && !isSickLeave && (
-                      <div className="text-xs text-red-600 mt-1 font-medium">
+                      <div className="text-sm text-red-600 mt-1 font-semibold">
                         Insufficient balance. You need {days} days but only have {availableDays.toFixed(1)} days available.
                       </div>
                     )}
@@ -6290,14 +6290,14 @@ function PRCardUploadSection({ userId, canEdit }: { userId: string; canEdit: boo
         <div className="space-y-3">
           <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
             <div className="flex-1">
-              <div className="text-sm font-medium text-gray-900">PR Card Document</div>
-              <div className="text-xs text-gray-500">Document uploaded</div>
+              <div className="text-sm font-semibold text-gray-900">PR Card Document</div>
+              <div className="text-sm text-gray-600">Document uploaded</div>
             </div>
             <a
               href={withFileAccessToken(`/files/${prCardFileId}/download`)}
               target="_blank"
               rel="noopener noreferrer"
-              className="px-3 py-1.5 rounded border border-amber-300 text-amber-700 text-sm font-medium hover:bg-amber-50"
+              className="px-3 py-1.5 rounded border border-amber-300 text-amber-700 text-sm font-semibold hover:bg-amber-50"
             >
               View
             </a>
@@ -6313,7 +6313,7 @@ function PRCardUploadSection({ userId, canEdit }: { userId: string; canEdit: boo
                     toast.error(e?.message || 'Failed to remove PR Card');
                   }
                 }}
-                className="px-3 py-1.5 rounded border border-red-300 text-red-700 text-sm font-medium hover:bg-red-50"
+                className="px-3 py-1.5 rounded border border-red-300 text-red-700 text-sm font-semibold hover:bg-red-50"
               >
                 Remove
               </button>
@@ -6325,7 +6325,7 @@ function PRCardUploadSection({ userId, canEdit }: { userId: string; canEdit: boo
               <button
                 onClick={() => fileRef.current?.click()}
                 disabled={uploading}
-                className="px-3 py-1.5 rounded border border-amber-300 text-amber-700 text-sm font-medium hover:bg-amber-50 disabled:opacity-50"
+                className="px-3 py-1.5 rounded border border-amber-300 text-amber-700 text-sm font-semibold hover:bg-amber-50 disabled:opacity-50"
               >
                 {uploading ? 'Uploading...' : 'Replace Document'}
               </button>
@@ -6339,7 +6339,7 @@ function PRCardUploadSection({ userId, canEdit }: { userId: string; canEdit: boo
             <button
               onClick={() => fileRef.current?.click()}
               disabled={uploading}
-              className="px-3 py-1.5 rounded border border-amber-300 text-amber-700 text-sm font-medium hover:bg-amber-50 disabled:opacity-50"
+              className="px-3 py-1.5 rounded border border-amber-300 text-amber-700 text-sm font-semibold hover:bg-amber-50 disabled:opacity-50"
             >
               {uploading ? 'Uploading...' : 'Upload Document'}
             </button>
@@ -6424,14 +6424,14 @@ function ProfileStoredFilePreviewCard({
         ) : (
           <div className={uiCx('flex h-32 flex-col items-center justify-center gap-2 px-3', uiTypography.helper)}>
             <Paperclip className="h-5 w-5 shrink-0 text-gray-400" aria-hidden />
-            <span className="font-medium text-gray-800">Document on file</span>
+            <span className="font-semibold text-gray-800">Document on file</span>
             <AppButton type="button" variant="secondary" size="sm" onClick={openPreview} disabled={disabled || !previewMeta?.previewUrl}>
               View
             </AppButton>
           </div>
         )}
         <div className={uiCx('flex items-center justify-between gap-2 border-t border-gray-100 bg-white', uiSpacing.compactCardPadding)}>
-          <span className={uiCx(uiTypography.helper, 'min-w-0 truncate font-medium text-gray-900')}>
+          <span className={uiCx(uiTypography.helper, 'min-w-0 truncate font-semibold text-gray-900')}>
             Immigration status document
           </span>
           {canEdit ? (
@@ -6439,7 +6439,7 @@ function ProfileStoredFilePreviewCard({
               type="button"
               onClick={onRemove}
               disabled={disabled}
-              className={uiCx(uiTypography.helper, 'shrink-0 font-medium text-brand-red hover:text-brand-red/80 disabled:opacity-50')}
+              className={uiCx(uiTypography.helper, 'shrink-0 font-semibold text-brand-red hover:text-brand-red/80 disabled:opacity-50')}
             >
               Remove
             </button>
@@ -6594,7 +6594,7 @@ function ImmigrationStatusDocumentSection({ userId, canEdit, isRequired }: { use
             disabled={uploading}
           />
         ) : !canEdit ? (
-          <div className={uiCx(uiTypography.helper, 'font-medium text-gray-900')}>—</div>
+          <div className={uiCx(uiTypography.helper, 'font-semibold text-gray-900')}>—</div>
         ) : null}
         {canEdit ? (
           <>
@@ -6871,7 +6871,7 @@ function VisaInformationSection({
   const renderVisaRecordCardField = (label: string, value: ReactNode) => (
     <div className="min-w-0 space-y-1">
       <div className={uiTypography.controlLabel}>{label}</div>
-      <div className={uiCx(uiTypography.helper, 'break-words font-medium text-gray-900')}>{value}</div>
+      <div className={uiCx(uiTypography.helper, 'break-words font-semibold text-gray-900')}>{value}</div>
     </div>
   );
 
@@ -6932,7 +6932,7 @@ function VisaInformationSection({
               {isRequired ? <p className={uiCx(uiTypography.helper, 'text-red-600')}>Visa information is required</p> : null}
             </div>
           ) : (
-            <div className={uiCx(uiTypography.helper, 'font-medium text-gray-900')}>—</div>
+            <div className={uiCx(uiTypography.helper, 'font-semibold text-gray-900')}>—</div>
           )
         ) : canEdit ? (
           visaEditCards

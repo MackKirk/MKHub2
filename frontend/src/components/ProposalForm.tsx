@@ -126,7 +126,7 @@ function ProposalInlineInput({
       <ProposalInlineLabelRow label={label} fieldHint={fieldHint} />
       <input
         className={uiCx(
-          'box-border w-full bg-white text-xs text-gray-900 outline-none transition-colors placeholder:text-gray-400 focus:border-gray-400 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-gray-400/35 disabled:cursor-not-allowed disabled:bg-gray-100',
+          'box-border w-full bg-white text-sm text-gray-900 outline-none transition-colors placeholder:text-gray-400 focus:border-gray-400 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-gray-400/35 disabled:cursor-not-allowed disabled:bg-gray-100',
           uiSpacing.controlX,
           PROPOSAL_INLINE_CONTROL_H,
           'py-0',
@@ -295,7 +295,7 @@ function AreaPopover({ value, unit, onSave, onClose }: { value?: number; unit: A
       ref={ref}
       className="absolute left-0 top-full mt-1 z-[100] w-60 min-w-[200px] p-2.5 bg-white border border-gray-200 rounded-lg shadow-lg overflow-visible"
     >
-      <div className="text-xs font-medium text-gray-700 mb-1.5">Area</div>
+      <div className="text-sm font-semibold text-gray-700 mb-1.5">Area</div>
       <div className="flex gap-2 items-center">
         <input
           type="number"
@@ -303,13 +303,13 @@ function AreaPopover({ value, unit, onSave, onClose }: { value?: number; unit: A
           step="any"
           value={localValue}
           onChange={e => setLocalValue(e.target.value)}
-          className="flex-1 min-w-0 rounded border border-gray-300 px-2 py-1.5 text-xs"
+          className="flex-1 min-w-0 rounded border border-gray-300 px-2 py-1.5 text-sm"
           placeholder="0"
         />
         <select
           value={localUnit}
           onChange={e => setLocalUnit(e.target.value as AreaUnit)}
-          className="flex-shrink-0 min-w-[72px] rounded border border-gray-300 px-2 py-1.5 text-xs pr-6"
+          className="flex-shrink-0 min-w-[72px] rounded border border-gray-300 px-2 py-1.5 text-sm pr-6"
         >
           <option value="sqft">sqft</option>
           <option value="m2">m²</option>
@@ -317,8 +317,8 @@ function AreaPopover({ value, unit, onSave, onClose }: { value?: number; unit: A
         </select>
       </div>
       <div className="flex gap-1.5 mt-2">
-        <button type="button" onClick={handleSave} className="flex-1 py-1.5 text-xs font-medium bg-gray-800 text-white rounded hover:bg-gray-700">Save</button>
-        <button type="button" onClick={onClose} className="py-1.5 px-2 text-xs text-gray-600 hover:text-gray-900">Cancel</button>
+        <button type="button" onClick={handleSave} className="flex-1 py-1.5 text-sm font-semibold bg-gray-800 text-white rounded hover:bg-gray-700">Save</button>
+        <button type="button" onClick={onClose} className="py-1.5 px-2 text-sm text-gray-600 hover:text-gray-900">Cancel</button>
       </div>
     </div>
   );
@@ -1946,10 +1946,10 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         'flex w-full cursor-pointer items-center justify-between border-b border-gray-100 px-4 py-3 text-left transition-colors hover:bg-gray-50/80',
         uiTypography.sectionTitle,
       )
-    : 'bg-slate-200 p-2.5 text-gray-900 font-semibold text-xs flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity';
+    : 'bg-slate-200 p-2.5 text-gray-900 font-semibold text-sm flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity';
   const dsSectionBodyPad = designSystem ? uiSpacing.cardPadding : 'p-3';
   const dsSectionBodyPadLg = designSystem ? uiSpacing.cardPadding : 'p-4';
-  const dsFieldLabelClass = designSystem ? undefined : 'text-xs font-medium text-gray-600 mb-1.5';
+  const dsFieldLabelClass = designSystem ? undefined : 'text-sm font-semibold text-gray-600 mb-1.5';
   const dsReadonlyClass = designSystem ? uiTypography.sectionTitle : 'text-sm font-semibold text-gray-900';
 
   return (
@@ -1996,7 +1996,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
           <div
             className={
               designSystem
-                ? uiCx(uiRadius.card, 'border border-yellow-200 bg-yellow-50 p-3 text-xs text-yellow-800')
+                ? uiCx(uiRadius.card, 'border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-800')
                 : 'p-4 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800'
             }
           >
@@ -2044,9 +2044,9 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                     />
                   ) : (
                     <div className="relative">
-                      <div className="text-xs font-medium text-gray-600 mb-1.5">Document Type (Shown on cover page)</div>
-                      <input className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 pr-12 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={coverTitle} onChange={e=>setCoverTitle(e.target.value)} maxLength={44} aria-label="Document Type" />
-                      <div className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-gray-500">{coverTitle.length}/44</div>
+                      <div className="text-sm font-semibold text-gray-600 mb-1.5">Document Type (Shown on cover page)</div>
+                      <input className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 pr-12 text-sm text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={coverTitle} onChange={e=>setCoverTitle(e.target.value)} maxLength={44} aria-label="Document Type" />
+                      <div className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-600">{coverTitle.length}/44</div>
                     </div>
                   )}
                 </div>
@@ -2065,8 +2065,8 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                     />
                   ) : (
                     <>
-                      <div className="text-xs font-medium text-gray-600 mb-1.5">Type of Project</div>
-                      <input className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={typeOfProject} onChange={e=>setTypeOfProject(e.target.value)} />
+                      <div className="text-sm font-semibold text-gray-600 mb-1.5">Type of Project</div>
+                      <input className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={typeOfProject} onChange={e=>setTypeOfProject(e.target.value)} />
                     </>
                   )}
                 </div>
@@ -2085,8 +2085,8 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                     />
                   ) : (
                     <>
-                      <div className="text-xs font-medium text-gray-600 mb-1.5">Date</div>
-                      <input type="date" className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={date} onChange={e=>setDate(e.target.value)} />
+                      <div className="text-sm font-semibold text-gray-600 mb-1.5">Date</div>
+                      <input type="date" className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={date} onChange={e=>setDate(e.target.value)} />
                     </>
                   )}
                 </div>
@@ -2114,9 +2114,9 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                       />
                     ) : (
                       <>
-                        <div className="text-xs font-medium text-gray-600 mb-1.5">Primary Contact Name</div>
+                        <div className="text-sm font-semibold text-gray-600 mb-1.5">Primary Contact Name</div>
                         <select
-                          className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+                          className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
                           value={contactModalOpen ? '__new__' : selectedContactId}
                           onChange={(e) => handleContactSelectChange(e.target.value)}
                         >
@@ -2146,9 +2146,9 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                       />
                     ) : (
                       <>
-                        <div className="text-xs font-medium text-gray-600 mb-1.5">Primary Contact Phone</div>
+                        <div className="text-sm font-semibold text-gray-600 mb-1.5">Primary Contact Phone</div>
                         <input
-                          className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+                          className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
                           value={primary.phone || ''}
                           onChange={(e) => setPrimary((p) => ({ ...p, phone: e.target.value }))}
                         />
@@ -2170,9 +2170,9 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                       />
                     ) : (
                       <>
-                        <div className="text-xs font-medium text-gray-600 mb-1.5">Primary Contact Email</div>
+                        <div className="text-sm font-semibold text-gray-600 mb-1.5">Primary Contact Email</div>
                         <input
-                          className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+                          className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
                           value={primary.email || ''}
                           onChange={(e) => setPrimary((p) => ({ ...p, email: e.target.value }))}
                         />
@@ -2197,15 +2197,15 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                     />
                   ) : (
                     <>
-                      <div className="text-xs font-medium text-gray-600 mb-1.5">Other Notes</div>
+                      <div className="text-sm font-semibold text-gray-600 mb-1.5">Other Notes</div>
                       <div className="relative">
                         <textarea
-                          className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 pr-12 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+                          className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 pr-12 text-sm text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
                           value={otherNotes}
                           onChange={(e) => setOtherNotes(e.target.value)}
                           maxLength={250}
                         />
-                        <div className="absolute right-2.5 top-1.5 text-[10px] text-gray-500">{otherNotes.length}/250</div>
+                        <div className="absolute right-2.5 top-1.5 text-xs text-gray-600">{otherNotes.length}/250</div>
                       </div>
                     </>
                   )}
@@ -2217,9 +2217,9 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                       fieldHint={<AppFieldHint hint={PROPOSAL_FIELD_HINTS.showPictureKeyInPdf} />}
                     />
                   ) : (
-                    <div className={dsFieldLabelClass ?? 'text-xs font-medium text-gray-600 mb-1.5'}>Picture Key</div>
+                    <div className={dsFieldLabelClass ?? 'text-sm font-semibold text-gray-600 mb-1.5'}>Picture Key</div>
                   )}
-                  <div className={uiCx('space-y-1 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-2 text-xs text-gray-700', disabled && 'opacity-70')}>
+                  <div className={uiCx('space-y-1 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-2 text-sm text-gray-700', disabled && 'opacity-70')}>
                     {PICTURE_KEY_ITEMS.map((item) => (
                       <div key={item.emoji} className="flex items-start gap-1.5">
                         <span aria-hidden="true">{item.emoji}</span>
@@ -2235,10 +2235,10 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                         onChange={(checked) => setShowPictureKeyInPdf(checked)}
                         disabled={disabled}
                         fieldHint={PROPOSAL_FIELD_HINTS.showPictureKeyInPdf}
-                        className="text-xs"
+                        className="text-sm"
                       />
                     ) : (
-                      <label className={`flex items-center gap-1 text-xs text-gray-600 ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                      <label className={`flex items-center gap-1 text-sm text-gray-600 ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
                         <input
                           type="checkbox"
                           checked={showPictureKeyInPdf}
@@ -2262,7 +2262,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                         fieldHint={<AppFieldHint hint={PROPOSAL_FIELD_HINTS.frontCover} />}
                       />
                     ) : (
-                      <div className={dsFieldLabelClass ?? 'text-xs font-medium text-gray-600 mb-1.5'}>Front Cover Image</div>
+                      <div className={dsFieldLabelClass ?? 'text-sm font-semibold text-gray-600 mb-1.5'}>Front Cover Image</div>
                     )}
                     {!disabled &&
                       (designSystem ? (
@@ -2272,7 +2272,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                       ) : (
                         <button
                           type="button"
-                          className="rounded bg-gray-100 px-2 py-1 text-xs hover:bg-gray-200"
+                          className="rounded bg-gray-100 px-2 py-1 text-sm hover:bg-gray-200"
                           onClick={() => setPickerFor('cover')}
                         >
                           Choose
@@ -2296,7 +2296,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                         fieldHint={<AppFieldHint hint={PROPOSAL_FIELD_HINTS.insideCover} />}
                       />
                     ) : (
-                      <div className={dsFieldLabelClass ?? 'text-xs font-medium text-gray-600 mb-1.5'}>Inside Cover Image</div>
+                      <div className={dsFieldLabelClass ?? 'text-sm font-semibold text-gray-600 mb-1.5'}>Inside Cover Image</div>
                     )}
                     {!disabled &&
                       (designSystem ? (
@@ -2306,7 +2306,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                       ) : (
                         <button
                           type="button"
-                          className="rounded bg-gray-100 px-2 py-1 text-xs hover:bg-gray-200"
+                          className="rounded bg-gray-100 px-2 py-1 text-sm hover:bg-gray-200"
                           onClick={() => setPickerFor('page2')}
                         >
                           Choose
@@ -2443,7 +2443,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                         data-role="section-title"
                         data-sec={idx}
                         onFocus={() => setActiveSectionIndex(idx)}
-                        className={`min-w-[240px] flex-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                        className={`min-w-[240px] flex-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                         placeholder="Section title"
                         value={s.title || ''}
                         onChange={(e) => setSections((arr) => arr.map((x, i) => (i === idx ? { ...x, title: e.target.value } : x)))}
@@ -2454,7 +2454,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                   </div>
                   {!disabled && (
                     <div className="flex items-center gap-1">
-                      <button className="px-1.5 py-1 rounded text-gray-500 hover:text-gray-700 text-xs" title="Duplicate section" onClick={()=>{
+                      <button className="px-1.5 py-1 rounded text-gray-600 hover:text-gray-700 text-sm" title="Duplicate section" onClick={()=>{
                         setSections(arr=>{
                           const copy = JSON.parse(JSON.stringify(arr[idx]||{}));
                           copy.id = 'sec_'+Math.random().toString(36).slice(2);
@@ -2466,7 +2466,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                       }}>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 7h10v10H7V7Zm-2 2v10h10v2H5a2 2 0 0 1-2-2V9h2Zm6-6h8a2 2 0 0 1 2 2v8h-2V5H11V3Z"></path></svg>
                       </button>
-                      <button className="px-1.5 py-1 rounded text-gray-500 hover:text-red-600 text-xs" title="Remove section" onClick={async()=>{
+                      <button className="px-1.5 py-1 rounded text-gray-600 hover:text-red-600 text-sm" title="Remove section" onClick={async()=>{
                         const result = await confirm({ title:'Remove section', message:'Are you sure you want to remove this section?' });
                         if (result !== 'confirm') return;
                         setSections(arr=> arr.filter((_,i)=> i!==idx));
@@ -2508,7 +2508,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                     />
                   ) : (
                     <textarea
-                      className={`w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                      className={`w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                       rows={5}
                       placeholder="Section text"
                       value={s.text || ''}
@@ -2546,7 +2546,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                           <svg className="w-4 h-4 text-gray-400 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                           </svg>
-                          <span className="text-xs font-medium text-gray-700">+ Add Image</span>
+                          <span className="text-sm font-semibold text-gray-700">+ Add Image</span>
                         </button>
                       )}
                       {(s.images||[]).map((img:any, j:number)=> (
@@ -2719,7 +2719,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                           )}
                         </div>
                       ))}
-                      {!(s.images||[]).length && <div className="text-xs text-gray-600">No images</div>}
+                      {!(s.images||[]).length && <div className="text-sm text-gray-600">No images</div>}
                     </div>
                   </div>
                 )}
@@ -2830,20 +2830,20 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
             <div className="sticky top-0 z-30 bg-white/95 backdrop-blur mb-3 py-2 border-b">
               <div className="flex items-center gap-2">
                 <div className="ml-auto flex items-center gap-3">
-                  <div className="text-xs font-medium text-gray-600">PST (%)</div>
+                  <div className="text-sm font-semibold text-gray-600">PST (%)</div>
                   <input 
                     type="number" 
-                    className="rounded-lg border border-gray-300 bg-white px-2 py-1 w-20 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" 
+                    className="rounded-lg border border-gray-300 bg-white px-2 py-1 w-20 text-sm text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" 
                     value={pstRate} 
                     min={0} 
                     step={1} 
                     onChange={e=>setPstRate(Number(e.target.value||0))} 
                     disabled={disabled}
                   />
-                  <div className="text-xs font-medium text-gray-600">GST (%)</div>
+                  <div className="text-sm font-semibold text-gray-600">GST (%)</div>
                   <input 
                     type="number" 
-                    className="rounded-lg border border-gray-300 bg-white px-2 py-1 w-20 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" 
+                    className="rounded-lg border border-gray-300 bg-white px-2 py-1 w-20 text-sm text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" 
                     value={gstRate} 
                     min={0} 
                     step={1} 
@@ -2857,11 +2857,11 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
           {disabled && (
             <div className="mb-4 flex items-center gap-4">
               <div className="flex items-center gap-2">
-                <div className="text-xs font-medium text-gray-600">PST (%)</div>
+                <div className="text-sm font-semibold text-gray-600">PST (%)</div>
                 <div className="text-sm font-semibold text-gray-900">{pstRate}%</div>
               </div>
               <div className="flex items-center gap-2">
-                <div className="text-xs font-medium text-gray-600">GST (%)</div>
+                <div className="text-sm font-semibold text-gray-600">GST (%)</div>
                 <div className="text-sm font-semibold text-gray-900">{gstRate}%</div>
               </div>
             </div>
@@ -2894,7 +2894,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                   {isNotApproved && (
                     <div className="flex flex-shrink-0 flex-col items-start gap-1">
                       <span
-                        className="inline-flex w-fit items-center rounded-md border border-amber-300 bg-amber-200 px-2 py-1 text-[10px] font-semibold text-amber-900"
+                        className="inline-flex w-fit items-center rounded-md border border-amber-300 bg-amber-200 px-2 py-1 text-xs font-semibold text-amber-900"
                         title="This item was not approved during conversion and is read-only."
                       >
                         Not approved
@@ -2902,7 +2902,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                       {canApprovePricing ? (
                         <button
                           type="button"
-                          className="rounded-md border border-dashed border-gray-400 bg-transparent px-1.5 py-0.5 text-[10px] font-medium leading-tight text-gray-600 hover:border-gray-500 hover:bg-gray-50 hover:text-gray-800"
+                          className="rounded-md border border-dashed border-gray-400 bg-transparent px-1.5 py-0.5 text-xs font-semibold leading-tight text-gray-600 hover:border-gray-500 hover:bg-gray-50 hover:text-gray-800"
                           onClick={async () => {
                             const result = await confirm({
                               title: 'Approve pricing item',
@@ -2925,7 +2925,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                       {canDeletePricing ? (
                         <button
                           type="button"
-                          className="rounded-md border border-dashed border-red-400 bg-transparent px-1.5 py-0.5 text-[10px] font-medium leading-tight text-red-700 hover:border-red-500 hover:bg-red-50 hover:text-red-800"
+                          className="rounded-md border border-dashed border-red-400 bg-transparent px-1.5 py-0.5 text-xs font-semibold leading-tight text-red-700 hover:border-red-500 hover:bg-red-50 hover:text-red-800"
                           onClick={async () => {
                             const result = await confirm({
                               title: 'Delete pricing item',
@@ -2957,7 +2957,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                         >
                           {divisionInfo.icon}
                         </div>
-                        <div className="pointer-events-none absolute bottom-full left-0 z-[9999] mb-1 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white opacity-0 shadow-lg transition-opacity group-hover/divicon:opacity-100">
+                        <div className="pointer-events-none absolute bottom-full left-0 z-[9999] mb-1 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-sm text-white opacity-0 shadow-lg transition-opacity group-hover/divicon:opacity-100">
                           {divisionInfo.label}
                           <div className="absolute -bottom-1 left-2 h-2 w-2 rotate-45 bg-gray-900" />
                         </div>
@@ -2967,7 +2967,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                         <div className="flex h-8 w-8 cursor-pointer items-center justify-center text-lg transition-transform hover:scale-110">
                           {divisionInfo.icon}
                         </div>
-                        <div className="pointer-events-none absolute bottom-full left-0 z-[9999] mb-1 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white opacity-0 shadow-lg transition-opacity group-hover/divicon:opacity-100">
+                        <div className="pointer-events-none absolute bottom-full left-0 z-[9999] mb-1 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-sm text-white opacity-0 shadow-lg transition-opacity group-hover/divicon:opacity-100">
                           {divisionInfo.label}
                           <div className="absolute -bottom-1 left-2 h-2 w-2 rotate-45 bg-gray-900" />
                         </div>
@@ -2989,7 +2989,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                     />
                   ) : (
                     <input
-                      className={`min-w-0 flex-1 w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${rowDisabled ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                      className={`min-w-0 flex-1 w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${rowDisabled ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                       placeholder="Name"
                       value={c.name}
                       onChange={(e) => {
@@ -3083,7 +3083,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                   ) : (
                     <input
                       type="text"
-                      className={`min-w-[100px] max-w-[140px] flex-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${rowDisabled ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                      className={`min-w-[100px] max-w-[140px] flex-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${rowDisabled ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                       placeholder="Price"
                       value={c.price}
                       onChange={(e) => {
@@ -3116,7 +3116,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                           min={1}
                           step={1}
                           className={uiCx(
-                            'min-w-0 flex-1 appearance-none border-0 bg-transparent px-2 text-xs text-gray-900 [-moz-appearance:textfield] focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none',
+                            'min-w-0 flex-1 appearance-none border-0 bg-transparent px-2 text-sm text-gray-900 [-moz-appearance:textfield] focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none',
                             rowDisabled && 'cursor-not-allowed bg-gray-100',
                             PROPOSAL_INLINE_CONTROL_H,
                             'py-0',
@@ -3171,7 +3171,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                         type="number"
                         min={1}
                         step={1}
-                        className={`min-w-0 flex-1 appearance-none border-0 px-2 py-1.5 text-xs text-gray-900 [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${rowDisabled ? 'cursor-not-allowed bg-gray-100' : ''}`}
+                        className={`min-w-0 flex-1 appearance-none border-0 px-2 py-1.5 text-sm text-gray-900 [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${rowDisabled ? 'cursor-not-allowed bg-gray-100' : ''}`}
                         placeholder="Qty"
                         value={c.quantity || '1'}
                         onChange={(e) => {
@@ -3224,7 +3224,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                     >
                       <div
                         className={uiCx(
-                          'box-border flex w-full min-w-[100px] items-center justify-end rounded-lg border border-gray-300 bg-gray-50 px-2 text-right text-xs font-medium text-gray-700',
+                          'box-border flex w-full min-w-[100px] items-center justify-end rounded-lg border border-gray-300 bg-gray-50 px-2 text-right text-sm font-semibold text-gray-700',
                           PROPOSAL_INLINE_CONTROL_H,
                           rowDisabled && 'cursor-not-allowed',
                         )}
@@ -3236,7 +3236,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                     <div
                       className={`min-w-[100px] max-w-[140px] shrink-0 rounded-lg border border-gray-300 bg-gray-50 px-2 py-1.5 ${rowDisabled ? 'cursor-not-allowed' : ''}`}
                     >
-                      <div className="overflow-hidden whitespace-nowrap text-right text-xs font-medium text-gray-700">
+                      <div className="overflow-hidden whitespace-nowrap text-right text-sm font-semibold text-gray-700">
                         ${formatAccounting(lineTotal)}
                       </div>
                     </div>
@@ -3277,7 +3277,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                     ) : (
                       <>
                         <label
-                          className={`flex flex-shrink-0 items-center gap-1 text-xs ${rowDisabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                          className={`flex flex-shrink-0 items-center gap-1 text-sm ${rowDisabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}
                         >
                           <input
                             type="checkbox"
@@ -3291,7 +3291,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                           <span className="whitespace-nowrap text-gray-700">PST</span>
                         </label>
                         <label
-                          className={`flex flex-shrink-0 items-center gap-1 text-xs ${rowDisabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                          className={`flex flex-shrink-0 items-center gap-1 text-sm ${rowDisabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}
                         >
                           <input
                             type="checkbox"
@@ -3305,7 +3305,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                           <span className="whitespace-nowrap text-gray-700">GST</span>
                         </label>
                         <label
-                          className={`flex flex-shrink-0 items-center gap-1 text-xs ${rowDisabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                          className={`flex flex-shrink-0 items-center gap-1 text-sm ${rowDisabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}
                           title="Show unit price in PDF"
                         >
                           <input
@@ -3441,7 +3441,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                     ))}
                   </div>
                   {c.area_value != null && c.area_value > 0 && c.area_unit && (
-                    <div className="text-[10px] text-gray-500 truncate px-0.5">
+                    <div className="text-xs text-gray-600 truncate px-0.5">
                       Area: {Number(c.area_value).toLocaleString('en-US', { maximumFractionDigits: 2 })}{' '}
                       {formatAreaLabel(c.area_unit)}
                     </div>
@@ -3476,8 +3476,8 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                   }
                 }}
               >
-                <div className="mr-2 text-lg text-gray-400">+</div>
-                <div className="text-xs font-medium text-gray-700">Add Pricing Item</div>
+                <div className="mr-2 text-lg text-gray-600">+</div>
+                <div className="text-sm font-semibold text-gray-700">Add Pricing Item</div>
               </button>
             ))}
 
@@ -3485,7 +3485,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
           <div className="mt-6">
             <div className={dsSectionShell}>
               {/* Summary Header - Gray */}
-              <div className={designSystem ? uiCx('bg-gray-500 px-4 py-3 text-xs font-semibold text-white') : 'bg-gray-500 p-2.5 text-white font-semibold text-xs'}>
+              <div className={designSystem ? uiCx('bg-gray-500 px-4 py-3 text-sm font-semibold text-white') : 'bg-gray-500 p-2.5 text-white font-semibold text-sm'}>
                 Summary
               </div>
               
@@ -3507,11 +3507,11 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                     />
                   ) : (
                     <>
-                      <label className="text-[10px] font-medium uppercase tracking-wide text-gray-500">Area display unit</label>
+                      <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">Area display unit</label>
                       <select
                         value={areaDisplayUnit}
                         onChange={(e) => setAreaDisplayUnit(e.target.value as AreaUnit)}
-                        className="mt-1 block w-full max-w-[120px] rounded border border-gray-300 px-2 py-1.5 text-xs"
+                        className="mt-1 block w-full max-w-[120px] rounded border border-gray-300 px-2 py-1.5 text-sm"
                       >
                         <option value="sqft">sqft</option>
                         <option value="m2">m²</option>
@@ -3528,13 +3528,13 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                   {/* Left Card */}
                   <div className="rounded-lg border border-gray-200 bg-white p-3">
                     <div className="space-y-1">
-                      <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="text-xs font-semibold">Total Direct Costs</span><span className="text-xs font-semibold">${totalNum.toFixed(2)}</span></div>
+                      <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="text-sm font-semibold">Total Direct Costs</span><span className="text-sm font-semibold">${totalNum.toFixed(2)}</span></div>
                       {showPstInPdf && pst > 0 && (
-                        <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="text-xs">PST ({pstRate}%)</span><span className="text-xs">${pst.toFixed(2)}</span></div>
+                        <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="text-sm">PST ({pstRate}%)</span><span className="text-sm">${pst.toFixed(2)}</span></div>
                       )}
-                      <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="text-xs font-semibold">Sub-total</span><span className="text-xs font-semibold">${subtotal.toFixed(2)}</span></div>
+                      <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="text-sm font-semibold">Sub-total</span><span className="text-sm font-semibold">${subtotal.toFixed(2)}</span></div>
                       {totalAreaSqft > 0 && (
-                        <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="text-xs">Total Area (Pricing)</span><span className="text-xs font-medium">{fromSqft(totalAreaSqft, areaDisplayUnit).toLocaleString('en-US', { maximumFractionDigits: 2 })} {formatAreaLabel(areaDisplayUnit)}</span></div>
+                        <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="text-sm">Total Area (Pricing)</span><span className="text-sm font-semibold">{fromSqft(totalAreaSqft, areaDisplayUnit).toLocaleString('en-US', { maximumFractionDigits: 2 })} {formatAreaLabel(areaDisplayUnit)}</span></div>
                       )}
                     </div>
                   </div>
@@ -3542,11 +3542,11 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                   <div className="rounded-lg border border-gray-200 bg-white p-3">
                     <div className="space-y-1">
                       {showGstInPdf && gst > 0 && (
-                        <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="text-xs">GST ({gstRate}%)</span><span className="text-xs">${gst.toFixed(2)}</span></div>
+                        <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="text-sm">GST ({gstRate}%)</span><span className="text-sm">${gst.toFixed(2)}</span></div>
                       )}
-                      <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="text-xs font-semibold">Final Total (with GST)</span><span className="text-xs font-semibold">${grandTotal.toFixed(2)}</span></div>
+                      <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="text-sm font-semibold">Final Total (with GST)</span><span className="text-sm font-semibold">${grandTotal.toFixed(2)}</span></div>
                       {costPerArea != null && totalAreaSqft > 0 && (
-                        <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="text-xs">Cost per Area</span><span className="text-xs font-medium">${costPerArea.toFixed(2)}/{formatAreaLabel(areaDisplayUnit)}</span></div>
+                        <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="text-sm">Cost per Area</span><span className="text-sm font-semibold">${costPerArea.toFixed(2)}/{formatAreaLabel(areaDisplayUnit)}</span></div>
                       )}
                     </div>
                   </div>
@@ -3559,7 +3559,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
           {!showOnlyPricing && (
           <div className="mt-3 space-y-2">
             <div className="flex items-center gap-2">
-              <div className="text-xs font-semibold">Total: <span className="text-gray-600">${formatAccounting(grandTotal)}</span></div>
+              <div className="text-sm font-semibold">Total: <span className="text-gray-600">${formatAccounting(grandTotal)}</span></div>
               {designSystem ? (
                 <AppCheckbox
                   label="Show Total in PDF"
@@ -3567,10 +3567,10 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                   onChange={(checked) => setShowTotalInPdf(checked)}
                   disabled={disabled}
                   fieldHint={PROPOSAL_FIELD_HINTS.showTotalInPdf}
-                  className="text-xs"
+                  className="text-sm"
                 />
               ) : (
-                <label className={`flex items-center gap-1 text-xs text-gray-600 ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                <label className={`flex items-center gap-1 text-sm text-gray-600 ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
                   <input 
                     type="checkbox" 
                     checked={showTotalInPdf} 
@@ -3615,9 +3615,9 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         <div className={dsSectionShell}>
           {showOnlyPricing ? (
             <>
-              <div className={designSystem ? uiCx('border-b border-gray-100 px-4 py-3', uiTypography.sectionTitle) : 'bg-slate-200 p-2.5 text-gray-900 font-semibold text-xs'}>Optional Services</div>
+              <div className={designSystem ? uiCx('border-b border-gray-100 px-4 py-3', uiTypography.sectionTitle) : 'bg-slate-200 p-2.5 text-gray-900 font-semibold text-sm'}>Optional Services</div>
               <div className={dsSectionBodyPad}>
-                <div className="text-[10px] text-gray-600 mb-2">Optional services the client can accept or decline. These do not affect the proposal total.</div>
+                <div className="text-xs text-gray-600 mb-2">Optional services the client can accept or decline. These do not affect the proposal total.</div>
                 <div className="space-y-2">
                   {optionalServices.map((s, i)=> {
                     const isNotApproved = isBidding === false && s.approved === false;
@@ -3633,7 +3633,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                       {isNotApproved && (
                         <div className="flex flex-shrink-0 flex-col items-start gap-1">
                           <span
-                            className="inline-flex w-fit items-center rounded-md border border-amber-300 bg-amber-200 px-2 py-1 text-[10px] font-semibold text-amber-900"
+                            className="inline-flex w-fit items-center rounded-md border border-amber-300 bg-amber-200 px-2 py-1 text-xs font-semibold text-amber-900"
                             title="This service was not approved during conversion and is read-only."
                           >
                             Not approved
@@ -3641,7 +3641,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                           {canApprovePricing ? (
                             <button
                               type="button"
-                              className="rounded-md border border-dashed border-gray-400 bg-transparent px-1.5 py-0.5 text-[10px] font-medium leading-tight text-gray-600 hover:border-gray-500 hover:bg-gray-50 hover:text-gray-800"
+                              className="rounded-md border border-dashed border-gray-400 bg-transparent px-1.5 py-0.5 text-xs font-semibold leading-tight text-gray-600 hover:border-gray-500 hover:bg-gray-50 hover:text-gray-800"
                               onClick={async () => {
                                 const result = await confirm({
                                   title: 'Approve optional service',
@@ -3663,7 +3663,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                           {canDeletePricing ? (
                             <button
                               type="button"
-                              className="rounded-md border border-dashed border-red-400 bg-transparent px-1.5 py-0.5 text-[10px] font-medium leading-tight text-red-700 hover:border-red-500 hover:bg-red-50 hover:text-red-800"
+                              className="rounded-md border border-dashed border-red-400 bg-transparent px-1.5 py-0.5 text-xs font-semibold leading-tight text-red-700 hover:border-red-500 hover:bg-red-50 hover:text-red-800"
                               onClick={async () => {
                                 const result = await confirm({
                                   title: 'Delete optional service',
@@ -3755,8 +3755,8 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                         </>
                       ) : (
                         <>
-                          <input className={`min-w-0 flex-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${rowDisabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Service" value={s.service} onChange={e=>{ const v=e.target.value; setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, service:v }: x)); }} disabled={rowDisabled} readOnly={rowDisabled} />
-                          <input type="text" className={`min-w-[100px] max-w-[140px] shrink-0 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${rowDisabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Price" value={s.price} onChange={e=>{ const v = parseAccounting(e.target.value); setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, price:v }: x)); }} onBlur={!rowDisabled ? ()=> setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, price: formatAccounting(x.price) }: x)) : undefined} disabled={rowDisabled} readOnly={rowDisabled} />
+                          <input className={`min-w-0 flex-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${rowDisabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Service" value={s.service} onChange={e=>{ const v=e.target.value; setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, service:v }: x)); }} disabled={rowDisabled} readOnly={rowDisabled} />
+                          <input type="text" className={`min-w-[100px] max-w-[140px] shrink-0 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${rowDisabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Price" value={s.price} onChange={e=>{ const v = parseAccounting(e.target.value); setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, price:v }: x)); }} onBlur={!rowDisabled ? ()=> setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, price: formatAccounting(x.price) }: x)) : undefined} disabled={rowDisabled} readOnly={rowDisabled} />
                           {!rowDisabled && (
                             <button
                               type="button"
@@ -3800,8 +3800,8 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                         className="mt-3 flex w-full items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-white p-2.5 text-center transition-all hover:border-brand-red hover:bg-gray-50 disabled:opacity-60"
                         onClick={() => setOptionalServices((arr) => [...arr, { service: '', price: '' }])}
                       >
-                        <div className="mr-2 text-lg text-gray-400">+</div>
-                        <div className="text-xs font-medium text-gray-700">Add Service</div>
+                        <div className="mr-2 text-lg text-gray-600">+</div>
+                        <div className="text-sm font-semibold text-gray-700">Add Service</div>
                       </button>
                     ))}
                 </div>
@@ -3825,7 +3825,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
               </div>
               {sectionsExpanded.optionalServices && (
               <div className={dsSectionBodyPad}>
-              <div className="text-[10px] text-gray-600 mb-2">If no services are added, the "Optional Services" section will be hidden in the PDF.</div>
+              <div className="text-xs text-gray-600 mb-2">If no services are added, the "Optional Services" section will be hidden in the PDF.</div>
                 <div className="space-y-2">
                   {optionalServices.map((s, i)=> {
                     const isNotApproved = isBidding === false && s.approved === false;
@@ -3841,7 +3841,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                       {isNotApproved && (
                         <div className="flex flex-shrink-0 flex-col items-start gap-1">
                           <span
-                            className="inline-flex w-fit items-center rounded-md border border-amber-300 bg-amber-200 px-2 py-1 text-[10px] font-semibold text-amber-900"
+                            className="inline-flex w-fit items-center rounded-md border border-amber-300 bg-amber-200 px-2 py-1 text-xs font-semibold text-amber-900"
                             title="This service was not approved during conversion and is read-only."
                           >
                             Not approved
@@ -3849,7 +3849,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                           {canApprovePricing ? (
                             <button
                               type="button"
-                              className="rounded-md border border-dashed border-gray-400 bg-transparent px-1.5 py-0.5 text-[10px] font-medium leading-tight text-gray-600 hover:border-gray-500 hover:bg-gray-50 hover:text-gray-800"
+                              className="rounded-md border border-dashed border-gray-400 bg-transparent px-1.5 py-0.5 text-xs font-semibold leading-tight text-gray-600 hover:border-gray-500 hover:bg-gray-50 hover:text-gray-800"
                               onClick={async () => {
                                 const result = await confirm({
                                   title: 'Approve optional service',
@@ -3871,7 +3871,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                           {canDeletePricing ? (
                             <button
                               type="button"
-                              className="rounded-md border border-dashed border-red-400 bg-transparent px-1.5 py-0.5 text-[10px] font-medium leading-tight text-red-700 hover:border-red-500 hover:bg-red-50 hover:text-red-800"
+                              className="rounded-md border border-dashed border-red-400 bg-transparent px-1.5 py-0.5 text-xs font-semibold leading-tight text-red-700 hover:border-red-500 hover:bg-red-50 hover:text-red-800"
                               onClick={async () => {
                                 const result = await confirm({
                                   title: 'Delete optional service',
@@ -3963,8 +3963,8 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                         </>
                       ) : (
                         <>
-                          <input className={`min-w-0 flex-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${rowDisabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Service" value={s.service} onChange={e=>{ const v=e.target.value; setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, service:v }: x)); }} disabled={rowDisabled} readOnly={rowDisabled} />
-                          <input type="text" className={`min-w-[100px] max-w-[140px] shrink-0 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${rowDisabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Price" value={s.price} onChange={e=>{ const v = parseAccounting(e.target.value); setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, price:v }: x)); }} onBlur={!rowDisabled ? ()=> setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, price: formatAccounting(x.price) }: x)) : undefined} disabled={rowDisabled} readOnly={rowDisabled} />
+                          <input className={`min-w-0 flex-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${rowDisabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Service" value={s.service} onChange={e=>{ const v=e.target.value; setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, service:v }: x)); }} disabled={rowDisabled} readOnly={rowDisabled} />
+                          <input type="text" className={`min-w-[100px] max-w-[140px] shrink-0 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${rowDisabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Price" value={s.price} onChange={e=>{ const v = parseAccounting(e.target.value); setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, price:v }: x)); }} onBlur={!rowDisabled ? ()=> setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, price: formatAccounting(x.price) }: x)) : undefined} disabled={rowDisabled} readOnly={rowDisabled} />
                           {!rowDisabled && (
                             <button
                               type="button"
@@ -4008,8 +4008,8 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                         className="mt-3 flex w-full items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-white p-2.5 text-center transition-all hover:border-brand-red hover:bg-gray-50 disabled:opacity-60"
                         onClick={() => setOptionalServices((arr) => [...arr, { service: '', price: '' }])}
                       >
-                        <div className="mr-2 text-lg text-gray-400">+</div>
-                        <div className="text-xs font-medium text-gray-700">Add Service</div>
+                        <div className="mr-2 text-lg text-gray-600">+</div>
+                        <div className="text-sm font-semibold text-gray-700">Add Service</div>
                       </button>
                     ))}
                 </div>
@@ -4074,9 +4074,9 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                   />
                 ) : (
                   <>
-                    <div className="text-xs font-medium text-gray-600 mb-1.5">Select Terms Template (optional)</div>
+                    <div className="text-sm font-semibold text-gray-600 mb-1.5">Select Terms Template (optional)</div>
                     <select
-                      className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+                      className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
                       value={selectedTermsTemplateId}
                       onChange={(e) => {
                         const templateId = e.target.value;
@@ -4115,10 +4115,10 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
               ) : (
                 <>
                   {!disabled && termsTemplates.length > 0 && (
-                    <div className="text-xs font-medium text-gray-600 mb-1.5">Terms Text</div>
+                    <div className="text-sm font-semibold text-gray-600 mb-1.5">Terms Text</div>
                   )}
                   <textarea 
-                  className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" 
+                  className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" 
                   value={terms} 
                   onChange={e=>setTerms(e.target.value)} 
                   rows={12}
@@ -4157,11 +4157,11 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
           >
             {/* Left: Status indicator */}
             {hasUnsavedChanges ? (
-              <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2.5 py-1 font-medium">
+              <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2.5 py-1 font-semibold">
                 Unsaved changes
               </div>
             ) : (
-              <div className="text-xs text-green-700 bg-green-50 border border-green-200 rounded-full px-2.5 py-1 font-medium">
+              <div className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-full px-2.5 py-1 font-semibold">
                 All changes saved
               </div>
             )}
@@ -4214,7 +4214,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                   ) : (
                     <button
                       type="button"
-                      className="rounded-lg bg-green-600 px-3 py-1 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-green-700"
+                      className="rounded-lg bg-green-600 px-3 py-1 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-green-700"
                       onClick={async () => {
                       const result = await confirm({
                         title: 'Submit for Approval',
@@ -4251,7 +4251,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
               {/* Approval status badge for Change Orders */}
               {isChangeOrder && isApproved && (
                 <>
-                  <div className="px-2.5 py-1 text-xs rounded-lg bg-green-100 text-green-700 font-medium">
+                  <div className="px-2.5 py-1 text-sm rounded-lg bg-green-100 text-green-700 font-semibold">
                     ✓ Approved
                   </div>
                   <div className="w-px h-4 bg-gray-300"></div>
@@ -4259,7 +4259,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
               )}
               {isChangeOrder && approvalStatus === 'pending' && (
                 <>
-                  <div className="px-2.5 py-1 text-xs rounded-lg bg-yellow-100 text-yellow-700 font-medium">
+                  <div className="px-2.5 py-1 text-sm rounded-lg bg-yellow-100 text-yellow-700 font-semibold">
                     ⏳ Pending Approval
                   </div>
                   <div className="w-px h-4 bg-gray-300"></div>
@@ -4279,7 +4279,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                 ) : (
                   <button
                     type="button"
-                    className="rounded-lg bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-200"
+                    className="rounded-lg bg-gray-100 px-2.5 py-1 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-200"
                     onClick={handleClearProposal}
                     disabled={effectiveDisabled}
                   >
@@ -4331,7 +4331,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                   ) : (
                     <button
                       type="button"
-                      className="rounded-lg bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-200"
+                      className="rounded-lg bg-gray-100 px-2.5 py-1 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-200"
                       onClick={async () => {
                         const result = await confirm({
                           title: isChangeOrder ? 'Delete Change Order' : 'Delete Proposal',
@@ -4379,7 +4379,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                   </AppButton>
                 ) : (
                   <button 
-                    className={`px-3 py-1 text-xs rounded-lg text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm ${
+                    className={`px-3 py-1 text-sm rounded-lg text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm ${
                       hasUnsavedChanges
                         ? 'bg-gradient-to-r from-brand-red to-[#ee2b2b] hover:from-red-700 hover:to-red-800' 
                         : 'bg-gray-400 hover:bg-gray-500'
@@ -4408,7 +4408,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                   ) : (
                     <button
                       type="button"
-                      className="rounded-lg bg-gray-400 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-gray-500 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="rounded-lg bg-gray-400 px-3 py-1 text-sm font-semibold text-white transition-colors hover:bg-gray-500 disabled:cursor-not-allowed disabled:opacity-60"
                       disabled={isGenerating}
                       onClick={handleGenerate}
                     >
@@ -4437,7 +4437,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                       </AppButton>
                     ) : (
                       <a
-                        className="rounded-lg bg-gray-400 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-gray-500"
+                        className="rounded-lg bg-gray-400 px-3 py-1 text-sm font-semibold text-white transition-colors hover:bg-gray-500"
                         href={downloadUrl}
                         download="ProjectProposal.pdf"
                       >
@@ -4457,7 +4457,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                   ) : (
                     <button
                       type="button"
-                      className="cursor-not-allowed rounded-lg bg-gray-200 px-3 py-1 text-xs font-medium text-gray-600"
+                      className="cursor-not-allowed rounded-lg bg-gray-200 px-3 py-1 text-sm font-semibold text-gray-600"
                       title="PDF is outdated. Generate again to enable download"
                       disabled
                     >
@@ -4636,7 +4636,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                 </div>
                 <div className="grid items-start gap-3 p-4 md:grid-cols-5">
                   <div className="md:col-span-2">
-                    <div className="mb-1 text-[11px] uppercase text-gray-500">Contact Photo</div>
+                    <div className="mb-1 text-xs uppercase text-gray-600">Contact Photo</div>
                     <button
                       type="button"
                       onClick={() => {
@@ -4650,7 +4650,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                   </div>
                   <div className="grid grid-cols-2 gap-2 md:col-span-3">
                     <div className="col-span-2">
-                      <label className="text-xs text-gray-600">
+                      <label className="text-sm text-gray-600">
                         Name <span className="text-red-600">*</span>
                       </label>
                       <input
@@ -4662,23 +4662,23 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                         }}
                       />
                       {contactNameError && !newContactName.trim() && (
-                        <div className="mt-1 text-[11px] text-red-600">This field is required</div>
+                        <div className="mt-1 text-xs text-red-600">This field is required</div>
                       )}
                     </div>
                     <div>
-                      <label className="text-xs text-gray-600">Role/Title</label>
+                      <label className="text-sm text-gray-600">Role/Title</label>
                       <input className="w-full rounded border px-3 py-2" value={newContactRole} onChange={(e) => setNewContactRole(e.target.value)} />
                     </div>
                     <div>
-                      <label className="text-xs text-gray-600">Department</label>
+                      <label className="text-sm text-gray-600">Department</label>
                       <input className="w-full rounded border px-3 py-2" value={newContactDept} onChange={(e) => setNewContactDept(e.target.value)} />
                     </div>
                     <div>
-                      <label className="text-xs text-gray-600">Email</label>
+                      <label className="text-sm text-gray-600">Email</label>
                       <input className="w-full rounded border px-3 py-2" value={newContactEmail} onChange={(e) => setNewContactEmail(e.target.value)} />
                     </div>
                     <div>
-                      <label className="text-xs text-gray-600">Phone</label>
+                      <label className="text-sm text-gray-600">Phone</label>
                       <input
                         className="w-full rounded border px-3 py-2"
                         value={newContactPhone}
@@ -4686,7 +4686,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                       />
                     </div>
                     <div>
-                      <label className="text-xs text-gray-600">Ext.</label>
+                      <label className="text-sm text-gray-600">Ext.</label>
                       <input
                         className="w-full rounded border px-3 py-2"
                         value={newContactPhoneExtension}
@@ -4694,7 +4694,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                       />
                     </div>
                     <div>
-                      <label className="text-xs text-gray-600">Primary</label>
+                      <label className="text-sm text-gray-600">Primary</label>
                       <div className="mt-2 flex items-center gap-2">
                         <input
                           type="checkbox"
@@ -4703,7 +4703,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                           disabled={!contacts || contacts.length === 0}
                           className="rounded disabled:cursor-not-allowed disabled:opacity-50"
                         />
-                        <span className="text-xs text-gray-600">
+                        <span className="text-sm text-gray-600">
                           {(!contacts || contacts.length === 0) ? 'Primary contact' : 'Set as primary contact'}
                         </span>
                       </div>
@@ -4870,7 +4870,7 @@ function DivisionSelectionModal({
               }
             >
               <span className="text-2xl">{div.icon}</span>
-              <span className={designSystem ? uiCx(uiTypography.helper, 'text-center font-medium') : 'text-xs font-medium text-gray-900 text-center'}>
+              <span className={designSystem ? uiCx(uiTypography.helper, 'text-center font-semibold') : 'text-sm font-semibold text-gray-900 text-center'}>
                 {div.label}
               </span>
             </button>
@@ -4899,7 +4899,7 @@ function DivisionSelectionModal({
           className="flex max-h-[80vh] w-full max-w-md flex-col overflow-hidden rounded-xl bg-white shadow-xl"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="flex items-center justify-between bg-slate-200 p-2.5 text-xs font-semibold text-gray-900">
+          <div className="flex items-center justify-between bg-slate-200 p-2.5 text-sm font-semibold text-gray-900">
             <span>Select Division</span>
             <button type="button" onClick={onClose} className="text-gray-600 hover:text-gray-900 transition-colors">
               <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -4947,7 +4947,7 @@ function SectionTypeSelectionModal({
           }
         >
           <span className="text-2xl">{section.icon}</span>
-          <span className={designSystem ? uiCx(uiTypography.helper, 'text-center font-medium') : 'text-xs font-medium text-gray-900 text-center'}>
+          <span className={designSystem ? uiCx(uiTypography.helper, 'text-center font-semibold') : 'text-sm font-semibold text-gray-900 text-center'}>
             {section.label}
           </span>
         </button>
@@ -4970,7 +4970,7 @@ function SectionTypeSelectionModal({
           className="flex w-full max-w-md flex-col overflow-hidden rounded-xl bg-white shadow-xl"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="flex items-center justify-between bg-slate-200 p-2.5 text-xs font-semibold text-gray-900">
+          <div className="flex items-center justify-between bg-slate-200 p-2.5 text-sm font-semibold text-gray-900">
             <span>Select Section Type</span>
             <button type="button" onClick={onClose} className="text-gray-600 hover:text-gray-900 transition-colors">
               <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

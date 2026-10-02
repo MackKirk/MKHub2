@@ -1369,7 +1369,7 @@ export default function InventorySuppliers() {
                   className="h-full w-full object-cover"
                   alt={viewing.name}
                 />
-                <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-xs font-medium text-white opacity-0 transition-opacity group-hover:opacity-100">
+                <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-sm font-semibold text-white opacity-0 transition-opacity group-hover:opacity-100">
                   Change
                 </div>
               </button>
@@ -1430,7 +1430,7 @@ export default function InventorySuppliers() {
               ) : (
                 <div>
                       {loadingProducts ? (
-                        <div className="flex items-center justify-center py-12 text-gray-500">
+                        <div className="flex items-center justify-center py-12 text-gray-600">
                           Loading products...
                         </div>
                       ) : supplierProducts && supplierProducts.length > 0 ? (
@@ -1440,9 +1440,9 @@ export default function InventorySuppliers() {
                               onClick={() => setNewProductModalOpen(true)}
                               className="border-2 border-dashed border-gray-300 rounded-lg p-3 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex flex-col items-center justify-center min-h-[200px]"
                             >
-                              <div className="text-4xl text-gray-400 mb-2">+</div>
-                              <div className="font-medium text-sm text-gray-700">New Product</div>
-                              <div className="text-xs text-gray-500 mt-1">Add new product to {viewing.name}</div>
+                              <div className="text-4xl text-gray-600 mb-2">+</div>
+                              <div className="font-semibold text-sm text-gray-700">New Product</div>
+                              <div className="text-sm text-gray-600 mt-1">Add new product to {viewing.name}</div>
                             </button>
                           )}
                           {supplierProducts.map((product: any) => (
@@ -1471,30 +1471,30 @@ export default function InventorySuppliers() {
                                   style={{ display: product.image_base64 ? 'none' : 'block' }}
                                 />
                               </div>
-                              <div className="font-medium text-sm mb-1 line-clamp-2">{product.name}</div>
+                              <div className="font-semibold text-sm mb-1 line-clamp-2">{product.name}</div>
                               {product.category && (
-                                <div className="text-xs text-gray-500 mb-1">{product.category}</div>
+                                <div className="text-sm text-gray-600 mb-1">{product.category}</div>
                               )}
-                              <div className="text-xs text-red-600 font-semibold mt-auto">
+                              <div className="text-sm text-red-600 font-semibold mt-auto">
                                 ${Number(product.price || 0).toFixed(2)}
                               </div>
                               {product.unit && (
-                                <div className="text-xs text-gray-500">Unit: {product.unit}</div>
+                                <div className="text-sm text-gray-600">Unit: {product.unit}</div>
                               )}
                             </button>
                           ))}
                         </div>
                       ) : (
-                        <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+                        <div className="flex flex-col items-center justify-center py-12 text-gray-600">
                           <div className="mb-4">No products found for this supplier</div>
                           {(canEditSupplierProductsTab || canEditProducts) && (
                             <button
                               onClick={() => setNewProductModalOpen(true)}
                               className="border-2 border-dashed border-gray-300 rounded-lg p-6 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex flex-col items-center justify-center w-64"
                             >
-                              <div className="text-4xl text-gray-400 mb-2">+</div>
-                              <div className="font-medium text-sm text-gray-700">New Product</div>
-                              <div className="text-xs text-gray-500 mt-1">Add new product to {viewing.name}</div>
+                              <div className="text-4xl text-gray-600 mb-2">+</div>
+                              <div className="font-semibold text-sm text-gray-700">New Product</div>
+                              <div className="text-sm text-gray-600 mt-1">Add new product to {viewing.name}</div>
                             </button>
                           )}
                         </div>
@@ -1740,10 +1740,10 @@ export default function InventorySuppliers() {
                 <div className={uiCx(uiLayout.actionsRow, 'items-center gap-2')}>
                   <AppInput placeholder="0" value={productCovSqs} onChange={(e) => onProductCoverageChange('sqs', e.target.value)} />
                   <span className={uiTypography.body}>SQS</span>
-                  <span className="text-gray-400">=</span>
+                  <span className="text-gray-600">=</span>
                   <AppInput placeholder="0" value={productCovFt2} onChange={(e) => onProductCoverageChange('ft2', e.target.value)} />
                   <span className={uiTypography.body}>ft²</span>
-                  <span className="text-gray-400">=</span>
+                  <span className="text-gray-600">=</span>
                   <AppInput placeholder="0" value={productCovM2} onChange={(e) => onProductCoverageChange('m2', e.target.value)} />
                   <span className={uiTypography.body}>m²</span>
                 </div>
@@ -2015,32 +2015,32 @@ export default function InventorySuppliers() {
                     <div className="grid grid-cols-2 gap-4">
                       {viewingProduct.unit && (
                         <div className="bg-white border rounded-lg p-4">
-                          <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">Sell Unit</div>
+                          <div className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-1">Sell Unit</div>
                           <div className="text-sm text-gray-900">{viewingProduct.unit}</div>
                         </div>
                       )}
                       {viewingProduct.unit_type && (
                         <div className="bg-white border rounded-lg p-4">
-                          <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">Unit Type</div>
+                          <div className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-1">Unit Type</div>
                           <div className="text-sm text-gray-900">{viewingProduct.unit_type}</div>
                         </div>
                       )}
                     </div>
                     {typeof viewingProduct.price === 'number' && (
                       <div className="bg-white border rounded-lg p-4">
-                        <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">Price</div>
+                        <div className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-1">Price</div>
                         <div className="text-sm text-gray-900 font-semibold">${viewingProduct.price.toFixed(2)}</div>
                       </div>
                     )}
                     {viewingProduct.units_per_package && (
                       <div className="bg-white border rounded-lg p-4">
-                        <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">Units per Package</div>
+                        <div className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-1">Units per Package</div>
                         <div className="text-sm text-gray-900">{viewingProduct.units_per_package}</div>
                       </div>
                     )}
                     {(viewingProduct.coverage_sqs || viewingProduct.coverage_ft2 || viewingProduct.coverage_m2) && (
                       <div className="bg-white border rounded-lg p-4">
-                        <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-2">Coverage Area</div>
+                        <div className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Coverage Area</div>
                         <div className="grid grid-cols-3 gap-2 text-sm text-gray-700">
                           <div>SQS: {viewingProduct.coverage_sqs||'-'}</div>
                           <div>ft²: {viewingProduct.coverage_ft2||'-'}</div>
@@ -2050,7 +2050,7 @@ export default function InventorySuppliers() {
                     )}
                     {viewingProduct.description && (
                       <div className="bg-white border rounded-lg p-4">
-                        <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-2">Description</div>
+                        <div className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Description</div>
                         <div className="text-sm text-gray-700 whitespace-pre-wrap">{viewingProduct.description}</div>
                       </div>
                     )}
@@ -2060,7 +2060,7 @@ export default function InventorySuppliers() {
                       return (
                         <div className="bg-white border rounded-lg p-4">
                           <div className="flex items-center justify-between">
-                            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Technical Manual</div>
+                            <div className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Technical Manual</div>
                             <a
                               href={absoluteUrl}
                               target="_blank"
@@ -2070,7 +2070,7 @@ export default function InventorySuppliers() {
                                   e.preventDefault();
                                 }
                               }}
-                              className="px-3 py-1.5 rounded-lg text-sm font-medium bg-brand-red text-white hover:bg-[#aa1212] transition-colors flex items-center gap-2"
+                              className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-brand-red text-white hover:bg-[#aa1212] transition-colors flex items-center gap-2"
                             >
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
@@ -2085,15 +2085,15 @@ export default function InventorySuppliers() {
                 ) : productTab === 'usage' ? (
                   <div className="rounded-xl border bg-white p-4">
                     {loadingUsage ? (
-                      <div className="py-8 text-center text-sm text-gray-500">Loading usage data...</div>
+                      <div className="py-8 text-center text-sm text-gray-600">Loading usage data...</div>
                     ) : productUsage.length === 0 ? (
-                      <div className="py-8 text-center text-sm text-gray-500">
+                      <div className="py-8 text-center text-sm text-gray-600">
                         <div className="text-base mb-2">📦</div>
                         <div>This product is not being used in any estimates.</div>
                       </div>
                     ) : (
                       <div className="space-y-3">
-                        <div className="text-xs text-gray-600 mb-4">
+                        <div className="text-sm text-gray-600 mb-4">
                           This product is being used in {productUsage.length} estimate{productUsage.length !== 1 ? 's' : ''}:
                         </div>
                         <div className="border rounded-lg divide-y">
@@ -2102,41 +2102,41 @@ export default function InventorySuppliers() {
                               {usage.status === 'orphaned' ? (
                                 <div className="flex items-center justify-between">
                                   <div>
-                                    <div className="text-sm font-medium text-gray-900">Orphaned Estimate</div>
-                                    <div className="text-xs text-gray-500">Estimate #{usage.estimate_id} (deleted)</div>
+                                    <div className="text-sm font-semibold text-gray-900">Orphaned Estimate</div>
+                                    <div className="text-sm text-gray-600">Estimate #{usage.estimate_id} (deleted)</div>
                                   </div>
-                                  <span className="px-2 py-0.5 text-[10px] rounded bg-amber-100 text-amber-800">Orphaned</span>
+                                  <span className="px-2 py-0.5 text-xs rounded bg-amber-100 text-amber-800">Orphaned</span>
                                 </div>
                               ) : usage.status === 'project_deleted' || usage.project_deleted ? (
                                 <div className="flex items-center justify-between">
                                   <div className="flex-1">
-                                    <div className="text-sm font-medium text-gray-900">{usage.project_name || 'Project Deleted'}</div>
-                                    <div className="text-xs text-gray-500">Estimate #{usage.estimate_id} - Project was deleted</div>
+                                    <div className="text-sm font-semibold text-gray-900">{usage.project_name || 'Project Deleted'}</div>
+                                    <div className="text-sm text-gray-600">Estimate #{usage.estimate_id} - Project was deleted</div>
                                     {usage.created_at && (
-                                      <div className="text-[10px] text-gray-400 mt-1">
+                                      <div className="text-xs text-gray-600 mt-1">
                                         Created: {new Date(usage.created_at).toLocaleDateString()}
                                       </div>
                                     )}
                                   </div>
-                                  <span className="px-2 py-0.5 text-[10px] rounded bg-red-100 text-red-800">Project Deleted</span>
+                                  <span className="px-2 py-0.5 text-xs rounded bg-red-100 text-red-800">Project Deleted</span>
                                 </div>
                               ) : (
                                 <div className="flex items-center justify-between">
                                   <div className="flex-1">
                                     {usage.project_name ? (
                                       <>
-                                        <div className="text-sm font-medium text-gray-900">{usage.project_name}</div>
+                                        <div className="text-sm font-semibold text-gray-900">{usage.project_name}</div>
                                         {usage.client_name && (
-                                          <div className="text-xs text-gray-500">Client: {usage.client_name}</div>
+                                          <div className="text-sm text-gray-600">Client: {usage.client_name}</div>
                                         )}
                                         {usage.created_at && (
-                                          <div className="text-[10px] text-gray-400 mt-1">
+                                          <div className="text-xs text-gray-600 mt-1">
                                             Created: {new Date(usage.created_at).toLocaleDateString()}
                                           </div>
                                         )}
                                       </>
                                     ) : (
-                                      <div className="text-xs text-gray-500">No project associated</div>
+                                      <div className="text-sm text-gray-600">No project associated</div>
                                     )}
                                   </div>
                                   {usage.project_id && !usage.project_deleted && (
@@ -2147,7 +2147,7 @@ export default function InventorySuppliers() {
                                         setProductModalOpen(false);
                                         setViewingProduct(null);
                                       }}
-                                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-brand-red text-white hover:bg-[#aa1212] transition-colors"
+                                      className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-brand-red text-white hover:bg-[#aa1212] transition-colors"
                                     >
                                       View Project
                                     </button>
@@ -2164,7 +2164,7 @@ export default function InventorySuppliers() {
                   <div className="rounded-xl border bg-white p-4">
                     {Array.isArray(relatedList) && relatedList.length ? (
                       <div className="space-y-3">
-                        <div className="text-xs text-gray-600 mb-4">
+                        <div className="text-sm text-gray-600 mb-4">
                           This product is related to {relatedList.length} product{relatedList.length !== 1 ? 's' : ''}:
                         </div>
                         <div className="border rounded-lg divide-y">
@@ -2176,12 +2176,12 @@ export default function InventorySuppliers() {
                                 alt={r.name}
                               />
                               <div className="flex-1 min-w-0">
-                                <div className="text-sm font-medium text-gray-900">{r.name}</div>
+                                <div className="text-sm font-semibold text-gray-900">{r.name}</div>
                                 {r.supplier_name && (
-                                  <div className="text-xs text-gray-500">Supplier: {r.supplier_name}</div>
+                                  <div className="text-sm text-gray-600">Supplier: {r.supplier_name}</div>
                                 )}
                                 {typeof r.price === 'number' && (
-                                  <div className="text-xs text-brand-red font-semibold mt-0.5">
+                                  <div className="text-sm text-brand-red font-semibold mt-0.5">
                                     ${r.price.toFixed(2)}
                                   </div>
                                 )}
@@ -2190,7 +2190,7 @@ export default function InventorySuppliers() {
                                 <button
                                   type="button"
                                   onClick={() => deleteRelation(viewingProduct.id, r.id)}
-                                  className="px-2 py-1 rounded-lg text-xs font-medium bg-red-100 text-red-700 hover:bg-red-200 flex-shrink-0"
+                                  className="px-2 py-1 rounded-lg text-sm font-semibold bg-red-100 text-red-700 hover:bg-red-200 flex-shrink-0"
                                 >
                                   Remove
                                 </button>
@@ -2202,21 +2202,21 @@ export default function InventorySuppliers() {
                           <button
                             type="button"
                             onClick={() => handleAddRelated(viewingProduct.id)}
-                            className="w-full mt-4 px-3 py-1.5 rounded-lg text-sm font-medium bg-brand-red text-white hover:bg-[#aa1212] transition-colors"
+                            className="w-full mt-4 px-3 py-1.5 rounded-lg text-sm font-semibold bg-brand-red text-white hover:bg-[#aa1212] transition-colors"
                           >
                             + Add Related Product
                           </button>
                         )}
                       </div>
                     ) : (
-                      <div className="py-8 text-center text-sm text-gray-500">
+                      <div className="py-8 text-center text-sm text-gray-600">
                         <div className="text-base mb-2">🔗</div>
                         <div>This product has no related products.</div>
                         {canEditProductRelated && (
                           <button
                             type="button"
                             onClick={() => handleAddRelated(viewingProduct.id)}
-                            className="mt-4 px-3 py-1.5 rounded-lg text-sm font-medium bg-brand-red text-white hover:bg-[#aa1212] transition-colors"
+                            className="mt-4 px-3 py-1.5 rounded-lg text-sm font-semibold bg-brand-red text-white hover:bg-[#aa1212] transition-colors"
                           >
                             + Add Related Product
                           </button>
@@ -2264,7 +2264,7 @@ export default function InventorySuppliers() {
                 placeholder="Search or select supplier…"
               />
               {editProductSupplierError && !editProductSupplier.trim() && (
-                <p className="text-[11px] text-red-600">This field is required</p>
+                <p className="text-xs text-red-600">This field is required</p>
               )}
             </div>
             <AppInput
@@ -2382,14 +2382,14 @@ export default function InventorySuppliers() {
                     onChange={(e) => onEditProductCoverageChange('sqs', e.target.value)}
                   />
                   <span className={uiTypography.body}>SQS</span>
-                  <span className="text-gray-400">=</span>
+                  <span className="text-gray-600">=</span>
                   <AppInput
                     placeholder="0"
                     value={editProductCovFt2}
                     onChange={(e) => onEditProductCoverageChange('ft2', e.target.value)}
                   />
                   <span className={uiTypography.body}>ft²</span>
-                  <span className="text-gray-400">=</span>
+                  <span className="text-gray-600">=</span>
                   <AppInput
                     placeholder="0"
                     value={editProductCovM2}
@@ -2556,17 +2556,17 @@ function SupplierSortableRow({ s, onOpen }: { s: Supplier; onOpen: () => void })
           alt={s.name}
         />
         <div className="flex min-w-0 flex-col justify-center">
-          <div className={uiCx(uiTypography.sectionTitle, 'truncate text-xs')}>{s.name}</div>
+          <div className={uiCx(uiTypography.sectionTitle, 'truncate text-sm')}>{s.name}</div>
           {s.address_line1 ? (
-            <div className={uiCx(uiTypography.helper, 'truncate text-[10px]')}>{s.address_line1}</div>
+            <div className={uiCx(uiTypography.helper, 'truncate text-xs')}>{s.address_line1}</div>
           ) : null}
         </div>
       </div>
       <div className="flex min-w-0 items-center">
-        <span className={uiCx(uiTypography.body, 'truncate text-xs')}>{s.email || '—'}</span>
+        <span className={uiCx(uiTypography.body, 'truncate text-sm')}>{s.email || '—'}</span>
       </div>
       <div className="flex min-w-0 items-center">
-        <span className={uiCx(uiTypography.body, 'truncate text-xs')}>{s.phone ? formatPhone(s.phone) : '—'}</span>
+        <span className={uiCx(uiTypography.body, 'truncate text-sm')}>{s.phone ? formatPhone(s.phone) : '—'}</span>
       </div>
     </AppSortableEntityListRow>
   );

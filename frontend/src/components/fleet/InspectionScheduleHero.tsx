@@ -41,7 +41,7 @@ export function InspectionScheduleHero({ schedule, asset, assetPhotoUrl, onViewA
             {assetPhotoUrl ? (
               <img src={assetPhotoUrl} alt={asset?.name || 'Vehicle'} className="h-full w-full object-cover" />
             ) : (
-              <div className="flex h-full w-full items-center justify-center text-gray-400">
+              <div className="flex h-full w-full items-center justify-center text-gray-600">
                 <Truck className="h-12 w-12" strokeWidth={1.5} aria-hidden />
               </div>
             )}
@@ -64,7 +64,7 @@ export function InspectionScheduleHero({ schedule, asset, assetPhotoUrl, onViewA
             </AppBadge>
           </FleetHeroStat>
           <FleetHeroStat label="Category">
-            <span className="text-xs font-semibold text-gray-900">
+            <span className="text-sm font-semibold text-gray-900">
               {CATEGORY_LABELS[schedule.category] ?? schedule.category}
             </span>
           </FleetHeroStat>
@@ -74,17 +74,17 @@ export function InspectionScheduleHero({ schedule, asset, assetPhotoUrl, onViewA
             </AppBadge>
           </FleetHeroStat>
           <FleetHeroStat label="Vehicle">
-            <span className="truncate text-xs font-semibold text-gray-900" title={vehicleLabel}>
+            <span className="truncate text-sm font-semibold text-gray-900" title={vehicleLabel}>
               {vehicleLabel}
             </span>
           </FleetHeroStat>
           <FleetHeroStat label="Scheduled">
-            <span className="text-xs font-semibold text-gray-900">
+            <span className="text-sm font-semibold text-gray-900">
               {formatDateLocal(new Date(schedule.scheduled_at))}
             </span>
           </FleetHeroStat>
           <FleetHeroStat label="Created">
-            <span className="text-xs font-semibold text-gray-900">
+            <span className="text-sm font-semibold text-gray-900">
               {schedule.created_at ? new Date(schedule.created_at).toLocaleDateString() : '—'}
             </span>
           </FleetHeroStat>

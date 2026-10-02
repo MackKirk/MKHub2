@@ -154,12 +154,12 @@ export default function SubcontractorSimpleSignature({ projectId, disabled, onUp
         onTouchEnd={end}
       />
       <div className="flex gap-2">
-        <button type="button" className="px-2 py-1 text-xs border rounded" onClick={clear} disabled={disabled || uploading}>
+        <button type="button" className="px-2 py-1 text-sm border rounded" onClick={clear} disabled={disabled || uploading}>
           Clear
         </button>
         <button
           type="button"
-          className="px-2 py-1 text-xs rounded bg-gray-900 text-white disabled:opacity-50"
+          className="px-2 py-1 text-sm rounded bg-gray-900 text-white disabled:opacity-50"
           onClick={save}
           disabled={disabled || uploading || !hasInk}
         >

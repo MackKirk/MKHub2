@@ -207,9 +207,9 @@ export default function ProjectProposalTab({
 
   const formContent =
     selectedTab === 'create-change-order' ? (
-      <div className={uiCx(designSystem ? uiTypography.helper : 'text-center text-gray-500', 'py-6 text-center')}>
-        <p className="mb-3 text-xs">Click the &quot;+ Create Change Order&quot; tab to create a new Change Order.</p>
-        <p className="text-[10px]">The Change Order will be created with General Information from the original Proposal.</p>
+      <div className={uiCx(designSystem ? uiTypography.helper : 'text-center text-gray-600', 'py-6 text-center')}>
+        <p className="mb-3 text-sm">Click the &quot;+ Create Change Order&quot; tab to create a new Change Order.</p>
+        <p className="text-xs">The Change Order will be created with General Information from the original Proposal.</p>
       </div>
     ) : isLoadingProposal && selectedProposal ? (
       <div className="h-20 animate-pulse rounded bg-gray-100" />
@@ -309,10 +309,10 @@ export default function ProjectProposalTab({
                   key={tab.key}
                   type="button"
                   onClick={() => setSelectedTab(tab.key)}
-                  className={`whitespace-nowrap border-b-2 px-2 py-2 text-xs font-semibold ${
+                  className={`whitespace-nowrap border-b-2 px-2 py-2 text-sm font-semibold ${
                     selectedTab === tab.key
                       ? 'border-brand-red text-brand-red'
-                      : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                      : 'border-transparent text-gray-600 hover:border-gray-300 hover:text-gray-700'
                   }`}
                 >
                   {tab.label}

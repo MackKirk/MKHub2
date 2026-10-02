@@ -209,7 +209,7 @@ export default function TrainingAdmin() {
                 {course.description ? (
                   <p className={uiCx(uiTypography.body, 'mb-3 line-clamp-2 text-gray-600')}>{course.description}</p>
                 ) : (
-                  <p className={uiCx(uiTypography.helper, 'mb-3 italic text-gray-400')}>No description</p>
+                  <p className={uiCx(uiTypography.helper, 'mb-3 italic text-gray-600')}>No description</p>
                 )}
                 <div
                   className={uiCx(

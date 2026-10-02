@@ -916,11 +916,11 @@ export default function ProjectTimesheetTab({
     }
     switch (status) {
       case 'approved':
-        return <span className="px-1.5 py-0.5 rounded text-xs bg-green-100 text-green-800">Approved</span>;
+        return <span className="px-1.5 py-0.5 rounded text-sm bg-green-100 text-green-800">Approved</span>;
       case 'pending':
-        return <span className="px-1.5 py-0.5 rounded text-xs bg-yellow-100 text-yellow-800">Pending</span>;
+        return <span className="px-1.5 py-0.5 rounded text-sm bg-yellow-100 text-yellow-800">Pending</span>;
       case 'rejected':
-        return <span className="px-1.5 py-0.5 rounded text-xs bg-red-100 text-red-800">Rejected</span>;
+        return <span className="px-1.5 py-0.5 rounded text-sm bg-red-100 text-red-800">Rejected</span>;
       default:
         return null;
     }
@@ -1073,10 +1073,10 @@ export default function ProjectTimesheetTab({
     }
     return (
       <div className="flex items-center gap-1.5">
-        <button onClick={() => openEditEntry(e)} className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 hover:bg-gray-200">
+        <button onClick={() => openEditEntry(e)} className="px-1.5 py-0.5 rounded text-xs font-semibold bg-gray-100 hover:bg-gray-200">
           Edit
         </button>
-        <button onClick={() => deleteEntry(e.id)} className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 hover:bg-gray-200">
+        <button onClick={() => deleteEntry(e.id)} className="px-1.5 py-0.5 rounded text-xs font-semibold bg-gray-100 hover:bg-gray-200">
           Delete
         </button>
       </div>
@@ -1106,7 +1106,7 @@ export default function ProjectTimesheetTab({
   const renderClockReasonHelper = () => {
     if (isClockReasonRequired()) {
       return (
-        <span className="text-red-600 font-medium">
+        <span className="text-red-600 font-semibold">
           Required (minimum 15 characters): You must provide a reason when clocking in/out for another user.
         </span>
       );
@@ -1131,14 +1131,14 @@ export default function ProjectTimesheetTab({
     }
     if (isFutureTime) {
       return (
-        <span className="text-red-600 font-medium">
+        <span className="text-red-600 font-semibold">
           ⚠ Clock-in/out cannot be in the future. Please select a valid time.
         </span>
       );
     }
     if (isDifferentDayFromToday) {
       return (
-        <span className="text-orange-600 font-medium">
+        <span className="text-orange-600 font-semibold">
           ℹ Clock-in/out on a different day than today will require supervisor approval. Reason is optional.
         </span>
       );
@@ -1163,7 +1163,7 @@ export default function ProjectTimesheetTab({
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-green-800">✓ Location captured</div>
-                <div className="text-xs text-green-600 mt-1">Accuracy: {Math.round(gpsLocation.accuracy)}m</div>
+                <div className="text-sm text-green-600 mt-1">Accuracy: {Math.round(gpsLocation.accuracy)}m</div>
               </div>
               {designSystem ? (
                 <AppButton variant="secondary" size="sm" type="button" onClick={() => getCurrentLocation(selectedShift)} disabled={gpsLoading}>
@@ -1174,7 +1174,7 @@ export default function ProjectTimesheetTab({
                   type="button"
                   onClick={() => getCurrentLocation(selectedShift)}
                   disabled={gpsLoading}
-                  className="text-xs px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-50 bg-white text-sm font-medium text-gray-700"
+                  className="text-sm px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-50 bg-white text-sm font-semibold text-gray-700"
                 >
                   {gpsLoading ? 'Getting location...' : 'Try GPS again'}
                 </button>
@@ -1194,18 +1194,18 @@ export default function ProjectTimesheetTab({
               >
                 {geofenceStatus.inside ? (
                   <div>
-                    <div className="font-medium">✓ Great! You are at the right site to clock-in/out</div>
+                    <div className="font-semibold">✓ Great! You are at the right site to clock-in/out</div>
                     {geofenceStatus.distance !== undefined && (
-                      <div className="text-xs mt-1 opacity-75">
+                      <div className="text-sm mt-1 opacity-75">
                         Distance from site: {geofenceStatus.distance}m (within {geofenceStatus.radius}m radius)
                       </div>
                     )}
                   </div>
                 ) : (
                   <div>
-                    <div className="font-medium">ℹ You are not at the correct site</div>
+                    <div className="font-semibold">ℹ You are not at the correct site</div>
                     {geofenceStatus.distance !== undefined && (
-                      <div className="text-xs mt-1 opacity-75">
+                      <div className="text-sm mt-1 opacity-75">
                         Distance from site: {geofenceStatus.distance}m (within {geofenceStatus.radius}m radius). Location is captured but not mandatory.
                       </div>
                     )}
@@ -1215,8 +1215,8 @@ export default function ProjectTimesheetTab({
             )
           ) : (
             <div className={uiCx(uiRadius.card, 'p-3 bg-blue-50 border border-blue-200 text-sm text-blue-800 mt-2')}>
-              <div className="font-medium">ℹ Location captured (not mandatory)</div>
-              <div className="text-xs mt-1 opacity-75">
+              <div className="font-semibold">ℹ Location captured (not mandatory)</div>
+              <div className="text-sm mt-1 opacity-75">
                 No geofence is defined for this shift. Your location has been captured but is not mandatory for clock-in/out.
               </div>
             </div>
@@ -1268,14 +1268,14 @@ export default function ProjectTimesheetTab({
         clockIn && (clockIn.status === 'approved' || clockIn.status === 'pending') && (!clockOut || clockOut.status === 'rejected');
       const worker = employees?.find((emp: any) => emp.id === shift.worker_id);
       const cardClass = designSystem
-        ? uiCx(uiRadius.card, uiBorders.subtle, uiColors.surfaceSubtle, 'p-2 text-xs')
-        : 'p-1.5 border rounded bg-gray-50 text-[10px]';
+        ? uiCx(uiRadius.card, uiBorders.subtle, uiColors.surfaceSubtle, 'p-2 text-sm')
+        : 'p-1.5 border rounded bg-gray-50 text-xs';
 
       return (
         <div key={shift.id} className={cardClass}>
-          <div className={designSystem ? 'font-medium mb-1 text-gray-900 text-xs' : 'font-medium mb-1 text-gray-900'}>
+          <div className={designSystem ? 'font-semibold mb-1 text-gray-900 text-sm' : 'font-semibold mb-1 text-gray-900'}>
             {formatTime12h(shift.start_time)} - {formatTime12h(shift.end_time)}
-            {shift.job_name && <span className="ml-1 text-gray-500 font-normal">({shift.job_name})</span>}
+            {shift.job_name && <span className="ml-1 text-gray-600 font-normal">({shift.job_name})</span>}
             {worker && <span className="ml-1 text-gray-600 font-normal">- {worker.name || worker.username}</span>}
           </div>
           <div className="space-y-1 mb-2">
@@ -1291,10 +1291,10 @@ export default function ProjectTimesheetTab({
                         ? new Date(clockIn.time_selected_utc).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
                         : '--'}
                   </span>
-                  {clockIn.source === 'supervisor' && <span className="text-gray-500 text-[10px]">(Supervisor)</span>}
+                  {clockIn.source === 'supervisor' && <span className="text-gray-600 text-xs">(Supervisor)</span>}
                 </div>
               ) : (
-                <span className="text-gray-400">Not clocked in</span>
+                <span className="text-gray-600">Not clocked in</span>
               )}
             </div>
             <div className="flex items-center gap-1.5">
@@ -1309,10 +1309,10 @@ export default function ProjectTimesheetTab({
                         ? new Date(clockOut.time_selected_utc).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
                         : '--'}
                   </span>
-                  {clockOut.source === 'supervisor' && <span className="text-gray-500 text-[10px]">(Supervisor)</span>}
+                  {clockOut.source === 'supervisor' && <span className="text-gray-600 text-xs">(Supervisor)</span>}
                 </div>
               ) : (
-                <span className="text-gray-400">Not clocked out</span>
+                <span className="text-gray-600">Not clocked out</span>
               )}
             </div>
           </div>
@@ -1345,8 +1345,8 @@ export default function ProjectTimesheetTab({
                   <button
                     onClick={() => handleClockInOut(shift, 'in')}
                     disabled={!canClockIn || submitting}
-                    className={`flex-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
-                      canClockIn ? 'bg-green-600 hover:bg-green-700 text-white' : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                    className={`flex-1 px-1.5 py-0.5 rounded text-xs font-semibold transition-colors ${
+                      canClockIn ? 'bg-green-600 hover:bg-green-700 text-white' : 'bg-gray-200 text-gray-600 cursor-not-allowed'
                     }`}
                   >
                     Clock In
@@ -1354,8 +1354,8 @@ export default function ProjectTimesheetTab({
                   <button
                     onClick={() => handleClockInOut(shift, 'out')}
                     disabled={!canClockOut || submitting}
-                    className={`flex-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
-                      canClockOut ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                    className={`flex-1 px-1.5 py-0.5 rounded text-xs font-semibold transition-colors ${
+                      canClockOut ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-gray-200 text-gray-600 cursor-not-allowed'
                     }`}
                   >
                     Clock Out
@@ -1436,7 +1436,7 @@ export default function ProjectTimesheetTab({
           />
           <div className={uiCx('mt-4', uiSpacing.sectionStack)}>
             {isEditingRestricted && statusLabel && (
-              <div className={uiCx(uiRadius.card, 'border border-yellow-200 bg-yellow-50 p-3 text-xs text-yellow-800')}>
+              <div className={uiCx(uiRadius.card, 'border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-800')}>
                 <strong>Editing Restricted:</strong> This project has status &quot;{statusLabel}&quot; which does not allow editing timesheet.
               </div>
             )}
@@ -1452,7 +1452,7 @@ export default function ProjectTimesheetTab({
                   />
                   {shifts && shifts.length > 0 ? (
                     <div>
-                      <p className="text-xs font-medium text-gray-600 mb-1.5">Clock In/Out</p>
+                      <p className="text-sm font-semibold text-gray-600 mb-1.5">Clock In/Out</p>
                       <div className="space-y-1.5 max-h-64 overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
                         {renderShiftCards()}
                       </div>
@@ -1461,7 +1461,7 @@ export default function ProjectTimesheetTab({
                     <AppEmptyState className="py-4" title="No shifts scheduled for this date" />
                   )}
                   <div className="pt-2 border-t border-gray-100">
-                    <p className="text-xs text-gray-600 mb-1">Subcontractor Clock-In/Out</p>
+                    <p className="text-sm text-gray-600 mb-1">Subcontractor Clock-In/Out</p>
                     <AppButton variant="secondary" className="w-full" type="button" onClick={() => setSubcontractorClockOpen(true)}>
                       Subcontractor Clock-In/Out
                     </AppButton>
@@ -1489,8 +1489,8 @@ export default function ProjectTimesheetTab({
                     fieldHint="Employee\n\nShow all workers or filter entries to one employee."
                   />
                   <div className="flex items-center gap-2 ml-auto">
-                    <div className="text-xs text-gray-700">
-                      Total: {formatHoursMinutes(hoursTotalMinutes)} <span className="text-[10px] text-gray-500">(after break)</span>
+                    <div className="text-sm text-gray-700">
+                      Total: {formatHoursMinutes(hoursTotalMinutes)} <span className="text-xs text-gray-600">(after break)</span>
                     </div>
                     <AppButton variant="secondary" size="sm" type="button" onClick={csvExport}>
                       Export CSV
@@ -1632,7 +1632,7 @@ export default function ProjectTimesheetTab({
                 fieldHint="Reason\n\nRequired (min. 15 characters) when clocking in or out for another worker; optional for your own same-day events."
                 helperText={renderClockReasonHelper()}
               />
-              <p className="text-xs text-gray-500">
+              <p className="text-sm text-gray-600">
                 <strong>Privacy Notice:</strong> Your location is used only for attendance validation at the time of clock-in/out.
               </p>
             </div>
@@ -1653,7 +1653,7 @@ export default function ProjectTimesheetTab({
     <div className="space-y-4">
       {/* Editing Restricted Warning */}
       {isEditingRestricted && statusLabel && (
-        <div className="mb-3 p-3 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-800">
+        <div className="mb-3 p-3 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
           <strong>Editing Restricted:</strong> This project has status "{statusLabel}" which does not allow editing timesheet.
         </div>
       )}
@@ -1661,28 +1661,28 @@ export default function ProjectTimesheetTab({
       <div className="grid md:grid-cols-3 gap-3">
         <div className="rounded-xl border bg-white p-3">
         <h4 className="text-sm font-semibold mb-1.5">Add Time Entry</h4>
-        <div className="grid gap-1.5 text-xs">
-          <div><label className="text-[10px] text-gray-600 uppercase tracking-wide block mb-0.5">Date</label><input type="date" className="w-full border rounded px-2.5 py-1.5 text-xs" value={workDate} onChange={e=>setWorkDate(e.target.value)} /></div>
+        <div className="grid gap-1.5 text-sm">
+          <div><label className="text-xs text-gray-600 uppercase tracking-wide block mb-0.5">Date</label><input type="date" className="w-full border rounded px-2.5 py-1.5 text-sm" value={workDate} onChange={e=>setWorkDate(e.target.value)} /></div>
           
           {/* Clock In/Out for Shifts */}
           {shifts && shifts.length > 0 ? (
             <div>
-              <label className="text-[10px] text-gray-600 uppercase tracking-wide mb-1.5 block font-medium">Clock In/Out</label>
+              <label className="text-xs text-gray-600 uppercase tracking-wide mb-1.5 block font-semibold">Clock In/Out</label>
               <div className="space-y-1.5 max-h-64 overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
                 {renderShiftCards()}
               </div>
             </div>
           ) : (
-            <div className="text-[10px] text-gray-500 text-center py-3 bg-gray-50 rounded">
+            <div className="text-xs text-gray-600 text-center py-3 bg-gray-50 rounded">
               No shifts scheduled for this date
             </div>
           )}
           <div className="pt-2 mt-1.5 border-t border-gray-100">
-            <label className="text-[10px] text-gray-600 uppercase tracking-wide block mb-0.5">Subcontractor Clock-In/Out</label>
+            <label className="text-xs text-gray-600 uppercase tracking-wide block mb-0.5">Subcontractor Clock-In/Out</label>
             <button
               type="button"
               onClick={() => setSubcontractorClockOpen(true)}
-              className="w-full border rounded px-2.5 py-1.5 text-xs font-medium bg-white hover:bg-gray-50 text-gray-900"
+              className="w-full border rounded px-2.5 py-1.5 text-sm font-semibold bg-white hover:bg-gray-50 text-gray-900"
             >
               Subcontractor Clock-In/Out
             </button>
@@ -1692,16 +1692,16 @@ export default function ProjectTimesheetTab({
         
         <div className="md:col-span-2 rounded-xl border bg-white">
         <div className="p-2.5 flex items-center justify-between gap-2 flex-wrap">
-          <div className="flex items-center gap-1.5"><label className="text-[10px] text-gray-600 uppercase tracking-wide">Month</label><input type="month" className="border rounded px-2 py-1 text-xs" value={month} onChange={e=>{ setMonth(e.target.value); }} /></div>
-          <div className="flex items-center gap-1.5"><label className="text-[10px] text-gray-600 uppercase tracking-wide">Employee</label><select className="border rounded px-2 py-1 text-xs" value={userFilter} onChange={e=>setUserFilter(e.target.value)}><option value="">All</option>{sortByLabel(employees||[], (emp:any)=> (emp.name||emp.username||'').toString()).map((emp:any)=> <option key={emp.id} value={emp.id}>{emp.name||emp.username}</option>)}</select></div>
+          <div className="flex items-center gap-1.5"><label className="text-xs text-gray-600 uppercase tracking-wide">Month</label><input type="month" className="border rounded px-2 py-1 text-sm" value={month} onChange={e=>{ setMonth(e.target.value); }} /></div>
+          <div className="flex items-center gap-1.5"><label className="text-xs text-gray-600 uppercase tracking-wide">Employee</label><select className="border rounded px-2 py-1 text-sm" value={userFilter} onChange={e=>setUserFilter(e.target.value)}><option value="">All</option>{sortByLabel(employees||[], (emp:any)=> (emp.name||emp.username||'').toString()).map((emp:any)=> <option key={emp.id} value={emp.id}>{emp.name||emp.username}</option>)}</select></div>
           <div className="flex items-center gap-2">
-            <div className="text-xs text-gray-700">Total: {formatHoursMinutes(hoursTotalMinutes)} <span className="text-[10px] text-gray-500">(after break)</span></div>
-            <button onClick={csvExport} className="px-2 py-1 rounded text-xs font-medium bg-gray-100 hover:bg-gray-200">Export CSV</button>
+            <div className="text-sm text-gray-700">Total: {formatHoursMinutes(hoursTotalMinutes)} <span className="text-xs text-gray-600">(after break)</span></div>
+            <button onClick={csvExport} className="px-2 py-1 rounded text-sm font-semibold bg-gray-100 hover:bg-gray-200">Export CSV</button>
           </div>
         </div>
         <div className="border-t">
           {/* Header row */}
-          <div className="px-2.5 py-1.5 text-[10px] font-medium text-gray-600 border-b bg-gray-50 flex items-center gap-2">
+          <div className="px-2.5 py-1.5 text-[10px] font-semibold text-gray-600 border-b bg-gray-50 flex items-center gap-2">
             <div className="w-6"></div>
             <div className="w-24">Employee</div>
             <div className="w-12">Date</div>
@@ -1716,7 +1716,7 @@ export default function ProjectTimesheetTab({
           {displayEntries.length ? displayEntries.map((e: any) => {
             const { futIcon, offIcon, future, breakMin, hoursAfterBreak, timeDisplay, canModify } = getEntryRowMeta(e);
             return (
-              <div key={e.id} className="px-2.5 py-1.5 text-xs flex items-center justify-between">
+              <div key={e.id} className="px-2.5 py-1.5 text-sm flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   {e.user_avatar_file_id ? (
                     <img src={withFileAccessToken(`/files/${e.user_avatar_file_id}/thumbnail?w=64`)} className="w-5 h-5 rounded-full flex-shrink-0" alt="" />
@@ -1726,8 +1726,8 @@ export default function ProjectTimesheetTab({
                   <div className="w-24 text-gray-700 truncate">{e.user_name || ''}</div>
                   <div className="w-12 text-gray-600">{String(e.work_date).slice(5, 10)}</div>
                   <div className="w-20 text-gray-600">{timeDisplay}</div>
-                  <div className="w-20 font-medium">{formatHoursMinutes(hoursAfterBreak)}</div>
-                  <div className="w-16 font-medium">{breakMin > 0 ? `${breakMin}m` : '--'}</div>
+                  <div className="w-20 font-semibold">{formatHoursMinutes(hoursAfterBreak)}</div>
+                  <div className="w-16 font-semibold">{breakMin > 0 ? `${breakMin}m` : '--'}</div>
                   <div className="flex-1 text-gray-600 truncate min-w-0">{e.notes || ''}</div>
                   {(futIcon || offIcon) && <span title={future ? 'Future time' : 'Logged after day end'}>{futIcon}{offIcon}</span>}
                   {e.shift_deleted && (
@@ -1748,7 +1748,7 @@ export default function ProjectTimesheetTab({
                 {renderEntryActions(e, canModify)}
               </div>
             );
-          }) : <div className="p-2.5 text-xs text-gray-600">No time entries</div>}
+          }) : <div className="p-2.5 text-sm text-gray-600">No time entries</div>}
         </div>
         </div>
       </div>
@@ -1759,7 +1759,7 @@ export default function ProjectTimesheetTab({
             <h3 className="text-lg font-semibold">Edit Time Entry</h3>
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Start Time *</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Start Time *</label>
               <input
                 type="time"
                 value={editStartTime}
@@ -1770,7 +1770,7 @@ export default function ProjectTimesheetTab({
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">End Time *</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">End Time *</label>
               <input
                 type="time"
                 value={editEndTime}
@@ -1781,7 +1781,7 @@ export default function ProjectTimesheetTab({
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Break (minutes)</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Break (minutes)</label>
               <input
                 type="number"
                 min="0"
@@ -1795,7 +1795,7 @@ export default function ProjectTimesheetTab({
                 className="w-full border rounded px-3 py-2"
                 placeholder="0"
               />
-              <p className="text-xs text-gray-500 mt-1">Break time in minutes (will be deducted from total hours)</p>
+              <p className="text-sm text-gray-600 mt-1">Break time in minutes (will be deducted from total hours)</p>
             </div>
             
             <div className="flex justify-end gap-2 pt-4 border-t">
@@ -1837,7 +1837,7 @@ export default function ProjectTimesheetTab({
                   <h2 className="text-sm font-semibold text-gray-900">
                     Clock {clockType === 'in' ? 'In' : 'Out'}
                   </h2>
-                  <p className="text-xs text-gray-500 mt-0.5">
+                  <p className="text-sm text-gray-600 mt-0.5">
                     {clockType === 'in' ? 'Record start time for this shift' : 'Record end time and optional break'}
                   </p>
                 </div>
@@ -1848,7 +1848,7 @@ export default function ProjectTimesheetTab({
               <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
                 {/* Time selector (12h format with AM/PM) */}
                 <div>
-                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Time *</label>
+                  <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">Time *</label>
                   <div className="flex gap-2 items-center">
                     <select
                       value={selectedHour12}
@@ -1867,7 +1867,7 @@ export default function ProjectTimesheetTab({
                         </option>
                       ))}
                     </select>
-                    <span className="text-gray-500 font-medium">:</span>
+                    <span className="text-gray-600 font-semibold">:</span>
                     <select
                       value={selectedMinute}
                       onChange={(e) => {
@@ -1914,12 +1914,12 @@ export default function ProjectTimesheetTab({
                         onChange={(e) => setInsertBreakTime(e.target.checked)}
                         className="w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
                       />
-                      <span className="text-sm font-medium text-gray-700">Insert Break Time</span>
+                      <span className="text-sm font-semibold text-gray-700">Insert Break Time</span>
                     </label>
                     {insertBreakTime && (
                       <div className="ml-6 space-y-2">
                         <div className="flex gap-2 items-center">
-                          <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide w-12">Hours:</label>
+                          <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide w-12">Hours:</label>
                           <select
                             value={breakHours}
                             onChange={(e) => setBreakHours(e.target.value)}
@@ -1931,7 +1931,7 @@ export default function ProjectTimesheetTab({
                               </option>
                             ))}
                           </select>
-                          <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide w-12 ml-2">Minutes:</label>
+                          <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide w-12 ml-2">Minutes:</label>
                           <select
                             value={breakMinutes}
                             onChange={(e) => setBreakMinutes(e.target.value)}
@@ -1960,7 +1960,7 @@ export default function ProjectTimesheetTab({
                         <div className="flex items-center justify-between">
                           <div>
                             <div className="text-green-800">âœ“ Location captured</div>
-                            <div className="text-xs text-green-600 mt-1">
+                            <div className="text-sm text-green-600 mt-1">
                               Accuracy: {Math.round(gpsLocation.accuracy)}m
                             </div>
                           </div>
@@ -1968,7 +1968,7 @@ export default function ProjectTimesheetTab({
                             type="button"
                             onClick={() => getCurrentLocation(selectedShift)}
                             disabled={gpsLoading}
-                            className="text-xs px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-50 bg-white text-sm font-medium text-gray-700"
+                            className="text-sm px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-50 bg-white text-sm font-semibold text-gray-700"
                           >
                             {gpsLoading ? 'Getting location...' : 'Try GPS again'}
                           </button>
@@ -1983,18 +1983,18 @@ export default function ProjectTimesheetTab({
                           }`}>
                             {geofenceStatus.inside ? (
                               <div>
-                                <div className="font-medium">âœ“ Great! You are at the right site to clock-in/out</div>
+                                <div className="font-semibold">âœ“ Great! You are at the right site to clock-in/out</div>
                                 {geofenceStatus.distance !== undefined && (
-                                  <div className="text-xs mt-1 opacity-75">
+                                  <div className="text-sm mt-1 opacity-75">
                                     Distance from site: {geofenceStatus.distance}m (within {geofenceStatus.radius}m radius)
                                   </div>
                                 )}
                               </div>
                             ) : (
                               <div>
-                                <div className="font-medium">â„¹ You are not at the correct site</div>
+                                <div className="font-semibold">â„¹ You are not at the correct site</div>
                                 {geofenceStatus.distance !== undefined && (
-                                  <div className="text-xs mt-1 opacity-75">
+                                  <div className="text-sm mt-1 opacity-75">
                                     Distance from site: {geofenceStatus.distance}m (within {geofenceStatus.radius}m radius). Location is captured but not mandatory.
                                   </div>
                                 )}
@@ -2004,8 +2004,8 @@ export default function ProjectTimesheetTab({
                         )
                       ) : (
                         <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800 mt-2">
-                          <div className="font-medium">â„¹ Location captured (not mandatory)</div>
-                          <div className="text-xs mt-1 opacity-75">
+                          <div className="font-semibold">â„¹ Location captured (not mandatory)</div>
+                          <div className="text-sm mt-1 opacity-75">
                             No geofence is defined for this shift. Your location has been captured but is not mandatory for clock-in/out.
                           </div>
                         </div>
@@ -2031,7 +2031,7 @@ export default function ProjectTimesheetTab({
 
                 {/* Reason text */}
                 <div>
-                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
+                  <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">
                     Reason {
                       (() => {
                         const isWorkerOwner = currentUser && selectedShift?.worker_id && String(currentUser.id) === String(selectedShift.worker_id);
@@ -2049,7 +2049,7 @@ export default function ProjectTimesheetTab({
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm h-24 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
                     minLength={15}
                   />
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-sm text-gray-600 mt-1">
                     {(() => {
                       const isWorkerOwner = currentUser && selectedShift?.worker_id && String(currentUser.id) === String(selectedShift.worker_id);
                       const isSupervisorDoingForOther = isSupervisorOrAdmin && selectedShift && !isWorkerOwner;
@@ -2058,7 +2058,7 @@ export default function ProjectTimesheetTab({
 
                       if (isDoingForOther) {
                         return (
-                          <span className="text-red-600 font-medium">
+                          <span className="text-red-600 font-semibold">
                             Required (minimum 15 characters): You must provide a reason when clocking in/out for another user.
                           </span>
                         );
@@ -2087,14 +2087,14 @@ export default function ProjectTimesheetTab({
 
                       if (isFutureTime) {
                         return (
-                          <span className="text-red-600 font-medium">
+                          <span className="text-red-600 font-semibold">
                             âš  Clock-in/out cannot be in the future. Please select a valid time.
                           </span>
                         );
                       }
                       if (isDifferentDayFromToday) {
                         return (
-                          <span className="text-orange-600 font-medium">
+                          <span className="text-orange-600 font-semibold">
                             â„¹ Clock-in/out on a different day than today will require supervisor approval. Reason is optional.
                           </span>
                         );
@@ -2112,7 +2112,7 @@ export default function ProjectTimesheetTab({
                 </div>
 
                 {/* Privacy notice */}
-                <p className="text-xs text-gray-500 mt-2">
+                <p className="text-sm text-gray-600 mt-2">
                   <strong>Privacy Notice:</strong> Your location is used only for attendance validation at the time of clock-in/out.
                 </p>
               </div>
@@ -2124,7 +2124,7 @@ export default function ProjectTimesheetTab({
                 type="button"
                 onClick={closeClockModal}
                 disabled={submitting}
-                className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
+                className="px-3 py-1.5 rounded-lg text-sm font-semibold text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
               >
                 Cancel
               </button>

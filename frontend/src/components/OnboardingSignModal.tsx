@@ -314,7 +314,7 @@ function renderTemplateFieldPreview(
       typeof raw === 'string' ? raw : employeeInfoPreviewText(f, ep, email);
     return (
       <span
-        className="block w-full truncate text-center font-medium text-gray-900"
+        className="block w-full truncate text-center font-semibold text-gray-900"
         title={text || 'Edit in the panel'}
       >
         {text.trim() ? (
@@ -364,7 +364,7 @@ function renderTemplateFieldPreview(
     const t = /^\d{4}-\d{2}-\d{2}$/.test(raw.trim()) ? formatSignDateLong(raw.trim()) : raw.trim();
     if (t) {
       return (
-        <span className="block w-full truncate text-center font-medium text-gray-900" title={t}>
+        <span className="block w-full truncate text-center font-semibold text-gray-900" title={t}>
           {t}
         </span>
       );
@@ -382,7 +382,7 @@ function renderTemplateFieldPreview(
     const n = parseCurrencyAmount(raw);
     const label = n !== null ? formatCurrencyAmount(n) : raw;
     return (
-      <span className="block w-full truncate text-center font-medium text-gray-900" title={label}>
+      <span className="block w-full truncate text-center font-semibold text-gray-900" title={label}>
         {label}
       </span>
     );
@@ -392,7 +392,7 @@ function renderTemplateFieldPreview(
     const t = typeof v === 'string' ? v : '';
     if (!t.trim()) return null;
     return (
-      <span className="block w-full truncate text-center font-medium text-gray-900" title={t}>
+      <span className="block w-full truncate text-center font-semibold text-gray-900" title={t}>
         {t}
       </span>
     );
@@ -1000,7 +1000,7 @@ export default function OnboardingSignModal({ signItem, onClose, onSigned, endpo
         )}
       >
           {ctxLoading && (
-            <div className={uiCx(uiTypography.body, 'flex flex-1 items-center justify-center py-16 text-gray-500')}>
+            <div className={uiCx(uiTypography.body, 'flex flex-1 items-center justify-center py-16 text-gray-600')}>
               Loading signing options…
             </div>
           )}
@@ -1117,7 +1117,7 @@ export default function OnboardingSignModal({ signItem, onClose, onSigned, endpo
                       </p>
                       {unfilledCount > 0 ? (
                         <>
-                          <p className={uiCx(uiTypography.helper, 'text-gray-500')}>
+                          <p className={uiCx(uiTypography.helper, 'text-gray-600')}>
                             {unfilledCount} field{unfilledCount !== 1 ? 's' : ''} left
                           </p>
                           <AppButton type="button" size="sm" onClick={goToFirstField}>
@@ -1180,7 +1180,7 @@ export default function OnboardingSignModal({ signItem, onClose, onSigned, endpo
                           }
                         />
                       )}
-                      <p className="text-xs text-gray-500 leading-relaxed">
+                      <p className="text-sm text-gray-600 leading-relaxed">
                         Pre-filled from your profile; you can edit this before signing.
                       </p>
                     </div>
@@ -1244,7 +1244,7 @@ export default function OnboardingSignModal({ signItem, onClose, onSigned, endpo
                           }));
                         }}
                       />
-                      <p className="text-xs text-gray-500 leading-relaxed">
+                      <p className="text-sm text-gray-600 leading-relaxed">
                         Enter an amount in Canadian dollars (CAD). Formatting is applied when you leave the field.
                       </p>
                     </div>
@@ -1263,7 +1263,7 @@ export default function OnboardingSignModal({ signItem, onClose, onSigned, endpo
                       <div className="flex gap-1 border-b border-gray-200 pb-3">
                         <button
                           type="button"
-                          className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-[13px] ${
+                          className={`px-3 py-2 text-sm font-semibold transition-colors border-b-2 -mb-[13px] ${
                             templateSigMode === 'draw'
                               ? 'border-brand-red text-brand-red'
                               : 'border-transparent text-gray-600 hover:text-gray-900'
@@ -1274,7 +1274,7 @@ export default function OnboardingSignModal({ signItem, onClose, onSigned, endpo
                         </button>
                         <button
                           type="button"
-                          className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-[13px] ${
+                          className={`px-3 py-2 text-sm font-semibold transition-colors border-b-2 -mb-[13px] ${
                             templateSigMode === 'type'
                               ? 'border-brand-red text-brand-red'
                               : 'border-transparent text-gray-600 hover:text-gray-900'
@@ -1310,7 +1310,7 @@ export default function OnboardingSignModal({ signItem, onClose, onSigned, endpo
                       )}
                       <button
                         type="button"
-                        className="text-xs font-medium text-gray-600 hover:text-gray-900 underline underline-offset-2"
+                        className="text-sm font-semibold text-gray-600 hover:text-gray-900 underline underline-offset-2"
                         onClick={() => {
                           setFieldValues((v) => {
                             const n = { ...v };
@@ -1342,7 +1342,7 @@ export default function OnboardingSignModal({ signItem, onClose, onSigned, endpo
             <div className="flex gap-1 border-b border-gray-200 pb-3">
               <button
                 type="button"
-                className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-[13px] ${
+                className={`px-3 py-2 text-sm font-semibold transition-colors border-b-2 -mb-[13px] ${
                   mode === 'draw' ? 'border-brand-red text-brand-red' : 'border-transparent text-gray-600 hover:text-gray-900'
                 }`}
                 onClick={() => setMode('draw')}
@@ -1351,7 +1351,7 @@ export default function OnboardingSignModal({ signItem, onClose, onSigned, endpo
               </button>
               <button
                 type="button"
-                className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-[13px] ${
+                className={`px-3 py-2 text-sm font-semibold transition-colors border-b-2 -mb-[13px] ${
                   mode === 'type' ? 'border-brand-red text-brand-red' : 'border-transparent text-gray-600 hover:text-gray-900'
                 }`}
                 onClick={() => setMode('type')}
@@ -1390,7 +1390,7 @@ export default function OnboardingSignModal({ signItem, onClose, onSigned, endpo
             </div>
             <button
               type="button"
-              className="text-xs font-medium text-gray-600 hover:text-gray-900 underline underline-offset-2"
+              className="text-sm font-semibold text-gray-600 hover:text-gray-900 underline underline-offset-2"
               onClick={clearSig}
             >
               Clear signature

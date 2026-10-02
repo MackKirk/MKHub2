@@ -312,7 +312,7 @@ function LinkedValue({
         e.stopPropagation();
         onNavigate?.();
       }}
-      className={uiCx('inline-flex max-w-full items-center gap-1 font-medium text-brand-red hover:underline', className)}
+      className={uiCx('inline-flex max-w-full items-center gap-1 font-semibold text-brand-red hover:underline', className)}
     >
       <span className="truncate">{children}</span>
       <ExternalLink className="h-3 w-3 shrink-0 opacity-70" />
@@ -351,7 +351,7 @@ function CopyIdButton({ value, label = 'Copy' }: { value: string; label?: string
     <button
       type="button"
       title={label}
-      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-gray-500 hover:bg-gray-100 hover:text-gray-800"
+      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-gray-600 hover:bg-gray-100 hover:text-gray-800"
       onClick={(e) => {
         e.stopPropagation();
         void navigator.clipboard.writeText(value).then(() => {
@@ -387,7 +387,7 @@ function formatAuditEntityCell(log: AuditLogEntry, onNavigate?: () => void) {
             {primary}
           </LinkedValue>
         ) : (
-          <span className="truncate font-medium text-gray-900" title={primary}>
+          <span className="truncate font-semibold text-gray-900" title={primary}>
             {primary}
           </span>
         )}
@@ -426,7 +426,7 @@ function formatSystemUserCell(
 ) {
   const id = (log.user_id || '').trim();
   const name = (log.user_name || '').trim() || '—';
-  if (!id && name === '—') return <span className="text-gray-400">—</span>;
+  if (!id && name === '—') return <span className="text-gray-600">—</span>;
   return (
     <div className="min-w-0">
       {id ? (
@@ -472,7 +472,7 @@ function ChangesSection({ data }: { data: Record<string, unknown> | unknown[] | 
   if (data == null) return null;
   if (Array.isArray(data)) {
     return (
-      <pre className="max-h-72 overflow-x-auto overflow-y-auto whitespace-pre-wrap break-all rounded-lg border border-gray-200 bg-gray-50 p-3 font-mono text-xs">
+      <pre className="max-h-72 overflow-x-auto overflow-y-auto whitespace-pre-wrap break-all rounded-lg border border-gray-200 bg-gray-50 p-3 font-mono text-sm">
         {JSON.stringify(data, null, 2)}
       </pre>
     );
@@ -488,9 +488,9 @@ function ChangesSection({ data }: { data: Record<string, unknown> | unknown[] | 
         <table className="w-full text-sm">
           <thead className="border-b border-gray-200 bg-gray-50">
             <tr>
-              <th className="p-2 text-left font-medium text-gray-700">Field</th>
-              <th className="p-2 text-left font-medium text-gray-700">Before</th>
-              <th className="p-2 text-left font-medium text-gray-700">After</th>
+              <th className="p-2 text-left font-semibold text-gray-700">Field</th>
+              <th className="p-2 text-left font-semibold text-gray-700">Before</th>
+              <th className="p-2 text-left font-semibold text-gray-700">After</th>
             </tr>
           </thead>
           <tbody>
@@ -498,11 +498,11 @@ function ChangesSection({ data }: { data: Record<string, unknown> | unknown[] | 
               const o = v as { before?: unknown; after?: unknown };
               return (
                 <tr key={key} className="border-b border-gray-100 align-top">
-                  <td className="whitespace-nowrap p-2 font-medium text-gray-800">{humanizeKey(key)}</td>
-                  <td className="max-w-[200px] break-all p-2 font-mono text-xs text-gray-600">
+                  <td className="whitespace-nowrap p-2 font-semibold text-gray-800">{humanizeKey(key)}</td>
+                  <td className="max-w-[200px] break-all p-2 font-mono text-sm text-gray-600">
                     {formatValueForDisplay(o.before)}
                   </td>
-                  <td className="max-w-[200px] break-all p-2 font-mono text-xs text-gray-900">
+                  <td className="max-w-[200px] break-all p-2 font-mono text-sm text-gray-900">
                     {formatValueForDisplay(o.after)}
                   </td>
                 </tr>
@@ -518,14 +518,14 @@ function ChangesSection({ data }: { data: Record<string, unknown> | unknown[] | 
     return (
       <div className="grid gap-3 md:grid-cols-2">
         <div className="rounded-lg border border-gray-200 bg-red-50/40 p-3">
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-600">Before</div>
-          <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap break-all font-mono text-xs text-gray-800">
+          <div className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-600">Before</div>
+          <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap break-all font-mono text-sm text-gray-800">
             {formatValueForDisplay(data.before)}
           </pre>
         </div>
         <div className="rounded-lg border border-gray-200 bg-emerald-50/40 p-3">
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-600">After</div>
-          <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap break-all font-mono text-xs text-gray-800">
+          <div className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-600">After</div>
+          <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap break-all font-mono text-sm text-gray-800">
             {formatValueForDisplay(data.after)}
           </pre>
         </div>
@@ -534,7 +534,7 @@ function ChangesSection({ data }: { data: Record<string, unknown> | unknown[] | 
   }
 
   return (
-    <pre className="max-h-72 overflow-x-auto overflow-y-auto whitespace-pre-wrap break-all rounded-lg border border-gray-200 bg-gray-50 p-3 font-mono text-xs">
+    <pre className="max-h-72 overflow-x-auto overflow-y-auto whitespace-pre-wrap break-all rounded-lg border border-gray-200 bg-gray-50 p-3 font-mono text-sm">
       {JSON.stringify(data, null, 2)}
     </pre>
   );
@@ -548,7 +548,7 @@ function ContextSection({
   onNavigate?: () => void;
 }) {
   if (!context || Object.keys(context).length === 0) {
-    return <p className="text-sm text-gray-500">No extra context was recorded for this event.</p>;
+    return <p className="text-sm text-gray-600">No extra context was recorded for this event.</p>;
   }
   return (
     <dl className="space-y-2">
@@ -556,7 +556,7 @@ function ContextSection({
         const href = contextValueHref(key, val);
         return (
           <div key={key} className="rounded-lg border border-gray-100 bg-gray-50/80 px-3 py-2">
-            <dt className="text-xs font-semibold uppercase tracking-wide text-gray-500">{humanizeKey(key)}</dt>
+            <dt className="text-sm font-semibold uppercase tracking-wide text-gray-600">{humanizeKey(key)}</dt>
             <dd className="mt-0.5 break-words whitespace-pre-wrap font-mono text-[13px] text-gray-900">
               {href ? (
                 <div className="flex flex-wrap items-center gap-2">
@@ -588,14 +588,14 @@ function RelatedLinksBar({
   if (links.length === 0) return null;
   return (
     <div className="rounded-lg border border-red-100 bg-red-50/50 px-3 py-3">
-      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-600">Open in MKHub</div>
+      <div className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-600">Open in MKHub</div>
       <div className="flex flex-wrap gap-2">
         {links.map((link) => (
           <Link
             key={link.href}
             to={link.href}
             onClick={() => onNavigate?.()}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-900 shadow-sm hover:border-brand-red hover:text-brand-red"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-semibold text-gray-900 shadow-sm hover:border-brand-red hover:text-brand-red"
           >
             <ExternalLink className="h-3.5 w-3.5 shrink-0" />
             <span className="truncate max-w-[220px]">{link.label}</span>
@@ -612,7 +612,7 @@ function RelatedLinksBar({
 function MetaTile({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
-      <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">{label}</div>
+      <div className="text-sm font-semibold uppercase tracking-wide text-gray-600">{label}</div>
       <div className="mt-0.5 text-sm text-gray-900">{children}</div>
     </div>
   );
@@ -1103,7 +1103,7 @@ export default function SystemAdmin() {
       {tab === 'audit' && (
         <AppCard className={uiShadows.card} bodyClassName="!p-0">
           {auditLoading ? (
-            <div className="p-8 text-center text-gray-500">Loading audit trail…</div>
+            <div className="p-8 text-center text-gray-600">Loading audit trail…</div>
           ) : !auditLogs?.length ? (
             <AppEmptyState
               className="m-4 border-0 bg-transparent"
@@ -1157,11 +1157,11 @@ export default function SystemAdmin() {
                         <td className="max-w-xs p-3 align-top">{formatAuditActorCell(log)}</td>
                         <td className="p-3 align-top">
                           {changeCount > 0 ? (
-                            <span className="font-medium text-gray-800">
+                            <span className="font-semibold text-gray-800">
                               {changeCount} field{changeCount === 1 ? '' : 's'}
                             </span>
                           ) : (
-                            <span className="text-gray-400">—</span>
+                            <span className="text-gray-600">—</span>
                           )}
                         </td>
                         <td className="p-3 align-top text-gray-600">{log.source ?? '—'}</td>
@@ -1178,7 +1178,7 @@ export default function SystemAdmin() {
       {tab === 'system' && (
         <AppCard className={uiShadows.card} bodyClassName="!p-0">
           {systemLoading ? (
-            <div className="p-8 text-center text-gray-500">Loading system logs…</div>
+            <div className="p-8 text-center text-gray-600">Loading system logs…</div>
           ) : !systemLogs?.length ? (
             <AppEmptyState
               className="m-4 border-0 bg-transparent"
@@ -1220,20 +1220,20 @@ export default function SystemAdmin() {
                       <td className="p-3 align-top">
                         <AppBadge variant={levelBadgeVariant(log.level)}>{log.level}</AppBadge>
                       </td>
-                      <td className="p-3 align-top font-mono text-xs text-gray-700">{log.category}</td>
+                      <td className="p-3 align-top font-mono text-sm text-gray-700">{log.category}</td>
                       <td className="max-w-md p-3 align-top">
-                        <div className="line-clamp-2 font-medium text-gray-900" title={log.detail ?? log.message}>
+                        <div className="line-clamp-2 font-semibold text-gray-900" title={log.detail ?? log.message}>
                           {log.message}
                         </div>
                         {log.detail ? (
-                          <div className="mt-0.5 line-clamp-1 text-xs text-gray-500" title={log.detail}>
+                          <div className="mt-0.5 line-clamp-1 text-sm text-gray-600" title={log.detail}>
                             {log.detail}
                           </div>
                         ) : null}
                       </td>
                       <td className="max-w-xs p-3 align-top">{formatSystemUserCell(log)}</td>
                       <td className="max-w-[220px] p-3 align-top">
-                        <div className="truncate font-mono text-xs text-gray-800" title={`${log.method || ''} ${log.path || ''}`}>
+                        <div className="truncate font-mono text-sm text-gray-800" title={`${log.method || ''} ${log.path || ''}`}>
                           {(log.method || '—') + ' ' + (log.path || '—')}
                         </div>
                         {log.request_id ? (
@@ -1261,7 +1261,7 @@ export default function SystemAdmin() {
       {tab === 'last-login' && (
         <AppCard className={uiShadows.card} bodyClassName="!p-0">
           {userActivityLoading ? (
-            <div className="p-8 text-center text-gray-500">Loading sign-in activity…</div>
+            <div className="p-8 text-center text-gray-600">Loading sign-in activity…</div>
           ) : !userActivity?.length ? (
             <AppEmptyState
               className="m-4 border-0 bg-transparent"
@@ -1284,7 +1284,7 @@ export default function SystemAdmin() {
                       <td className="p-3">
                         <Link
                           to={`/users/${u.user_id}`}
-                          className="font-medium text-gray-900 hover:text-brand-red hover:underline"
+                          className="font-semibold text-gray-900 hover:text-brand-red hover:underline"
                         >
                           {u.full_name || u.username}
                         </Link>
@@ -1381,7 +1381,7 @@ export default function SystemAdmin() {
                 <AppBadge variant={levelBadgeVariant(systemDetail.level)}>{systemDetail.level}</AppBadge>
               </MetaTile>
               <MetaTile label="Category">
-                <span className="font-mono text-xs">{systemDetail.category}</span>
+                <span className="font-mono text-sm">{systemDetail.category}</span>
               </MetaTile>
               <MetaTile label="HTTP status">
                 {systemDetail.status_code != null ? (
@@ -1393,7 +1393,7 @@ export default function SystemAdmin() {
                 )}
               </MetaTile>
               <MetaTile label="Request">
-                <span className="break-all font-mono text-xs">
+                <span className="break-all font-mono text-sm">
                   {(systemDetail.method || '—') + ' ' + (systemDetail.path || '—')}
                 </span>
               </MetaTile>
@@ -1414,7 +1414,7 @@ export default function SystemAdmin() {
             {systemDetail.detail && (
               <div>
                 <h3 className={uiCx(uiTypography.sectionTitle, 'mb-2')}>Detail</h3>
-                <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap break-all rounded-lg border border-amber-100 bg-amber-50 p-3 font-mono text-xs">
+                <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap break-all rounded-lg border border-amber-100 bg-amber-50 p-3 font-mono text-sm">
                   {systemDetail.detail}
                 </pre>
               </div>

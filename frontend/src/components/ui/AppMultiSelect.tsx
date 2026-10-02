@@ -166,9 +166,9 @@ export function AppMultiSelect({
               <span className="flex min-w-0 flex-1 items-center gap-3">
                 <SelectDropdownCheckbox checked={isSelected} />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-xs text-gray-900">{option.label}</span>
+                  <span className={uiCx('block truncate', uiTypography.controlValue)}>{option.label}</span>
                   {option.description ? (
-                    <span className="mt-0.5 block truncate text-xs text-gray-500">
+                    <span className="mt-0.5 block truncate text-sm text-gray-600">
                       {option.description}
                     </span>
                   ) : null}
@@ -202,7 +202,7 @@ export function AppMultiSelect({
       <div className={uiCx(uiLayout.actionsRow, 'shrink-0 gap-2')}>
         <button
           type="button"
-          className="text-xs font-medium text-brand-red hover:underline disabled:opacity-50"
+          className="text-sm font-semibold text-brand-red hover:underline disabled:opacity-50"
           disabled={filteredOptions.length === 0}
           onClick={selectAllVisible}
         >
@@ -211,7 +211,7 @@ export function AppMultiSelect({
         {value.length > 0 ? (
           <button
             type="button"
-            className="text-xs font-medium text-gray-600 hover:underline"
+            className="text-sm font-semibold text-gray-700 hover:underline"
             onClick={clearSelection}
           >
             Clear
@@ -227,7 +227,7 @@ export function AppMultiSelect({
           <>
             {label}
             {value.length > 0 ? (
-              <span className="ml-1 font-normal normal-case text-gray-500">({value.length} selected)</span>
+              <span className="ml-1 font-normal normal-case text-gray-600">({value.length} selected)</span>
             ) : null}
           </>
         }
@@ -302,7 +302,7 @@ export function AppMultiSelect({
         </div>
         {chipsRow}
         {error ? (
-          <span className="block text-xs text-red-600">{error}</span>
+          <span className="block text-sm text-red-600">{error}</span>
         ) : helperText ? (
           <span className={uiTypography.helper}>{helperText}</span>
         ) : null}
@@ -314,7 +314,7 @@ export function AppMultiSelect({
   const triggerClasses = uiCx(
     uiDropdown.trigger,
     'flex w-full items-center justify-between gap-2 pr-8 text-left',
-    value.length === 0 && 'text-gray-400',
+    value.length === 0 && 'text-gray-600',
     open && !disabled && 'border-gray-400 ring-1 ring-inset ring-gray-400/35',
     triggerClassName,
   );
@@ -359,7 +359,7 @@ export function AppMultiSelect({
       </div>
       {chipsRow}
       {error ? (
-        <span className="block text-xs text-red-600">{error}</span>
+        <span className="block text-sm text-red-600">{error}</span>
       ) : helperText ? (
         <span className={uiTypography.helper}>{helperText}</span>
       ) : null}

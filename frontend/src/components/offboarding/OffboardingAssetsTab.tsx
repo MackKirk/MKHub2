@@ -121,14 +121,14 @@ export default function OffboardingAssetsTab({ caseId }: { caseId: string }) {
       );
     } else if (row.fleet_asset_id) {
       action = (
-        <Link className="text-brand-red text-xs hover:underline" to={`/fleet/assets/${encodeURIComponent(row.fleet_asset_id)}`}>
+        <Link className="text-brand-red text-sm hover:underline" to={`/fleet/assets/${encodeURIComponent(row.fleet_asset_id)}`}>
           View Return
         </Link>
       );
     } else if (row.equipment_id) {
       action = (
         <Link
-          className="text-brand-red text-xs hover:underline"
+          className="text-brand-red text-sm hover:underline"
           to={`/company-assets/equipment/${encodeURIComponent(row.equipment_id)}`}
         >
           View Return

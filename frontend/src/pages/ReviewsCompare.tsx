@@ -316,7 +316,7 @@ export default function ReviewsCompare() {
         </span>,
         <span key={`t-${row.n}`}>
           <span className={uiCx('font-semibold', uiColors.textStrong)}>{row.title}</span>
-          <span className="text-gray-500"> — {row.desc}</span>
+          <span className="text-gray-600"> — {row.desc}</span>
         </span>,
       ]),
     [],
@@ -325,7 +325,7 @@ export default function ReviewsCompare() {
   const quickTableRows = useMemo(
     () =>
       visibleCompareRows.map((r: any) => [
-        <span key={`${r.reviewee_user_id}-name`} className={uiCx('font-medium', uiColors.textStrong)}>
+        <span key={`${r.reviewee_user_id}-name`} className={uiCx('font-semibold', uiColors.textStrong)}>
           {r.reviewee_name || r.reviewee_user_id}
         </span>,
         <span key={`${r.reviewee_user_id}-status`} className={uiTypography.helper}>
@@ -426,7 +426,7 @@ export default function ReviewsCompare() {
               {scaleCount === 0 ? (
                 <p className={uiTypography.body}>
                   No 1–5 scale questions in this form snapshot — add{' '}
-                  <span className="font-medium">scale 1–5</span> fields to see averages here.
+                  <span className="font-semibold">scale 1–5</span> fields to see averages here.
                 </p>
               ) : (
                 <>
@@ -435,7 +435,7 @@ export default function ReviewsCompare() {
                       <div className={uiTypography.helper}>Employee self-review</div>
                       <div className={uiCx('text-2xl font-bold tabular-nums', uiColors.textStrong)}>
                         {selfAvg != null ? `${selfAvg.toFixed(2)}` : '—'}
-                        <span className="text-base font-semibold text-gray-400">/5.00</span>
+                        <span className="text-base font-semibold text-gray-600">/5.00</span>
                       </div>
                       <div className="mt-3 h-2 overflow-hidden rounded-full bg-gray-100">
                         <div
@@ -448,7 +448,7 @@ export default function ReviewsCompare() {
                       <div className={uiTypography.helper}>Supervisor review</div>
                       <div className={uiCx('text-2xl font-bold tabular-nums', uiColors.textStrong)}>
                         {mgrAvg != null ? `${mgrAvg.toFixed(2)}` : '—'}
-                        <span className="text-base font-semibold text-gray-400">/5.00</span>
+                        <span className="text-base font-semibold text-gray-600">/5.00</span>
                       </div>
                       <div className="mt-3 h-2 overflow-hidden rounded-full bg-gray-100">
                         <div
@@ -473,7 +473,7 @@ export default function ReviewsCompare() {
                     const diff = selfN != null && mgrN != null && selfN !== mgrN;
                     return (
                       <li key={c.key}>
-                        <div className={uiCx(uiTypography.body, 'mb-2 font-medium', uiColors.textStrong)}>
+                        <div className={uiCx(uiTypography.body, 'mb-2 font-semibold', uiColors.textStrong)}>
                           {c.label}
                         </div>
                         <div className="grid grid-cols-2 gap-3">
@@ -530,7 +530,7 @@ export default function ReviewsCompare() {
                             diff ? 'border-amber-200 bg-amber-50/30' : 'border-gray-100',
                           )}
                         >
-                          <div className={uiCx(uiTypography.body, 'mb-2 font-medium', uiColors.textStrong)}>
+                          <div className={uiCx(uiTypography.body, 'mb-2 font-semibold', uiColors.textStrong)}>
                             {c.label}
                           </div>
                           <div className="grid gap-3 text-sm md:grid-cols-2">
@@ -565,37 +565,37 @@ export default function ReviewsCompare() {
             <details className={uiCx(uiRadius.card, uiShadows.card, 'group overflow-hidden border border-gray-200 bg-white')} open>
               <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-semibold text-gray-900">
                 <span>{directoryCard?.name || focusRow.reviewee_name || 'Employee'} — profile</span>
-                <span className="text-xs text-gray-400 group-open:hidden">Expand</span>
-                <span className="hidden text-xs text-gray-400 group-open:inline">Collapse</span>
+                <span className="text-sm text-gray-600 group-open:hidden">Expand</span>
+                <span className="hidden text-sm text-gray-600 group-open:inline">Collapse</span>
               </summary>
               <div className={uiCx(uiSpacing.cardPadding, 'space-y-2.5 border-t border-gray-100 pt-0', uiTypography.body)}>
                 <div className="flex justify-between gap-2">
-                  <span className="text-gray-500">Department</span>
-                  <span className={uiCx('text-right font-medium', uiColors.textStrong)}>
+                  <span className="text-gray-600">Department</span>
+                  <span className={uiCx('text-right font-semibold', uiColors.textStrong)}>
                     {directoryCard?.department || '—'}
                   </span>
                 </div>
                 <div className="flex justify-between gap-2">
-                  <span className="text-gray-500">Position</span>
-                  <span className={uiCx('text-right font-medium', uiColors.textStrong)}>
+                  <span className="text-gray-600">Position</span>
+                  <span className={uiCx('text-right font-semibold', uiColors.textStrong)}>
                     {directoryCard?.job_title || '—'}
                   </span>
                 </div>
                 <div className="flex justify-between gap-2">
-                  <span className="text-gray-500">With MK</span>
-                  <span className={uiCx('text-right font-medium', uiColors.textStrong)}>
+                  <span className="text-gray-600">With MK</span>
+                  <span className={uiCx('text-right font-semibold', uiColors.textStrong)}>
                     {formatTenure(directoryCard?.hire_date) || '—'}
                   </span>
                 </div>
                 <div className="flex justify-between gap-2">
-                  <span className="text-gray-500">Phone</span>
-                  <span className={uiCx('break-all text-right font-medium', uiColors.textStrong)}>
+                  <span className="text-gray-600">Phone</span>
+                  <span className={uiCx('break-all text-right font-semibold', uiColors.textStrong)}>
                     {directoryCard?.phone || directoryCard?.work_phone || '—'}
                   </span>
                 </div>
                 <div className="flex justify-between gap-2">
-                  <span className="text-gray-500">Work email</span>
-                  <span className="break-all text-right text-xs text-gray-900">
+                  <span className="text-gray-600">Work email</span>
+                  <span className="break-all text-right text-sm text-gray-900">
                     {directoryCard?.work_email || directoryCard?.email_corporate || '—'}
                   </span>
                 </div>
@@ -611,8 +611,8 @@ export default function ReviewsCompare() {
                   <>
                     Private notes on this device — opinions, talking points, or prompts for the conversation. On Windows
                     you can use voice typing here with{' '}
-                    <kbd className="rounded bg-gray-100 px-1 py-0.5 font-sans text-[10px]">Win</kbd>+
-                    <kbd className="rounded bg-gray-100 px-1 py-0.5 font-sans text-[10px]">H</kbd>.
+                    <kbd className="rounded bg-gray-100 px-1 py-0.5 font-sans text-xs">Win</kbd>+
+                    <kbd className="rounded bg-gray-100 px-1 py-0.5 font-sans text-xs">H</kbd>.
                   </>
                 }
               />

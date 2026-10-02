@@ -95,12 +95,12 @@ function PopoverSection({ title, rows }: { title?: string; rows: Array<{ label: 
   if (!rows.length) return null;
   return (
     <div className="space-y-1.5">
-      {title ? <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-300">{title}</div> : null}
+      {title ? <div className="text-xs font-semibold uppercase tracking-wide text-gray-300">{title}</div> : null}
       <dl className="space-y-1">
         {rows.map((row) => (
           <div key={row.label} className="grid grid-cols-[5.5rem_1fr] gap-x-2">
-            <dt className="text-gray-400">{row.label}</dt>
-            <dd className="min-w-0 break-words font-medium text-white">{row.value}</dd>
+            <dt className="text-gray-600">{row.label}</dt>
+            <dd className="min-w-0 break-words font-semibold text-white">{row.value}</dd>
           </div>
         ))}
       </dl>
@@ -297,7 +297,7 @@ export default function FleetAssetsSpreadsheetView({
                       onClick={(e) => e.stopPropagation()}
                       aria-label={`Unit ${asset.unit_number || 'unknown'} details`}
                     >
-                      <span className={uiCx('truncate text-sm font-medium tabular-nums', uiColors.textStrong)}>
+                      <span className={uiCx('truncate text-sm font-semibold tabular-nums', uiColors.textStrong)}>
                         {asset.unit_number?.trim() || EM_DASH}
                       </span>
                       <span
@@ -331,7 +331,7 @@ export default function FleetAssetsSpreadsheetView({
                       </button>
                     </AppTooltip>
                   ) : (
-                    <AppBadge variant="success" className="!px-1.5 !py-0 !text-[10px]">
+                    <AppBadge variant="success" className="!px-1.5 !py-0 !text-xs">
                       Available
                     </AppBadge>
                   )}
@@ -343,7 +343,7 @@ export default function FleetAssetsSpreadsheetView({
                     disabled={modelRows.length === 0}
                     content={
                       <div className="space-y-2">
-                        <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-300">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-gray-300">
                           Asset Details
                         </div>
                         <PopoverSection rows={modelRows} />
@@ -352,7 +352,7 @@ export default function FleetAssetsSpreadsheetView({
                   >
                     <button
                       type="button"
-                      className="max-w-full truncate rounded text-left text-sm font-medium text-gray-900 outline-none focus-visible:ring-2 focus-visible:ring-brand-red/40"
+                      className="max-w-full truncate rounded text-left text-sm font-semibold text-gray-900 outline-none focus-visible:ring-2 focus-visible:ring-brand-red/40"
                       onClick={(e) => e.stopPropagation()}
                     >
                       {modelLabel}
@@ -373,7 +373,7 @@ export default function FleetAssetsSpreadsheetView({
                                 rows={[{ label: 'Van. Decal', value: decals.join(', ') }]}
                               />
                             ) : (
-                              <div className="text-gray-400">No Vancouver decal on file</div>
+                              <div className="text-gray-600">No Vancouver decal on file</div>
                             )}
                           </div>
                         }
@@ -466,7 +466,7 @@ export default function FleetAssetsSpreadsheetView({
                           <AppBadge
                             key={type}
                             variant={getFleetDueStatusBadgeVariant(s.label)}
-                            className="!px-1.5 !py-0 !text-[10px] uppercase"
+                            className="!px-1.5 !py-0 !text-xs uppercase"
                           >
                             {type}: {s.label}
                           </AppBadge>

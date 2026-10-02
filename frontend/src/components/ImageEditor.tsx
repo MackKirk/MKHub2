@@ -166,7 +166,7 @@ const sliderStyle = `
     padding: 2px 8px;
     border-radius: 4px;
     font-size: 11px;
-    font-weight: 500;
+    font-weight: 600;
     white-space: nowrap;
     line-height: 1.2;
     flex-shrink: 0;
@@ -3904,7 +3904,7 @@ export default function ImageEditor({
                   </p>
                   <div className="flex w-full flex-nowrap items-center gap-2">
                     <div className="custom-slider-container mb-0 min-w-0 flex-1">
-                      <span className="flex w-11 shrink-0 text-xs font-medium text-slate-700">Zoom</span>
+                      <span className="flex w-11 shrink-0 text-sm font-semibold text-slate-700">Zoom</span>
                       <input
                         type="range"
                         min={EDITOR_ZOOM_MIN}
@@ -3924,7 +3924,7 @@ export default function ImageEditor({
                       type="button"
                       disabled={isLoading || !img}
                       onClick={() => setAngle((prev) => (prev + 270) % 360)}
-                      className={`${selectionToolButtonGhostClass} h-8 shrink-0 px-3 text-xs font-semibold disabled:opacity-50`}
+                      className={`${selectionToolButtonGhostClass} h-8 shrink-0 px-3 text-sm font-semibold disabled:opacity-50`}
                     >
                       ⟲ Left
                     </button>
@@ -3932,7 +3932,7 @@ export default function ImageEditor({
                       type="button"
                       disabled={isLoading || !img}
                       onClick={() => setAngle((prev) => (prev + 90) % 360)}
-                      className={`${selectionToolButtonGhostClass} h-8 shrink-0 px-3 text-xs font-semibold disabled:opacity-50`}
+                      className={`${selectionToolButtonGhostClass} h-8 shrink-0 px-3 text-sm font-semibold disabled:opacity-50`}
                     >
                       ⟳ Right
                     </button>
@@ -3940,7 +3940,7 @@ export default function ImageEditor({
                       type="button"
                       disabled={isLoading || !img}
                       onClick={handleReset}
-                      className={`${selectionToolButtonGhostClass} h-9 shrink-0 px-3 text-xs font-semibold disabled:opacity-50`}
+                      className={`${selectionToolButtonGhostClass} h-9 shrink-0 px-3 text-sm font-semibold disabled:opacity-50`}
                     >
                       Reset
                     </button>
@@ -3948,7 +3948,7 @@ export default function ImageEditor({
                       type="button"
                       onClick={handleSave}
                       disabled={isLoading || isSaving || !img}
-                      className={`${editorTransitionInteractive} inline-flex h-9 shrink-0 items-center justify-center rounded-md bg-brand-red px-4 text-xs font-semibold text-white shadow-sm hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/45 disabled:opacity-50`}
+                      className={`${editorTransitionInteractive} inline-flex h-9 shrink-0 items-center justify-center rounded-md bg-brand-red px-4 text-sm font-semibold text-white shadow-sm hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/45 disabled:opacity-50`}
                     >
                       {isSaving ? 'Saving…' : 'Save'}
                     </button>
@@ -4041,7 +4041,7 @@ export default function ImageEditor({
               <div className="border-t border-slate-200/80 pt-3">
                 <span className={`${editorGroupLabelClass} mb-2 block`}>Text</span>
                 <div className="mb-1 flex min-w-0 items-center gap-2">
-                  <span className="w-10 shrink-0 text-[11px] font-medium text-slate-700">Color</span>
+                  <span className="w-10 shrink-0 text-xs font-semibold text-slate-700">Color</span>
                   <DocumentEditorFontColorPicker
                     value={textColor}
                     onChange={(c) => setTextColor(c ?? '#000000')}
@@ -4050,7 +4050,7 @@ export default function ImageEditor({
                   />
                 </div>
                 <div className="custom-slider-container mb-2">
-                  <span className="w-10 shrink-0 text-[11px] font-medium text-slate-700">Size</span>
+                  <span className="w-10 shrink-0 text-xs font-semibold text-slate-700">Size</span>
                   <input
                     type="range"
                     min="8"
@@ -4066,14 +4066,14 @@ export default function ImageEditor({
                 </div>
                 <AppCheckbox
                   className="mb-2 items-center"
-                  label={<span className="text-[11px] font-semibold text-slate-700">Text background</span>}
+                  label={<span className="text-xs font-semibold text-slate-700">Text background</span>}
                   checked={textBackgroundEnabled}
                   onChange={setTextBackgroundEnabled}
                 />
                 {textBackgroundEnabled && (
                   <>
                     <div className="mb-1 flex min-w-0 items-center gap-2">
-                      <span className="w-10 shrink-0 text-[11px] font-medium text-slate-700">Color</span>
+                      <span className="w-10 shrink-0 text-xs font-semibold text-slate-700">Color</span>
                       <DocumentEditorFontColorPicker
                         value={textBackgroundColor}
                         onChange={(c) => setTextBackgroundColor(c ?? '#efefef')}
@@ -4082,7 +4082,7 @@ export default function ImageEditor({
                       />
                     </div>
                     <div className="custom-slider-container mb-1">
-                      <span className="w-10 shrink-0 text-[11px] font-medium text-slate-700">Opacity</span>
+                      <span className="w-10 shrink-0 text-xs font-semibold text-slate-700">Opacity</span>
                       <input
                         type="range"
                         min="0"
@@ -4106,7 +4106,7 @@ export default function ImageEditor({
                     <div className="border-t border-slate-200/80 pt-3">
                       <span className={`${editorGroupLabelClass} mb-2 block`}>Shape</span>
                       <div className="mb-1 flex min-w-0 items-center gap-2">
-                        <span className="w-10 shrink-0 text-[11px] font-medium text-slate-700">Color</span>
+                        <span className="w-10 shrink-0 text-xs font-semibold text-slate-700">Color</span>
                         <DocumentEditorFontColorPicker
                           value={strokeColor}
                           onChange={(c) => setStrokeColor(c ?? '#000000')}
@@ -4115,7 +4115,7 @@ export default function ImageEditor({
                         />
                       </div>
                       <div className="custom-slider-container mb-2">
-                        <span className="w-10 shrink-0 text-[11px] font-medium text-slate-700">Stroke</span>
+                        <span className="w-10 shrink-0 text-xs font-semibold text-slate-700">Stroke</span>
                         <input
                           type="range"
                           min="1"
@@ -4133,14 +4133,14 @@ export default function ImageEditor({
                         <>
                           <AppCheckbox
                             className="mb-2 items-center"
-                            label={<span className="text-[11px] font-semibold text-slate-700">Fill</span>}
+                            label={<span className="text-xs font-semibold text-slate-700">Fill</span>}
                             checked={fillEnabled}
                             onChange={setFillEnabled}
                           />
                           {fillEnabled && (
                             <div className="space-y-2">
                               <div className="mb-1 flex min-w-0 items-center gap-2">
-                                <span className="w-10 shrink-0 text-[11px] font-medium text-slate-700">Color</span>
+                                <span className="w-10 shrink-0 text-xs font-semibold text-slate-700">Color</span>
                                 <DocumentEditorFontColorPicker
                                   value={fillColor}
                                   onChange={(c) => setFillColor(c ?? '#000000')}
@@ -4149,7 +4149,7 @@ export default function ImageEditor({
                                 />
                               </div>
                               <div className="custom-slider-container mb-1">
-                                <span className="w-10 shrink-0 text-[11px] font-medium text-slate-700">Opacity</span>
+                                <span className="w-10 shrink-0 text-xs font-semibold text-slate-700">Opacity</span>
                                 <input
                                   type="range"
                                   min="0"
@@ -4165,7 +4165,7 @@ export default function ImageEditor({
                                 <div className="custom-slider-value">{Math.round(fillOpacity * 100)}%</div>
                               </div>
                               <div>
-                                <label className="mb-1.5 block text-[11px] font-medium text-slate-600">Pattern</label>
+                                <label className="mb-1.5 block text-xs font-semibold text-slate-600">Pattern</label>
                                 <div className="grid grid-cols-3 gap-1">
                                   {SHAPE_FILL_PATTERNS.map((p) => {
                                     const active = fillPattern === p.id;

@@ -24,7 +24,7 @@ function ReadOnlyField({ label, value }: { label: ReactNode; value?: ReactNode }
   return (
     <div className="space-y-1">
       <div className={uiTypography.controlLabel}>{label}</div>
-      <div className={uiCx(uiTypography.helper, 'break-words font-medium text-gray-900')}>{display}</div>
+      <div className={uiCx(uiTypography.helper, 'break-words font-semibold text-gray-900')}>{display}</div>
     </div>
   );
 }
@@ -123,7 +123,7 @@ function WorkOrderGeneralTab({
           </div>
         ) : (
           <div className="mt-4 space-y-3">
-            <div className={uiCx(uiTypography.helper, 'whitespace-pre-wrap font-medium text-gray-900')}>
+            <div className={uiCx(uiTypography.helper, 'whitespace-pre-wrap font-semibold text-gray-900')}>
               {workOrder.description?.trim() ? workOrder.description : EM_DASH}
             </div>
             {workOrder.origin_source === 'inspection' && workOrder.origin_id ? (
@@ -133,7 +133,7 @@ function WorkOrderGeneralTab({
                   e.preventDefault();
                   onNavigateInspection(workOrder.origin_id!);
                 }}
-                className="inline-flex items-center gap-1 text-xs font-medium text-brand-red hover:underline"
+                className="inline-flex items-center gap-1 text-sm font-semibold text-brand-red hover:underline"
               >
                 View originating inspection
               </Link>

@@ -205,7 +205,7 @@ export function AreaLineChart({
 
   if (dates.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center text-center text-xs text-gray-500" style={{ height }}>
+      <div className="flex flex-col items-center justify-center text-center text-sm text-gray-600" style={{ height }}>
         <svg className="w-8 h-8 mb-2 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 13v8m0 0h8m-8 0l8-8m9-9v8m0 0h-8m8 0l-8 8" />
         </svg>
@@ -339,13 +339,13 @@ export function AreaLineChart({
       </svg>
 
       {yLabel ? (
-        <div className="absolute left-1 top-1 text-[10px] uppercase tracking-wide text-gray-400">{yLabel}</div>
+        <div className="absolute left-1 top-1 text-xs uppercase tracking-wide text-gray-600">{yLabel}</div>
       ) : null}
 
       {hoverIdx !== null && tooltipPos
         ? createPortal(
             <div
-              className="fixed z-[9999] pointer-events-none px-2.5 py-2 rounded-lg shadow-xl bg-gray-900 text-white text-xs whitespace-nowrap"
+              className="fixed z-[9999] pointer-events-none px-2.5 py-2 rounded-lg shadow-xl bg-gray-900 text-white text-sm whitespace-nowrap"
               style={{ left: tooltipPos.x + 12, top: tooltipPos.y + 12 }}
             >
               <div className="font-semibold mb-1">{dates[hoverIdx]}</div>
@@ -356,7 +356,7 @@ export function AreaLineChart({
                     <div key={s.id} className="flex items-center gap-2">
                       <span className="inline-block w-2 h-2 rounded-full" style={{ background: s.color }} />
                       <span className="text-gray-300">{s.label}</span>
-                      <span className="ml-auto font-medium">{v}</span>
+                      <span className="ml-auto font-semibold">{v}</span>
                     </div>
                   );
                 })}
@@ -490,7 +490,7 @@ export function Donut({
             const text = formatValue ? formatValue(s.value, pct, s) : `${s.value} (${pct.toFixed(0)}%)`;
             return createPortal(
               <div
-                className="fixed z-[9999] pointer-events-none px-2.5 py-1.5 rounded-lg shadow-xl bg-gray-900 text-white text-xs whitespace-nowrap"
+                className="fixed z-[9999] pointer-events-none px-2.5 py-1.5 rounded-lg shadow-xl bg-gray-900 text-white text-sm whitespace-nowrap"
                 style={{ left: tooltipPos.x + 12, top: tooltipPos.y + 12 }}
               >
                 <div className="font-semibold">{s.label}</div>

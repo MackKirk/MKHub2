@@ -130,7 +130,7 @@ function DetailField({ label, children }: { label: string; children: ReactNode }
       )}
     >
       <dt className={uiTypography.helper}>{label}</dt>
-      <dd className={uiCx(uiTypography.body, 'min-w-0 break-words font-medium text-gray-900')}>{children}</dd>
+      <dd className={uiCx(uiTypography.body, 'min-w-0 break-words font-semibold text-gray-900')}>{children}</dd>
     </div>
   );
 }
@@ -626,7 +626,7 @@ function CreateLoanModal({ userId, onClose }: { userId: string; onClose: () => v
         />
         {loanAmount && parseFloat(loanAmount) > 0 ? (
           <div className={uiCx('rounded-xl border border-blue-200 bg-blue-50 p-3', uiBorders.card)}>
-            <div className={uiCx(uiTypography.helper, 'font-medium text-blue-700')}>Total loan amount</div>
+            <div className={uiCx(uiTypography.helper, 'font-semibold text-blue-700')}>Total loan amount</div>
             <div className="mt-1 text-sm font-semibold text-blue-900">{formatCurrency(totalLoanAmount)}</div>
             <div className={uiCx(uiTypography.helper, 'mt-1 text-blue-700')}>
               Base: {formatCurrency(parseFloat(loanAmount) || 0)}
@@ -948,7 +948,7 @@ function LoanDetailView({
         }
       >
         {!loan ? (
-          <div className="flex items-center justify-center py-12 text-sm text-gray-500">Loading…</div>
+          <div className="flex items-center justify-center py-12 text-sm text-gray-600">Loading…</div>
         ) : (
           <div className={uiSpacing.sectionStack}>
             <AppCard bodyClassName={uiCx(uiSpacing.cardPadding, 'min-w-0')}>
@@ -988,23 +988,23 @@ function LoanDetailView({
                   <table className="w-full">
                     <thead className="bg-gray-50">
                       <tr>
-                        <th className="p-2 text-left text-xs font-medium text-gray-600">Date</th>
-                        <th className="p-2 text-left text-xs font-medium text-gray-600">Amount</th>
-                        <th className="p-2 text-left text-xs font-medium text-gray-600">Method</th>
-                        <th className="p-2 text-left text-xs font-medium text-gray-600">Balance after</th>
-                        <th className="p-2 text-left text-xs font-medium text-gray-600">Recorded by</th>
+                        <th className="p-2 text-left text-sm font-semibold text-gray-600">Date</th>
+                        <th className="p-2 text-left text-sm font-semibold text-gray-600">Amount</th>
+                        <th className="p-2 text-left text-sm font-semibold text-gray-600">Method</th>
+                        <th className="p-2 text-left text-sm font-semibold text-gray-600">Balance after</th>
+                        <th className="p-2 text-left text-sm font-semibold text-gray-600">Recorded by</th>
                       </tr>
                     </thead>
                     <tbody>
                       {loan.payments.map((payment) => (
                         <tr key={payment.id} className="border-t border-gray-200">
-                          <td className="p-2 text-xs text-gray-900">{formatDate(payment.payment_date)}</td>
-                          <td className="p-2 text-xs font-semibold text-gray-900">
+                          <td className="p-2 text-sm text-gray-900">{formatDate(payment.payment_date)}</td>
+                          <td className="p-2 text-sm font-semibold text-gray-900">
                             {formatCurrency(payment.payment_amount)}
                           </td>
-                          <td className="p-2 text-xs text-gray-900">{payment.payment_method || '—'}</td>
-                          <td className="p-2 text-xs text-gray-900">{formatCurrency(payment.balance_after)}</td>
-                          <td className="p-2 text-xs text-gray-600">{payment.created_by?.username || '—'}</td>
+                          <td className="p-2 text-sm text-gray-900">{payment.payment_method || '—'}</td>
+                          <td className="p-2 text-sm text-gray-900">{formatCurrency(payment.balance_after)}</td>
+                          <td className="p-2 text-sm text-gray-600">{payment.created_by?.username || '—'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -1017,10 +1017,10 @@ function LoanDetailView({
               <AppSectionHeader title="History" />
               <div className="mt-3 space-y-2">
                 {activities.map((activity, idx) => (
-                  <div key={idx} className="border-l-2 border-gray-200 py-1 pl-3 text-xs">
+                  <div key={idx} className="border-l-2 border-gray-200 py-1 pl-3 text-sm">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-medium text-gray-900">{activity.description}</span>
-                      {activity.user ? <span className="text-gray-500">by {activity.user}</span> : null}
+                      <span className="font-semibold text-gray-900">{activity.description}</span>
+                      {activity.user ? <span className="text-gray-600">by {activity.user}</span> : null}
                     </div>
                     <div className={uiTypography.helper}>{formatDate(activity.date)}</div>
                   </div>

@@ -671,12 +671,12 @@ export default function Quotes() {
                 {summary.count > 0 && (
                   <span className={uiTypography.helper}>
                     Average{' '}
-                    <span className="font-medium text-gray-800">{formatQuoteCurrency(summary.average)}</span>
+                    <span className="font-semibold text-gray-800">{formatQuoteCurrency(summary.average)}</span>
                   </span>
                 )}
                 <span className={uiTypography.helper}>
                   Win rate{' '}
-                  <span className="font-medium text-gray-800">{formatWinRate(summary.win_rate)}</span>
+                  <span className="font-semibold text-gray-800">{formatWinRate(summary.win_rate)}</span>
                 </span>
                 {summary.successful > 0 && (
                   <span className={uiTypography.helper}>
@@ -686,7 +686,7 @@ export default function Quotes() {
                 )}
               </div>
               {showCapWarning && (
-                <p className="mt-1.5 text-xs text-amber-700">
+                <p className="mt-1.5 text-sm text-amber-700">
                   List shows up to {QUOTES_LIST_CAP} quotations (newest first). Insights use the full filtered set.
                   Narrow filters for exact list totals.
                 </p>
@@ -1106,15 +1106,15 @@ function QuoteListCard({
         <div className="grid grid-cols-2 gap-3">
           <div className="min-w-0">
             <div className={uiTypography.helper}>Created</div>
-            <div className={uiCx(uiTypography.sectionTitle, 'truncate text-xs')}>{created || '—'}</div>
+            <div className={uiCx(uiTypography.sectionTitle, 'truncate text-sm')}>{created || '—'}</div>
           </div>
           <div className="min-w-0">
             <div className={uiTypography.helper}>Updated</div>
-            <div className={uiCx(uiTypography.sectionTitle, 'truncate text-xs')}>{updated || '—'}</div>
+            <div className={uiCx(uiTypography.sectionTitle, 'truncate text-sm')}>{updated || '—'}</div>
           </div>
           <div className="min-w-0 truncate" title={estimatorName}>
             <div className={uiTypography.helper}>Estimator</div>
-            <div className={uiCx(uiTypography.sectionTitle, 'truncate text-xs')}>{estimatorName}</div>
+            <div className={uiCx(uiTypography.sectionTitle, 'truncate text-sm')}>{estimatorName}</div>
           </div>
           <div className="min-w-0">
             <div className={uiTypography.helper}>Estimated Value</div>

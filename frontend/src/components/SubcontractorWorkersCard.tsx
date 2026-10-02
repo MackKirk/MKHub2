@@ -103,7 +103,7 @@ function WorkerListRow({ worker, returnTo }: { worker: SubcontractorWorkerRow; r
           ) : (
             <div
               className={uiCx(
-                'flex h-9 w-9 shrink-0 items-center justify-center text-xs font-semibold text-gray-600',
+                'flex h-9 w-9 shrink-0 items-center justify-center text-sm font-semibold text-gray-600',
                 uiRadius.control,
                 'bg-gradient-to-br from-gray-100 to-gray-200',
               )}
@@ -116,7 +116,7 @@ function WorkerListRow({ worker, returnTo }: { worker: SubcontractorWorkerRow; r
               {worker.name || EM_DASH}
             </div>
             {locationLine ? (
-              <div className="mt-0.5 truncate text-xs text-gray-600">{locationLine}</div>
+              <div className="mt-0.5 truncate text-sm text-gray-600">{locationLine}</div>
             ) : null}
           </div>
         </div>
@@ -135,7 +135,7 @@ function WorkerListRow({ worker, returnTo }: { worker: SubcontractorWorkerRow; r
               {worker.email}
             </a>
           ) : (
-            <span className={uiCx(uiTypography.helper, 'text-gray-500')}>{EM_DASH}</span>
+            <span className={uiCx(uiTypography.helper, 'text-gray-600')}>{EM_DASH}</span>
           )}
         </div>
         <div className="min-w-0">
@@ -148,7 +148,7 @@ function WorkerListRow({ worker, returnTo }: { worker: SubcontractorWorkerRow; r
               {worker.phone}
             </a>
           ) : (
-            <span className={uiCx(uiTypography.helper, 'text-gray-500')}>{EM_DASH}</span>
+            <span className={uiCx(uiTypography.helper, 'text-gray-600')}>{EM_DASH}</span>
           )}
         </div>
         <div className="min-w-0 flex items-center">

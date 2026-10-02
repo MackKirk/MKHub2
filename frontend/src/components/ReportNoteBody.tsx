@@ -38,7 +38,7 @@ export function ReportNoteBody({ report, className, compact }: Props) {
   return (
     <div
       className={uiCx(
-        compact ? 'text-xs text-gray-800 whitespace-pre-wrap leading-relaxed' : uiTypography.body,
+        compact ? 'text-sm text-gray-800 whitespace-pre-wrap leading-relaxed' : uiTypography.body,
         !compact && 'whitespace-pre-wrap leading-relaxed',
         className,
       )}

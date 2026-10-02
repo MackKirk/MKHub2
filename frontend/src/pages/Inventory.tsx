@@ -42,7 +42,7 @@ export default function Inventory(){
       <div className="rounded-xl border bg-white p-4">
         <h3 className="font-semibold mb-2">Suppliers</h3>
         <ul className="list-disc pl-5 text-sm text-gray-700">
-          {(suppliers||[]).map(s=> <li key={s.id}>{s.name} <span className="text-gray-500">{s.email||''}</span></li>)}
+          {(suppliers||[]).map(s=> <li key={s.id}>{s.name} <span className="text-gray-600">{s.email||''}</span></li>)}
         </ul>
         <div className="flex justify-end gap-2 mt-2 pt-2 border-t">
           <button type="button" onClick={() => setSuppliersPage(p => Math.max(1, p - 1))} disabled={suppliersPage <= 1} className="px-3 py-1 text-sm border rounded disabled:opacity-50">Previous</button>

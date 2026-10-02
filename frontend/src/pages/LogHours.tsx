@@ -31,11 +31,11 @@ export default function LogHours(){
     <div className="max-w-2xl">
       <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 py-4 px-6 mb-6">
         <h1 className="text-2xl font-bold text-gray-900 tracking-tight mb-1.5">Log Hours</h1>
-        <p className="text-sm text-gray-600 font-medium">Record your work hours for projects</p>
+        <p className="text-sm text-gray-600 font-semibold">Record your work hours for projects</p>
       </div>
       <div className="rounded-xl border bg-white p-4 grid md:grid-cols-2 gap-3">
         <div className="md:col-span-2">
-          <label className="text-xs text-gray-600">Project</label>
+          <label className="text-sm text-gray-600">Project</label>
           <div className="flex gap-2">
             <select className="flex-1 border rounded px-3 py-2" value={projectId} onChange={e=>setProjectId(e.target.value)}>
               <option value="">Select a project...</option>
@@ -45,21 +45,21 @@ export default function LogHours(){
           </div>
         </div>
         <div>
-          <label className="text-xs text-gray-600">Date</label>
+          <label className="text-sm text-gray-600">Date</label>
           <input type="date" className="w-full border rounded px-3 py-2" value={workDate} onChange={e=>setWorkDate(e.target.value)} />
         </div>
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <label className="text-xs text-gray-600">Start</label>
+            <label className="text-sm text-gray-600">Start</label>
             <input type="time" className="w-full border rounded px-3 py-2" value={start} onChange={e=>setStart(e.target.value)} />
           </div>
           <div>
-            <label className="text-xs text-gray-600">End</label>
+            <label className="text-sm text-gray-600">End</label>
             <input type="time" className="w-full border rounded px-3 py-2" value={end} onChange={e=>setEnd(e.target.value)} />
           </div>
         </div>
         <div className="md:col-span-2">
-          <label className="text-xs text-gray-600">Notes</label>
+          <label className="text-sm text-gray-600">Notes</label>
           <input className="w-full border rounded px-3 py-2" placeholder="What did you work on?" value={notes} onChange={e=>setNotes(e.target.value)} />
         </div>
         <div className="md:col-span-2 flex items-center justify-between">

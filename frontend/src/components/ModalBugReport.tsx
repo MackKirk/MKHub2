@@ -82,7 +82,7 @@ export default function ModalBugReport({ onClose, onSuccess }: ModalBugReportPro
       quickInfo={
         <>
           <p>Include steps to reproduce and what you expected to happen.</p>
-          <p className="font-medium text-gray-700">Captured automatically:</p>
+          <p className="font-semibold text-gray-700">Captured automatically:</p>
           <ul className="list-inside list-disc space-y-0.5">
             <li>Current page URL</li>
             <li>Browser and device information</li>

@@ -112,7 +112,7 @@ function ActivityDetailField({ label, children }: { label: string; children: Rea
       )}
     >
       <dt className={uiTypography.helper}>{label}</dt>
-      <dd className={uiCx(uiTypography.body, 'min-w-0 break-words font-medium text-gray-900')}>{children}</dd>
+      <dd className={uiCx(uiTypography.body, 'min-w-0 break-words font-semibold text-gray-900')}>{children}</dd>
     </div>
   );
 }
@@ -299,7 +299,7 @@ export function UserActivitySection({ userId }: UserActivityTabProps) {
 
           <AppCard className="mt-4" bodyClassName={uiCx(uiSpacing.cardPadding, 'min-w-0')}>
             <AppSectionHeader title="Last sign-in" description="Most recent successful sign-in (Vancouver time)." />
-            <p className={uiCx(uiTypography.body, 'mt-2 font-medium text-gray-900')}>
+            <p className={uiCx(uiTypography.body, 'mt-2 font-semibold text-gray-900')}>
               {data.last_login_at ? formatUserActivityTime(data.last_login_at) : '—'}
             </p>
           </AppCard>
@@ -360,7 +360,7 @@ export function UserActivitySection({ userId }: UserActivityTabProps) {
                             >
                               <span
                                 className={uiCx(
-                                  'min-w-0 truncate text-xs font-medium text-gray-900 transition-colors group-hover:text-[#7f1010]',
+                                  'min-w-0 truncate text-sm font-semibold text-gray-900 transition-colors group-hover:text-[#7f1010]',
                                 )}
                               >
                                 {row.title}
@@ -440,7 +440,7 @@ export function UserActivitySection({ userId }: UserActivityTabProps) {
                             >
                               <span
                                 className={uiCx(
-                                  'min-w-0 truncate text-xs font-medium text-gray-900 transition-colors group-hover:text-[#7f1010]',
+                                  'min-w-0 truncate text-sm font-semibold text-gray-900 transition-colors group-hover:text-[#7f1010]',
                                 )}
                                 title={row.title}
                               >
@@ -521,7 +521,7 @@ export function UserActivitySection({ userId }: UserActivityTabProps) {
                             >
                               <span
                                 className={uiCx(
-                                  'min-w-0 truncate text-xs font-medium text-gray-900 transition-colors group-hover:text-[#7f1010]',
+                                  'min-w-0 truncate text-sm font-semibold text-gray-900 transition-colors group-hover:text-[#7f1010]',
                                 )}
                                 title={activityAuditTitle(row)}
                               >
@@ -574,11 +574,11 @@ export function UserActivitySection({ userId }: UserActivityTabProps) {
                 <span className="font-mono font-normal">{formatUserActivityTime(loginModal.timestamp_utc)}</span>
               </ActivityDetailField>
               <ActivityDetailField label="Path">
-                <span className="break-all font-mono font-normal text-xs">{loginModal.path || '—'}</span>
+                <span className="break-all font-mono font-normal text-sm">{loginModal.path || '—'}</span>
               </ActivityDetailField>
               {loginModal.request_id ? (
                 <ActivityDetailField label="Request ID">
-                  <span className="break-all font-mono font-normal text-xs">{loginModal.request_id}</span>
+                  <span className="break-all font-mono font-normal text-sm">{loginModal.request_id}</span>
                 </ActivityDetailField>
               ) : null}
             </dl>
@@ -610,7 +610,7 @@ export function UserActivitySection({ userId }: UserActivityTabProps) {
               </ActivityDetailField>
               <ActivityDetailField label="Page">{pageModal.title}</ActivityDetailField>
               <ActivityDetailField label="Path">
-                <span className="break-all font-mono font-normal text-xs">{pageModal.path || '—'}</span>
+                <span className="break-all font-mono font-normal text-sm">{pageModal.path || '—'}</span>
               </ActivityDetailField>
               {pageModal.module ? (
                 <ActivityDetailField label="Module">{pageModal.module}</ActivityDetailField>

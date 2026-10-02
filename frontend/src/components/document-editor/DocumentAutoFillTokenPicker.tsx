@@ -69,7 +69,7 @@ export default function DocumentAutoFillTokenPicker({
       <p className="mb-3 text-[12px] leading-snug text-slate-500">{description}</p>
       {grouped.map(({ group, items }) => (
         <div key={group} className="mb-3 last:mb-0">
-          <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+          <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
             {DOCUMENT_AUTO_FILL_GROUP_LABEL[group]}
           </div>
           <table className="w-full border-collapse text-[12px]">
@@ -92,7 +92,7 @@ export default function DocumentAutoFillTokenPicker({
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={() => onInsert(textToInsertForToken(item.token, item.value, forceToken))}
                       >
-                        <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-800">
+                        <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-800">
                           {item.token}
                         </code>
                       </button>

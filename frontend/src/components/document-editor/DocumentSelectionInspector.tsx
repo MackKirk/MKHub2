@@ -54,7 +54,7 @@ function StackRow({ children, className }: { children: ReactNode; className?: st
 }
 
 const geometryPxInputClass =
-  'h-8 w-[3.75rem] rounded-md border border-slate-200/90 bg-white px-1.5 text-[11px] font-medium tabular-nums text-slate-800 shadow-sm focus:border-brand-red/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/30 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400';
+  'h-8 w-[3.75rem] rounded-md border border-slate-200/90 bg-white px-1.5 text-xs font-semibold tabular-nums text-slate-800 shadow-sm focus:border-brand-red/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/30 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400';
 
 function GeometryPxInput({
   label,
@@ -712,7 +712,7 @@ export default function DocumentSelectionInspector({
               I
             </button>
             <div className="flex h-8 items-center gap-0.5 rounded-md border border-slate-300/90 bg-white px-0.5 shadow-sm">
-              <span className="pl-1 text-[10px] font-semibold text-slate-600">Size</span>
+              <span className="pl-1 text-xs font-semibold text-slate-600">Size</span>
               <button
                 type="button"
                 onPointerDown={(e) => e.preventDefault()}
@@ -850,7 +850,7 @@ export default function DocumentSelectionInspector({
                   onPointerDown={(e) => e.preventDefault()}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => onUpdate(id, (el) => ({ ...el, imageFit: fit }))}
-                  className={`flex h-full min-h-0 min-w-[3rem] flex-1 items-center justify-center px-2 text-[11px] font-semibold capitalize transition-[background-color,color,box-shadow] duration-150 ${
+                  className={`flex h-full min-h-0 min-w-[3rem] flex-1 items-center justify-center px-2 text-xs font-semibold capitalize transition-[background-color,color,box-shadow] duration-150 ${
                     (element.imageFit ?? 'contain') === fit ? editorSegmentedSegmentSelectedClass : editorSegmentedSegmentIdleClass
                   }`}
                   title={fit}
@@ -889,7 +889,7 @@ export default function DocumentSelectionInspector({
           </StackRow>
         </Stack>
         <Cluster className="self-center">
-          <p className="rounded-md border border-amber-200/80 bg-amber-50/90 px-2.5 py-1.5 text-[11px] text-amber-900">
+          <p className="rounded-md border border-amber-200/80 bg-amber-50/90 px-2.5 py-1.5 text-xs text-amber-900">
             Unlock the text element to edit formatting.
           </p>
         </Cluster>
@@ -913,7 +913,7 @@ export default function DocumentSelectionInspector({
           </StackRow>
         </Stack>
         <Cluster className="self-center">
-          <p className="rounded-md border border-slate-200/90 bg-slate-50/80 px-2.5 py-1.5 text-[11px] text-slate-600">
+          <p className="rounded-md border border-slate-200/90 bg-slate-50/80 px-2.5 py-1.5 text-xs text-slate-600">
             {isLocked ? 'Unlock the image to adjust fit and position.' : 'Add an image to adjust fit and position.'}
           </p>
         </Cluster>

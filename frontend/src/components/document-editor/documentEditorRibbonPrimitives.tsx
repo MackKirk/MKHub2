@@ -41,7 +41,7 @@ export const editorContextToolbarStackRowClass =
   'flex h-8 min-w-0 flex-shrink-0 items-center gap-1 sm:gap-1.5';
 
 /** Contextual toolbar text buttons — flat / ghost (aligns with main ribbon h-8 controls). */
-export const selectionToolButtonBaseClass = `${editorTransitionInteractive} inline-flex h-8 items-center rounded-md px-2.5 text-[11px] font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/35 active:scale-[0.98]`;
+export const selectionToolButtonBaseClass = `${editorTransitionInteractive} inline-flex h-8 items-center rounded-md px-2.5 text-xs font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/35 active:scale-[0.98]`;
 
 export const selectionToolButtonGhostClass = `${selectionToolButtonBaseClass} border border-transparent bg-transparent text-slate-800 hover:bg-slate-100 hover:text-slate-900`;
 
@@ -61,25 +61,25 @@ export const editorSegmentedSegmentIdleClass =
   'rounded-md text-slate-800 hover:bg-white/85';
 
 /** Image position / small dropdown triggers — same height as context toolbar. */
-export const selectionContextDropdownTriggerClass = `${editorTransitionInteractive} inline-flex h-8 items-center gap-1.5 rounded-md border border-slate-300/80 bg-white px-2 text-[11px] font-semibold text-slate-900 shadow-sm hover:border-slate-400 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/35 disabled:cursor-not-allowed disabled:opacity-50`;
+export const selectionContextDropdownTriggerClass = `${editorTransitionInteractive} inline-flex h-8 items-center gap-1.5 rounded-md border border-slate-300/80 bg-white px-2 text-xs font-semibold text-slate-900 shadow-sm hover:border-slate-400 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/35 disabled:cursor-not-allowed disabled:opacity-50`;
 
 /** Discreet label for contextual formatting groups (not panel titles). */
 export const editorToolbarMicroLabelClass =
-  'text-[10px] font-semibold uppercase tracking-wide text-slate-600 select-none';
+  'text-xs font-semibold uppercase tracking-wide text-slate-600 select-none';
 
 /** Group label under ribbon sections / panel headers. */
 export const editorGroupLabelClass =
-  'text-[10px] font-semibold uppercase tracking-wider text-slate-500 select-none';
+  'text-xs font-semibold uppercase tracking-wider text-slate-500 select-none';
 
 /** Secondary caption / hints in strips. */
-export const editorCaptionClass = 'text-[11px] text-slate-600 leading-snug';
+export const editorCaptionClass = 'text-xs text-slate-600 leading-snug';
 
 /** Panel titles (layers, pages) — light panels. */
 export const editorPanelTitleClass =
   'text-[13px] font-semibold tracking-tight text-slate-900';
 
 /** Subtitle / meta under panel titles. */
-export const editorPanelMetaClass = 'text-[10px] font-medium leading-snug text-slate-500';
+export const editorPanelMetaClass = 'text-xs font-semibold leading-snug text-slate-500';
 
 /** Shared width for left Pages strip and right Layers panel (document editor). */
 export const editorSidePanelWidthClass = 'w-[12.5rem]';
@@ -116,7 +116,7 @@ export const editorSidePanelHeadingTitleClass =
 
 /** Meta line under side panel titles. */
 export const editorSidePanelHeadingMetaClass =
-  'mt-0.5 text-[10px] font-medium leading-tight text-slate-500';
+  'mt-0.5 text-xs font-semibold leading-tight text-slate-500';
 
 /** Scrollable body shared by Pages / Layers lists (padding + thin scrollbar). */
 export const editorSidePanelBodyClass =
@@ -199,7 +199,7 @@ export function RibbonLargeButton({
       <span className="flex h-6 w-6 shrink-0 items-center justify-center text-slate-700 [&>svg]:h-[20px] [&>svg]:w-[20px]">
         {icon}
       </span>
-      <span className="text-center text-[11px] font-semibold leading-tight text-slate-800">{label}</span>
+      <span className="text-center text-xs font-semibold leading-tight text-slate-800">{label}</span>
     </button>
   );
 }

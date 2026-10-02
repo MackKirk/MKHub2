@@ -11,7 +11,7 @@ type Props = {
 export function AttendanceSageBadge({ state, recordKind, error, empty = 'none' }: Props) {
   const meta = sageBadgeMeta(state, recordKind);
   if (!meta) {
-    if (empty === 'dash') return <span className="text-gray-400">—</span>;
+    if (empty === 'dash') return <span className="text-gray-600">—</span>;
     return null;
   }
   const badge = <AppBadge variant={meta.variant}>{meta.label}</AppBadge>;

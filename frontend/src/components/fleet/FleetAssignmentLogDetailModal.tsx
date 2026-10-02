@@ -79,7 +79,7 @@ function AssignmentImageLightbox({
       >
         <div className="absolute right-3 top-3 flex items-center gap-2">
           {urls.length > 1 && (
-            <span className="rounded bg-white/10 px-2 py-1 text-xs tabular-nums text-white/80">
+            <span className="rounded bg-white/10 px-2 py-1 text-sm tabular-nums text-white/80">
               {index + 1} / {urls.length}
             </span>
           )}
@@ -153,7 +153,7 @@ function ReadOnlyDetailField({ label, value }: { label: string; value: ReactNode
   return (
     <div className="space-y-1">
       <div className={uiTypography.controlLabel}>{label}</div>
-      <div className={uiCx(uiTypography.body, 'break-words font-medium text-gray-900')}>{display}</div>
+      <div className={uiCx(uiTypography.body, 'break-words font-semibold text-gray-900')}>{display}</div>
     </div>
   );
 }

@@ -97,7 +97,7 @@ const ribbonDropdownTriggerClass =
 
 function DocumentSaveStatusBadge({ status }: { status: DocumentSaveStatus }) {
   const badgeClass =
-    'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold tabular-nums shadow-sm whitespace-nowrap';
+    'shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums shadow-sm whitespace-nowrap';
 
   if (status === 'hydrating') return null;
 
@@ -409,7 +409,7 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
             {closeSlotBelow}
           </div>
           <div className="flex flex-col min-w-0 max-w-[min(250px,44vw)] sm:max-w-[320px] justify-end pb-0.5">
-            <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-600 leading-tight">{modeHeading}</span>
+            <span className="text-xs font-bold uppercase tracking-[0.12em] text-slate-600 leading-tight">{modeHeading}</span>
             {showTitleInput ? (
               editingTitle ? (
                 <input
@@ -529,7 +529,7 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
               role="menu"
               data-document-keep-text-selection=""
             >
-              <p className="px-2.5 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+              <p className="px-2.5 pt-2 pb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Who signs
               </p>
               {(signerRoles.length ? signerRoles : []).map((role) => (
@@ -548,7 +548,7 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
                 <button
                   type="button"
                   role="menuitem"
-                  className="block w-full border-t border-slate-100 px-2.5 py-1.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-100"
+                  className="block w-full border-t border-slate-100 px-2.5 py-1.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-100"
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => {
                     const kind = roleMenu?.kind;
@@ -656,7 +656,7 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
                         className={`flex w-full items-center rounded-xl px-3 py-2 text-left text-sm transition-colors hover:bg-slate-50 ${
                           selected
                             ? 'bg-brand-red/[0.06] font-semibold text-slate-900 ring-1 ring-brand-red/20'
-                            : 'font-medium text-slate-700'
+                            : 'font-semibold text-slate-700'
                         }`}
                       >
                         {Math.round(z * 100)}%
@@ -688,7 +688,7 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
               View only
             </span>
             {viewOnlyNotice && (
-              <span className="max-w-[min(70vw,420px)] rounded-full bg-slate-900/70 px-2.5 py-0.5 text-center text-[11px] font-medium leading-snug text-white/90 shadow">
+              <span className="max-w-[min(70vw,420px)] rounded-full bg-slate-900/70 px-2.5 py-0.5 text-center text-xs font-semibold leading-snug text-white/90 shadow">
                 {viewOnlyNotice}
               </span>
             )}

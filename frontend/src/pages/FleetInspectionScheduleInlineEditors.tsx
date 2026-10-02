@@ -306,7 +306,7 @@ export function ScheduleBodyInlineEditor({
   const bodyComplete = bodyForm ? isBodyChecklistComplete(bodyForm.areas) : false;
   const computedFinalResult = bodyForm && bodyComplete ? computeResultFromConditions(bodyForm.areas) : null;
 
-  if (!bodyForm) return <div className="text-sm text-gray-500 py-4">Loading form…</div>;
+  if (!bodyForm) return <div className="text-sm text-gray-600 py-4">Loading form…</div>;
 
   return (
     <div className="space-y-6 min-w-0">
@@ -315,19 +315,19 @@ export function ScheduleBodyInlineEditor({
           <h3 className="text-sm font-semibold text-gray-800 mb-3">Vehicle</h3>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
             <div>
-              <span className="text-gray-500 block text-xs font-medium">Unit #</span>
+              <span className="text-gray-600 block text-sm font-semibold">Unit #</span>
               <span className="text-gray-900">{fleetAsset.unit_number || fleetAsset.name || '—'}</span>
             </div>
             <div>
-              <span className="text-gray-500 block text-xs font-medium">Name</span>
+              <span className="text-gray-600 block text-sm font-semibold">Name</span>
               <span className="text-gray-900">{fleetAsset.name || '—'}</span>
             </div>
             <div>
-              <span className="text-gray-500 block text-xs font-medium">KM</span>
+              <span className="text-gray-600 block text-sm font-semibold">KM</span>
               <span className="text-gray-900">{fleetAsset.odometer_current != null ? fleetAsset.odometer_current.toLocaleString() : '—'}</span>
             </div>
             <div>
-              <span className="text-gray-500 block text-xs font-medium">Date</span>
+              <span className="text-gray-600 block text-sm font-semibold">Date</span>
               <span className="text-gray-900">
                 {inspection.inspection_date ? new Date(inspection.inspection_date).toLocaleDateString() : new Date().toLocaleDateString()}
               </span>
@@ -347,8 +347,8 @@ export function ScheduleBodyInlineEditor({
             >
               <div className="flex flex-wrap items-center gap-4 mb-3">
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium text-gray-900">{area.label}</div>
-                  {area.description && <div className="text-xs text-gray-500 mt-0.5">{area.description}</div>}
+                  <div className="font-semibold text-gray-900">{area.label}</div>
+                  {area.description && <div className="text-sm text-gray-600 mt-0.5">{area.description}</div>}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   {BODY_CONDITION_OPTIONS.map((opt) => (
@@ -384,7 +384,7 @@ export function ScheduleBodyInlineEditor({
       </AppCard>
 
       <div className="rounded-xl border border-gray-200 bg-white p-4">
-        <label className="block text-sm font-medium text-gray-700 mb-2">Photos</label>
+        <label className="block text-sm font-semibold text-gray-700 mb-2">Photos</label>
         <div className="flex flex-wrap gap-3 items-start">
           {photoIds.map((photoId) => (
             <div key={photoId} className="relative group">
@@ -396,7 +396,7 @@ export function ScheduleBodyInlineEditor({
               <button
                 type="button"
                 onClick={() => removePhoto(photoId)}
-                className="absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full bg-red-500 text-white text-xs font-bold opacity-0 group-hover:opacity-100 transition-opacity shadow"
+                className="absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full bg-red-500 text-white text-sm font-bold opacity-0 group-hover:opacity-100 transition-opacity shadow"
                 title="Remove"
               >
                 ×
@@ -405,17 +405,17 @@ export function ScheduleBodyInlineEditor({
           ))}
           <label className="w-24 h-24 flex items-center justify-center rounded-lg border-2 border-dashed border-gray-300 text-gray-500 hover:border-blue-400 hover:text-blue-600 cursor-pointer transition-colors">
             <input type="file" accept="image/*" className="hidden" onChange={handleAddPhoto} disabled={photoUploading} />
-            {photoUploading ? <span className="text-xs">...</span> : <span className="text-2xl">+</span>}
+            {photoUploading ? <span className="text-sm">...</span> : <span className="text-2xl">+</span>}
           </label>
         </div>
       </div>
 
       {!bodyComplete ? (
         <div className="rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 p-5 flex items-center justify-between gap-4">
-          <span className="text-sm font-medium text-gray-700">Inspection result</span>
+          <span className="text-sm font-semibold text-gray-700">Inspection result</span>
           <div className="text-right">
             <span className="text-xl font-semibold text-gray-700">Draft</span>
-            <p className="text-xs text-gray-500 mt-1 max-w-[16rem] sm:max-w-none">Answer every area, then Finish to submit Pass / Conditional / Fail.</p>
+            <p className="text-sm text-gray-600 mt-1 max-w-[16rem] sm:max-w-none">Answer every area, then Finish to submit Pass / Conditional / Fail.</p>
           </div>
         </div>
       ) : (
@@ -428,7 +428,7 @@ export function ScheduleBodyInlineEditor({
                 : 'bg-green-50 border-green-200'
           }`}
         >
-          <span className="text-sm font-medium text-gray-700">Result if you finish now</span>
+          <span className="text-sm font-semibold text-gray-700">Result if you finish now</span>
           <div className="flex items-center gap-2">
             <span className={`text-3xl ${computedFinalResult === 'fail' ? 'text-red-600' : computedFinalResult === 'conditional' ? 'text-amber-600' : 'text-green-600'}`}>
               {computedFinalResult === 'fail' ? '✗' : computedFinalResult === 'conditional' ? '⚠' : '✓'}
@@ -708,7 +708,7 @@ export function ScheduleMechanicalInlineEditor({
   const mechComplete = mechanicalForm ? isMechanicalChecklistComplete(mechanicalForm.items) : false;
   const computedMechFinalResult = mechanicalForm && mechComplete ? computeResultFromConditions(mechanicalForm.items) : null;
 
-  if (!mechanicalForm) return <div className="text-sm text-gray-500 py-4">Loading form…</div>;
+  if (!mechanicalForm) return <div className="text-sm text-gray-600 py-4">Loading form…</div>;
 
   return (
     <div className="space-y-6 min-w-0">
@@ -717,23 +717,23 @@ export function ScheduleMechanicalInlineEditor({
           <h3 className="text-sm font-semibold text-gray-800 mb-3">Vehicle</h3>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
             <div>
-              <span className="text-gray-500 block text-xs font-medium">Unit #</span>
+              <span className="text-gray-600 block text-sm font-semibold">Unit #</span>
               <span className="text-gray-900">{fleetAsset.unit_number || fleetAsset.name || '—'}</span>
             </div>
             <div>
-              <span className="text-gray-500 block text-xs font-medium">Name</span>
+              <span className="text-gray-600 block text-sm font-semibold">Name</span>
               <span className="text-gray-900">{fleetAsset.name || '—'}</span>
             </div>
             <div>
-              <span className="text-gray-500 block text-xs font-medium">KM</span>
+              <span className="text-gray-600 block text-sm font-semibold">KM</span>
               <span className="text-gray-900">{fleetAsset.odometer_current != null ? fleetAsset.odometer_current.toLocaleString() : '—'}</span>
             </div>
             <div>
-              <span className="text-gray-500 block text-xs font-medium">Hours</span>
+              <span className="text-gray-600 block text-sm font-semibold">Hours</span>
               <span className="text-gray-900">{fleetAsset.hours_current != null ? fleetAsset.hours_current.toLocaleString() : '—'}</span>
             </div>
             <div>
-              <span className="text-gray-500 block text-xs font-medium">Date</span>
+              <span className="text-gray-600 block text-sm font-semibold">Date</span>
               <span className="text-gray-900">
                 {inspection.inspection_date ? new Date(inspection.inspection_date).toLocaleDateString() : new Date().toLocaleDateString()}
               </span>
@@ -761,7 +761,7 @@ export function ScheduleMechanicalInlineEditor({
                   >
                     <div className="flex flex-wrap items-center gap-4">
                       <div className="flex-1 min-w-0">
-                        <div className="font-medium text-gray-900">
+                        <div className="font-semibold text-gray-900">
                           {item.key}. {item.label}
                         </div>
                       </div>
@@ -802,7 +802,7 @@ export function ScheduleMechanicalInlineEditor({
       </AppCard>
 
       <div className="rounded-xl border border-gray-200 bg-white p-4">
-        <label className="block text-sm font-medium text-gray-700 mb-2">Photos</label>
+        <label className="block text-sm font-semibold text-gray-700 mb-2">Photos</label>
         <div className="flex flex-wrap gap-3 items-start">
           {photoIds.map((photoId) => (
             <div key={photoId} className="relative group">
@@ -814,7 +814,7 @@ export function ScheduleMechanicalInlineEditor({
               <button
                 type="button"
                 onClick={() => removePhoto(photoId)}
-                className="absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full bg-red-500 text-white text-xs font-bold opacity-0 group-hover:opacity-100 transition-opacity shadow"
+                className="absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full bg-red-500 text-white text-sm font-bold opacity-0 group-hover:opacity-100 transition-opacity shadow"
                 title="Remove"
               >
                 ×
@@ -823,17 +823,17 @@ export function ScheduleMechanicalInlineEditor({
           ))}
           <label className="w-24 h-24 flex items-center justify-center rounded-lg border-2 border-dashed border-gray-300 text-gray-500 hover:border-blue-400 hover:text-blue-600 cursor-pointer transition-colors">
             <input type="file" accept="image/*" className="hidden" onChange={handleAddPhoto} disabled={photoUploading} />
-            {photoUploading ? <span className="text-xs">...</span> : <span className="text-2xl">+</span>}
+            {photoUploading ? <span className="text-sm">...</span> : <span className="text-2xl">+</span>}
           </label>
         </div>
       </div>
 
       {!mechComplete ? (
         <div className="rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 p-5 flex items-center justify-between gap-4">
-          <span className="text-sm font-medium text-gray-700">Inspection result</span>
+          <span className="text-sm font-semibold text-gray-700">Inspection result</span>
           <div className="text-right">
             <span className="text-xl font-semibold text-gray-700">Draft</span>
-            <p className="text-xs text-gray-500 mt-1 max-w-[16rem] sm:max-w-none">Answer every checklist item, then Finish to submit Pass / Conditional / Fail.</p>
+            <p className="text-sm text-gray-600 mt-1 max-w-[16rem] sm:max-w-none">Answer every checklist item, then Finish to submit Pass / Conditional / Fail.</p>
           </div>
         </div>
       ) : (
@@ -846,7 +846,7 @@ export function ScheduleMechanicalInlineEditor({
                 : 'bg-green-50 border-green-200'
           }`}
         >
-          <span className="text-sm font-medium text-gray-700">Result if you finish now</span>
+          <span className="text-sm font-semibold text-gray-700">Result if you finish now</span>
           <div className="flex items-center gap-2">
             <span
               className={`text-3xl ${

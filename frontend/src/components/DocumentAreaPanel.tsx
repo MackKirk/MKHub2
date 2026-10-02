@@ -91,7 +91,7 @@ export default function DocumentAreaPanel({
 
   return (
     <div className="flex-1 flex flex-col min-w-0 max-w-sm rounded-xl border bg-white overflow-hidden">
-      <div className="p-3 border-b border-gray-200 text-gray-600 text-sm font-medium">
+      <div className="p-3 border-b border-gray-200 text-gray-600 text-sm font-semibold">
         Document
       </div>
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -143,7 +143,7 @@ export default function DocumentAreaPanel({
               onClick={() => onTemplateSelect(null)}
               className={`px-3 py-2 rounded text-sm border transition-colors ${
                 !currentTemplateId
-                  ? 'border-brand-red bg-brand-red/10 text-brand-red font-medium'
+                  ? 'border-brand-red bg-brand-red/10 text-brand-red font-semibold'
                   : 'border-gray-300 text-gray-700 hover:bg-gray-50'
               }`}
             >
@@ -156,7 +156,7 @@ export default function DocumentAreaPanel({
                 onClick={() => onTemplateSelect(t.id)}
                 className={`px-3 py-2 rounded text-sm border transition-colors ${
                   currentTemplateId === t.id
-                    ? 'border-brand-red bg-brand-red/10 text-brand-red font-medium'
+                    ? 'border-brand-red bg-brand-red/10 text-brand-red font-semibold'
                     : 'border-gray-300 text-gray-700 hover:bg-gray-50'
                 }`}
               >
@@ -194,7 +194,7 @@ export default function DocumentAreaPanel({
             </div>
           </div>
           {elements.length === 0 && (
-            <p className="text-gray-500 text-sm">Add elements, then select on the slide to resize and edit.</p>
+            <p className="text-gray-600 text-sm">Add elements, then select on the slide to resize and edit.</p>
           )}
         </div>
 
@@ -204,7 +204,7 @@ export default function DocumentAreaPanel({
               type="button"
               onClick={onSave}
               disabled={isSaving}
-              className="px-4 py-2 rounded bg-brand-red text-white font-medium disabled:opacity-50 transition-colors"
+              className="px-4 py-2 rounded bg-brand-red text-white font-semibold disabled:opacity-50 transition-colors"
             >
               {isSaving ? 'Saving...' : documentId ? 'Save' : 'Create document'}
             </button>
@@ -213,7 +213,7 @@ export default function DocumentAreaPanel({
             <button
               type="button"
               onClick={onExportPdf}
-              className="px-4 py-2 rounded bg-gray-100 hover:bg-gray-200 border border-gray-300 text-gray-700 font-medium transition-colors"
+              className="px-4 py-2 rounded bg-gray-100 hover:bg-gray-200 border border-gray-300 text-gray-700 font-semibold transition-colors"
             >
               Export PDF
             </button>

@@ -80,8 +80,8 @@ export function ProjectCalendarProjectChip({ entry, compact = false, onOpen }: P
         colors.text,
         colors.border,
         isDense
-          ? 'rounded px-1 py-0.5 text-[9px] leading-tight shadow-none'
-          : uiCx('rounded-lg px-2 py-1.5 shadow-sm', isCompact ? 'text-[10px]' : 'text-xs'),
+          ? 'rounded px-1 py-0.5 text-[11px] leading-tight shadow-none'
+          : uiCx('rounded-lg px-2 py-1.5 text-xs shadow-sm'),
       )}
       title={[...titleParts, ...leadershipParts, ...workerLines].join(' · ')}
     >
@@ -89,7 +89,7 @@ export function ProjectCalendarProjectChip({ entry, compact = false, onOpen }: P
         <div className="flex min-w-0 items-center gap-0.5">
           <span className="min-w-0 flex-1 truncate font-semibold">{denseLabel}</span>
           {entry.appearance === 'shift_only' ? (
-            <span className="shrink-0 text-[8px] font-medium uppercase opacity-70">out</span>
+            <span className="shrink-0 text-[8px] font-semibold uppercase opacity-70">out</span>
           ) : null}
           {entry.shift_count > 0 ? (
             <span className="shrink-0 tabular-nums opacity-70">{entry.shift_count}</span>
@@ -104,16 +104,16 @@ export function ProjectCalendarProjectChip({ entry, compact = false, onOpen }: P
                   <span className="font-semibold leading-snug">{entry.code}</span>
                 ) : null}
                 {entry.appearance === 'shift_only' ? (
-                  <AppBadge variant="warning" className="!px-1 !py-0 text-[8px] uppercase">
+                  <AppBadge variant="warning" className="!px-1 !py-0 !text-[8px] uppercase">
                     Outside dates
                   </AppBadge>
                 ) : null}
               </div>
-              <span className={uiCx('block line-clamp-2 font-medium leading-snug', isCompact && 'line-clamp-1')}>
+              <span className={uiCx('block line-clamp-2 font-semibold leading-snug', isCompact && 'line-clamp-1')}>
                 {entry.name}
               </span>
               {!isCompact && entry.client_display_name ? (
-                <span className="block line-clamp-1 text-[10px] opacity-80">{entry.client_display_name}</span>
+                <span className="block line-clamp-1 text-xs opacity-80">{entry.client_display_name}</span>
               ) : null}
             </div>
           </div>
@@ -145,18 +145,18 @@ export function ProjectCalendarProjectChip({ entry, compact = false, onOpen }: P
           {!isCompact && workerLines.length > 0 ? (
             <div className={uiCx('mt-1 space-y-0.5 border-t border-black/5 pt-1', uiTypography.helper)}>
               {workerLines.slice(0, 3).map((line, idx) => (
-                <div key={idx} className="line-clamp-1 text-[10px]">
+                <div key={idx} className="line-clamp-1 text-xs">
                   {line}
                 </div>
               ))}
               {workerLines.length > 3 ? (
-                <div className="text-[10px] opacity-70">+{workerLines.length - 3} more</div>
+                <div className="text-xs opacity-70">+{workerLines.length - 3} more</div>
               ) : null}
             </div>
           ) : null}
 
           {isCompact && entry.shift_count > 0 ? (
-            <div className={uiCx('mt-0.5 text-[9px] opacity-80')}>
+            <div className={uiCx('mt-0.5 text-[11px] opacity-80')}>
               {entry.workers_visible
                 ? `${entry.shift_count} shift${entry.shift_count === 1 ? '' : 's'}`
                 : `${entry.shift_count} scheduled`}

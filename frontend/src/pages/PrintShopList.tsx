@@ -168,14 +168,14 @@ export default function PrintShopList() {
           <table className="min-w-full text-left text-sm">
             <thead className="bg-gray-50 text-gray-600">
               <tr>
-                <th className="px-4 py-3 font-medium">Code</th>
-                <th className="px-4 py-3 font-medium">Title</th>
-                <th className="px-4 py-3 font-medium">Items</th>
-                <th className="px-4 py-3 font-medium">Due</th>
-                <th className="px-4 py-3 font-medium">Est. delivery</th>
-                <th className="px-4 py-3 font-medium">Requester</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium w-[1%]">
+                <th className="px-4 py-3 font-semibold">Code</th>
+                <th className="px-4 py-3 font-semibold">Title</th>
+                <th className="px-4 py-3 font-semibold">Items</th>
+                <th className="px-4 py-3 font-semibold">Due</th>
+                <th className="px-4 py-3 font-semibold">Est. delivery</th>
+                <th className="px-4 py-3 font-semibold">Requester</th>
+                <th className="px-4 py-3 font-semibold">Status</th>
+                <th className="px-4 py-3 font-semibold w-[1%]">
                   <span className="sr-only">Actions</span>
                 </th>
               </tr>
@@ -187,7 +187,7 @@ export default function PrintShopList() {
                   className="border-t border-gray-100 hover:bg-gray-50 cursor-pointer"
                   onClick={() => navigate(`/print-shop/${item.id}`)}
                 >
-                  <td className="px-4 py-3 font-medium text-gray-900">{item.request_code}</td>
+                  <td className="px-4 py-3 font-semibold text-gray-900">{item.request_code}</td>
                   <td className="px-4 py-3 text-gray-800">{item.title}</td>
                   <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
                     {item.item_count && item.item_count > 1
@@ -201,7 +201,7 @@ export default function PrintShopList() {
                   <td className="px-4 py-3 text-gray-600">
                     <div>{item.requester_name}</div>
                     {isNotifiableRequesterEmail(item.requester_email) ? (
-                      <div className="text-xs text-gray-500">{item.requester_email}</div>
+                      <div className="text-sm text-gray-600">{item.requester_email}</div>
                     ) : null}
                   </td>
                   <td className="px-4 py-3">

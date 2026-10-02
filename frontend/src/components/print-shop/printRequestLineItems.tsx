@@ -383,7 +383,7 @@ export function PrintRequestLineItemCard({
           />
           <span
             className={uiCx(
-              'inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-md text-xs font-semibold',
+              'inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-md text-sm font-semibold',
               incomplete ? 'bg-amber-100 text-amber-800' : 'bg-gray-200 text-gray-700'
             )}
           >
@@ -401,7 +401,7 @@ export function PrintRequestLineItemCard({
           }}
           disabled={!canDuplicate}
           className={uiCx(
-            'shrink-0 px-3 text-gray-500 hover:bg-gray-100 hover:text-gray-800',
+            'shrink-0 px-3 text-gray-600 hover:bg-gray-100 hover:text-gray-800',
             !canDuplicate && 'opacity-40 pointer-events-none'
           )}
           aria-label={`Duplicate item ${index + 1}`}
@@ -416,7 +416,7 @@ export function PrintRequestLineItemCard({
               e.stopPropagation();
               onRemove();
             }}
-            className="shrink-0 px-3 text-gray-500 hover:bg-red-50 hover:text-red-700"
+            className="shrink-0 px-3 text-gray-600 hover:bg-red-50 hover:text-red-700"
             aria-label={`Remove item ${index + 1}`}
             title="Remove item"
           >
@@ -511,9 +511,9 @@ export function PrintRequestLineItemCard({
                     if (fileInputRef.current) fileInputRef.current.value = '';
                   }}
                   className={uiCx(
-                    'block w-full max-w-xs text-xs',
+                    'block w-full max-w-xs text-sm',
                     uiColors.textMuted,
-                    'file:mr-2 file:py-1.5 file:px-2.5 file:rounded-md file:border-0 file:bg-gray-100 file:text-xs file:font-medium'
+                    'file:mr-2 file:py-1.5 file:px-2.5 file:rounded-md file:border-0 file:bg-gray-100 file:text-sm file:font-semibold'
                   )}
                 />
               </div>
@@ -538,7 +538,7 @@ export function PrintRequestLineItemCard({
                       ) : (
                         <div className="flex h-full w-full flex-col items-center justify-center gap-0.5">
                           <FileText className="h-5 w-5 text-gray-400" />
-                          <span className="text-[9px] text-gray-500">PDF</span>
+                          <span className="text-[9px] text-gray-600">PDF</span>
                         </div>
                       )}
                       <button

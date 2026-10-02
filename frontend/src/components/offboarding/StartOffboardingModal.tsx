@@ -250,12 +250,12 @@ export default function StartOffboardingModal({
 
         {userId && profile ? (
           <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700 space-y-1">
-            <div><span className="font-medium">Position:</span> {profile?.profile?.job_title || '—'}</div>
-            <div><span className="font-medium">Division:</span> {profile?.profile?.division || '—'}</div>
-            <div><span className="font-medium">Manager:</span> {profile?.profile?.manager_name || '—'}</div>
-            <div><span className="font-medium">Hub Access:</span> {hubActive ? 'Active' : 'Inactive'}</div>
+            <div><span className="font-semibold">Position:</span> {profile?.profile?.job_title || '—'}</div>
+            <div><span className="font-semibold">Division:</span> {profile?.profile?.division || '—'}</div>
+            <div><span className="font-semibold">Manager:</span> {profile?.profile?.manager_name || '—'}</div>
+            <div><span className="font-semibold">Hub Access:</span> {hubActive ? 'Active' : 'Inactive'}</div>
             <div>
-              <span className="font-medium">Current Job Termination Date:</span>{' '}
+              <span className="font-semibold">Current Job Termination Date:</span>{' '}
               {profile?.profile?.termination_date
                 ? String(profile.profile.termination_date).slice(0, 10)
                 : '—'}

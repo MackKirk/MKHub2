@@ -199,9 +199,9 @@ export default function ClothSizeSelect({
           type="button"
           onClick={() => !disabled && setShowDropdown(!showDropdown)}
           disabled={disabled}
-          className={`w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 text-left flex items-center justify-between disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
+          className={`w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 text-left flex items-center justify-between disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
         >
-          <span className={value ? 'text-gray-900' : 'text-gray-500'}>{selectedLabel}</span>
+          <span className={value ? 'text-gray-900' : 'text-gray-600'}>{selectedLabel}</span>
           <svg 
             className={`w-4 h-4 text-gray-500 transition-transform ${showDropdown ? 'rotate-180' : ''}`}
             fill="none" 
@@ -219,8 +219,8 @@ export default function ClothSizeSelect({
               return (
                 <div
                   key={size}
-                  className={`px-2.5 py-1.5 text-xs cursor-pointer hover:bg-gray-100 flex items-center justify-between ${
-                    size === value ? 'bg-blue-50 font-medium' : 'text-gray-900'
+                  className={`px-2.5 py-1.5 text-sm cursor-pointer hover:bg-gray-100 flex items-center justify-between ${
+                    size === value ? 'bg-blue-50 font-semibold' : 'text-gray-900'
                   }`}
                   onClick={() => handleSelectSize(size)}
                 >
@@ -243,7 +243,7 @@ export default function ClothSizeSelect({
             })}
             {allowCustom && (
               <div
-                className="px-2.5 py-1.5 text-xs cursor-pointer hover:bg-gray-100 border-t text-blue-600 font-medium"
+                className="px-2.5 py-1.5 text-sm cursor-pointer hover:bg-gray-100 border-t text-blue-600 font-semibold"
                 onClick={() => handleSelectSize('__custom__')}
               >
                 + Add custom size...

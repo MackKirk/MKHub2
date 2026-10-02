@@ -1430,7 +1430,7 @@ export default function ProjectFilesTabEnhanced({
   const deletedFilesBody =
     isAdmin && filesSection === 'deleted' ? (
           <div className="rounded-xl border border-amber-100 bg-amber-50/50 overflow-hidden">
-            <p className="text-xs text-amber-900 px-3 py-2 border-b border-amber-100/80">
+            <p className="text-sm text-amber-900 px-3 py-2 border-b border-amber-100/80">
               Same previews and downloads as the library. Restore returns the file to the project, or delete permanently to remove it from storage.
             </p>
             <div className={`${FILES_BROWSER_ROW_CLASS} min-h-[360px] bg-white`}>
@@ -1440,12 +1440,12 @@ export default function ProjectFilesTabEnhanced({
                     <table className="w-full">
                       <thead className="bg-gray-50 border-b">
                         <tr>
-                          <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 w-12" aria-hidden />
-                          <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700">Name</th>
-                          <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700">Type</th>
-                          <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700">Category</th>
-                          <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700">Removed</th>
-                          <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 w-52">Actions</th>
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 w-12" aria-hidden />
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">Name</th>
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">Type</th>
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">Category</th>
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">Removed</th>
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 w-52">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y">
@@ -1473,7 +1473,7 @@ export default function ProjectFilesTabEnhanced({
                                 ) : (
                                   <button
                                     type="button"
-                                    className={`w-8 h-10 rounded-lg ${icon.color} text-white flex items-center justify-center text-[10px] font-extrabold`}
+                                    className={`w-8 h-10 rounded-lg ${icon.color} text-white flex items-center justify-center text-xs font-extrabold`}
                                     onClick={() => handleFilePreview(pf)}
                                     title="Open / preview"
                                   >
@@ -1484,15 +1484,15 @@ export default function ProjectFilesTabEnhanced({
                               <td className="px-3 py-2">
                                 <button
                                   type="button"
-                                  className="text-xs font-semibold text-left text-gray-900 truncate max-w-xs hover:text-brand-red"
+                                  className="text-sm font-semibold text-left text-gray-900 truncate max-w-xs hover:text-brand-red"
                                   onClick={() => handleFilePreview(pf)}
                                 >
                                   {name}
                                 </button>
                               </td>
-                              <td className="px-3 py-2 text-xs text-gray-600">{getFileTypeLabel(df)}</td>
-                              <td className="px-3 py-2 text-xs text-gray-600">{df.category || '—'}</td>
-                              <td className="px-3 py-2 text-xs text-gray-600">
+                              <td className="px-3 py-2 text-sm text-gray-600">{getFileTypeLabel(df)}</td>
+                              <td className="px-3 py-2 text-sm text-gray-600">{df.category || '—'}</td>
+                              <td className="px-3 py-2 text-sm text-gray-600">
                                 {df.deleted_at ? new Date(df.deleted_at).toLocaleString() : '—'}
                               </td>
                               <td className="px-3 py-2">
@@ -1508,7 +1508,7 @@ export default function ProjectFilesTabEnhanced({
                                     type="button"
                                     onClick={() => handleRestoreDeletedFile(df.id)}
                                     title="Restore to library"
-                                    className="px-2 py-1 rounded bg-emerald-600 text-white text-[10px] font-medium hover:bg-emerald-700"
+                                    className="px-2 py-1 rounded bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700"
                                   >
                                     Restore
                                   </button>
@@ -1516,7 +1516,7 @@ export default function ProjectFilesTabEnhanced({
                                     type="button"
                                     onClick={() => handlePermanentDeleteFile(df.id)}
                                     title="Delete permanently"
-                                    className="px-2 py-1 rounded border border-red-200 text-red-700 text-[10px] font-medium hover:bg-red-50"
+                                    className="px-2 py-1 rounded border border-red-200 text-red-700 text-xs font-semibold hover:bg-red-50"
                                   >
                                     Purge
                                   </button>
@@ -1534,7 +1534,7 @@ export default function ProjectFilesTabEnhanced({
                     title="No deleted files for this project."
                   />
                 ) : (
-                  <div className="flex flex-col items-center justify-center py-16 text-gray-500 text-sm">
+                  <div className="flex flex-col items-center justify-center py-16 text-gray-600 text-sm">
                     <div className="text-2xl mb-2">📁</div>
                     <div>No deleted files for this project.</div>
                   </div>
@@ -1559,7 +1559,7 @@ export default function ProjectFilesTabEnhanced({
               className="flex w-64 shrink-0 flex-col self-start overflow-hidden rounded-bl-2xl border-r bg-gray-50"
             >
               <div className="shrink-0 border-b p-3">
-                <div className="text-xs font-semibold text-gray-700">File Categories</div>
+                <div className="text-sm font-semibold text-gray-700">File Categories</div>
               </div>
             <nav
               className="max-h-[calc(100vh-280px)] overflow-y-auto overscroll-contain"
@@ -1600,9 +1600,9 @@ export default function ProjectFilesTabEnhanced({
                     } ${dropTargetClass(isDropActive('category', cat.id), 'category')} ${!canEditCategory ? 'opacity-70' : ''}`}
                   >
                     <div className="flex items-center gap-2">
-                      <span className="text-xs">{cat.icon || '📁'}</span>
-                      <span className="text-xs">{cat.name}</span>
-                      <span className="ml-auto text-[10px] text-gray-500">({count})</span>
+                      <span className="text-sm">{cat.icon || '📁'}</span>
+                      <span className="text-sm">{cat.name}</span>
+                      <span className="ml-auto text-xs text-gray-600">({count})</span>
                     </div>
                   </button>
                 );
@@ -1635,9 +1635,9 @@ export default function ProjectFilesTabEnhanced({
                   } ${dropTargetClass(isDropActive('category', 'uncategorized'), 'category')}`}
                 >
                   <div className="flex items-center gap-2">
-                    <span className="text-xs">📦</span>
-                    <span className="text-xs">Uncategorized</span>
-                    <span className="ml-auto text-[10px] text-gray-500">({filesByCategory['uncategorized']?.length || 0})</span>
+                    <span className="text-sm">📦</span>
+                    <span className="text-sm">Uncategorized</span>
+                    <span className="ml-auto text-xs text-gray-600">({filesByCategory['uncategorized']?.length || 0})</span>
                   </div>
                 </button>
               )}
@@ -1648,9 +1648,9 @@ export default function ProjectFilesTabEnhanced({
                 }`}
               >
                 <div className="flex items-center gap-2">
-                  <span className="text-xs">📁</span>
-                  <span className="text-xs">All Files</span>
-                  <span className="ml-auto text-[10px] text-gray-500">({filesByCategory['all']?.length || 0})</span>
+                  <span className="text-sm">📁</span>
+                  <span className="text-sm">All Files</span>
+                  <span className="ml-auto text-xs text-gray-600">({filesByCategory['all']?.length || 0})</span>
                 </div>
               </button>
               </div>
@@ -1720,18 +1720,18 @@ export default function ProjectFilesTabEnhanced({
                 <button
                   type="button"
                   onClick={openFilesHome}
-                  className="text-xs text-brand-red hover:underline font-medium"
+                  className="text-sm text-brand-red hover:underline font-semibold"
                 >
                   ← Files Home
                 </button>
               )}
-              <span className="text-xs text-gray-500 hidden sm:inline">
+              <span className="text-sm text-gray-600 hidden sm:inline">
                 Files Home
                 {selectedCategory !== 'all' ? (
                   <>
                     {' '}
                     /{' '}
-                    <span className="text-gray-700 font-medium">
+                    <span className="text-gray-700 font-semibold">
                       {selectedCategory === 'uncategorized'
                         ? 'Uncategorized'
                         : visibleCategories.find((c: { id: string }) => c.id === selectedCategory)?.name || selectedCategory}
@@ -1752,7 +1752,7 @@ export default function ProjectFilesTabEnhanced({
                   />
                 ) : (
                 <div className="relative flex-1 max-w-sm">
-                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-600 pointer-events-none">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
                   </span>
                   <input
@@ -1760,13 +1760,13 @@ export default function ProjectFilesTabEnhanced({
                     value={fileSearchQuery}
                     onChange={(e) => setFileSearchQuery(e.target.value)}
                     placeholder="Search by file name..."
-                    className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-red focus:border-brand-red"
+                    className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-red focus:border-brand-red"
                   />
                   {fileSearchQuery && (
                     <button
                       type="button"
                       onClick={() => setFileSearchQuery('')}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-600"
                       aria-label="Clear search"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
@@ -1774,11 +1774,11 @@ export default function ProjectFilesTabEnhanced({
                   )}
                 </div>
                 )}
-                <div className="text-xs font-semibold text-gray-700 whitespace-nowrap">
+                <div className="text-sm font-semibold text-gray-700 whitespace-nowrap">
                   {selectedCategory === 'all' ? 'All Files' : 
                    selectedCategory === 'uncategorized' ? 'Uncategorized' :
                    visibleCategories.find((c: any) => c.id === selectedCategory)?.name || 'Files'}
-                  <span className="ml-1 text-gray-500">({currentFiles.length})</span>
+                  <span className="ml-1 text-gray-600">({currentFiles.length})</span>
                 </div>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
@@ -1826,7 +1826,7 @@ export default function ProjectFilesTabEnhanced({
                         parentFolderId: selectedFolderId,
                       })
                     }
-                    className="px-2 py-1.5 rounded border border-gray-300 bg-white text-gray-700 text-xs font-medium hover:bg-gray-50 flex items-center gap-1"
+                    className="px-2 py-1.5 rounded border border-gray-300 bg-white text-gray-700 text-sm font-semibold hover:bg-gray-50 flex items-center gap-1"
                     title={selectedCategory !== 'all' && selectedCategory !== 'uncategorized' ? (selectedFolderId ? 'Create a subfolder inside the current folder' : 'Create a folder at the category root') : 'Create subfolder (choose category in modal)'}
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m-10 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" /></svg>
@@ -1834,7 +1834,7 @@ export default function ProjectFilesTabEnhanced({
                   </button>
                   <button
                     onClick={() => openUploadModal('current-location')}
-                    className="px-2 py-1.5 rounded bg-brand-red text-white text-xs font-medium"
+                    className="px-2 py-1.5 rounded bg-brand-red text-white text-sm font-semibold"
                   >
                     + Upload File
                   </button>
@@ -1848,14 +1848,14 @@ export default function ProjectFilesTabEnhanced({
             {/* Location: breadcrumb only (hierarchy of current path) */}
             {selectedCategory !== 'all' && selectedCategory !== 'uncategorized' && (
               <div className="mb-3 flex flex-wrap items-center gap-1">
-                <span className="text-xs text-gray-500">Location:</span>
+                <span className="text-sm text-gray-600">Location:</span>
                 {locationBreadcrumb.map((item, index) => (
                   <span key={item.id ?? 'root'} className="inline-flex items-center gap-1">
-                    {index > 0 && <span className="text-gray-400 text-xs">/</span>}
+                    {index > 0 && <span className="text-gray-600 text-sm">/</span>}
                     <button
                       type="button"
                       onClick={() => setSelectedFolderId(item.id)}
-                      className={`px-2 py-1 rounded text-xs font-medium truncate max-w-[140px] ${item.id === selectedFolderId ? 'bg-brand-red text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                      className={`px-2 py-1 rounded text-sm font-semibold truncate max-w-[140px] ${item.id === selectedFolderId ? 'bg-brand-red text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
                     >
                       {item.name}
                     </button>
@@ -1869,16 +1869,16 @@ export default function ProjectFilesTabEnhanced({
                 <div className="bg-white rounded-lg shadow-xl p-4 max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
                   <h3 className="text-sm font-semibold mb-2">{newFolderParentId ? 'New subfolder' : 'New folder'}</h3>
                   {newFolderParentId && newFolderCategory && (
-                    <p className="text-xs text-gray-600 mb-3">
+                    <p className="text-sm text-gray-600 mb-3">
                       Creating inside{' '}
-                      <span className="font-medium text-gray-900">
+                      <span className="font-semibold text-gray-900">
                         {projectFolders.find((f: ProjectFolderItem) => f.id === newFolderParentId)?.name ?? 'folder'}
                       </span>
                     </p>
                   )}
                   {needsNewFolderCategoryPicker && (
                     <div className="mb-3">
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Category</label>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">Category</label>
                       <select
                         value={newFolderCategory}
                         onChange={e => setNewFolderCategory(e.target.value)}
@@ -1891,7 +1891,7 @@ export default function ProjectFilesTabEnhanced({
                     </div>
                   )}
                   <div className="mb-3">
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Folder name</label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">Folder name</label>
                     <input
                       type="text"
                       value={newFolderName}
@@ -2007,7 +2007,7 @@ export default function ProjectFilesTabEnhanced({
                                     <tr key={f.id} className="hover:bg-gray-50">
                                       <td className="px-3 py-2">
                                         <div
-                                          className={`w-8 h-10 rounded-lg ${icon.color} text-white flex items-center justify-center text-[10px] font-extrabold cursor-pointer`}
+                                          className={`w-8 h-10 rounded-lg ${icon.color} text-white flex items-center justify-center text-xs font-extrabold cursor-pointer`}
                                           onClick={() => handleFilePreview(f)}
                                         >
                                           {icon.label}
@@ -2016,13 +2016,13 @@ export default function ProjectFilesTabEnhanced({
                                       <td className="px-3 py-2">
                                         <button
                                           type="button"
-                                          className="text-xs font-semibold truncate max-w-xs text-left"
+                                          className="text-sm font-semibold truncate max-w-xs text-left"
                                           onClick={() => handleFilePreview(f)}
                                         >
                                           {name}
                                         </button>
                                       </td>
-                                      <td className="px-3 py-2 text-xs text-gray-600">{getFileTypeLabel(f)}</td>
+                                      <td className="px-3 py-2 text-sm text-gray-600">{getFileTypeLabel(f)}</td>
                                     </tr>
                                   );
                                 })}
@@ -2051,44 +2051,44 @@ export default function ProjectFilesTabEnhanced({
                             />
                           </th>
                         ) : null}
-                        <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 w-12"></th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 w-12"></th>
                         <th 
-                          className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 select-none whitespace-nowrap"
+                          className="px-3 py-2 text-left text-xs font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 select-none whitespace-nowrap"
                           onClick={() => handleSort('name')}
                         >
                           <div className="flex items-center gap-1">
                             Name
                             {sortBy === 'name' && (
-                              <span className="text-xs">{sortOrder === 'asc' ? '↑' : '↓'}</span>
+                              <span className="text-sm">{sortOrder === 'asc' ? '↑' : '↓'}</span>
                             )}
                           </div>
                         </th>
-                        <th className="w-full min-w-[8rem] px-3 py-2 text-left text-[10px] font-semibold text-gray-700 whitespace-nowrap">
+                        <th className="w-full min-w-[8rem] px-3 py-2 text-left text-xs font-semibold text-gray-700 whitespace-nowrap">
                           Notes
                         </th>
                         <th 
-                          className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 select-none whitespace-nowrap"
+                          className="px-3 py-2 text-left text-xs font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 select-none whitespace-nowrap"
                           onClick={() => handleSort('type')}
                         >
                           <div className="flex items-center gap-1">
                             Type
                             {sortBy === 'type' && (
-                              <span className="text-xs">{sortOrder === 'asc' ? '↑' : '↓'}</span>
+                              <span className="text-sm">{sortOrder === 'asc' ? '↑' : '↓'}</span>
                             )}
                           </div>
                         </th>
                         <th 
-                          className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 select-none whitespace-nowrap"
+                          className="px-3 py-2 text-left text-xs font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 select-none whitespace-nowrap"
                           onClick={() => handleSort('uploaded_at')}
                         >
                           <div className="flex items-center gap-1">
                             Upload Date
                             {sortBy === 'uploaded_at' && (
-                              <span className="text-xs">{sortOrder === 'asc' ? '↑' : '↓'}</span>
+                              <span className="text-sm">{sortOrder === 'asc' ? '↑' : '↓'}</span>
                             )}
                           </div>
                         </th>
-                        <th className="w-[1%] whitespace-nowrap px-3 py-2 text-right text-[10px] font-semibold text-gray-700">Actions</th>
+                        <th className="w-[1%] whitespace-nowrap px-3 py-2 text-right text-xs font-semibold text-gray-700">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
@@ -2105,11 +2105,11 @@ export default function ProjectFilesTabEnhanced({
                             </div>
                           </td>
                           <td className="px-3 py-2">
-                            <div className="text-xs font-semibold text-gray-600">..</div>
+                            <div className="text-sm font-semibold text-gray-600">..</div>
                           </td>
-                          <td className="px-3 py-2 text-xs text-gray-500">—</td>
-                          <td className="px-3 py-2 text-xs text-gray-500">—</td>
-                          <td className="px-3 py-2 text-xs text-gray-500">—</td>
+                          <td className="px-3 py-2 text-sm text-gray-600">—</td>
+                          <td className="px-3 py-2 text-sm text-gray-600">—</td>
+                          <td className="px-3 py-2 text-sm text-gray-600">—</td>
                           <td className="px-3 py-2"></td>
                         </tr>
                       )}
@@ -2155,15 +2155,15 @@ export default function ProjectFilesTabEnhanced({
                           </td>
                           <td className="px-3 py-2">
                             <div className="flex max-w-xs items-center gap-2">
-                              <span className="truncate text-xs font-semibold">{folder.name}</span>
-                              <span className="ml-auto shrink-0 text-[10px] font-normal text-gray-500">
+                              <span className="truncate text-sm font-semibold">{folder.name}</span>
+                              <span className="ml-auto shrink-0 text-xs font-normal text-gray-600">
                                 ({folderFileCounts[folder.id] ?? 0})
                               </span>
                             </div>
                           </td>
-                          <td className="px-3 py-2 text-xs text-gray-500">—</td>
-                          <td className="px-3 py-2 text-xs text-gray-600">Folder</td>
-                          <td className="px-3 py-2 text-xs text-gray-500">—</td>
+                          <td className="px-3 py-2 text-sm text-gray-600">—</td>
+                          <td className="px-3 py-2 text-sm text-gray-600">Folder</td>
+                          <td className="px-3 py-2 text-sm text-gray-600">—</td>
                           <td className="px-3 py-2 text-right" onClick={e => e.stopPropagation()}>
                             {canWriteFiles && (
                               <div className="flex items-center justify-end">
@@ -2177,7 +2177,7 @@ export default function ProjectFilesTabEnhanced({
                               <button
                                 type="button"
                                 onClick={(e) => { e.stopPropagation(); handleDeleteFolder(folder.id); }}
-                                className="p-1 rounded hover:bg-red-50 text-red-600 text-xs"
+                                className="p-1 rounded hover:bg-red-50 text-red-600 text-sm"
                                 title="Delete folder"
                               >
                                 🗑️
@@ -2233,7 +2233,7 @@ export default function ProjectFilesTabEnhanced({
                                 </div>
                               ) : (
                                 <div 
-                                  className={`w-8 h-10 rounded-lg ${icon.color} text-white flex items-center justify-center text-[10px] font-extrabold select-none flex-shrink-0 cursor-pointer`}
+                                  className={`w-8 h-10 rounded-lg ${icon.color} text-white flex items-center justify-center text-xs font-extrabold select-none flex-shrink-0 cursor-pointer`}
                                   onClick={() => handleFilePreview(f)}
                                 >
                                   {icon.label}
@@ -2275,20 +2275,20 @@ export default function ProjectFilesTabEnhanced({
                                       if (e.key === 'Enter') handleRenameFile(f.id, editingFileNameValue);
                                       if (e.key === 'Escape') { setEditingFileNameId(null); setEditingFileNameValue(''); }
                                     }}
-                                    className="text-xs font-semibold border rounded px-2 py-1 max-w-xs flex-1"
+                                    className="text-sm font-semibold border rounded px-2 py-1 max-w-xs flex-1"
                                     autoFocus
                                   />
                                   <button
                                     onClick={() => handleRenameFile(f.id, editingFileNameValue)}
                                     title="Save"
-                                    className="p-1 rounded hover:bg-green-100 text-green-700 text-xs"
+                                    className="p-1 rounded hover:bg-green-100 text-green-700 text-sm"
                                   >
                                     Save
                                   </button>
                                   <button
                                     onClick={() => { setEditingFileNameId(null); setEditingFileNameValue(''); }}
                                     title="Cancel"
-                                    className="p-1 rounded hover:bg-gray-100 text-xs"
+                                    className="p-1 rounded hover:bg-gray-100 text-sm"
                                   >
                                     Cancel
                                   </button>
@@ -2297,7 +2297,7 @@ export default function ProjectFilesTabEnhanced({
                                 </div>
                               ) : (
                                 <div className="flex items-center gap-1 whitespace-nowrap">
-                                  <div className="max-w-[28rem] truncate text-xs font-semibold leading-5 cursor-pointer" title={name}>{name}</div>
+                                  <div className="max-w-[28rem] truncate text-sm font-semibold leading-5 cursor-pointer" title={name}>{name}</div>
                                   {canWriteFiles && (
                                     <AppHeroEditButton
                                       title="Rename"
@@ -2330,7 +2330,7 @@ export default function ProjectFilesTabEnhanced({
                                     maxLength={1000}
                                     placeholder="Add a note…"
                                     className={uiCx(
-                                      'min-w-0 flex-1 bg-white text-xs text-gray-900 outline-none transition-colors',
+                                      'min-w-0 flex-1 bg-white text-sm text-gray-900 outline-none transition-colors',
                                       'placeholder:text-gray-400 focus:border-gray-400 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-gray-400/35',
                                       uiSpacing.controlX,
                                       uiSpacing.controlY,
@@ -2362,8 +2362,8 @@ export default function ProjectFilesTabEnhanced({
                                 <div className="inline-flex max-w-full items-center gap-1">
                                   <div
                                     className={uiCx(
-                                      'min-w-0 break-words whitespace-pre-wrap text-xs leading-5',
-                                      (f.notes || '').trim() ? 'text-gray-600' : 'italic text-gray-400',
+                                      'min-w-0 break-words whitespace-pre-wrap text-sm leading-5',
+                                      (f.notes || '').trim() ? 'text-gray-600' : 'italic text-gray-600',
                                     )}
                                     title={(f.notes || '').trim() || undefined}
                                   >
@@ -2384,13 +2384,13 @@ export default function ProjectFilesTabEnhanced({
                               className="px-3 py-2 align-middle cursor-pointer"
                               onClick={() => handleFilePreview(f)}
                             >
-                              <div className="text-xs leading-5 text-gray-600">{getFileTypeLabel(f)}</div>
+                              <div className="text-sm leading-5 text-gray-600">{getFileTypeLabel(f)}</div>
                             </td>
                             <td 
                               className="px-3 py-2 align-middle cursor-pointer"
                               onClick={() => handleFilePreview(f)}
                             >
-                              <div className="text-xs leading-5 text-gray-600 whitespace-nowrap">
+                              <div className="text-sm leading-5 text-gray-600 whitespace-nowrap">
                                 {f.uploaded_at ? formatDateTimeVancouver(f.uploaded_at) : '-'}
                               </div>
                             </td>
@@ -2427,7 +2427,7 @@ export default function ProjectFilesTabEnhanced({
                                         handleDeleteFile(f.id);
                                       }}
                                       title="Delete"
-                                      className="p-1 rounded hover:bg-red-50 text-red-600 text-xs"
+                                      className="p-1 rounded hover:bg-red-50 text-red-600 text-sm"
                                     >
                                       Delete
                                     </button>
@@ -2450,11 +2450,11 @@ export default function ProjectFilesTabEnhanced({
                   description={canWriteFiles ? 'Drag and drop files here or click Upload File.' : undefined}
                 />
               ) : (
-                <div className="px-3 py-6 text-center text-gray-500">
+                <div className="px-3 py-6 text-center text-gray-600">
                   <div className="text-2xl mb-2">📁</div>
-                  <div className="text-xs">No files in this category</div>
+                  <div className="text-sm">No files in this category</div>
                   {canWriteFiles && (
-                    <div className="text-[10px] mt-1">Drag and drop files here or click "Upload File"</div>
+                    <div className="text-xs mt-1">Drag and drop files here or click "Upload File"</div>
                   )}
                 </div>
               )}
@@ -2601,7 +2601,7 @@ export default function ProjectFilesTabEnhanced({
               {uploadModalContext === 'choose-location' && (
                 <>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Category</label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">Category</label>
                     <select
                       value={uploadDestinationCategory}
                       onChange={(e) => {
@@ -2616,7 +2616,7 @@ export default function ProjectFilesTabEnhanced({
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Folder</label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">Folder</label>
                     <select
                       value={uploadDestinationFolderId ?? ''}
                       onChange={(e) =>
@@ -2632,7 +2632,7 @@ export default function ProjectFilesTabEnhanced({
                 </>
               )}
               <div>
-                <div className="text-xs font-medium text-gray-600 mb-1.5">Files (multiple files supported)</div>
+                <div className="text-sm font-semibold text-gray-600 mb-1.5">Files (multiple files supported)</div>
                 <input
                   type="file"
                   multiple
@@ -2655,17 +2655,17 @@ export default function ProjectFilesTabEnhanced({
                       }
                     }
                   }}
-                  className="w-full text-xs"
+                  className="w-full text-sm"
                 />
               </div>
-              <div className="text-[10px] text-gray-500">
+              <div className="text-xs text-gray-600">
                 You can also drag and drop files directly onto the category area
               </div>
             </div>
             <div className="mt-4 flex justify-end gap-2">
               <button
                 onClick={() => setShowUpload(false)}
-                className="px-3 py-1.5 rounded border text-xs"
+                className="px-3 py-1.5 rounded border text-sm"
               >
                 Cancel
               </button>
@@ -2740,7 +2740,7 @@ export default function ProjectFilesTabEnhanced({
             {newFolderParentId && newFolderCategory && (
               <p className={uiTypography.helper}>
                 Creating inside{' '}
-                <span className="font-medium text-gray-900">
+                <span className="font-semibold text-gray-900">
                   {projectFolders.find((f: ProjectFolderItem) => f.id === newFolderParentId)?.name ?? 'folder'}
                 </span>
               </p>
@@ -2800,7 +2800,7 @@ export default function ProjectFilesTabEnhanced({
                         printWindow.document.close();
                       }
                     }}
-                    className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
+                    className="rounded border px-2 py-1 text-sm hover:bg-gray-50"
                     title="Print"
                   >
                     🖨️

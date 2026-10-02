@@ -161,13 +161,13 @@ export default function UserDetail(){
       {tab==='general' && canViewGeneral && (
         <div className="rounded-xl border bg-white p-4">
           <div className="grid md:grid-cols-2 gap-3 text-sm">
-            <div><div className="text-gray-600">Username</div><div className="font-medium">{user.username}</div></div>
-            <div><div className="text-gray-600">Email</div><div className="font-medium">{user.email||''}</div></div>
+            <div><div className="text-gray-600">Username</div><div className="font-semibold">{user.username}</div></div>
+            <div><div className="text-gray-600">Email</div><div className="font-semibold">{user.email||''}</div></div>
             {canEditGeneral && (
               <div className="md:col-span-2"><label className="inline-flex items-center gap-2"><input type="checkbox" checked={!!user.is_active} onChange={e=>{ user.is_active = e.target.checked; }} /> Active</label></div>
             )}
             {!canEditGeneral && (
-              <div className="md:col-span-2"><div className="text-gray-600">Status</div><div className="font-medium">{user.is_active ? 'Active' : 'Inactive'}</div></div>
+              <div className="md:col-span-2"><div className="text-gray-600">Status</div><div className="font-semibold">{user.is_active ? 'Active' : 'Inactive'}</div></div>
             )}
             {canEditGeneral && (
               <>
@@ -191,8 +191,8 @@ export default function UserDetail(){
                         className="mt-1"
                       />
                       <div className="flex-1">
-                        <div className="font-medium text-yellow-900">Grant Administrator Access</div>
-                        <div className="text-xs text-yellow-800 mt-1">
+                        <div className="font-semibold text-yellow-900">Grant Administrator Access</div>
+                        <div className="text-sm text-yellow-800 mt-1">
                           ⚠️ <strong>Warning:</strong> This user will have access to all areas of the system and will be able to delete sensitive information. Only grant this to trusted users.
                         </div>
                       </div>
@@ -201,7 +201,7 @@ export default function UserDetail(){
                 </div>
                 <div className="md:col-span-2">
                   <div className="mb-2 text-gray-600">Roles</div>
-                  <div className="flex flex-wrap gap-2 mb-2">{(user.roles||[]).map((r:string)=> <span key={r} className="px-2 py-1 rounded-full border text-xs">{r} <button className="ml-1" onClick={()=>{ user.roles = (user.roles||[]).filter((x:string)=>x!==r); }}>✕</button></span>)}</div>
+                  <div className="flex flex-wrap gap-2 mb-2">{(user.roles||[]).map((r:string)=> <span key={r} className="px-2 py-1 rounded-full border text-sm">{r} <button className="ml-1" onClick={()=>{ user.roles = (user.roles||[]).filter((x:string)=>x!==r); }}>✕</button></span>)}</div>
                   <div className="flex items-center gap-2">
                     <select className="border rounded px-2 py-1 text-sm" value={sel} onChange={e=>setSel(e.target.value)}><option value="">Add role...</option>{sortByLabel(roles||[], (r:any)=> (r.name||'').toString()).map((r:any)=> <option key={r.id} value={r.name}>{r.name}</option>)}</select>
                     <button onClick={()=>{ if(!sel) return; if(!(user.roles||[]).includes(sel)){ user.roles = [...(user.roles||[]), sel]; } setSel(''); }} className="px-2 py-1 rounded bg-gray-100">Add</button>
@@ -215,14 +215,14 @@ export default function UserDetail(){
                 <div className="md:col-span-2">
                   <div className="mb-2 text-gray-600">Admin Access</div>
                   <div className="mb-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                    <div className="font-medium text-yellow-900">
+                    <div className="font-semibold text-yellow-900">
                       {(user.roles||[]).some((r: string) => String(r || '').toLowerCase() === 'admin') ? 'Yes' : 'No'}
                     </div>
                   </div>
                 </div>
                 <div className="md:col-span-2">
                   <div className="mb-2 text-gray-600">Roles</div>
-                  <div className="flex flex-wrap gap-2">{(user.roles||[]).map((r:string)=> <span key={r} className="px-2 py-1 rounded-full border text-xs">{r}</span>)}</div>
+                  <div className="flex flex-wrap gap-2">{(user.roles||[]).map((r:string)=> <span key={r} className="px-2 py-1 rounded-full border text-sm">{r}</span>)}</div>
                 </div>
               </>
             )}
@@ -289,9 +289,9 @@ function UserTimesheet({ userId }:{ userId:string }){
     <div className="rounded-xl border bg-white p-4">
       <div className="grid md:grid-cols-3 gap-3 text-sm">
         <div className="md:col-span-3 flex items-center gap-2">
-          <label className="text-xs text-gray-600">Month</label>
+          <label className="text-sm text-gray-600">Month</label>
           <input type="month" className="border rounded px-2 py-1" value={month} onChange={e=>setMonth(e.target.value)} />
-          <label className="text-xs text-gray-600 ml-3">Project</label>
+          <label className="text-sm text-gray-600 ml-3">Project</label>
           <select className="border rounded px-2 py-1 flex-1" value={projectId} onChange={e=>setProjectId(e.target.value)}>
             <option value="">Select...</option>
             {sortByLabel(projects||[], (p:any)=> (p.name||p.code||p.id||'').toString()).map((p:any)=> <option key={p.id} value={p.id}>{p.code? `${p.code} — `:''}{p.name||'Project'}</option>)}
@@ -300,15 +300,15 @@ function UserTimesheet({ userId }:{ userId:string }){
         {canEditAttendance && (
           <>
             <div>
-              <label className="text-xs text-gray-600">Date</label>
+              <label className="text-sm text-gray-600">Date</label>
               <input type="date" className="w-full border rounded px-3 py-2" value={workDate} onChange={e=>setWorkDate(e.target.value)} />
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <div><label className="text-xs text-gray-600">Start</label><input type="time" className="w-full border rounded px-3 py-2" value={start} onChange={e=>setStart(e.target.value)} /></div>
-              <div><label className="text-xs text-gray-600">End</label><input type="time" className="w-full border rounded px-3 py-2" value={end} onChange={e=>setEnd(e.target.value)} /></div>
+              <div><label className="text-sm text-gray-600">Start</label><input type="time" className="w-full border rounded px-3 py-2" value={start} onChange={e=>setStart(e.target.value)} /></div>
+              <div><label className="text-sm text-gray-600">End</label><input type="time" className="w-full border rounded px-3 py-2" value={end} onChange={e=>setEnd(e.target.value)} /></div>
             </div>
             <div className="md:col-span-3">
-              <label className="text-xs text-gray-600">Notes</label>
+              <label className="text-sm text-gray-600">Notes</label>
               <input className="w-full border rounded px-3 py-2" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Justification" />
             </div>
             <div className="md:col-span-3 text-right">
@@ -322,7 +322,7 @@ function UserTimesheet({ userId }:{ userId:string }){
           <div key={e.id} className="px-2 py-1 text-sm flex items-center gap-3">
             <div className="w-20 text-gray-600">{String(e.work_date).slice(0,10)}</div>
             <div className="w-24 text-gray-700">{formatTime12h(e.start_time)} - {formatTime12h(e.end_time)}</div>
-            <div className="w-16 font-medium">{(e.minutes/60).toFixed(2)}h</div>
+            <div className="w-16 font-semibold">{(e.minutes/60).toFixed(2)}h</div>
             <div className="text-gray-600 flex items-center gap-1">
               <span className="truncate">{e.notes||''}</span>
               {e.shift_deleted && (

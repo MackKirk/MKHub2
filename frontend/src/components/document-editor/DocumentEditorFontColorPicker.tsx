@@ -151,7 +151,7 @@ export default function DocumentEditorFontColorPicker({
             className={`${ribbonPortalDropdownPanelClass} w-[232px] max-h-[min(70vh,420px)] overflow-y-auto`}
             style={{ top: menuPos.top, left: menuPos.left }}
           >
-            <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500">Automatic</p>
+            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500">Automatic</p>
             <button
               type="button"
               className="mb-2 w-full rounded border border-gray-200 bg-gray-50 py-1.5 text-left text-xs text-gray-800 hover:bg-gray-100"
@@ -164,7 +164,7 @@ export default function DocumentEditorFontColorPicker({
             >
               Automatic (default)
             </button>
-            <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500">Standard colors</p>
+            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Standard colors</p>
             <div className="mb-2 grid grid-cols-8 gap-1">
               {EDITOR_FONT_COLOR_PRESETS.map((c) => (
                 <Swatch
@@ -181,7 +181,7 @@ export default function DocumentEditorFontColorPicker({
             </div>
             <button
               type="button"
-              className="w-full rounded border border-dashed border-gray-300 py-1.5 text-xs font-medium text-gray-700 hover:border-brand-red/50 hover:bg-red-50/50"
+              className="w-full rounded border border-dashed border-gray-300 py-1.5 text-xs font-semibold text-gray-700 hover:border-brand-red/50 hover:bg-red-50/50"
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => {
                 void (async () => {

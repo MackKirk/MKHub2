@@ -131,7 +131,7 @@ function PopoverTrigger({ pressed, onClick, title, children }: PopButtonProps) {
       type="button"
       title={title}
       onClick={onClick}
-      className={`inline-flex items-center gap-0.5 rounded border px-1.5 py-1 text-xs transition-colors ${
+      className={`inline-flex items-center gap-0.5 rounded border px-1.5 py-1 text-sm transition-colors ${
         pressed ? 'border-brand-red bg-red-50 ring-1 ring-brand-red/25' : 'border-gray-200 bg-white hover:bg-gray-50'
       }`}
     >
@@ -247,10 +247,10 @@ export function CommunityEditorColorToolbar({ editor }: { editor: Editor }) {
             role="listbox"
             aria-label="Font colors"
           >
-            <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500">Automatic</p>
+            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-600">Automatic</p>
             <button
               type="button"
-              className="mb-2 w-full rounded border border-gray-200 bg-gray-50 py-1.5 text-left text-xs text-gray-800 hover:bg-gray-100"
+              className="mb-2 w-full rounded border border-gray-200 bg-gray-50 py-1.5 text-left text-sm text-gray-800 hover:bg-gray-100"
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => {
                 editor.chain().focus().unsetColor().run();
@@ -260,7 +260,7 @@ export function CommunityEditorColorToolbar({ editor }: { editor: Editor }) {
             >
               Automatic (default)
             </button>
-            <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500">Standard colors</p>
+            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-600">Standard colors</p>
             <div className="mb-2 grid grid-cols-8 gap-1">
               {EDITOR_FONT_COLOR_PRESETS.map((c) => (
                 <Swatch
@@ -277,7 +277,7 @@ export function CommunityEditorColorToolbar({ editor }: { editor: Editor }) {
             </div>
             <button
               type="button"
-              className="w-full rounded border border-dashed border-gray-300 py-1.5 text-xs font-medium text-gray-700 hover:border-brand-red/50 hover:bg-red-50/50"
+              className="w-full rounded border border-dashed border-gray-300 py-1.5 text-sm font-semibold text-gray-700 hover:border-brand-red/50 hover:bg-red-50/50"
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => {
                 void (async () => {
@@ -298,7 +298,7 @@ export function CommunityEditorColorToolbar({ editor }: { editor: Editor }) {
               <div className="mt-2 flex gap-2 border-t border-gray-200 pt-2">
                 <button
                   type="button"
-                  className="h-8 flex-1 rounded-md border border-gray-300 bg-white px-2 text-xs font-semibold text-gray-700 shadow-sm hover:bg-gray-50"
+                  className="h-8 flex-1 rounded-md border border-gray-300 bg-white px-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50"
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => {
                     suppressOutsideCloseRef.current = false;
@@ -313,7 +313,7 @@ export function CommunityEditorColorToolbar({ editor }: { editor: Editor }) {
                 </button>
                 <button
                   type="button"
-                  className="h-8 flex-1 rounded-md bg-brand-red px-2 text-xs font-semibold text-white shadow-sm hover:bg-red-700"
+                  className="h-8 flex-1 rounded-md bg-brand-red px-2 text-sm font-semibold text-white shadow-sm hover:bg-red-700"
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => {
                     suppressOutsideCloseRef.current = false;
@@ -366,10 +366,10 @@ export function CommunityEditorColorToolbar({ editor }: { editor: Editor }) {
             role="listbox"
             aria-label="Highlight colors"
           >
-            <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500">No color</p>
+            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-600">No color</p>
             <button
               type="button"
-              className="mb-2 w-full rounded border border-gray-200 bg-gray-50 py-1.5 text-left text-xs text-gray-800 hover:bg-gray-100"
+              className="mb-2 w-full rounded border border-gray-200 bg-gray-50 py-1.5 text-left text-sm text-gray-800 hover:bg-gray-100"
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => {
                 editor.chain().focus().unsetHighlight().run();
@@ -379,7 +379,7 @@ export function CommunityEditorColorToolbar({ editor }: { editor: Editor }) {
             >
               No highlight
             </button>
-            <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500">Presets</p>
+            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-600">Presets</p>
             <div className="mb-2 grid grid-cols-6 gap-1">
               {HIGHLIGHT_PRESETS.map((c) => (
                 <Swatch
@@ -396,7 +396,7 @@ export function CommunityEditorColorToolbar({ editor }: { editor: Editor }) {
             </div>
             <button
               type="button"
-              className="w-full rounded border border-dashed border-gray-300 py-1.5 text-xs font-medium text-gray-700 hover:border-brand-red/50 hover:bg-red-50/50"
+              className="w-full rounded border border-dashed border-gray-300 py-1.5 text-sm font-semibold text-gray-700 hover:border-brand-red/50 hover:bg-red-50/50"
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => {
                 void (async () => {
@@ -417,7 +417,7 @@ export function CommunityEditorColorToolbar({ editor }: { editor: Editor }) {
               <div className="mt-2 flex gap-2 border-t border-gray-200 pt-2">
                 <button
                   type="button"
-                  className="h-8 flex-1 rounded-md border border-gray-300 bg-white px-2 text-xs font-semibold text-gray-700 shadow-sm hover:bg-gray-50"
+                  className="h-8 flex-1 rounded-md border border-gray-300 bg-white px-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50"
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => {
                     suppressOutsideCloseRef.current = false;
@@ -432,7 +432,7 @@ export function CommunityEditorColorToolbar({ editor }: { editor: Editor }) {
                 </button>
                 <button
                   type="button"
-                  className="h-8 flex-1 rounded-md bg-brand-red px-2 text-xs font-semibold text-white shadow-sm hover:bg-red-700"
+                  className="h-8 flex-1 rounded-md bg-brand-red px-2 text-sm font-semibold text-white shadow-sm hover:bg-red-700"
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => {
                     suppressOutsideCloseRef.current = false;

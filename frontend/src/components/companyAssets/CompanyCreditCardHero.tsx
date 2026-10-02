@@ -34,8 +34,8 @@ const fleetHeroAssignButtonClass =
 const fleetHeroReturnButtonClass =
   'h-24 w-24 sm:h-28 sm:w-28 rounded-xl border-2 border-emerald-600 bg-emerald-50 text-emerald-950 text-sm font-semibold shadow-sm hover:bg-emerald-100 active:scale-[0.98] transition flex flex-col items-center justify-center gap-1 px-1 py-2 text-center leading-tight';
 
-const fleetHeroValueClass = 'text-xs font-semibold text-gray-900 mt-0.5';
-const fleetHeroValueMutedClass = 'text-xs font-semibold text-gray-400 mt-0.5';
+const fleetHeroValueClass = 'text-sm font-semibold text-gray-900 mt-0.5';
+const fleetHeroValueMutedClass = 'text-sm font-semibold text-gray-600 mt-0.5';
 
 const HERO_PANEL_EASE = 'ease-[cubic-bezier(0.22,1,0.36,1)]';
 const HERO_PANEL_TRANSITION_BASE = 'overflow-hidden';
@@ -79,7 +79,7 @@ export function CompanyCreditCardHeroVisual({
           {netDisplay}
         </span>
       </div>
-      <div className="font-mono text-sm font-medium tracking-[0.18em] text-white drop-shadow-sm">
+      <div className="font-mono text-sm font-semibold tracking-[0.18em] text-white drop-shadow-sm">
         •••• {lastFour}
       </div>
     </div>
@@ -147,7 +147,7 @@ function CompanyCreditCardHeroBody({
             <div className="mb-1">
               <h3 className="text-sm font-bold text-gray-900">{primaryTitle}</h3>
               {subtitleLine ? (
-                <p className="mt-0.5 text-xs font-medium text-gray-600">{subtitleLine}</p>
+                <p className="mt-0.5 text-sm font-semibold text-gray-600">{subtitleLine}</p>
               ) : null}
             </div>
 
@@ -204,7 +204,7 @@ function CompanyCreditCardHeroBody({
                 </button>
               )
             ) : (
-              <div className={uiCx(fleetHeroValueMutedClass, 'px-2 text-center text-xs')}>
+              <div className={uiCx(fleetHeroValueMutedClass, 'px-2 text-center text-sm')}>
                 {card.status !== 'active' ? 'Not active' : '—'}
               </div>
             )}

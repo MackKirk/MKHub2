@@ -53,7 +53,7 @@ function WarrantyDetailField({ label, children }: { label: string; children: Rea
   return (
     <div className="grid grid-cols-1 gap-1 border-b border-gray-100 py-3 last:border-0 sm:grid-cols-[9.5rem_minmax(0,1fr)] sm:items-start sm:gap-x-4 sm:py-2.5">
       <dt className={uiTypography.helper}>{label}</dt>
-      <dd className={uiCx(uiTypography.body, 'min-w-0 break-words font-medium text-gray-900')}>{children}</dd>
+      <dd className={uiCx(uiTypography.body, 'min-w-0 break-words font-semibold text-gray-900')}>{children}</dd>
     </div>
   );
 }

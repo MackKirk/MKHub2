@@ -189,19 +189,19 @@ export default function ReviewCyclesPage() {
                           <span className="leading-snug">{formatReviewPeriodRange(c.period_start, c.period_end)}</span>
                         </div>
                         <div className={uiCx('mt-2', uiTypography.helper)}>
-                          <span className="text-gray-500">Form template</span>{' '}
+                          <span className="text-gray-600">Form template</span>{' '}
                           <span className={uiColors.textStrong}>{templateLabel(c.form_template_id)}</span>
                           {deptMaps > 0 ? (
-                            <span className="text-gray-500">
+                            <span className="text-gray-600">
                               {' '}
                               · {deptMaps} department-specific form{deptMaps === 1 ? '' : 's'}
                             </span>
                           ) : null}
                         </div>
                         <div className={uiCx('mt-1.5 leading-relaxed', uiTypography.helper)}>
-                          <span className="text-gray-500">Who is included</span> — {scopeLine}
+                          <span className="text-gray-600">Who is included</span> — {scopeLine}
                         </div>
-                        <div className={uiCx('mt-2 font-medium text-brand-red', uiTypography.helper)}>Open cycle</div>
+                        <div className={uiCx('mt-2 font-semibold text-brand-red', uiTypography.helper)}>Open cycle</div>
                       </button>
                     </li>
                   );

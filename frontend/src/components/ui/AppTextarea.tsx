@@ -29,7 +29,8 @@ export function AppTextarea({
         id={id}
         rows={rows}
         className={uiCx(
-          'w-full resize-y bg-white text-xs text-gray-900 outline-none transition-colors placeholder:text-gray-400 focus:border-gray-400 focus:ring-1 focus:ring-gray-400 disabled:cursor-not-allowed disabled:bg-gray-100',
+          'w-full resize-y bg-white outline-none transition-colors placeholder:text-gray-400 focus:border-gray-400 focus:ring-1 focus:ring-gray-400 disabled:cursor-not-allowed disabled:bg-gray-100',
+          uiTypography.controlValue,
           uiSpacing.controlX,
           uiSpacing.controlY,
           uiRadius.control,
@@ -38,7 +39,7 @@ export function AppTextarea({
         )}
         {...props}
       />
-      {error ? <span className="block text-xs text-red-600">{error}</span> : helperText ? <span className={uiTypography.helper}>{helperText}</span> : null}
+      {error ? <span className="block text-sm text-red-600">{error}</span> : helperText ? <span className={uiTypography.helper}>{helperText}</span> : null}
     </label>
   );
 }

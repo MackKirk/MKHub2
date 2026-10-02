@@ -109,21 +109,21 @@ export default function DirectorMeetingScheduleTab({
         progress → Compare), then schedules the closing in-person meeting with the employee here.
       </p>
       <p className="text-sm text-gray-600 mb-4">
-        For <span className="font-medium text-gray-800">published time slots</span>, employees book in{' '}
-        <Link to="/reviews/my" className="font-medium text-brand-red hover:underline">
+        For <span className="font-semibold text-gray-800">published time slots</span>, employees book in{' '}
+        <Link to="/reviews/my" className="font-semibold text-brand-red hover:underline">
           My reviews
         </Link>{' '}
-        → <span className="font-medium text-gray-800">Director 1:1</span> tab. HR can use the full{' '}
-        <Link to="/reviews/director-meetings" className="font-medium text-brand-red hover:underline">
+        → <span className="font-semibold text-gray-800">Director 1:1</span> tab. HR can use the full{' '}
+        <Link to="/reviews/director-meetings" className="font-semibold text-brand-red hover:underline">
           Meeting schedule
         </Link>{' '}
         under Employee Review. Use the table below for manual date/time overrides if needed.
       </p>
-      <p className="text-sm text-gray-500 mb-4">
+      <p className="text-sm text-gray-600 mb-4">
         Open side-by-side comparison:{' '}
         <Link
           to={cycleId ? `/reviews/compare?cycle=${encodeURIComponent(cycleId)}` : '/reviews/compare'}
-          className="font-medium text-brand-red hover:underline"
+          className="font-semibold text-brand-red hover:underline"
         >
           Reviews comparison
         </Link>
@@ -131,7 +131,7 @@ export default function DirectorMeetingScheduleTab({
           <>
             {' '}
             — or from{' '}
-            <Link to={`/reviews/cycles/${encodeURIComponent(cycleId)}`} className="font-medium text-brand-red hover:underline">
+            <Link to={`/reviews/cycles/${encodeURIComponent(cycleId)}`} className="font-semibold text-brand-red hover:underline">
               this cycle’s Team progress
             </Link>
             .
@@ -140,7 +140,7 @@ export default function DirectorMeetingScheduleTab({
       </p>
 
       <div className="flex flex-wrap items-center gap-3 mb-4">
-        <label className="text-sm font-medium text-gray-700">Cycle</label>
+        <label className="text-sm font-semibold text-gray-700">Cycle</label>
         <select
           className="border rounded px-3 py-2 text-sm min-w-[220px]"
           value={cycleId}
@@ -160,27 +160,27 @@ export default function DirectorMeetingScheduleTab({
           <table className="min-w-full divide-y divide-gray-200 text-sm">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 uppercase">Employee</th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 uppercase">Reviews</th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 uppercase whitespace-nowrap">
+                <th className="px-4 py-2 text-left text-sm font-semibold text-gray-600 uppercase">Employee</th>
+                <th className="px-4 py-2 text-left text-sm font-semibold text-gray-600 uppercase">Reviews</th>
+                <th className="px-4 py-2 text-left text-sm font-semibold text-gray-600 uppercase whitespace-nowrap">
                   1:1 date &amp; time
                 </th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 uppercase min-w-[10rem]">
+                <th className="px-4 py-2 text-left text-sm font-semibold text-gray-600 uppercase min-w-[10rem]">
                   Notes
                 </th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 uppercase w-28"> </th>
+                <th className="px-4 py-2 text-left text-sm font-semibold text-gray-600 uppercase w-28"> </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
               {isLoading ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan={5} className="px-4 py-8 text-center text-gray-600">
                     Loading…
                   </td>
                 </tr>
               ) : (hrStatus as any[]).length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan={5} className="px-4 py-8 text-center text-gray-600">
                     No employees in this cycle.
                   </td>
                 </tr>
@@ -189,10 +189,10 @@ export default function DirectorMeetingScheduleTab({
                   const draft = drafts[r.user_id] ?? { at: '', notes: '' };
                   return (
                     <tr key={r.user_id} className="hover:bg-gray-50 align-top">
-                      <td className="px-4 py-3 font-medium text-gray-900">{r.display_name || r.name || r.user_id}</td>
+                      <td className="px-4 py-3 font-semibold text-gray-900">{r.display_name || r.name || r.user_id}</td>
                       <td className="px-4 py-3">
                         {r.both_done ? (
-                          <span className="text-green-700 font-medium">Both done</span>
+                          <span className="text-green-700 font-semibold">Both done</span>
                         ) : (
                           <span className="text-amber-700">
                             {!r.employee_self_done ? 'Missing self' : ''}{' '}
@@ -222,7 +222,7 @@ export default function DirectorMeetingScheduleTab({
                           type="button"
                           disabled={savingId === r.user_id}
                           onClick={() => saveRow(r.user_id)}
-                          className="rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-gray-800 disabled:opacity-50"
+                          className="rounded-lg bg-gray-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-gray-800 disabled:opacity-50"
                         >
                           {savingId === r.user_id ? 'Saving…' : 'Save'}
                         </button>
@@ -235,7 +235,7 @@ export default function DirectorMeetingScheduleTab({
           </table>
         </div>
       ) : (
-        <div className="rounded-xl border bg-white p-6 text-gray-500 text-sm">Select a cycle to schedule meetings.</div>
+        <div className="rounded-xl border bg-white p-6 text-gray-600 text-sm">Select a cycle to schedule meetings.</div>
       )}
     </div>
   );

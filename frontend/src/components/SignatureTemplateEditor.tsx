@@ -902,7 +902,7 @@ export default function SignatureTemplateEditor({
             {isOnboarding ? (
               <div className="mt-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
                 <p className={uiTypography.helper}>
-                  <span className="font-medium text-gray-800">Signing flow: </span>
+                  <span className="font-semibold text-gray-800">Signing flow: </span>
                   {signingFlowLabel}
                 </p>
               </div>
@@ -997,7 +997,7 @@ export default function SignatureTemplateEditor({
                   ) : null}
                   {selected.type === 'value' ? (
                     <p className={uiTypography.helper}>
-                      The signer will enter a <span className="font-medium">Canadian dollar (CAD)</span> amount when
+                      The signer will enter a <span className="font-semibold">Canadian dollar (CAD)</span> amount when
                       signing. Placement and label are defined here only.
                     </p>
                   ) : null}

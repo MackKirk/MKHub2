@@ -20,8 +20,8 @@ export default function FilterChip({
 
   return (
     <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 text-gray-700 rounded-md text-sm transition-all duration-150 hover:bg-gray-200">
-      <span className="font-medium">{fieldLabel}</span>
-      <span className="text-gray-500">{operatorLabel}</span>
+      <span className="font-semibold">{fieldLabel}</span>
+      <span className="text-gray-600">{operatorLabel}</span>
       <span>{valueLabel}</span>
       <button
         onClick={onRemove}

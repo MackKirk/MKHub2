@@ -129,7 +129,7 @@ import DesignSystemShowcase from './pages/dev/DesignSystemShowcase';
 import { BusinessLineProvider } from './context/BusinessLineContext';
 import { BUSINESS_LINE_REPAIRS_MAINTENANCE } from './lib/businessLine';
 
-const RouteFallback = () => <div className="min-h-[40vh] flex items-center justify-center text-gray-500">Loading...</div>;
+const RouteFallback = () => <div className="min-h-[40vh] flex items-center justify-center text-gray-600">Loading...</div>;
 
 /** Legacy URLs under /fleet/equipment → /company-assets/equipment (avoid /assets/* — static files) */
 function LegacyFleetEquipmentDetailRedirect() {
@@ -168,7 +168,7 @@ function Home() {
   }, [token, navigate]);
   if (!token) return <Navigate to="/login" replace />;
   return (
-    <div className="min-h-screen flex items-center justify-center text-gray-500">Loading...</div>
+    <div className="min-h-screen flex items-center justify-center text-gray-600">Loading...</div>
   );
 }
 

@@ -285,9 +285,9 @@ export default function DesignSystemShowcase() {
                 icon={<LayoutGrid className="h-4 w-4" />}
               />
               <p className={uiCx(uiTypography.helper, 'mt-2')}>
-                Props: <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">onBack</code>,{' '}
-                <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">backLabel</code>,{' '}
-                <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">icon</code> (Lucide inside blue tile).
+                Props: <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">onBack</code>,{' '}
+                <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">backLabel</code>,{' '}
+                <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">icon</code> (Lucide inside blue tile).
                 Date lives in the global AppShell header.
               </p>
             </div>
@@ -351,9 +351,9 @@ export default function DesignSystemShowcase() {
                 <AppHeroEditButton title="Edit clock-in time" aria-label="Edit clock-in time" onClick={() => undefined} />
               </div>
               <p className={uiCx(uiTypography.helper, 'mt-2')}>
-                Gray pencil, <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">hover:text-brand-red</code>, 12px icon (
-                <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">w-3 h-3</code>),{' '}
-                <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">p-0.5</code>. Use beside labels or inline values.
+                Gray pencil, <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">hover:text-brand-red</code>, 12px icon (
+                <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">w-3 h-3</code>),{' '}
+                <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">p-0.5</code>. Use beside labels or inline values.
               </p>
             </div>
             <div>
@@ -364,7 +364,7 @@ export default function DesignSystemShowcase() {
               </div>
               <p className={uiCx(uiTypography.helper, 'mt-2')}>
                 Slightly larger icon (
-                <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">w-3.5 h-3.5</code>) for heading rows.
+                <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">w-3.5 h-3.5</code>) for heading rows.
               </p>
             </div>
           </div>
@@ -376,12 +376,12 @@ export default function DesignSystemShowcase() {
         >
           <p className={uiCx(uiTypography.helper, 'mb-4')}>
             Use{' '}
-            <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">appSectionPresetProps(&apos;company&apos;)</code>{' '}
-            from <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">@/components/ui</code> on{' '}
-            <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">AppSectionHeader</code>. Pair with{' '}
-            <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">AppHeroEditButton</code> in{' '}
-            <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">action</code> when the section is read-only until edit.
-            Stack sections with <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">space-y-6</code> inside the tab body.
+            <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">appSectionPresetProps(&apos;company&apos;)</code>{' '}
+            from <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">@/components/ui</code> on{' '}
+            <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">AppSectionHeader</code>. Pair with{' '}
+            <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">AppHeroEditButton</code> in{' '}
+            <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">action</code> when the section is read-only until edit.
+            Stack sections with <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">space-y-6</code> inside the tab body.
           </p>
           <div className={uiSpacing.sectionStack}>
             <AppCard>
@@ -433,28 +433,28 @@ export default function DesignSystemShowcase() {
           </p>
           <ul className={uiCx(uiTypography.helper, 'mb-4 list-disc space-y-1 pl-5')}>
             <li>
-              <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">NewContactModal</code> /{' '}
-              <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">EditContactModal</code> —{' '}
-              <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">formWidth=&quot;comfortable&quot;</code>
+              <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">NewContactModal</code> /{' '}
+              <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">EditContactModal</code> —{' '}
+              <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">formWidth=&quot;comfortable&quot;</code>
             </li>
             <li>
-              <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">SiteFormModal</code> —{' '}
-              <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">formWidth=&quot;wide&quot;</code> +{' '}
-              <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">AddressAutocomplete</code> via{' '}
-              <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">AppControlLabelRow</code>
+              <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">SiteFormModal</code> —{' '}
+              <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">formWidth=&quot;wide&quot;</code> +{' '}
+              <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">AddressAutocomplete</code> via{' '}
+              <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">AppControlLabelRow</code>
             </li>
             <li>
-              <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">EditCustomerGeneralModal</code> — Customer General
-              tab: one modal per section (<code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">company</code>,{' '}
-              <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">address</code>,{' '}
-              <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">billing</code>,{' '}
-              <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">description</code>); PATCH only that section&apos;s
+              <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">EditCustomerGeneralModal</code> — Customer General
+              tab: one modal per section (<code className="rounded bg-gray-100 px-1 py-0.5 text-xs">company</code>,{' '}
+              <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">address</code>,{' '}
+              <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">billing</code>,{' '}
+              <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">description</code>); PATCH only that section&apos;s
               fields
             </li>
           </ul>
           <p className={uiTypography.helper}>
-            Cover/photo: left column + <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">ImagePicker</code> nested
-            with <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">uiModalLayer.nestedPicker</code>. Footer: Delete
+            Cover/photo: left column + <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">ImagePicker</code> nested
+            with <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">uiModalLayer.nestedPicker</code>. Footer: Delete
             (edit only, left), Cancel + Save/Create (right).
           </p>
         </AppCard>
@@ -484,7 +484,7 @@ export default function DesignSystemShowcase() {
               <p className={uiCx(uiTypography.overline, 'mb-2')}>Row / table-style list — layout=&quot;row&quot;</p>
               <div className="flex flex-col gap-2">
                 <AppListCreateItem label="New Opportunity" layout="row" onClick={() => undefined} />
-                <div className={uiCx(uiRadius.control, 'border border-gray-200 bg-gray-50 px-4 py-3 text-xs text-gray-600')}>
+                <div className={uiCx(uiRadius.control, 'border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600')}>
                   Existing row (example)
                 </div>
               </div>
@@ -497,11 +497,11 @@ export default function DesignSystemShowcase() {
           subtitle="Grid header with URL-backed sort, card rows, and presets — same shell as /opportunities list view."
         >
           <p className={uiCx(uiTypography.helper, 'mb-4')}>
-            Use <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">useAppListSort</code> +{' '}
-            <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">AppSortableEntityList*</code> for Business
-            lists. Sort persists in the URL (<code className="text-[11px]">?sort=</code>,{' '}
-            <code className="text-[11px]">dir=</code>). Place{' '}
-            <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">AppListCreateItem</code> first, then header,
+            Use <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">useAppListSort</code> +{' '}
+            <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">AppSortableEntityList*</code> for Business
+            lists. Sort persists in the URL (<code className="text-xs">?sort=</code>,{' '}
+            <code className="text-xs">dir=</code>). Place{' '}
+            <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">AppListCreateItem</code> first, then header,
             then rows.
           </p>
           <div className={uiCx('mb-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2', uiRadius.control)}>
@@ -511,7 +511,7 @@ export default function DesignSystemShowcase() {
                 {sortBy} ({sortDir})
               </span>
               {' · '}
-              URL: <code className="text-[11px]">{searchParams.toString() || '(default)'}</code>
+              URL: <code className="text-xs">{searchParams.toString() || '(default)'}</code>
             </p>
           </div>
           <AppSortableEntityList>
@@ -551,18 +551,18 @@ export default function DesignSystemShowcase() {
               <AppSortableEntityListRow key={row.id} as="link" to="#" preset="opportunities" onClick={(e) => e.preventDefault()}>
                 <div className="min-w-0">
                   <div className="truncate text-sm font-bold text-gray-900 group-hover:text-[#7f1010]">{row.name}</div>
-                  <div className="mt-0.5 flex items-center gap-2 truncate text-xs text-gray-600">
+                  <div className="mt-0.5 flex items-center gap-2 truncate text-sm text-gray-600">
                     <span>{row.code}</span>
-                    <span className="text-gray-400">•</span>
+                    <span className="text-gray-600">•</span>
                     <span>{row.client}</span>
                   </div>
                 </div>
                 <div className="flex min-w-0 items-center gap-2">
                   <AppUserAvatar user={{ name: row.estimator, first_name: row.estimator }} size="sm" />
-                  <span className="truncate text-xs font-semibold text-gray-900">{row.estimator}</span>
+                  <span className="truncate text-sm font-semibold text-gray-900">{row.estimator}</span>
                 </div>
                 <div className="min-w-0">
-                  <span className="text-xs font-semibold text-[#7f1010]">
+                  <span className="text-sm font-semibold text-[#7f1010]">
                     ${row.value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
@@ -585,9 +585,9 @@ export default function DesignSystemShowcase() {
           <div className={uiCx('mt-6 border-t border-gray-100 pt-4')}>
             <p className={uiCx(uiTypography.overline, 'mb-2')}>Flat variant (Customers pattern)</p>
             <p className={uiCx(uiTypography.helper, 'mb-3')}>
-              <code className="text-[11px]">variant=&quot;flat&quot;</code> +{' '}
-              <code className="text-[11px]">AppSortableEntityListFlatBody</code> inside an{' '}
-              <code className="text-[11px]">AppCard</code> with <code className="text-[11px]">bodyClassName=&quot;!p-0&quot;</code>.
+              <code className="text-xs">variant=&quot;flat&quot;</code> +{' '}
+              <code className="text-xs">AppSortableEntityListFlatBody</code> inside an{' '}
+              <code className="text-xs">AppCard</code> with <code className="text-xs">bodyClassName=&quot;!p-0&quot;</code>.
             </p>
             <AppSortableEntityList layout="flat">
               <AppSortableEntityListHeader preset="customers" variant="flat">
@@ -611,12 +611,12 @@ export default function DesignSystemShowcase() {
                     <div className="flex min-w-0 items-center gap-3">
                       <div className={uiCx('h-10 w-10 shrink-0 bg-gray-100', uiRadius.control, uiBorders.subtle)} />
                       <div className="min-w-0">
-                        <div className="truncate text-xs font-semibold text-gray-900">{row.client}</div>
-                        <div className="truncate text-[10px] text-gray-600">{row.name}</div>
+                        <div className="truncate text-sm font-semibold text-gray-900">{row.client}</div>
+                        <div className="truncate text-xs text-gray-600">{row.name}</div>
                       </div>
                     </div>
-                    <span className="truncate text-xs text-gray-700">{row.code}</span>
-                    <span className="truncate text-xs text-gray-600">Vancouver, BC</span>
+                    <span className="truncate text-sm text-gray-700">{row.code}</span>
+                    <span className="truncate text-sm text-gray-600">Vancouver, BC</span>
                     <AppBadge variant={row.statusVariant}>{row.status}</AppBadge>
                     <AppBadge variant="neutral">Commercial</AppBadge>
                   </AppSortableEntityListRow>
@@ -626,7 +626,7 @@ export default function DesignSystemShowcase() {
           </div>
           <pre
             className={uiCx(
-              'mt-4 overflow-x-auto rounded-lg border border-gray-200 bg-gray-900 p-3 text-[11px] leading-relaxed text-gray-100',
+              'mt-4 overflow-x-auto rounded-lg border border-gray-200 bg-gray-900 p-3 text-xs leading-relaxed text-gray-100',
               uiRadius.control,
             )}
           >{`import {
@@ -662,7 +662,7 @@ const { sortBy, sortDir, setSort } = useAppListSort({
         <div className={uiLayout.sectionGrid2}>
           <AppCard title="Tabs" subtitle="Controlled tab style from existing enterprise dashboard patterns.">
             <AppTabs tabs={[...tabItems]} value={activeTab} onChange={setActiveTab} />
-            <div className={uiCx('mt-4 border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600', uiRadius.control)}>
+            <div className={uiCx('mt-4 border border-gray-200 bg-gray-50 p-3 text-sm text-gray-600', uiRadius.control)}>
               Active tab: <span className="font-semibold text-gray-800">{activeTab}</span>
             </div>
           </AppCard>
@@ -683,14 +683,14 @@ const { sortBy, sortDir, setSort } = useAppListSort({
           subtitle="Dark label on hover/focus — Opportunities estimator avatars, Business filter icons. Portaled so overflow-hidden does not clip."
         >
           <p className={uiCx(uiTypography.helper, 'mb-4')}>
-            Wrap any trigger with <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">AppTooltip</code>. Do
-            not use native <code className="text-[11px]">title</code> on the same element. For form help, use{' '}
-            <code className="text-[11px]">fieldHint</code> / <code className="text-[11px]">AppFieldHint</code> (light
+            Wrap any trigger with <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">AppTooltip</code>. Do
+            not use native <code className="text-xs">title</code> on the same element. For form help, use{' '}
+            <code className="text-xs">fieldHint</code> / <code className="text-xs">AppFieldHint</code> (light
             panel).
           </p>
           <div className={uiCx(uiLayout.actionsRow, 'flex-wrap items-center gap-6')}>
             <AppTooltip content="Callum">
-              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-indigo-600 text-xs font-semibold text-white">
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-indigo-600 text-sm font-semibold text-white">
                 C
               </span>
             </AppTooltip>
@@ -715,61 +715,61 @@ const { sortBy, sortDir, setSort } = useAppListSort({
             <div className={uiCx('mb-4 space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3', uiRadius.control)}>
               <p className={uiTypography.body}>
                 <strong className="font-semibold text-gray-800">Field hint (?)</strong> — use prop{' '}
-                <code className="rounded bg-white px-1 py-0.5 text-[11px]">fieldHint</code> on{' '}
-                <code className="text-[11px]">AppInput</code>, <code className="text-[11px]">AppSelect</code>, or{' '}
-                <code className="text-[11px]">AppTextarea</code> anywhere in the app (not only inside modals). Same red
+                <code className="rounded bg-white px-1 py-0.5 text-xs">fieldHint</code> on{' '}
+                <code className="text-xs">AppInput</code>, <code className="text-xs">AppSelect</code>, or{' '}
+                <code className="text-xs">AppTextarea</code> anywhere in the app (not only inside modals). Same red
                 ? icon and tooltip as in <strong className="font-semibold text-gray-800">AppFormModal</strong> and Director
                 Meetings.
               </p>
               <p className={uiTypography.helper}>
-                String format: <code className="text-[11px]">{'Title\\n\\nExplanation body.'}</code> (title + body).
-                Labels: uppercase 10px semibold gray; trailing <code className="text-[11px]">*</code> on the label string
+                String format: <code className="text-xs">{'Title\\n\\nExplanation body.'}</code> (title + body).
+                Labels: uppercase 10px semibold gray; trailing <code className="text-xs">*</code> on the label string
                 renders in brand red for required fields.
               </p>
               <p className={uiTypography.helper}>
-                Standalone: <code className="text-[11px]">AppFieldHint</code> or legacy{' '}
-                <code className="text-[11px]">FieldHint</code> next to custom labels when not using App* controls.
+                Standalone: <code className="text-xs">AppFieldHint</code> or legacy{' '}
+                <code className="text-xs">FieldHint</code> next to custom labels when not using App* controls.
               </p>
               <p className={uiTypography.helper}>
                 <strong className="font-semibold text-gray-800">Dropdown — with search</strong> —{' '}
-                <code className="text-[11px]">AppCombobox</code> (single), searchable{' '}
-                <code className="text-[11px]">AppMultiSelect</code>, <code className="text-[11px]">AppUserSelect</code>,{' '}
-                <code className="text-[11px]">AppProjectSelect</code>, <code className="text-[11px]">AppClientSelect</code>.
-                Type in the field (optional left icon); portaled list is <code className="text-[11px]">uiDropdown.menu</code>{' '}
+                <code className="text-xs">AppCombobox</code> (single), searchable{' '}
+                <code className="text-xs">AppMultiSelect</code>, <code className="text-xs">AppUserSelect</code>,{' '}
+                <code className="text-xs">AppProjectSelect</code>, <code className="text-xs">AppClientSelect</code>.
+                Type in the field (optional left icon); portaled list is <code className="text-xs">uiDropdown.menu</code>{' '}
                 with no search bar inside the panel. Use when the list is long or users need to find by name/code/address.
               </p>
               <p className={uiTypography.helper}>
                 <strong className="font-semibold text-gray-800">Dropdown — without search</strong> —{' '}
-                <code className="text-[11px]">AppSelect</code> (default; do not pass <code className="text-[11px]">searchable</code>).
+                <code className="text-xs">AppSelect</code> (default; do not pass <code className="text-xs">searchable</code>).
                 Button + chevron trigger; open the list and pick. Use for short enums (priority, operator, a few statuses).
                 <strong className="font-semibold text-gray-800">Dropdown — hierarchical custom lists</strong> —{' '}
-                <code className="text-[11px]">AppHierarchicalSelectSingle</code> /{' '}
-                <code className="text-[11px]">AppHierarchicalSelectMulti</code> for Safety-style branched lists (drill-down,
-                breadcrumbs, alphabetical at each level). Same <code className="text-[11px]">uiDropdown</code> trigger and portaled panel as{' '}
-                <code className="text-[11px]">AppSelect</code> / <code className="text-[11px]">AppMultiSelect</code>.
+                <code className="text-xs">AppHierarchicalSelectSingle</code> /{' '}
+                <code className="text-xs">AppHierarchicalSelectMulti</code> for Safety-style branched lists (drill-down,
+                breadcrumbs, alphabetical at each level). Same <code className="text-xs">uiDropdown</code> trigger and portaled panel as{' '}
+                <code className="text-xs">AppSelect</code> / <code className="text-xs">AppMultiSelect</code>.
               </p>
               <p className={uiTypography.helper}>
-                Avoid <code className="text-[11px]">AppSelect searchable</code> on new screens — prefer{' '}
-                <code className="text-[11px]">AppCombobox</code> when search is required.
+                Avoid <code className="text-xs">AppSelect searchable</code> on new screens — prefer{' '}
+                <code className="text-xs">AppCombobox</code> when search is required.
               </p>
               <p className={uiTypography.helper}>
-                Dates: <code className="text-[11px]">AppDatePicker</code> — portaled calendar (
-                <code className="text-[11px]">uiDatePicker</code>, not the native browser picker).{' '}
-                <code className="text-[11px]">triggerVariant=&quot;default&quot;</code> for forms;{' '}
-                <code className="text-[11px]">triggerVariant=&quot;card&quot;</code> for page headers (Clock In/Out). Click
+                Dates: <code className="text-xs">AppDatePicker</code> — portaled calendar (
+                <code className="text-xs">uiDatePicker</code>, not the native browser picker).{' '}
+                <code className="text-xs">triggerVariant=&quot;default&quot;</code> for forms;{' '}
+                <code className="text-xs">triggerVariant=&quot;card&quot;</code> for page headers (Clock In/Out). Click
                 the month label in the panel to jump month/year.
               </p>
               <p className={uiTypography.helper}>
-                Projects: <code className="text-[11px]">AppProjectSelect</code> — searchable jobs from{' '}
-                <code className="text-[11px]">/projects</code> (name, code, address); same pattern as Clock In project
-                rows. Use <code className="text-[11px]">JobSearchCombobox</code> when predefined jobs (Shop/Yard) are
-                included. Optional: <code className="text-[11px]">allowEmpty</code>.
+                Projects: <code className="text-xs">AppProjectSelect</code> — searchable jobs from{' '}
+                <code className="text-xs">/projects</code> (name, code, address); same pattern as Clock In project
+                rows. Use <code className="text-xs">JobSearchCombobox</code> when predefined jobs (Shop/Yard) are
+                included. Optional: <code className="text-xs">allowEmpty</code>.
               </p>
               <p className={uiTypography.helper}>
-                Users: <code className="text-[11px]">AppUserSelect</code> —{' '}
-                <code className="text-[11px]">mode=&quot;single&quot;</code> (default) or{' '}
-                <code className="text-[11px]">mode=&quot;multiple&quot;</code>. Loads active users from{' '}
-                <code className="text-[11px]">/auth/users/options</code> (alphabetical, search, infinite scroll, profile
+                Users: <code className="text-xs">AppUserSelect</code> —{' '}
+                <code className="text-xs">mode=&quot;single&quot;</code> (default) or{' '}
+                <code className="text-xs">mode=&quot;multiple&quot;</code>. Loads active users from{' '}
+                <code className="text-xs">/auth/users/options</code> (alphabetical, search, infinite scroll, profile
                 photo). Single shows the user in the field only (no chip below); multiple keeps the menu open with
                 checkboxes and chips.
               </p>
@@ -978,16 +978,16 @@ const { sortBy, sortDir, setSort } = useAppListSort({
             subtitle="AppModal for confirmations; AppFormModal for create/edit flows. Backdrop uses blur + dim (Task Requests pattern)."
           >
             <p className={uiTypography.body}>
-              Import from <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">@/components/ui</code>. Changes
+              Import from <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">@/components/ui</code>. Changes
               here propagate everywhere these components are used.
             </p>
             <ul className={uiCx(uiTypography.helper, 'mt-2 list-inside list-disc space-y-1')}>
               <li>
                 <strong className="font-semibold text-gray-800">AppFormModal</strong> — scrollable form body, optional{' '}
-                <code className="text-[11px]">quickInfo</code> panel toggled via ? next to close. See{' '}
+                <code className="text-xs">quickInfo</code> panel toggled via ? next to close. See{' '}
                 <strong className="font-semibold text-gray-800">Quick Info</strong> below for copy structure. Wide wizards
-                (New Customer, New Opportunity): <code className="text-[11px]">formWidth=&quot;wide&quot;</code>,{' '}
-                <code className="text-[11px]">headerExtra</code> for step pills.
+                (New Customer, New Opportunity): <code className="text-xs">formWidth=&quot;wide&quot;</code>,{' '}
+                <code className="text-xs">headerExtra</code> for step pills.
               </li>
               <li>
                 <strong className="font-semibold text-gray-800">fieldHint</strong> — light ? on a single field;{' '}
@@ -1023,9 +1023,9 @@ const { sortBy, sortDir, setSort } = useAppListSort({
           >
             <p className={uiTypography.body}>
               Build copy with{' '}
-              <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">formModalQuickInfo()</code> from{' '}
-              <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">@/lib/formModalQuickInfo</code>. Highlight
-              visible labels with <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">uiLabel()</code>.
+              <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">formModalQuickInfo()</code> from{' '}
+              <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">@/lib/formModalQuickInfo</code>. Highlight
+              visible labels with <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">uiLabel()</code>.
             </p>
             <ol className={uiCx(uiTypography.helper, 'mt-3 list-decimal space-y-2 pl-5')}>
               <li>
@@ -1037,7 +1037,7 @@ const { sortBy, sortDir, setSort } = useAppListSort({
                 sections exactly as they appear in the UI.
               </li>
               <li>
-                <strong className="font-semibold text-gray-800">Behavior</strong> <span className="text-gray-500">(optional)</span>{' '}
+                <strong className="font-semibold text-gray-800">Behavior</strong> <span className="text-gray-600">(optional)</span>{' '}
                 — Multiple filters, combined rules, what happens after submit, etc.
               </li>
               <li>
@@ -1052,7 +1052,7 @@ const { sortBy, sortDir, setSort } = useAppListSort({
                 <li>Match button and field labels shown in the modal</li>
                 <li>
                   Reuse shared copy when the flow is identical (e.g.{' '}
-                  <code className="text-[11px]">filtersModalQuickInfo</code>)
+                  <code className="text-xs">filtersModalQuickInfo</code>)
                 </li>
               </ul>
               <div className={uiCx(uiTypography.overline, 'mt-3')}>Avoid</div>
@@ -1064,7 +1064,7 @@ const { sortBy, sortDir, setSort } = useAppListSort({
             </div>
             <pre
               className={uiCx(
-                'mt-4 overflow-x-auto rounded-lg border border-gray-200 bg-gray-900 p-3 text-[11px] leading-relaxed text-gray-100',
+                'mt-4 overflow-x-auto rounded-lg border border-gray-200 bg-gray-900 p-3 text-xs leading-relaxed text-gray-100',
                 uiRadius.control,
               )}
             >{`import { formModalQuickInfo, uiLabel } from '@/lib/formModalQuickInfo';
@@ -1076,8 +1076,8 @@ quickInfo={formModalQuickInfo({
   actions: <>{uiLabel('Apply')} saves … {uiLabel('Cancel')} closes …</>,
 })}`}</pre>
             <p className={uiCx(uiTypography.helper, 'mt-3')}>
-              Exported references: <code className="text-[11px]">filtersModalQuickInfo</code>,{' '}
-              <code className="text-[11px]">createRequestQuickInfo</code>. Open the demo modals above and toggle ? to
+              Exported references: <code className="text-xs">filtersModalQuickInfo</code>,{' '}
+              <code className="text-xs">createRequestQuickInfo</code>. Open the demo modals above and toggle ? to
               preview.
             </p>
           </AppCard>
@@ -1150,7 +1150,7 @@ quickInfo={formModalQuickInfo({
                 />
                 <div className={uiCx(uiTypography.helper, 'self-end rounded-lg border border-dashed border-gray-200 bg-gray-50/60 p-3')}>
                   Stored value:{' '}
-                  <code className="text-[11px]">{showcaseTime || '—'}</code>
+                  <code className="text-xs">{showcaseTime || '—'}</code>
                 </div>
               </div>
 
@@ -1158,11 +1158,11 @@ quickInfo={formModalQuickInfo({
                 <div className={uiTypography.overline}>Do</div>
                 <ul className={uiCx(uiTypography.helper, 'mt-1 list-inside list-disc space-y-0.5')}>
                   <li>
-                    Use <code className="text-[11px]">AppTimePicker</code> for start/end session times (Training,
+                    Use <code className="text-xs">AppTimePicker</code> for start/end session times (Training,
                     Timesheet clock in/out, etc.)
                   </li>
                   <li>
-                    <code className="text-[11px]">onChange</code> receives <code className="text-[11px]">HH:mm</code>{' '}
+                    <code className="text-xs">onChange</code> receives <code className="text-xs">HH:mm</code>{' '}
                     (24-hour), same shape as a native time input
                   </li>
                   <li>AM/PM menu: only two options — AM and PM (no extra placeholder row)</li>
@@ -1170,17 +1170,17 @@ quickInfo={formModalQuickInfo({
                 <div className={uiCx(uiTypography.overline, 'mt-3')}>Avoid</div>
                 <ul className={uiCx(uiTypography.helper, 'mt-1 list-inside list-disc space-y-0.5')}>
                   <li>
-                    <code className="text-[11px]">input type=&quot;time&quot;</code> in product forms
+                    <code className="text-xs">input type=&quot;time&quot;</code> in product forms
                   </li>
-                  <li>Three separate <code className="text-[11px]">AppSelect</code> fields for hour, minute, and AM/PM</li>
-                  <li>Putting an empty “none” option in <code className="text-[11px]">options</code> when you already use{' '}
-                    <code className="text-[11px]">placeholder</code> on AppSelect (duplicates the row)</li>
+                  <li>Three separate <code className="text-xs">AppSelect</code> fields for hour, minute, and AM/PM</li>
+                  <li>Putting an empty “none” option in <code className="text-xs">options</code> when you already use{' '}
+                    <code className="text-xs">placeholder</code> on AppSelect (duplicates the row)</li>
                 </ul>
               </div>
 
               <pre
                 className={uiCx(
-                  'overflow-x-auto rounded-lg border border-gray-200 bg-gray-900 p-3 text-[11px] leading-relaxed text-gray-100',
+                  'overflow-x-auto rounded-lg border border-gray-200 bg-gray-900 p-3 text-xs leading-relaxed text-gray-100',
                   uiRadius.control,
                 )}
               >{`import { AppDatePicker, AppTimePicker } from '@/components/ui';
@@ -1208,14 +1208,14 @@ quickInfo={formModalQuickInfo({
           subtitle="Schedule and Clock In/Out — equal-height columns via items-stretch + h-full cards."
         >
           <p className={uiCx(uiTypography.helper, 'mb-4')}>
-            Use <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">uiLayout.pageTwoColumn</code> (Schedule,
-            Clock In/Out) or <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">uiLayout.pageOverview</code>{' '}
-            (Overview feed + sidebar; <code className="text-[11px]">items-stretch</code> keeps both columns equal height).
+            Use <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">uiLayout.pageTwoColumn</code> (Schedule,
+            Clock In/Out) or <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">uiLayout.pageOverview</code>{' '}
+            (Overview feed + sidebar; <code className="text-xs">items-stretch</code> keeps both columns equal height).
             Stack cards inside the sidebar with{' '}
-            <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">uiSpacing.sectionStack</code>; give the primary
-            card <code className="text-[11px]">h-full flex flex-col</code>. Do{' '}
+            <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">uiSpacing.sectionStack</code>; give the primary
+            card <code className="text-xs">h-full flex flex-col</code>. Do{' '}
             <strong className="font-semibold text-gray-800">not</strong> put{' '}
-            <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">space-y-*</code> on the grid wrapper — it
+            <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">space-y-*</code> on the grid wrapper — it
             misaligns column tops.
           </p>
           <div className={uiLayout.pageTwoColumn}>
@@ -1231,9 +1231,9 @@ quickInfo={formModalQuickInfo({
               Sidebar column (e.g. Weekly Summary) — top aligned with gap-2 from primary
             </div>
           </div>
-          <div className={uiCx('mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900', uiRadius.control)}>
+          <div className={uiCx('mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900', uiRadius.control)}>
             <strong className="font-semibold">Avoid:</strong>{' '}
-            <code className="text-[11px]">grid … items-start space-y-3</code> on the two-column wrapper.
+            <code className="text-xs">grid … items-start space-y-3</code> on the two-column wrapper.
           </div>
         </AppCard>
 
@@ -1244,9 +1244,9 @@ quickInfo={formModalQuickInfo({
                 <div key={token.label} className="space-y-1">
                   <div className={uiTypography.helper}>{token.label}</div>
                   <div className={uiCx('border border-dashed border-gray-300 bg-gray-50 p-2', uiRadius.control)}>
-                    <div className={uiCx('bg-brand-red/10 px-2 py-1 text-[10px] font-semibold text-brand-red', uiRadius.control)}>Block A</div>
+                    <div className={uiCx('bg-brand-red/10 px-2 py-1 text-xs font-semibold text-brand-red', uiRadius.control)}>Block A</div>
                     <div className={token.className} />
-                    <div className={uiCx('bg-brand-red/10 px-2 py-1 text-[10px] font-semibold text-brand-red', uiRadius.control)}>Block B</div>
+                    <div className={uiCx('bg-brand-red/10 px-2 py-1 text-xs font-semibold text-brand-red', uiRadius.control)}>Block B</div>
                   </div>
                 </div>
               ))}
@@ -1258,8 +1258,8 @@ quickInfo={formModalQuickInfo({
               <p className={uiTypography.pageTitle}>Page Title / text-lg semibold</p>
               <p className={uiTypography.sectionTitle}>Section Title / text-sm semibold</p>
               <p className={uiTypography.body}>Body text / text-sm regular for paragraphs and supporting content.</p>
-              <p className={uiTypography.helper}>Helper text / text-xs for guidance and microcopy.</p>
-              <p className={uiTypography.overline}>Overline / text-[10px] uppercase</p>
+              <p className={uiTypography.helper}>Helper text / text-sm for guidance and microcopy.</p>
+              <p className={uiTypography.overline}>Overline / text-xs uppercase</p>
             </div>
           </AppCard>
         </div>
@@ -1282,7 +1282,7 @@ quickInfo={formModalQuickInfo({
       >
         <div className="space-y-2 text-sm text-gray-700">
           <p>Use this modal style for confirmations, forms, and focused workflows.</p>
-          <p className="text-xs text-gray-600">Backdrop, border radius, spacing, and title hierarchy remain consistent.</p>
+          <p className="text-sm text-gray-600">Backdrop, border radius, spacing, and title hierarchy remain consistent.</p>
         </div>
       </AppModal>
 

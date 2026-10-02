@@ -45,7 +45,7 @@ export default function FleetVehicles() {
       <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
         <div>
           <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Vehicles</div>
-          <div className="text-sm text-gray-500 font-medium">Manage vehicle fleet</div>
+          <div className="text-sm text-gray-600 font-semibold">Manage vehicle fleet</div>
         </div>
       </div>
 
@@ -102,7 +102,7 @@ export default function FleetVehicles() {
                   className="border-t hover:bg-gray-50 cursor-pointer"
                   onClick={() => nav(`/fleet/assets/${asset.id}`)}
                 >
-                  <td className="p-3 font-medium">{asset.name}</td>
+                  <td className="p-3 font-semibold">{asset.name}</td>
                   <td className="p-3 text-gray-600">{asset.vin || '-'}</td>
                   <td className="p-3 text-gray-600">{asset.model || '-'}</td>
                   <td className="p-3 text-gray-600">{asset.year || '-'}</td>
@@ -110,7 +110,7 @@ export default function FleetVehicles() {
                     {asset.odometer_current ? asset.odometer_current.toLocaleString() : '-'}
                   </td>
                   <td className="p-3">
-                    <span className={`px-2 py-1 rounded text-xs font-medium ${statusColors[asset.status] || 'bg-gray-100 text-gray-800'}`}>
+                    <span className={`px-2 py-1 rounded text-sm font-semibold ${statusColors[asset.status] || 'bg-gray-100 text-gray-800'}`}>
                       {asset.status}
                     </span>
                   </td>
@@ -120,7 +120,7 @@ export default function FleetVehicles() {
           </table>
         )}
         {!isLoading && (!assets || assets.length === 0) && (
-          <div className="p-8 text-center text-gray-500">No vehicles found</div>
+          <div className="p-8 text-center text-gray-600">No vehicles found</div>
         )}
       </div>
     </div>

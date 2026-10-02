@@ -3,8 +3,8 @@ import { uiTypography, uiCx } from './tokens';
 
 const REQUIRED_SUFFIX = /\s*\*$/;
 
-/** Same typography as Quick Info overline (10px uppercase semibold). */
-const FIELD_LABEL_CLASS = uiTypography.overline;
+/** Field names are sentence case at label size — not the uppercase overline. */
+const FIELD_LABEL_CLASS = uiTypography.controlLabel;
 
 /** Parses trailing `*` on string labels and renders it in brand red. */
 export function AppControlLabel({ label }: { label: ReactNode }) {

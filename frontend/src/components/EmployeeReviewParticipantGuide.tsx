@@ -19,7 +19,7 @@ function RatingScaleTable() {
     <div className="overflow-x-auto text-sm">
       <table className="w-full min-w-[240px] text-left text-gray-800">
         <thead>
-          <tr className="border-b border-gray-200 text-xs font-semibold uppercase tracking-wide text-gray-500">
+          <tr className="border-b border-gray-200 text-sm font-semibold uppercase tracking-wide text-gray-600">
             <th className="py-2 pr-2">Score</th>
             <th className="py-2 pr-2">Meaning</th>
           </tr>
@@ -31,14 +31,14 @@ function RatingScaleTable() {
                 {r.score}
               </td>
               <td className="py-2 align-top">
-                <span className="font-medium text-gray-900">{r.title}</span>
-                <span className="mt-0.5 block text-xs leading-snug text-gray-600">{r.detail}</span>
+                <span className="font-semibold text-gray-900">{r.title}</span>
+                <span className="mt-0.5 block text-sm leading-snug text-gray-600">{r.detail}</span>
               </td>
             </tr>
           ))}
         </tbody>
       </table>
-      <p className="mt-2 text-xs leading-relaxed text-gray-500">
+      <p className="mt-2 text-sm leading-relaxed text-gray-600">
         If a question uses a different scale or words, follow the labels on that question.
       </p>
     </div>
@@ -53,7 +53,7 @@ export function EmployeeReviewRatingScalePanel() {
         <summary className="cursor-pointer list-none px-3 py-2.5 text-sm font-semibold text-gray-900">
           <span className="flex items-center justify-between gap-2">
             Rating guide (1–5)
-            <span className="text-xs font-normal text-gray-500">Tap to open</span>
+            <span className="text-sm font-normal text-gray-600">Tap to open</span>
           </span>
         </summary>
         <div className="border-t border-gray-200 px-3 py-3">
@@ -64,7 +64,7 @@ export function EmployeeReviewRatingScalePanel() {
         <div className="rounded-xl border border-gray-200 bg-gray-50/95 shadow-sm">
           <div className="border-b border-gray-200 bg-gray-100/90 px-3 py-2">
             <h4 className="text-sm font-semibold text-gray-900">Rating guide</h4>
-            <p className="mt-0.5 text-[11px] leading-snug text-gray-600">Use this when you see a 1–5 score.</p>
+            <p className="mt-0.5 text-xs leading-snug text-gray-600">Use this when you see a 1–5 score.</p>
           </div>
           <div className="p-3">
             <RatingScaleTable />

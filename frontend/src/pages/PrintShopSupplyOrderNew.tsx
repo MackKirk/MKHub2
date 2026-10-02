@@ -76,7 +76,7 @@ function QtyStepper({
         min={0}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="h-8 w-12 border-x border-gray-200 bg-white text-center text-xs tabular-nums outline-none"
+        className="h-8 w-12 border-x border-gray-200 bg-white text-center text-sm tabular-nums outline-none"
         aria-label={ariaLabel}
       />
       <button
@@ -320,7 +320,7 @@ export default function PrintShopSupplyOrderNew() {
                 </AppBadge>
                 <button
                   type="button"
-                  className="text-xs text-brand-red underline"
+                  className="text-sm text-brand-red underline"
                   onClick={() => setOnlySupplierProducts((v) => !v)}
                 >
                   {onlySupplierProducts ? 'Show full catalog' : 'Show only this supplier'}
@@ -412,7 +412,7 @@ export default function PrintShopSupplyOrderNew() {
                                 >
                                   <div className="min-w-0 flex-1">
                                     <div
-                                      className={uiCx(uiTypography.body, 'font-medium text-gray-900')}
+                                      className={uiCx(uiTypography.body, 'font-semibold text-gray-900')}
                                     >
                                       {p.name}
                                     </div>
@@ -420,11 +420,11 @@ export default function PrintShopSupplyOrderNew() {
                                       {p.manufacturer ? (
                                         <span className={uiTypography.helper}>{p.manufacturer}</span>
                                       ) : null}
-                                      <span className="inline-flex rounded-md border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-gray-600">
+                                      <span className="inline-flex rounded-md border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-gray-600">
                                         {p.unit || 'ea'}
                                       </span>
                                       {price ? (
-                                        <span className="text-xs font-medium tabular-nums text-gray-800">
+                                        <span className="text-sm font-semibold tabular-nums text-gray-800">
                                           {price}
                                         </span>
                                       ) : null}
@@ -469,7 +469,7 @@ export default function PrintShopSupplyOrderNew() {
                     <ul className="space-y-1">
                       {lines.map((l) => (
                         <li key={l.product_id} className={uiTypography.body}>
-                          <span className="font-medium tabular-nums">{l.quantity}x</span>{' '}
+                          <span className="font-semibold tabular-nums">{l.quantity}x</span>{' '}
                           {l.name}
                         </li>
                       ))}
@@ -480,7 +480,7 @@ export default function PrintShopSupplyOrderNew() {
             )}
             <div className="mt-4 border-t border-gray-100 pt-3">
               <div className={uiCx(uiTypography.helper, 'mb-1')}>Email preview</div>
-              <pre className="whitespace-pre-wrap rounded-lg bg-gray-50 p-3 text-[11px] leading-relaxed text-gray-700">
+              <pre className="whitespace-pre-wrap rounded-lg bg-gray-50 p-3 text-xs leading-relaxed text-gray-700">
                 {emailPreview}
               </pre>
             </div>

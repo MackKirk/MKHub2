@@ -97,7 +97,7 @@ export function InvitePickerPdfThumb({ docId }: { docId: string }) {
 
   if (failed || !blobUrl) {
     return (
-      <div className="absolute inset-0 flex items-center justify-center bg-gray-50 text-[10px] font-semibold text-gray-400">
+      <div className="absolute inset-0 flex items-center justify-center bg-gray-50 text-[10px] font-semibold text-gray-600">
         PDF
       </div>
     );

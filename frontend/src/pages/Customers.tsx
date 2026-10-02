@@ -622,14 +622,14 @@ function ClientRow({ c, onOpen }: { c: Client; onOpen: () => void }) {
           alt={c.display_name || c.name || 'Client logo'}
         />
         <div className="flex min-w-0 flex-col justify-center">
-          <div className={uiCx(uiTypography.sectionTitle, 'truncate text-xs')}>{c.display_name || c.name || c.id}</div>
+          <div className={uiCx(uiTypography.sectionTitle, 'truncate text-sm')}>{c.display_name || c.name || c.id}</div>
           {c.address_line1 ? (
-            <div className={uiCx(uiTypography.helper, 'truncate text-[10px]')}>{String(c.address_line1)}</div>
+            <div className={uiCx(uiTypography.helper, 'truncate text-xs')}>{String(c.address_line1)}</div>
           ) : null}
         </div>
       </div>
       <div className="flex min-w-0 items-center">
-        <span className={uiCx(uiTypography.body, 'truncate text-xs')}>{c.code || '—'}</span>
+        <span className={uiCx(uiTypography.body, 'truncate text-sm')}>{c.code || '—'}</span>
       </div>
       <div className="flex min-w-0 items-center">
         <span className={uiCx(uiTypography.helper, 'truncate')}>

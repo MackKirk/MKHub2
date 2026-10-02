@@ -129,7 +129,7 @@ export default function Community() {
                   <h2 id="community-create-heading" className="text-sm font-semibold text-gray-900">
                     Create an announcement
                   </h2>
-                  <p className="mt-0.5 line-clamp-2 text-xs text-gray-500">
+                  <p className="mt-0.5 line-clamp-2 text-sm text-gray-600">
                     Reach groups, track read confirmations, and schedule for later.
                   </p>
                 </div>
@@ -149,7 +149,7 @@ export default function Community() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="text-sm font-semibold text-gray-900">{card.label}</div>
-                      <div className="mt-0.5 line-clamp-2 text-xs text-gray-500">{card.description}</div>
+                      <div className="mt-0.5 line-clamp-2 text-sm text-gray-600">{card.description}</div>
                     </div>
                     <ChevronRightIcon className="h-5 w-5 shrink-0 text-gray-400 group-hover:text-gray-600" />
                   </Link>

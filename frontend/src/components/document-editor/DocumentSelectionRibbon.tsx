@@ -108,7 +108,7 @@ export default function DocumentSelectionRibbon({
   return (
     <div className={editorContextToolbarRowClass}>
       <div className={`${editorContextToolbarGroupClass} self-center`}>
-        <span className="whitespace-nowrap rounded-md bg-slate-200/70 px-2 py-1 text-[11px] font-semibold text-slate-800">
+        <span className="whitespace-nowrap rounded-md bg-slate-200/70 px-2 py-1 text-xs font-semibold text-slate-800">
           {selectionKindLabel}
         </span>
       </div>
@@ -433,7 +433,7 @@ export default function DocumentSelectionRibbon({
 
       {!multi && isLocked && (
         <div className={`${editorContextToolbarGroupClass} self-center`}>
-          <span className={`${editorCaptionClass} font-medium text-amber-800`}>
+          <span className={`${editorCaptionClass} font-semibold text-amber-800`}>
             Locked — unlock to move, resize or edit
           </span>
         </div>

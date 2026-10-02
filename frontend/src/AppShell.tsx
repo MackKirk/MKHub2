@@ -1398,7 +1398,7 @@ export default function AppShell({ children }: PropsWithChildren){
 
   if (showHubLoadingGate || needsWizardRedirectWhileInShell || needsDocumentsRedirectWhileInShell) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 text-gray-500">
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 text-gray-600">
         <div>Loading...</div>
       </div>
     );
@@ -1420,7 +1420,7 @@ export default function AppShell({ children }: PropsWithChildren){
             }}
             className={uiCx(
               'flex h-10 shrink-0 items-center gap-2 rounded-lg border border-white/10 bg-black/15 px-3',
-              'text-sm font-medium text-white transition-colors hover:bg-black/25 hover:border-white/18',
+              'text-sm font-semibold text-white transition-colors hover:bg-black/25 hover:border-white/18',
               'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/40',
               navOpen && 'bg-black/30 border-white/20',
             )}
@@ -1508,7 +1508,7 @@ export default function AppShell({ children }: PropsWithChildren){
                     selectedNavCategory && categoryHasSubPanel(selectedNavCategory) && 'border-r border-white/10',
                   )}
                 >
-                  <div className="px-3 pb-1.5 pt-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                  <div className="px-3 pb-1.5 pt-1 text-xs font-semibold uppercase tracking-wide text-gray-300">
                     Navigate
                   </div>
                   {visibleMenuCategories.map((category) => {
@@ -1541,7 +1541,7 @@ export default function AppShell({ children }: PropsWithChildren){
                         <span className={uiCx('flex-shrink-0', isSelected || isRouteActive ? 'opacity-100' : 'opacity-70')}>
                           {category.icon}
                         </span>
-                        <span className="min-w-0 flex-1 truncate text-sm font-medium">{category.label}</span>
+                        <span className="min-w-0 flex-1 truncate text-sm">{category.label}</span>
                         {hasSub ? (
                           <svg className="h-3.5 w-3.5 shrink-0 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -1570,7 +1570,7 @@ export default function AppShell({ children }: PropsWithChildren){
                         <span className="flex-shrink-0 opacity-80">
                           <IconLogs />
                         </span>
-                        <span className="text-sm font-medium">Audit log</span>
+                        <span className="text-sm">Audit log</span>
                       </NavLink>
                     </>
                   ) : null}
@@ -1601,7 +1601,7 @@ export default function AppShell({ children }: PropsWithChildren){
                       />
                     </div>
                     <div className="relative z-[1] flex flex-col py-1.5">
-                    <div className="px-3 pb-1.5 pt-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                    <div className="px-3 pb-1.5 pt-1 text-xs font-semibold uppercase tracking-wide text-gray-300">
                       {selectedNavCategory.label}
                     </div>
                     <div className="space-y-0.5 px-1.5 pb-1">
@@ -1670,18 +1670,18 @@ export default function AppShell({ children }: PropsWithChildren){
                                   }
                                 >
                                   <span className="flex-shrink-0 opacity-80">{item.icon}</span>
-                                  <span className="text-sm font-medium flex-1">{item.label}</span>
+                                  <span className="text-sm flex-1">{item.label}</span>
                                   <NavBadge count={item.badgeCount} />
                                 </NavLink>
                               ) : (
                                 <div
                                   className={uiCx(
                                     'flex items-center gap-2.5 rounded-lg px-2.5 py-2',
-                                    isItemOrChildActive ? 'bg-brand-red/90 text-white' : 'text-gray-400',
+                                    isItemOrChildActive ? 'bg-brand-red/90 text-white' : 'text-gray-300',
                                   )}
                                 >
                                   <span className="flex-shrink-0 opacity-80">{item.icon}</span>
-                                  <span className="text-sm font-medium flex-1">{item.label}</span>
+                                  <span className="text-sm flex-1">{item.label}</span>
                                   <NavBadge count={item.badgeCount} />
                                 </div>
                               )}
@@ -1699,12 +1699,12 @@ export default function AppShell({ children }: PropsWithChildren){
                                         'ml-4 flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 transition-colors',
                                         childActive
                                           ? 'bg-brand-red/80 text-white'
-                                          : 'text-gray-400 hover:bg-white/5 hover:text-white',
+                                          : 'text-gray-300 hover:bg-white/5 hover:text-white',
                                       )
                                     }
                                   >
                                     <span className="flex-shrink-0 opacity-70">{child.icon}</span>
-                                    <span className="text-xs font-medium">{child.label}</span>
+                                    <span className="text-sm">{child.label}</span>
                                   </NavLink>
                                 );
                               })}
@@ -1739,7 +1739,7 @@ export default function AppShell({ children }: PropsWithChildren){
                               return (
                                 <>
                                   <span className={uiCx('flex-shrink-0', on ? 'opacity-100' : 'opacity-70')}>{item.icon}</span>
-                                  <span className="text-sm font-medium flex-1">{item.label}</span>
+                                  <span className="text-sm flex-1">{item.label}</span>
                                   <NavBadge count={item.badgeCount} />
                                 </>
                               );
@@ -1871,7 +1871,7 @@ export default function AppShell({ children }: PropsWithChildren){
                     <button
                       type="button"
                       onClick={() => navigate('/personal/signatures')}
-                      className="shrink-0 px-3 py-1.5 rounded-lg bg-amber-700 text-white text-sm font-medium hover:bg-amber-800"
+                      className="shrink-0 px-3 py-1.5 rounded-lg bg-amber-700 text-white text-sm font-semibold hover:bg-amber-800"
                     >
                       View Signatures
                     </button>

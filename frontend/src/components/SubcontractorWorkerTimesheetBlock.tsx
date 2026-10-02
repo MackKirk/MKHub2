@@ -46,7 +46,7 @@ import {
 } from '@/components/ui';
 
 const inputClass =
-  'w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400';
+  'w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400';
 
 const toLocalInputValue = (iso?: string | null) => {
   if (!iso) return '';
@@ -148,7 +148,7 @@ function DetailField({ label, children }: { label: string; children: ReactNode }
       )}
     >
       <dt className={uiTypography.helper}>{label}</dt>
-      <dd className={uiCx(uiTypography.body, 'min-w-0 break-words font-medium text-gray-900')}>{children}</dd>
+      <dd className={uiCx(uiTypography.body, 'min-w-0 break-words font-semibold text-gray-900')}>{children}</dd>
     </div>
   );
 }
@@ -183,7 +183,7 @@ function AttendanceDetailsBody({ event }: { event: AttendanceEventView }) {
     <AppCard bodyClassName={uiCx(uiSpacing.cardPadding, 'min-w-0')}>
       <dl className="min-w-0">
         <DetailField label="Record ID">
-          <span className="break-all font-mono text-[11px] font-normal text-gray-700">{event.event_id}</span>
+          <span className="break-all font-mono text-xs font-normal text-gray-700">{event.event_id}</span>
         </DetailField>
         <DetailField label="Worker">{event.worker_name || '—'}</DetailField>
         {event.subcontractor_company_name ? (
@@ -222,7 +222,7 @@ function AttendanceDetailsBody({ event }: { event: AttendanceEventView }) {
                 href={withFileAccessToken(`/files/${encodeURIComponent(signatureId)}/download`)}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs font-medium text-brand-red hover:underline"
+                className="text-sm font-semibold text-brand-red hover:underline"
               >
                 Open / download
               </a>
@@ -866,14 +866,14 @@ export default function SubcontractorWorkerTimesheetBlock({
         </div>
 
         {error && (
-          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
             Error loading attendance: {String(error)}
           </div>
         )}
 
         {canEdit && selectedEvents.size > 0 && (
           <div className="mb-4 rounded-xl border bg-blue-50 p-3 flex items-center justify-between">
-            <div className="text-xs font-medium text-blue-900">{selectedEvents.size} record(s) selected</div>
+            <div className="text-sm font-semibold text-blue-900">{selectedEvents.size} record(s) selected</div>
             <AppButton
               type="button"
               variant="danger"
@@ -1066,7 +1066,7 @@ export default function SubcontractorWorkerTimesheetBlock({
         footer={
           <div className="flex w-full flex-col gap-2">
             {submitDisabledReason ? (
-              <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
                 {submitDisabledReason}
               </p>
             ) : null}
@@ -1103,7 +1103,7 @@ export default function SubcontractorWorkerTimesheetBlock({
                 <AppFieldHint hint="Entry type\n\nClock in / out — enter start and end times. Hours worked — enter total hours for one work date." />
               }
             />
-            <div className="inline-flex overflow-hidden rounded-lg border border-gray-200 bg-gray-50 text-xs">
+            <div className="inline-flex overflow-hidden rounded-lg border border-gray-200 bg-gray-50 text-sm">
               <AppButton
                 type="button"
                 variant={formEntryMode === 'time' ? 'secondary' : 'ghost'}
@@ -1218,7 +1218,7 @@ export default function SubcontractorWorkerTimesheetBlock({
           )}
           {showManualClockOutSignature && (
             <div>
-              <p className="mb-1.5 text-xs font-medium text-gray-600">Clock-out signature (optional)</p>
+              <p className="mb-1.5 text-sm font-semibold text-gray-600">Clock-out signature (optional)</p>
               {formProjectId ? (
                 <SubcontractorSimpleSignature
                   projectId={formProjectId}
@@ -1227,7 +1227,7 @@ export default function SubcontractorWorkerTimesheetBlock({
                   onClear={() => setFormSigOut(null)}
                 />
               ) : (
-                <p className="text-xs text-amber-700">Select a project to attach a signature file.</p>
+                <p className="text-sm text-amber-700">Select a project to attach a signature file.</p>
               )}
             </div>
           )}

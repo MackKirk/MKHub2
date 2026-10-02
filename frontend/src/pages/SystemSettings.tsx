@@ -579,14 +579,14 @@ function PermissionTemplatesSection({ canEdit = true }: { canEdit?: boolean }) {
             className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
           />
           <div className="flex-1 min-w-0">
-            <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
+            <div className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
               <span className="truncate">{perm.label}</span>
               {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">[WIP]</span>
+                <span className="text-xs px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">[WIP]</span>
               )}
             </div>
             {perm.description && (
-              <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
+              <div className="text-xs text-gray-600 mt-0.5 line-clamp-1">{perm.description}</div>
             )}
           </div>
         </label>
@@ -596,13 +596,13 @@ function PermissionTemplatesSection({ canEdit = true }: { canEdit?: boolean }) {
       <div className="grid md:grid-cols-2 gap-2.5">
         {viewPerms.length > 0 && (
           <div className="space-y-1.5">
-            <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">View</div>
+            <div className="text-sm font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">View</div>
             {viewPerms.map((p) => permRow(p, subViewIndent))}
           </div>
         )}
         {editPerms.length > 0 && (
           <div className="space-y-1.5">
-            <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Edit</div>
+            <div className="text-sm font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Edit</div>
             {editPerms.map((p) => permRow(p, subEditIndent))}
           </div>
         )}
@@ -644,9 +644,9 @@ function PermissionTemplatesSection({ canEdit = true }: { canEdit?: boolean }) {
                   </svg>
                 </div>
                 <div className="flex-1">
-                  <h4 className="text-xs font-semibold text-gray-900">{cat.label}</h4>
+                  <h4 className="text-sm font-semibold text-gray-900">{cat.label}</h4>
                   {cat.description && (
-                    <p className="text-[10px] text-gray-500 mt-0.5">{cat.description}</p>
+                    <p className="text-xs text-gray-600 mt-0.5">{cat.description}</p>
                   )}
                 </div>
               </div>
@@ -969,13 +969,13 @@ function PermissionTemplatesSection({ canEdit = true }: { canEdit?: boolean }) {
                         const editPerms = areaPerms.filter((p) => p.key.includes(':write'));
                         return (
                           <div key={area} className="border rounded-lg p-2.5 bg-gray-50">
-                            <div className="text-xs font-semibold text-gray-700 mb-2">Quotations</div>
+                            <div className="text-sm font-semibold text-gray-700 mb-2">Quotations</div>
                             {viewEditBlock(viewPerms, editPerms)}
                           </div>
                         );
                       })}
                       {subPermissions.length === 0 && (
-                        <div className="text-[10px] text-gray-500">No permissions in this category.</div>
+                        <div className="text-xs text-gray-600">No permissions in this category.</div>
                       )}
                     </div>
                   ) : (

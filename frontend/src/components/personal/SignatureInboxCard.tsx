@@ -36,7 +36,7 @@ const variantStyles = {
   },
   waiting: {
     border: 'border-l-gray-300',
-    iconTile: 'bg-gray-100 text-gray-500',
+    iconTile: 'bg-gray-100 text-gray-600',
     badge: 'bg-gray-100 text-gray-600',
     badgeLabel: 'WAITING',
     dueText: 'text-gray-600',
@@ -52,7 +52,7 @@ const variantStyles = {
   },
   cancelled: {
     border: 'border-l-gray-300',
-    iconTile: 'bg-gray-100 text-gray-500',
+    iconTile: 'bg-gray-100 text-gray-600',
     badge: 'bg-gray-100 text-gray-600',
     badgeLabel: 'CANCELLED',
     dueText: 'text-gray-600',
@@ -117,10 +117,10 @@ const SignatureInboxCard = forwardRef<HTMLElement, SignatureInboxCardProps>(func
             </span>
           </div>
           {metaParts.length > 0 ? (
-            <p className="mt-1 text-sm text-gray-500">{metaParts.join(' • ')}</p>
+            <p className="mt-1 text-sm text-gray-600">{metaParts.join(' • ')}</p>
           ) : null}
           {item.subject_label ? (
-            <p className="mt-1 text-xs text-gray-500">Related to onboarding of {item.subject_label}</p>
+            <p className="mt-1 text-sm text-gray-600">Related to onboarding of {item.subject_label}</p>
           ) : null}
           {dueDate ? (
             <p className={uiCx('mt-2 flex flex-wrap items-center gap-1.5 text-sm', styles.dueText)}>
@@ -132,13 +132,13 @@ const SignatureInboxCard = forwardRef<HTMLElement, SignatureInboxCardProps>(func
             </p>
           ) : null}
           {item.is_access_blocker ? (
-            <p className="mt-1.5 flex items-center gap-1.5 text-sm font-medium text-red-700">
+            <p className="mt-1.5 flex items-center gap-1.5 text-sm font-semibold text-red-700">
               <Shield className="h-3.5 w-3.5 shrink-0" aria-hidden />
               Required to restore Hub access
             </p>
           ) : null}
           {item.user_message && item.status === 'action_required' && !compact ? (
-            <p className="mt-2 line-clamp-2 text-xs text-gray-500">{item.user_message}</p>
+            <p className="mt-2 line-clamp-2 text-sm text-gray-600">{item.user_message}</p>
           ) : null}
         </div>
       </div>

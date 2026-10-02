@@ -60,13 +60,13 @@ function WorkOrderAttachmentThumb({
   if (!showImage) {
     return (
       <div className="relative group h-20 w-20 shrink-0">
-        <div className="flex h-full w-full flex-col items-center justify-center rounded-lg border border-gray-200 bg-gray-100 p-1 text-center text-[10px] font-medium text-gray-600">
+        <div className="flex h-full w-full flex-col items-center justify-center rounded-lg border border-gray-200 bg-gray-100 p-1 text-center text-[10px] font-semibold text-gray-600">
           Doc
         </div>
         {!disabled && (
           <button
             type="button"
-            className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-xs leading-5 text-white hover:bg-black/80"
+            className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-sm leading-5 text-white hover:bg-black/80"
             onClick={onRemove}
             aria-label="Remove file"
           >
@@ -88,7 +88,7 @@ function WorkOrderAttachmentThumb({
       {!disabled && (
         <button
           type="button"
-          className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-xs leading-5 text-white hover:bg-black/80"
+          className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-sm leading-5 text-white hover:bg-black/80"
           onClick={onRemove}
           aria-label="Remove file"
         >
@@ -190,18 +190,18 @@ export function WorkOrderAttachmentsPicker({
             void addFiles(e.target.files);
           }}
         />
-        <p className="mb-2 text-xs text-gray-600">
+        <p className="mb-2 text-sm text-gray-600">
           Drag and drop photos or documents here, paste (Ctrl+V), or upload
         </p>
         <button
           type="button"
           disabled={disabled}
           onClick={() => fileInputRef.current?.click()}
-          className="text-sm font-medium text-brand-red hover:underline disabled:opacity-50 disabled:no-underline"
+          className="text-sm font-semibold text-brand-red hover:underline disabled:opacity-50 disabled:no-underline"
         >
           Choose files
         </button>
-        <p className="mt-1.5 text-xs text-gray-500">Images, PDF, and Word documents</p>
+        <p className="mt-1.5 text-sm text-gray-600">Images, PDF, and Word documents</p>
       </div>
       {fileIds.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-2">

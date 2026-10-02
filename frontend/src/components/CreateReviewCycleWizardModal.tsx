@@ -382,7 +382,7 @@ export default function CreateReviewCycleWizardModal({ open, onClose }: Props) {
         <Link
           key={`${e.id}-name`}
           to={`/users/${encodeURIComponent(e.id)}`}
-          className="font-medium text-brand-red hover:underline"
+          className="font-semibold text-brand-red hover:underline"
           onClick={() => {
             setScopePeopleModalOpen(false);
             onClose();
@@ -461,15 +461,15 @@ export default function CreateReviewCycleWizardModal({ open, onClose }: Props) {
 
   const stepPillClass = (n: number) =>
     uiCx(
-      'rounded-full px-2 py-1 text-[10px] font-medium',
+      'rounded-full px-2 py-1 text-xs font-semibold',
       step === n ? 'bg-gray-900 text-white' : 'bg-gray-200 text-gray-600',
     );
 
   const stepIndicators = (
-    <div className={uiCx(uiLayout.actionsRow, uiTypography.helper, 'text-[10px] font-medium')}>
+    <div className={uiCx(uiLayout.actionsRow, uiTypography.helper, 'text-xs font-semibold')}>
       {[1, 2, 3, 4].map((n, index) => (
         <Fragment key={n}>
-          {index > 0 ? <span className="text-gray-400">→</span> : null}
+          {index > 0 ? <span className="text-gray-600">→</span> : null}
           <span className={stepPillClass(n)}>Step {n}</span>
         </Fragment>
       ))}
@@ -566,7 +566,7 @@ export default function CreateReviewCycleWizardModal({ open, onClose }: Props) {
               Employee-review forms are chosen in{' '}
               <span className={uiColors.textStrong}>step 3</span>, one template per HR department label that appears in
               this cycle. Manage definitions in{' '}
-              <Link to="/reviews/form-templates" className="font-medium text-brand-red hover:underline">
+              <Link to="/reviews/form-templates" className="font-semibold text-brand-red hover:underline">
                 Form templates
               </Link>
               .
@@ -698,14 +698,14 @@ export default function CreateReviewCycleWizardModal({ open, onClose }: Props) {
               <span>
                 <span className={uiColors.textStrong}>{scopedEmployees.length}</span> people in scope
                 {scopeMode === 'all' ? (
-                  <span className="text-gray-500">
+                  <span className="text-gray-600">
                     {' '}
                     (of <span className="tabular-nums">{employees.length}</span> in directory)
                   </span>
                 ) : null}
               </span>
               {divisionEmployeeCounts.length > 0 ? (
-                <span className="text-gray-500">· {divisionEmployeeCounts.length} primary-dept. groups</span>
+                <span className="text-gray-600">· {divisionEmployeeCounts.length} primary-dept. groups</span>
               ) : null}
               <AppButton
                 type="button"
@@ -789,7 +789,7 @@ export default function CreateReviewCycleWizardModal({ open, onClose }: Props) {
                 ))}
               </ul>
               {coveragePreview.unresolved.length > 0 ? (
-                <p className="text-xs text-red-700">
+                <p className="text-sm text-red-700">
                   Could not resolve: {coveragePreview.unresolved.slice(0, 8).join('; ')}
                   {coveragePreview.unresolved.length > 8
                     ? ` … +${coveragePreview.unresolved.length - 8} more`
@@ -799,7 +799,7 @@ export default function CreateReviewCycleWizardModal({ open, onClose }: Props) {
             </AppCard>
             <div className={uiTypography.helper}>
               <span className={uiColors.textStrong}>{scopedEmployees.length}</span> reviewees ·{' '}
-              <span className={activateNow ? 'font-medium text-green-700' : 'font-medium text-amber-700'}>
+              <span className={activateNow ? 'font-semibold text-green-700' : 'font-semibold text-amber-700'}>
                 {activateNow ? 'Active' : 'Draft'}
               </span>{' '}
               · {(cycleName || '').trim() || 'Untitled'}

@@ -30,7 +30,7 @@ export function AppTabCountBadge({
     <span
       className={uiCx(
         'inline-flex items-center justify-center font-semibold',
-        size === 'sm' ? 'min-w-4 px-0.5 text-[9px]' : 'min-w-5 px-1 text-[10px]',
+        size === 'sm' ? 'min-w-4 px-0.5 text-[9px]' : 'min-w-5 px-1 text-xs',
         uiRadius.badge,
         isActive ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600',
       )}
@@ -52,7 +52,7 @@ export function getAppTabButtonClassName(
       : uiColors.accentSolid;
   return uiCx(
     'inline-flex items-center transition-colors disabled:cursor-not-allowed disabled:opacity-50',
-    size === 'sm' ? 'gap-1 px-2 py-0.5 text-[11px] font-medium' : 'gap-1.5 px-3 py-1.5',
+    size === 'sm' ? 'gap-1 px-2 py-0.5 text-xs font-semibold' : 'gap-1.5 px-3 py-1.5',
     uiRadius.tab,
     size === 'md' && uiTypography.controlLabel,
     isActive

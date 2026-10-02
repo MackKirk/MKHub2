@@ -83,7 +83,7 @@ async function fileStartsWithPdfMagic(file: File): Promise<boolean> {
 function PdfFileBadge({ className = '' }: { className?: string }) {
   return (
     <div
-      className={`w-8 h-10 rounded-lg bg-red-500 text-white flex items-center justify-center text-[10px] font-extrabold select-none flex-shrink-0 ${className}`}
+      className={`w-8 h-10 rounded-lg bg-red-500 text-white flex items-center justify-center text-xs font-extrabold select-none flex-shrink-0 ${className}`}
       aria-hidden
     >
       PDF
@@ -417,7 +417,7 @@ export default function PdfSignatureDocumentLibrary<T extends PdfSignatureLibrar
         description={
           pendingFile ? (
             <>
-              <span className="block truncate font-medium text-gray-900" title={pendingFile.name}>
+              <span className="block truncate font-semibold text-gray-900" title={pendingFile.name}>
                 {displayNameFromPdfFile(pendingFile)}
               </span>
               <span className="block">
@@ -462,7 +462,7 @@ export default function PdfSignatureDocumentLibrary<T extends PdfSignatureLibrar
               onChange={() => setPendingRole('hiring_package')}
             />
             <span>
-              <span className="block text-sm font-medium text-gray-900">Hiring package</span>
+              <span className="block text-sm font-semibold text-gray-900">Hiring package</span>
               <span className={uiTypography.helper}>Included in the default invite onboarding package.</span>
             </span>
           </label>
@@ -476,7 +476,7 @@ export default function PdfSignatureDocumentLibrary<T extends PdfSignatureLibrar
               onChange={() => setPendingRole('additional')}
             />
             <span>
-              <span className="block text-sm font-medium text-gray-900">Additional documents</span>
+              <span className="block text-sm font-semibold text-gray-900">Additional documents</span>
               <span className={uiTypography.helper}>Optional extras selected on invite Step 2.</span>
             </span>
           </label>
@@ -639,7 +639,7 @@ export default function PdfSignatureDocumentLibrary<T extends PdfSignatureLibrar
                 {d.badge ? (
                   <span
                     className={uiCx(
-                      'mx-auto mt-0.5 inline-block max-w-full truncate rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide',
+                      'mx-auto mt-0.5 inline-block max-w-full truncate rounded px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide',
                       (() => {
                         const variant =
                           d.badgeVariant ||

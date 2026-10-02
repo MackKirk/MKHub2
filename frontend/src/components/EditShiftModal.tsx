@@ -172,7 +172,7 @@ export default function EditShiftModal({
             disabled={!canEdit || saving}
             onClick={() => applyTimePreset(opt.value)}
             className={uiCx(
-              'rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors',
+              'rounded-lg border px-3 py-1.5 text-sm font-semibold transition-colors',
               timePreset === opt.value
                 ? 'border-[#7f1010] bg-red-50 text-[#7f1010]'
                 : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50',
@@ -305,7 +305,7 @@ export default function EditShiftModal({
               </div>
             )}
             <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
+              <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">
                 Worker
               </label>
               <input
@@ -316,7 +316,7 @@ export default function EditShiftModal({
               />
             </div>
             <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
+              <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">
                 Date
               </label>
               <input
@@ -328,7 +328,7 @@ export default function EditShiftModal({
             </div>
             {timeOfDaySection}
             <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
+              <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">
                 Job Type
               </label>
               <select
@@ -346,7 +346,7 @@ export default function EditShiftModal({
               </select>
             </div>
             <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
+              <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">
                 Notes
               </label>
               <textarea

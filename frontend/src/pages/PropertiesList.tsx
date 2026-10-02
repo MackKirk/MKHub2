@@ -96,7 +96,7 @@ function PropertyListCard({ property, onClick }: { property: PropertyListRow; on
         {property.owner_summary ? (
           <div className="min-w-0">
             <div className={uiCx(uiTypography.overline, 'mb-0.5')}>Owners</div>
-            <div className="truncate text-xs font-semibold text-gray-900">{property.owner_summary}</div>
+            <div className="truncate text-sm font-semibold text-gray-900">{property.owner_summary}</div>
           </div>
         ) : null}
       </div>
@@ -433,7 +433,7 @@ export default function PropertiesList() {
           <div className="border-t border-gray-100 pt-4">
             <div className="flex items-center justify-between gap-2">
               <div className={uiTypography.sectionTitle}>Owners</div>
-              <Link to="/settings?section=property-owners" className="text-xs text-brand-red hover:underline">
+              <Link to="/settings?section=property-owners" className="text-sm text-brand-red hover:underline">
                 Manage owners in Settings
               </Link>
             </div>

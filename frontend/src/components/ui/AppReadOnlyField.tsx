@@ -21,7 +21,7 @@ export function AppReadOnlyField({ label, value, className }: AppReadOnlyFieldPr
   return (
     <div className={uiCx('space-y-1', className)}>
       <div className={uiTypography.controlLabel}>{label}</div>
-      <div className={uiCx(uiTypography.helper, 'break-words font-medium text-gray-900')}>{display}</div>
+      <div className={uiCx(uiTypography.helper, 'break-words font-semibold text-gray-900')}>{display}</div>
     </div>
   );
 }

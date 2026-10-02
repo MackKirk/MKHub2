@@ -33,9 +33,9 @@ function Row({ icon, label, value }: { icon: ReactNode; label: string; value: st
         {icon}
       </div>
       <div className="min-w-0 flex-1">
-        <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">{label}</div>
+        <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">{label}</div>
         <div
-          className={`break-words text-sm ${muted ? 'font-normal text-slate-400' : 'font-medium text-slate-900'}`}
+          className={`break-words text-sm ${muted ? 'font-normal text-slate-400' : 'font-semibold text-slate-900'}`}
         >
           {value}
         </div>

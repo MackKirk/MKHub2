@@ -12,7 +12,7 @@ function ClockActionIcon({ kind, enabled }: { kind: 'in' | 'out'; enabled: boole
     ? kind === 'in'
       ? 'bg-green-600 text-white'
       : 'bg-red-600 text-white'
-    : 'bg-gray-300 text-gray-500';
+    : 'bg-gray-300 text-gray-600';
 
   return (
     <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${toneClass}`}>
@@ -56,10 +56,10 @@ export function ClockActionTile({ kind, enabled, disabled = false, onClick, titl
       <div className="flex items-start gap-3">
         <ClockActionIcon kind={kind} enabled={interactive} />
         <div className="min-w-0 flex-1">
-          <div className={`mb-1 text-base font-semibold ${interactive ? 'text-gray-900' : 'text-gray-400'}`}>
+          <div className={`mb-1 text-base font-semibold ${interactive ? 'text-gray-900' : 'text-gray-600'}`}>
             {heading}
           </div>
-          <div className={`text-xs ${interactive ? 'text-gray-600' : 'text-gray-400'}`}>{description}</div>
+          <div className={`text-sm ${interactive ? 'text-gray-600' : 'text-gray-600'}`}>{description}</div>
         </div>
       </div>
     </button>

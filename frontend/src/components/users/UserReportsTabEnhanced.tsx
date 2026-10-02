@@ -222,7 +222,7 @@ function DetailField({ label, children }: { label: string; children: ReactNode }
       )}
     >
       <dt className={uiTypography.helper}>{label}</dt>
-      <dd className={uiCx(uiTypography.body, 'min-w-0 break-words font-medium text-gray-900')}>{children}</dd>
+      <dd className={uiCx(uiTypography.body, 'min-w-0 break-words font-semibold text-gray-900')}>{children}</dd>
     </div>
   );
 }
@@ -1155,7 +1155,7 @@ function CreateReportModal({
               {existingAttachments.map((att) => (
                 <li
                   key={att.id}
-                  className="flex items-center justify-between gap-2 rounded-lg bg-gray-50 p-2 text-xs text-gray-600"
+                  className="flex items-center justify-between gap-2 rounded-lg bg-gray-50 p-2 text-sm text-gray-600"
                 >
                   <a
                     href={withFileAccessToken(`/files/${att.file_id}`)}
@@ -1182,7 +1182,7 @@ function CreateReportModal({
         ) : attachments.length > 0 ? (
           <ul className="space-y-1">
             {attachments.map((att, idx) => (
-              <li key={idx} className="flex items-center gap-2 text-xs text-gray-600">
+              <li key={idx} className="flex items-center gap-2 text-sm text-gray-600">
                 <Paperclip className="h-3.5 w-3.5 shrink-0" aria-hidden />
                 <span className="min-w-0 truncate">{att.file_name}</span>
                 <AppListRowIconButton
@@ -1291,7 +1291,7 @@ function ReportDetailView({
       }
     >
       {!report ? (
-        <div className="flex items-center justify-center py-12 text-sm text-gray-500">Loading…</div>
+        <div className="flex items-center justify-center py-12 text-sm text-gray-600">Loading…</div>
       ) : (
         <div className={uiSpacing.sectionStack}>
           <AppCard bodyClassName={uiCx(uiSpacing.cardPadding, 'min-w-0')}>

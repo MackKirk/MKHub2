@@ -115,7 +115,7 @@ export function AppTimePicker({
               disabled={disabled}
               sortOptions={false}
             />
-            <span className="shrink-0 text-xs font-medium text-gray-500">:</span>
+            <span className="shrink-0 text-sm font-semibold text-gray-600">:</span>
             <AppSelect
               className="min-w-0 flex-1"
               value={minute}

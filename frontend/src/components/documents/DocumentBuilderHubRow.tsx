@@ -62,7 +62,7 @@ export default function DocumentBuilderHubRow({
   const badgeLabel = doc.signature_label || 'DRAFT';
 
   const iconActionClass =
-    'rounded p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/40 focus-visible:ring-offset-1 disabled:opacity-50';
+    'rounded p-2 text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/40 focus-visible:ring-offset-1 disabled:opacity-50';
 
   return (
     <li
@@ -90,7 +90,7 @@ export default function DocumentBuilderHubRow({
             {doc.title || 'Untitled document'}
           </div>
           <div className={uiCx(uiTypography.helper, 'truncate')}>{scopeMetaLabel(doc)}</div>
-          <div className={uiCx(uiTypography.helper, 'truncate text-gray-400')}>{updatedByLine(doc)}</div>
+          <div className={uiCx(uiTypography.helper, 'truncate text-gray-600')}>{updatedByLine(doc)}</div>
         </div>
       </button>
 

@@ -119,7 +119,7 @@ export function QuoteOutcomeMenu({ currentStatus, disabled, onSelect, onDelete }
                 type="button"
                 role="menuitem"
                 className={uiCx(
-                  'block w-full px-3 py-1.5 text-left text-xs hover:bg-gray-50',
+                  'block w-full px-3 py-1.5 text-left text-sm hover:bg-gray-50',
                   currentStatus === status ? 'font-semibold text-brand-red' : 'text-gray-700',
                 )}
                 onClick={() => {
@@ -136,7 +136,7 @@ export function QuoteOutcomeMenu({ currentStatus, disabled, onSelect, onDelete }
                 <button
                   type="button"
                   role="menuitem"
-                  className="block w-full px-3 py-1.5 text-left text-xs text-red-600 hover:bg-red-50"
+                  className="block w-full px-3 py-1.5 text-left text-sm text-red-600 hover:bg-red-50"
                   onClick={() => {
                     setOpen(false);
                     onDelete();

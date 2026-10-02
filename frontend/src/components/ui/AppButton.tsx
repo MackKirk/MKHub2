@@ -1,6 +1,6 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 import { Loader2 } from 'lucide-react';
-import { uiCx, uiRadius, uiTypography } from './tokens';
+import { uiCx, uiRadius } from './tokens';
 
 type AppButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
 type AppButtonSize = 'sm' | 'md' | 'lg';
@@ -15,8 +15,8 @@ const variantClasses: Record<AppButtonVariant, string> = {
 };
 
 const sizeClasses: Record<AppButtonSize, string> = {
-  sm: 'h-8 px-3 text-xs',
-  md: 'h-9 px-4 text-xs',
+  sm: 'h-8 px-3 text-sm',
+  md: 'h-9 px-4 text-sm',
   lg: 'h-10 px-5 text-sm',
 };
 
@@ -47,9 +47,8 @@ export function AppButton({
       type={type}
       disabled={disabled || loading}
       className={uiCx(
-        'inline-flex items-center justify-center gap-2 font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-60',
+        'inline-flex items-center justify-center gap-2 font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-60',
         uiRadius.control,
-        uiTypography.controlLabel,
         variantClasses[variant],
         sizeClasses[size],
         className,

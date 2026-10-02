@@ -832,7 +832,7 @@ export default function EmployeeCommunity({
           ))
         )}
         {feedMode && filteredPosts.length > 0 && filteredPosts.length < postsForActiveTab.length ? (
-          <p className="pb-2 text-center text-xs text-gray-400">Scroll for older posts</p>
+          <p className="pb-2 text-center text-sm text-gray-600">Scroll for older posts</p>
         ) : null}
       </div>
 
@@ -926,7 +926,7 @@ export default function EmployeeCommunity({
                 </button>
                 <div className="min-w-0 flex-1">
                   <h3 className="line-clamp-2 text-lg font-semibold leading-snug text-slate-950">{modalPost.title}</h3>
-                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-500">
                     <button
                       type="button"
                       className="font-semibold text-slate-700 hover:text-[#7f1010] hover:underline"
@@ -936,11 +936,11 @@ export default function EmployeeCommunity({
                     </button>
                     <span>{formatTimeAgo(modalPost.created_at)}</span>
                     {modalPost.related_area && (
-                      <span className="rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-medium text-slate-600">
+                      <span className="rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-semibold text-slate-600">
                         {AREA_LABELS[modalPost.related_area] || modalPost.related_area}
                       </span>
                     )}
-                    <span className="rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-medium text-slate-600">
+                    <span className="rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-semibold text-slate-600">
                       {audienceLabel}
                     </span>
                     {priorityLabel && (
@@ -998,7 +998,7 @@ export default function EmployeeCommunity({
                           <section aria-label="Attachments">
                             <div className="mb-3 flex items-center justify-between gap-3">
                               <h4 className="text-sm font-semibold text-slate-950">Attachments</h4>
-                              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
+                              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-sm font-semibold text-slate-600">
                                 {atts.length}
                               </span>
                             </div>
@@ -1017,10 +1017,10 @@ export default function EmployeeCommunity({
                                     </svg>
                                   </div>
                                   <div className="min-w-0 flex-1">
-                                    <div className="truncate text-sm font-medium text-slate-800">
+                                    <div className="truncate text-sm font-semibold text-slate-800">
                                       {att.original_name || 'Attachment'}
                                     </div>
-                                    <div className="text-xs font-medium text-slate-500 group-hover:text-[#7f1010]">
+                                    <div className="text-sm font-semibold text-slate-500 group-hover:text-[#7f1010]">
                                       Download
                                     </div>
                                   </div>
@@ -1056,7 +1056,7 @@ export default function EmployeeCommunity({
                                   <h3 id={`discussion-${modalPost.id}`} className="text-sm font-semibold text-slate-950">
                                     Discussion
                                   </h3>
-                                  <p className="text-xs text-slate-500">
+                                  <p className="text-sm text-slate-500">
                                     {comments.length} {comments.length === 1 ? 'comment' : 'comments'}
                                   </p>
                                 </div>
@@ -1064,8 +1064,8 @@ export default function EmployeeCommunity({
 
                               {comments.length === 0 ? (
                                 <div className="rounded-xl border border-dashed border-slate-200 bg-white/80 px-4 py-8 text-center">
-                                  <p className="text-sm font-medium text-slate-700">No comments yet</p>
-                                  <p className="mt-1 text-xs text-slate-500">Start the conversation below.</p>
+                                  <p className="text-sm font-semibold text-slate-700">No comments yet</p>
+                                  <p className="mt-1 text-sm text-slate-500">Start the conversation below.</p>
                                 </div>
                               ) : (
                                 <div className="space-y-3">
@@ -1087,7 +1087,7 @@ export default function EmployeeCommunity({
                                             className="h-full w-full object-cover"
                                           />
                                         ) : (
-                                          <span className="text-xs font-semibold text-slate-500">
+                                          <span className="text-sm font-semibold text-slate-500">
                                             {(comment.user_name || 'U')[0].toUpperCase()}
                                           </span>
                                         )}
@@ -1102,12 +1102,12 @@ export default function EmployeeCommunity({
                                             >
                                               {comment.user_name || 'Unknown'}
                                             </button>
-                                            <span className="text-xs text-slate-400">{formatTimeAgo(comment.created_at)}</span>
+                                            <span className="text-sm text-slate-400">{formatTimeAgo(comment.created_at)}</span>
                                             {comment.updated_at &&
                                               comment.created_at &&
                                               new Date(comment.updated_at).getTime() >
                                                 new Date(comment.created_at).getTime() + 500 && (
-                                                <span className="text-xs font-medium text-slate-400">Edited</span>
+                                                <span className="text-sm font-semibold text-slate-400">Edited</span>
                                               )}
                                           </div>
 
@@ -1127,7 +1127,7 @@ export default function EmployeeCommunity({
                                                 <button
                                                   type="submit"
                                                   disabled={editCommentSubmitDisabled}
-                                                  className="inline-flex h-9 items-center justify-center rounded-lg bg-gradient-to-r from-[#7f1010] to-[#a31414] px-4 text-xs font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                                                  className="inline-flex h-9 items-center justify-center rounded-lg bg-gradient-to-r from-[#7f1010] to-[#a31414] px-4 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                                                 >
                                                   {updateCommentMutation.isLoading ? 'Saving…' : 'Save'}
                                                 </button>
@@ -1135,7 +1135,7 @@ export default function EmployeeCommunity({
                                                   type="button"
                                                   disabled={commentThreadBusy}
                                                   onClick={cancelCommentEdit}
-                                                  className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                                  className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                                                 >
                                                   Cancel
                                                 </button>
@@ -1152,7 +1152,7 @@ export default function EmployeeCommunity({
                                                   <>
                                                     <button
                                                       type="button"
-                                                      className="text-xs font-semibold text-slate-500 hover:text-[#7f1010]"
+                                                      className="text-sm font-semibold text-slate-500 hover:text-[#7f1010]"
                                                       onClick={() => {
                                                         setEditingCommentId(comment.id);
                                                         setEditDraftHtml(comment.content);
@@ -1170,7 +1170,7 @@ export default function EmployeeCommunity({
                                                     </button>
                                                     <button
                                                       type="button"
-                                                      className="text-xs font-semibold text-slate-500 hover:text-red-600"
+                                                      className="text-sm font-semibold text-slate-500 hover:text-red-600"
                                                       disabled={commentThreadBusy}
                                                       onClick={() => void confirmDeleteComment(comment.id)}
                                                     >
@@ -1180,7 +1180,7 @@ export default function EmployeeCommunity({
                                                 )}
                                                 <button
                                                   type="button"
-                                                  className={`text-xs font-semibold hover:text-[#7f1010] ${
+                                                  className={`text-sm font-semibold hover:text-[#7f1010] ${
                                                     replyParentId === comment.id ? 'text-[#7f1010]' : 'text-slate-500'
                                                   }`}
                                                   aria-expanded={replyParentId === comment.id}
@@ -1211,7 +1211,7 @@ export default function EmployeeCommunity({
                                             className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm ring-1 ring-slate-100/80"
                                           >
                                             <div className="mb-2 flex items-center justify-between gap-2">
-                                              <span className="text-xs text-slate-600">
+                                              <span className="text-sm text-slate-600">
                                                 Replying to{' '}
                                                 <span className="font-semibold text-slate-900">
                                                   {comment.user_name || 'Unknown'}
@@ -1219,7 +1219,7 @@ export default function EmployeeCommunity({
                                               </span>
                                               <button
                                                 type="button"
-                                                className="text-xs font-semibold text-slate-500 hover:text-[#7f1010]"
+                                                className="text-sm font-semibold text-slate-500 hover:text-[#7f1010]"
                                                 onClick={() => {
                                                   setReplyParentId(null);
                                                   setReplyDraftHtml('<p></p>');
@@ -1358,7 +1358,7 @@ export default function EmployeeCommunity({
                     {modalPost.requires_read_confirmation && (
                       <div className="mt-3">
                         {modalPost.user_has_confirmed ? (
-                          <div className="inline-flex items-center gap-2 rounded-full border border-green-200 bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700">
+                          <div className="inline-flex items-center gap-2 rounded-full border border-green-200 bg-green-50 px-3 py-1.5 text-sm font-semibold text-green-700">
                             <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                             </svg>
@@ -1369,7 +1369,7 @@ export default function EmployeeCommunity({
                             type="button"
                             onClick={() => confirmReadMutation.mutate(modalPost.id)}
                             disabled={confirmReadMutation.isLoading}
-                            className="rounded-full bg-gradient-to-r from-[#7f1010] to-[#a31414] px-4 py-2 text-xs font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="rounded-full bg-gradient-to-r from-[#7f1010] to-[#a31414] px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             {confirmReadMutation.isLoading ? 'Confirming...' : 'Confirm I have read this'}
                           </button>
@@ -1389,4 +1389,3 @@ export default function EmployeeCommunity({
     </div>
   );
 }
-

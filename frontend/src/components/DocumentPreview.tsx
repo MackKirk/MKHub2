@@ -3348,7 +3348,7 @@ export default function DocumentPreview({
       {!embedded && (
         <div className="flex items-center justify-between border-b border-slate-200/85 bg-slate-50/95 px-4 py-1.5">
           <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Canvas</span>
-          <span className="text-[10px] font-medium text-slate-500">A4 preview</span>
+          <span className="text-[10px] font-semibold text-slate-500">A4 preview</span>
         </div>
       )}
       {showElementOptionsPopover &&
@@ -3754,7 +3754,7 @@ export default function DocumentPreview({
                     className={`pointer-events-none flex h-full w-full items-center justify-center rounded-md ${blockProtectedBorderClass}`}
                     style={{ background: BLOCK_PROTECTED_BG }}
                   >
-                    <span className="text-[10px] font-medium uppercase tracking-wide text-amber-900/75 drop-shadow-[0_0_8px_rgba(255,255,255,0.95)]">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-900/75 drop-shadow-[0_0_8px_rgba(255,255,255,0.95)]">
                       Blocked Area
                     </span>
                   </div>
@@ -3792,7 +3792,7 @@ export default function DocumentPreview({
                   })()
                 ) : isImagePlaceholder ? (
                   <div className="pointer-events-none flex h-full w-full items-center justify-center rounded-md border border-dashed border-slate-300 bg-slate-50/90">
-                    <span className="text-[11px] font-medium text-slate-500">Image area</span>
+                    <span className="text-[11px] font-semibold text-slate-500">Image area</span>
                   </div>
                 ) : (
                   el.content && (

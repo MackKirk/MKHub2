@@ -35,7 +35,7 @@ export function AddPageTemplateModal({
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded text-gray-500 hover:bg-gray-100"
+            className="p-1.5 rounded text-gray-600 hover:bg-gray-100"
             aria-label="Close"
           >
             ✕
@@ -49,12 +49,12 @@ export function AddPageTemplateModal({
               className="rounded-xl border-2 border-gray-200 hover:border-brand-red hover:bg-brand-red/5 transition-colors overflow-hidden flex flex-col items-center text-left"
             >
               <div
-                className="w-full bg-gray-100 flex items-center justify-center text-gray-500 text-sm"
+                className="w-full bg-gray-100 flex items-center justify-center text-gray-600 text-sm"
                 style={{ aspectRatio: `${A4_ASPECT}` }}
               >
                 Blank
               </div>
-              <span className="w-full p-2 text-sm font-medium text-gray-900">Blank (A4)</span>
+              <span className="w-full p-2 text-sm font-semibold text-gray-900">Blank (A4)</span>
             </button>
             {templates.map((t) => (
               <button
@@ -74,12 +74,12 @@ export function AddPageTemplateModal({
                       className="absolute inset-0 w-full h-full object-cover"
                     />
                   ) : (
-                    <div className="absolute inset-0 flex items-center justify-center text-gray-400 text-xs">
+                    <div className="absolute inset-0 flex items-center justify-center text-gray-600 text-sm">
                       No image
                     </div>
                   )}
                 </div>
-                <span className="w-full p-2 text-sm font-medium text-gray-900 truncate" title={t.name}>
+                <span className="w-full p-2 text-sm font-semibold text-gray-900 truncate" title={t.name}>
                   {t.name}
                 </span>
               </button>

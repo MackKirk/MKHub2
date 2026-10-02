@@ -210,8 +210,8 @@ export default function InviteOnboardingPackagePicker({
                       <InvitePickerPdfThumb docId={d.id} />
                     </InvitePickerPreviewFrame>
                     <div className="px-2 pb-2 pt-1 min-w-0">
-                      <span className="text-sm font-medium text-gray-900 truncate block leading-tight">{name}</span>
-                      <span className="text-[11px] text-gray-500 truncate block leading-tight mt-0.5">PDF</span>
+                      <span className="text-sm font-semibold text-gray-900 truncate block leading-tight">{name}</span>
+                      <span className="text-xs text-gray-600 truncate block leading-tight mt-0.5">PDF</span>
                     </div>
                   </button>
                 );

@@ -328,7 +328,7 @@ export default function PrintShopSupplies() {
                   <div
                     className={uiCx(
                       ROW_GRID,
-                      'px-4 py-2 text-[11px] font-medium uppercase tracking-wide text-gray-500'
+                      'px-4 py-2 text-xs font-semibold uppercase tracking-wide text-gray-600'
                     )}
                   >
                     <span className="min-w-0">Product</span>
@@ -402,12 +402,12 @@ export default function PrintShopSupplies() {
                                     {p.supplier_name || '—'}
                                   </span>
                                   <div className="flex justify-center">
-                                    <span className="inline-flex max-w-full truncate rounded-md border border-gray-200 bg-gray-50 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-gray-600">
+                                    <span className="inline-flex max-w-full truncate rounded-md border border-gray-200 bg-gray-50 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-gray-600">
                                       {unit}
                                     </span>
                                   </div>
                                   <div className="flex items-center justify-end gap-1.5">
-                                    <span className="text-sm font-medium tabular-nums text-gray-900">
+                                    <span className="text-sm font-semibold tabular-nums text-gray-900">
                                       {p.stock_quantity}
                                     </span>
                                     {p.low_stock ? <AppBadge variant="warning">Low</AppBadge> : null}
@@ -415,7 +415,7 @@ export default function PrintShopSupplies() {
                                   <span
                                     className={uiCx(
                                       'truncate text-right text-sm tabular-nums',
-                                      price ? 'font-medium text-gray-900' : 'text-gray-400'
+                                      price ? 'font-semibold text-gray-900' : 'text-gray-600'
                                     )}
                                     title={price || undefined}
                                   >
@@ -568,7 +568,7 @@ export default function PrintShopSupplies() {
         <div className={uiSpacing.sectionStack}>
           <p className={uiTypography.body}>
             Current stock:{' '}
-            <span className="font-medium text-gray-900">{stockProduct?.stock_quantity ?? 0}</span>
+            <span className="font-semibold text-gray-900">{stockProduct?.stock_quantity ?? 0}</span>
           </p>
           <AppInput
             label="Quantity"

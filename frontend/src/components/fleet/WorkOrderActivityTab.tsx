@@ -139,7 +139,7 @@ export function WorkOrderActivityTab({ workOrderId }: Props) {
                   <div className={uiCx(uiLayout.actionsRow, 'items-start justify-between gap-3')}>
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className={uiCx(uiTypography.body, 'font-medium text-gray-900')}>
+                        <span className={uiCx(uiTypography.body, 'font-semibold text-gray-900')}>
                           {formatActivityMessage(entry)}
                         </span>
                         <AppBadge variant={getFleetHistoryEntryBadgeVariant(meta.badge)}>{meta.badge}</AppBadge>
@@ -148,7 +148,7 @@ export function WorkOrderActivityTab({ workOrderId }: Props) {
                         By {entry.created_by_display ?? 'System'}
                       </p>
                     </div>
-                    <p className={uiCx(uiTypography.body, 'shrink-0 text-right text-gray-500')}>
+                    <p className={uiCx(uiTypography.body, 'shrink-0 text-right text-gray-600')}>
                       {entry.created_at ? new Date(entry.created_at).toLocaleString() : EM_DASH}
                     </p>
                   </div>

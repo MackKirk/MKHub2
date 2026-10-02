@@ -217,7 +217,7 @@ export function ClockInOutWidget({ config: _config }: ClockInOutWidgetProps) {
       )}
 
       {showSummary && (
-        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto text-xs">
+        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto text-sm">
           {hasOpenClockIn ? (
             <div
               className={uiCx(
@@ -225,12 +225,12 @@ export function ClockInOutWidget({ config: _config }: ClockInOutWidgetProps) {
                 uiRadius.control,
               )}
             >
-              <span className="font-medium text-amber-900">Entry is missing an end time</span>
+              <span className="font-semibold text-amber-900">Entry is missing an end time</span>
             </div>
           ) : null}
           {!hasOpenClockIn && nextPendingShift ? (
             <div className={uiCx('bg-gray-50 px-2.5 py-2 text-gray-700', uiRadius.control)}>
-              <span className="font-medium">Next:</span>{' '}
+              <span className="font-semibold">Next:</span>{' '}
               {nextPendingShift.project_name || 'Shift'} ({formatTime12h(nextPendingShift.start_time)} –{' '}
               {formatTime12h(nextPendingShift.end_time)})
             </div>
@@ -243,7 +243,7 @@ export function ClockInOutWidget({ config: _config }: ClockInOutWidgetProps) {
                 .map((a) => (
                   <div key={a.id} className="flex justify-between gap-2 py-1.5 tabular-nums">
                     <span>{formatTime12h(a.clock_in_time ? new Date(a.clock_in_time).toTimeString().slice(0, 5) : null)}</span>
-                    <span className="text-gray-400">–</span>
+                    <span className="text-gray-600">–</span>
                     <span>
                       {a.clock_out_time
                         ? formatTime12h(new Date(a.clock_out_time).toTimeString().slice(0, 5))
@@ -257,7 +257,7 @@ export function ClockInOutWidget({ config: _config }: ClockInOutWidgetProps) {
       )}
 
       <div className="mt-auto shrink-0 border-t border-gray-100 pt-2">
-        <Link to="/clock-in-out" className="text-xs font-medium text-brand-red hover:underline">
+        <Link to="/clock-in-out" className="text-sm font-semibold text-brand-red hover:underline">
           Open full page →
         </Link>
       </div>

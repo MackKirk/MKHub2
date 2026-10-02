@@ -31,11 +31,11 @@ export default function WorkOrderStatusBadge({ status, urgency }: Props) {
 
   return (
     <div className="flex gap-2">
-      <span className={`px-2 py-1 rounded text-xs font-medium ${statusColors[status] || 'bg-gray-100 text-gray-800'}`}>
+      <span className={`px-2 py-1 rounded text-sm font-semibold ${statusColors[status] || 'bg-gray-100 text-gray-800'}`}>
         {STATUS_LABELS[status] ?? status.replace('_', ' ')}
       </span>
       {urgency && (
-        <span className={`px-2 py-1 rounded text-xs font-medium ${urgencyColors[urgency] || 'bg-gray-100 text-gray-800'}`}>
+        <span className={`px-2 py-1 rounded text-sm font-semibold ${urgencyColors[urgency] || 'bg-gray-100 text-gray-800'}`}>
           {urgency}
         </span>
       )}

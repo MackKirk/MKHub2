@@ -542,7 +542,7 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
             ref={tokensButtonRef}
             type="button"
             onClick={() => setTokensPopoverOpen((v) => !v)}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-300/80 bg-white text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/35"
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-300/80 bg-white text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/35"
             title="Auto-fill tokens reference"
           >
             <span className="font-mono text-base leading-none text-slate-500">{'{ }'}</span>
@@ -568,7 +568,7 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
         <button
           type="button"
           onClick={openCreate}
-          className="px-4 py-2 rounded bg-brand-red text-white text-sm font-medium hover:bg-brand-red/90"
+          className="px-4 py-2 rounded bg-brand-red text-white text-sm font-semibold hover:bg-brand-red/90"
         >
           Create document template
         </button>
@@ -577,14 +577,14 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
       {documentTypes.length === 0 ? (
         <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/50 p-8 text-center">
           <p className="text-gray-600 mb-3">No document templates yet.</p>
-          <p className="text-sm text-gray-500 mb-4">
+          <p className="text-sm text-gray-600 mb-4">
             Create a preset (e.g. Cover + Back cover + Content) so users can pick it when creating a document.
           </p>
           {!readOnly ? (
           <button
             type="button"
             onClick={openCreate}
-            className="px-4 py-2 rounded bg-brand-red text-white text-sm font-medium hover:bg-brand-red/90"
+            className="px-4 py-2 rounded bg-brand-red text-white text-sm font-semibold hover:bg-brand-red/90"
           >
             Create document template
           </button>
@@ -594,7 +594,7 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
         <div className="rounded-xl border bg-white overflow-hidden">
           <div className="flex flex-col">
             <div
-              className="grid grid-cols-[1fr_8rem_8rem] gap-2 sm:gap-4 items-center px-4 py-2 bg-gray-50 border-b border-gray-200 text-[10px] font-semibold text-gray-700"
+              className="grid grid-cols-[1fr_8rem_8rem] gap-2 sm:gap-4 items-center px-4 py-2 bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-700"
               aria-hidden
             >
               <div>Template</div>
@@ -617,17 +617,17 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
                         {dt.name}
                       </span>
                       {dt.category && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">
                           {dt.category}
                         </span>
                       )}
                     </div>
                     {dt.description && (
-                      <div className="text-xs text-gray-500 truncate mt-0.5">{dt.description}</div>
+                      <div className="text-sm text-gray-600 truncate mt-0.5">{dt.description}</div>
                     )}
                   </div>
                 </div>
-                <div className="text-xs text-gray-600">
+                <div className="text-sm text-gray-600">
                   {(dt.page_templates || []).length} page(s)
                 </div>
                 <div className="flex items-center justify-end gap-0.5" onClick={(e) => e.stopPropagation()}>
@@ -639,7 +639,7 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
                       e.stopPropagation();
                       openEdit(dt);
                     }}
-                    className="p-2 rounded text-gray-500 hover:text-brand-red hover:bg-brand-red/10 border border-transparent hover:border-brand-red/20 transition-colors"
+                    className="p-2 rounded text-gray-600 hover:text-brand-red hover:bg-brand-red/10 border border-transparent hover:border-brand-red/20 transition-colors"
                     title="Edit"
                     aria-label="Edit"
                   >
@@ -648,7 +648,7 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
                   <button
                     type="button"
                     onClick={(e) => handleDuplicate(dt, e)}
-                    className="p-2 rounded text-gray-500 hover:text-gray-700 hover:bg-gray-100 border border-transparent transition-colors"
+                    className="p-2 rounded text-gray-600 hover:text-gray-700 hover:bg-gray-100 border border-transparent transition-colors"
                     title="Duplicate template"
                     aria-label="Duplicate"
                   >
@@ -660,7 +660,7 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
                       e.stopPropagation();
                       handleDelete(dt);
                     }}
-                    className="p-2 rounded text-gray-500 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 transition-colors"
+                    className="p-2 rounded text-gray-600 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 transition-colors"
                     title="Delete"
                     aria-label="Delete"
                   >
@@ -778,7 +778,7 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
                           draggable
                           onDragStart={(e) => handlePageGrabberDragStart(idx, e)}
                           onDragEnd={handlePageDragEnd}
-                          className="flex-shrink-0 p-1.5 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 cursor-grab active:cursor-grabbing touch-none"
+                          className="flex-shrink-0 p-1.5 rounded text-gray-600 hover:text-gray-600 hover:bg-gray-100 cursor-grab active:cursor-grabbing touch-none"
                           title="Drag to reorder"
                           aria-label="Drag to reorder"
                         >
@@ -795,7 +795,7 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
                           placeholder={template?.name || 'Page name'}
                           disabled={isSaving}
                           className={uiCx(
-                            'flex-1 min-w-0 bg-white text-xs text-gray-900 outline-none transition-colors placeholder:text-gray-400 focus:border-gray-400 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-gray-400/35 disabled:cursor-not-allowed disabled:bg-gray-100',
+                            'flex-1 min-w-0 bg-white text-sm text-gray-900 outline-none transition-colors placeholder:text-gray-400 focus:border-gray-400 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-gray-400/35 disabled:cursor-not-allowed disabled:bg-gray-100',
                             uiSpacing.controlX,
                             uiSpacing.controlY,
                             uiRadius.control,
@@ -806,7 +806,7 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
                           <button
                             type="button"
                             onClick={() => setLayoutModalPageIndex(idx)}
-                            className="p-2 rounded text-gray-500 hover:text-brand-red hover:bg-brand-red/10 border border-transparent hover:border-brand-red/20 transition-colors"
+                            className="p-2 rounded text-gray-600 hover:text-brand-red hover:bg-brand-red/10 border border-transparent hover:border-brand-red/20 transition-colors"
                             title="Edit layout"
                             aria-label="Edit layout"
                           >
@@ -815,7 +815,7 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
                           <button
                             type="button"
                             onClick={() => duplicatePage(idx)}
-                            className="p-2 rounded text-gray-500 hover:text-gray-700 hover:bg-gray-100 border border-transparent transition-colors"
+                            className="p-2 rounded text-gray-600 hover:text-gray-700 hover:bg-gray-100 border border-transparent transition-colors"
                             title="Duplicate page"
                             aria-label="Duplicate page"
                           >
@@ -824,7 +824,7 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
                           <button
                             type="button"
                             onClick={() => { void removePage(idx); }}
-                            className="p-2 rounded text-gray-500 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 transition-colors"
+                            className="p-2 rounded text-gray-600 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 transition-colors"
                             title="Remove page"
                             aria-label="Remove page"
                           >

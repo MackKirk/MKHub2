@@ -61,7 +61,7 @@ const MONTH_NAMES = [
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 const weekdayHeaderClass =
-  'bg-gray-50 px-2 py-1.5 text-center text-[10px] font-semibold uppercase tracking-wide text-gray-500';
+  'bg-gray-50 px-2 py-1.5 text-center text-xs font-semibold uppercase tracking-wide text-gray-600';
 
 function eventButtonClass(status: string) {
   return uiCx(
@@ -219,7 +219,7 @@ export default function SafetyServiceCalendar({
             >
               <span
                 className={uiCx(
-                  'text-xs font-medium',
+                  'text-sm font-semibold',
                   dayIsToday ? 'text-brand-red' : uiColors.textBody,
                 )}
               >
@@ -234,8 +234,8 @@ export default function SafetyServiceCalendar({
                     className={eventButtonClass(ev.status)}
                     title={`${ev.project_name} (${ev.status})`}
                   >
-                    <span className="block truncate font-medium">{ev.project_name}</span>
-                    <span className="block truncate text-[10px] opacity-80">{ev.project_code}</span>
+                    <span className="block truncate font-semibold">{ev.project_name}</span>
+                    <span className="block truncate text-xs opacity-80">{ev.project_code}</span>
                   </button>
                 ))}
                 {dayEvents.length > 5 ? (

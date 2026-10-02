@@ -51,7 +51,7 @@ export default function EmployeeReviews() {
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`px-4 py-2 text-sm font-medium rounded-t border-b-2 -mb-px transition-colors ${
+            className={`px-4 py-2 text-sm font-semibold rounded-t border-b-2 -mb-px transition-colors ${
               tab === t.id
                 ? 'border-brand-red text-brand-red bg-white'
                 : 'border-transparent text-gray-600 hover:text-gray-900'
@@ -70,18 +70,18 @@ export default function EmployeeReviews() {
           </p>
           {canStartMyReview && (
             <div className="mb-4 p-4 rounded-xl border border-green-200 bg-green-50 text-green-800">
-              <p className="text-sm font-medium mb-1">Your employee and supervisor reviews are complete.</p>
+              <p className="text-sm font-semibold mb-1">Your employee and supervisor reviews are complete.</p>
               <p className="text-sm mb-2">You can start your admin review now.</p>
               <Link
                 to="/reviews/my"
-                className="inline-block px-3 py-2 rounded-lg bg-brand-red text-white text-sm font-medium hover:opacity-90"
+                className="inline-block px-3 py-2 rounded-lg bg-brand-red text-white text-sm font-semibold hover:opacity-90"
               >
                 Start my review
               </Link>
             </div>
           )}
           <div className="flex flex-wrap items-center gap-3 mb-4">
-            <label className="text-sm font-medium text-gray-700">Cycle</label>
+            <label className="text-sm font-semibold text-gray-700">Cycle</label>
             <select
               className="border rounded px-3 py-2 text-sm"
               value={cycleId}
@@ -96,7 +96,7 @@ export default function EmployeeReviews() {
             </select>
             {cycleId && (
               <>
-                <span className="text-sm text-gray-500">Filter</span>
+                <span className="text-sm text-gray-600">Filter</span>
                 <select
                   className="border rounded px-3 py-2 text-sm"
                   value={filter}
@@ -115,36 +115,36 @@ export default function EmployeeReviews() {
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 uppercase">Employee</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 uppercase">Employee did review</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 uppercase">Supervisor did review</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 uppercase">Status</th>
+                    <th className="px-4 py-2 text-left text-sm font-semibold text-gray-600 uppercase">Employee</th>
+                    <th className="px-4 py-2 text-left text-sm font-semibold text-gray-600 uppercase">Employee did review</th>
+                    <th className="px-4 py-2 text-left text-sm font-semibold text-gray-600 uppercase">Supervisor did review</th>
+                    <th className="px-4 py-2 text-left text-sm font-semibold text-gray-600 uppercase">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {filteredRows.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="px-4 py-6 text-sm text-gray-500 text-center">
+                      <td colSpan={4} className="px-4 py-6 text-sm text-gray-600 text-center">
                         No employees in this cycle or no matches for the selected filter.
                       </td>
                     </tr>
                   ) : (
                     filteredRows.map((r: any) => (
                       <tr key={r.user_id} className="hover:bg-gray-50">
-                        <td className="px-4 py-2 text-sm font-medium text-gray-900">
+                        <td className="px-4 py-2 text-sm font-semibold text-gray-900">
                           {r.display_name || r.name || r.user_id}
                         </td>
                         <td className="px-4 py-2 text-sm">{r.employee_self_done ? 'Yes' : 'No'}</td>
                         <td className="px-4 py-2 text-sm">{r.supervisor_done ? 'Yes' : 'No'}</td>
                         <td className="px-4 py-2 text-sm">
                           {r.both_done ? (
-                            <span className="text-green-600 font-medium">Both done</span>
+                            <span className="text-green-600 font-semibold">Both done</span>
                           ) : r.missing_employee ? (
                             <span className="text-amber-600">Missing employee</span>
                           ) : r.missing_supervisor ? (
                             <span className="text-amber-600">Missing supervisor</span>
                           ) : (
-                            <span className="text-gray-500">—</span>
+                            <span className="text-gray-600">—</span>
                           )}
                         </td>
                       </tr>
@@ -154,7 +154,7 @@ export default function EmployeeReviews() {
               </table>
             </div>
           ) : (
-            <div className="rounded-xl border bg-white p-6 text-gray-500 text-sm">
+            <div className="rounded-xl border bg-white p-6 text-gray-600 text-sm">
               Select a cycle to view status.
             </div>
           )}

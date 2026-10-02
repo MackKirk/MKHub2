@@ -12,7 +12,7 @@ import { AppControlLabelRow } from './AppControlLabel';
 import { AppFieldHint } from './AppFieldHint';
 import { AppUserAvatar } from './AppUserAvatar';
 import { SelectDropdownCheckbox } from './SelectDropdownCheckbox';
-import { uiCx, uiDropdown, uiLayout, uiUserSelect } from './tokens';
+import { uiCx, uiDropdown, uiLayout, uiTypography, uiUserSelect } from './tokens';
 import { comboboxMenuStyle, useComboboxDropdown, type ComboboxMenuRect } from './useComboboxDropdown';
 import { useAppUserSelectCatalog } from './useAppUserSelectCatalog';
 
@@ -330,7 +330,7 @@ function AppUserSelectSingle({
           onRemove={clearSelection}
         />
       ) : null}
-      {helperText ? <p className="text-xs text-gray-600">{helperText}</p> : null}
+      {helperText ? <p className={uiTypography.helper}>{helperText}</p> : null}
       {typeof document !== 'undefined' && dropdown ? createPortal(dropdown, document.body) : null}
     </div>
   );
@@ -463,7 +463,7 @@ function AppUserSelectMultiple({
       <div className={uiCx(uiLayout.actionsRow, 'shrink-0 gap-2')}>
         <button
           type="button"
-          className="text-xs font-medium text-brand-red hover:underline disabled:opacity-50"
+          className="text-sm font-semibold text-brand-red hover:underline disabled:opacity-50"
           disabled={selectAllPool.length === 0}
           onClick={selectAllVisible}
         >
@@ -472,7 +472,7 @@ function AppUserSelectMultiple({
         {value.length > 0 ? (
           <button
             type="button"
-            className="text-xs font-medium text-gray-600 hover:underline"
+            className="text-sm font-semibold text-gray-700 hover:underline"
             onClick={clearSelection}
           >
             Clear
@@ -491,7 +491,7 @@ function AppUserSelectMultiple({
                 <>
                   {label}
                   {value.length > 0 ? (
-                    <span className="ml-1 font-normal normal-case text-gray-500">({value.length} selected)</span>
+                    <span className="ml-1 font-normal normal-case text-gray-600">({value.length} selected)</span>
                   ) : null}
                 </>
               }
@@ -557,7 +557,7 @@ function AppUserSelectMultiple({
           ))}
         </div>
       ) : null}
-      {helperText ? <p className="text-xs text-gray-600">{helperText}</p> : null}
+      {helperText ? <p className={uiTypography.helper}>{helperText}</p> : null}
       {typeof document !== 'undefined' && dropdown ? createPortal(dropdown, document.body) : null}
     </div>
   );
@@ -631,9 +631,9 @@ function renderUserListbox({
               <>
                 <AppUserAvatar user={user} size="sm" />
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-xs text-gray-900">{getUserPickerLabel(user)}</div>
+                  <div className={uiCx('truncate', uiTypography.controlValue)}>{getUserPickerLabel(user)}</div>
                   {subtitle ? (
-                    <div className="mt-0.5 truncate text-xs text-gray-500">{subtitle}</div>
+                    <div className="mt-0.5 truncate text-sm text-gray-600">{subtitle}</div>
                   ) : null}
                 </div>
               </>

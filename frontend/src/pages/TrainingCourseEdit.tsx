@@ -746,7 +746,7 @@ export default function TrainingCourseEdit() {
       <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
         <AppCard className={uiShadows.card} bodyClassName={uiCx(uiSpacing.cardPadding, 'flex min-h-[240px] flex-col items-center justify-center')}>
           <div className="h-10 w-10 animate-spin rounded-full border-2 border-gray-200 border-t-brand-red" />
-          <p className={uiCx('mt-4', uiTypography.body, 'font-medium')}>Loading course…</p>
+          <p className={uiCx('mt-4', uiTypography.body, 'font-semibold')}>Loading course…</p>
         </AppCard>
       </div>
     );
@@ -1019,7 +1019,7 @@ export default function TrainingCourseEdit() {
                       <div className="mt-4 grid gap-5 lg:grid-cols-2 lg:items-start">
                         <div className="min-w-0">
                           <label className="block text-sm font-semibold text-gray-800">Background</label>
-                          <p className="mt-0.5 text-[11px] text-gray-500">
+                          <p className="mt-0.5 text-xs text-gray-600">
                             Fills the page behind the text layer in the PDF.
                           </p>
                           <div className="mt-3 flex flex-wrap gap-2">
@@ -1044,7 +1044,7 @@ export default function TrainingCourseEdit() {
                                   }))
                                 }
                               />
-                              <span className="text-xs font-semibold text-gray-900">None</span>
+                              <span className="text-sm font-semibold text-gray-900">None</span>
                             </label>
                             {(bgPresetsRes?.presets || []).map((p) => (
                               <label
@@ -1076,12 +1076,12 @@ export default function TrainingCourseEdit() {
                                     className="h-10 w-14 shrink-0 rounded border border-slate-200 object-cover object-top"
                                   />
                                 ) : (
-                                  <span className="flex h-10 w-14 shrink-0 items-center justify-center rounded border border-slate-200 bg-slate-100 text-[10px] text-slate-400">
+                                  <span className="flex h-10 w-14 shrink-0 items-center justify-center rounded border border-slate-200 bg-slate-100 text-xs text-slate-400">
                                     —
                                   </span>
                                 )}
                                 <span
-                                  className="max-w-[8rem] truncate text-xs font-medium text-gray-900"
+                                  className="max-w-[8rem] truncate text-sm font-semibold text-gray-900"
                                   title={p.label}
                                 >
                                   {p.label}
@@ -1093,7 +1093,7 @@ export default function TrainingCourseEdit() {
 
                         <div className={uiCx('min-w-0', uiRadius.card, uiBorders.subtle, uiColors.surfaceSubtle, 'p-4')}>
                           <label className="block text-sm font-semibold text-gray-800">Logo (optional)</label>
-                          <p className="mt-0.5 text-[11px] text-gray-500">
+                          <p className="mt-0.5 text-xs text-gray-600">
                             Presets from System Settings → Files → Organization logos, or a one-off upload for this
                             course only. Top-left beside titles (transparent PNG works best).
                           </p>
@@ -1120,7 +1120,7 @@ export default function TrainingCourseEdit() {
                                   }))
                                 }
                               />
-                              <span className="text-xs font-semibold text-gray-900">None</span>
+                              <span className="text-sm font-semibold text-gray-900">None</span>
                             </label>
                             {(orgLogoPresetsRes?.logos || []).map((logo) => (
                               <label
@@ -1154,7 +1154,7 @@ export default function TrainingCourseEdit() {
                                   className="h-9 w-12 shrink-0 rounded border border-slate-200 bg-white object-contain"
                                 />
                                 <span
-                                  className="max-w-[10rem] truncate text-xs font-medium text-gray-900"
+                                  className="max-w-[10rem] truncate text-sm font-semibold text-gray-900"
                                   title={logo.label}
                                 >
                                   {logo.label}
@@ -1163,7 +1163,7 @@ export default function TrainingCourseEdit() {
                             ))}
                           </div>
                           {!(orgLogoPresetsRes?.logos || []).length ? (
-                            <p className="mt-2 text-[11px] text-gray-400">
+                            <p className="mt-2 text-xs text-gray-600">
                               No library logos yet. Add them under System Settings → Files → Organization logos.
                             </p>
                           ) : null}
@@ -1305,7 +1305,7 @@ export default function TrainingCourseEdit() {
                         <div className="absolute inset-0 flex h-full items-center justify-center bg-slate-50 text-center">
                           <div className="px-6">
                             <p className="text-sm font-semibold text-slate-700">No PDF preview yet</p>
-                            <p className="mt-1 text-xs text-slate-500">
+                            <p className="mt-1 text-sm text-slate-500">
                               Click <strong>Generate PDF</strong> to render the exact final output.
                             </p>
                           </div>
@@ -1332,7 +1332,7 @@ export default function TrainingCourseEdit() {
                           />
                         )}
                         {isLiveRendering ? (
-                          <div className="pointer-events-none absolute right-2 top-2 rounded bg-white/90 px-2 py-1 text-[10px] font-semibold text-slate-600 shadow">
+                          <div className="pointer-events-none absolute right-2 top-2 rounded bg-white/90 px-2 py-1 text-xs font-semibold text-slate-600 shadow">
                             Updating…
                           </div>
                         ) : null}
@@ -1365,7 +1365,7 @@ export default function TrainingCourseEdit() {
                           key={String(key)}
                           className={uiCx('grid grid-cols-[94px_1fr_50px] items-center gap-2', uiTypography.helper)}
                         >
-                          <span className="font-medium text-gray-700">{label}</span>
+                          <span className="font-semibold text-gray-700">{label}</span>
                           <input
                             type="range"
                             min={Number(min)}
@@ -1373,7 +1373,7 @@ export default function TrainingCourseEdit() {
                             value={Math.round(certLayout[key as keyof CertificateLayout])}
                             onChange={(e) => setCertLayout(key as keyof CertificateLayout, Number(e.target.value))}
                           />
-                          <span className="text-right text-gray-500">
+                          <span className="text-right text-gray-600">
                             {Math.round(certLayout[key as keyof CertificateLayout])}
                           </span>
                         </label>

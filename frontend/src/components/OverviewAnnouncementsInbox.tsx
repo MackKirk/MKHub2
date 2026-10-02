@@ -116,25 +116,25 @@ export function OverviewAnnouncementsInbox({ activePostId, onSelectPost }: Props
                     <span
                       className={uiCx(
                         'truncate text-sm',
-                        unread ? 'font-bold text-slate-950' : 'font-medium text-slate-800',
+                        unread ? 'font-bold text-slate-950' : 'font-semibold text-slate-800',
                       )}
                     >
                       {post.author_name || 'Announcement'}
                     </span>
-                    <span className="shrink-0 text-[11px] tabular-nums text-slate-400">
+                    <span className="shrink-0 text-xs tabular-nums text-slate-400">
                       {formatInboxDate(post.created_at)}
                     </span>
                   </span>
                   <span
                     className={uiCx(
                       'mt-0.5 block truncate text-sm',
-                      unread ? 'font-semibold text-slate-900' : 'font-medium text-slate-700',
+                      unread ? 'font-semibold text-slate-900' : 'font-semibold text-slate-700',
                     )}
                   >
                     {post.title}
                   </span>
                   <span className="mt-0.5 flex items-center gap-1.5">
-                    <span className="min-w-0 flex-1 truncate text-xs text-slate-500">
+                    <span className="min-w-0 flex-1 truncate text-sm text-slate-500">
                       {preview || 'No preview'}
                     </span>
                     {hasAttachment ? <Paperclip className="h-3 w-3 shrink-0 text-slate-400" aria-hidden /> : null}
@@ -159,7 +159,7 @@ export function OverviewAnnouncementsInbox({ activePostId, onSelectPost }: Props
           );
         })}
       </ul>
-      <div className="flex items-center justify-center gap-1.5 px-2 py-3 text-[11px] text-slate-400">
+      <div className="flex items-center justify-center gap-1.5 px-2 py-3 text-xs text-slate-400">
         <Mail className="h-3 w-3" aria-hidden />
         Click to jump in the feed
       </div>

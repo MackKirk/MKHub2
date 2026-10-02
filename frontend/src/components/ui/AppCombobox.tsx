@@ -4,7 +4,7 @@ import { Search } from 'lucide-react';
 import { sortByLabel } from '@/lib/sortOptions';
 import { AppControlLabelRow } from './AppControlLabel';
 import { AppFieldHint } from './AppFieldHint';
-import { uiBorders, uiCx, uiDropdown } from './tokens';
+import { uiBorders, uiCx, uiDropdown, uiTypography } from './tokens';
 import { comboboxMenuStyle, useComboboxDropdown } from './useComboboxDropdown';
 
 export type AppComboboxOption = {
@@ -121,9 +121,9 @@ export function AppCombobox({
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => selectOption(option)}
                 >
-                  <div className="truncate text-xs text-gray-900">{option.label}</div>
+                  <div className={uiCx('truncate', uiTypography.controlValue)}>{option.label}</div>
                   {option.description ? (
-                    <div className="mt-0.5 truncate text-xs text-gray-500">{option.description}</div>
+                    <div className="mt-0.5 truncate text-sm text-gray-600">{option.description}</div>
                   ) : null}
                 </button>
               </li>
@@ -134,15 +134,15 @@ export function AppCombobox({
                   type="button"
                   className={uiCx(
                     uiDropdown.option,
-                    'border-t border-gray-100 font-medium text-brand-red',
+                    'border-t border-gray-100 font-semibold text-brand-red',
                     value === option.value && uiDropdown.optionSelected,
                   )}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => selectOption(option)}
                 >
-                  <div className="truncate text-xs">{option.label}</div>
+                  <div className={uiCx('truncate', uiTypography.controlValue)}>{option.label}</div>
                   {option.description ? (
-                    <div className="mt-0.5 truncate text-xs text-gray-500">{option.description}</div>
+                    <div className="mt-0.5 truncate text-sm text-gray-600">{option.description}</div>
                   ) : null}
                 </button>
               </li>
@@ -206,7 +206,7 @@ export function AppCombobox({
           )}
         />
       </div>
-      {error ? <p className="text-xs text-red-600">{error}</p> : helperText ? <p className="text-xs text-gray-600">{helperText}</p> : null}
+      {error ? <p className="text-sm text-red-600">{error}</p> : helperText ? <p className={uiTypography.helper}>{helperText}</p> : null}
       {typeof document !== 'undefined' && dropdown ? createPortal(dropdown, document.body) : null}
     </div>
   );

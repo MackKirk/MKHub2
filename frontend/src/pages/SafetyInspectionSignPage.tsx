@@ -95,7 +95,7 @@ export default function SafetyInspectionSignPage() {
   return (
     <div className="space-y-6 max-w-3xl mx-auto px-4 py-6">
       <PageHeaderBar title="Sign safety inspection" subtitle="Draw your signature and save." />
-      {isLoading && <div className="text-sm text-gray-500">Loading…</div>}
+      {isLoading && <div className="text-sm text-gray-600">Loading…</div>}
       {error && <div className="text-sm text-red-700">Could not load inspection.</div>}
       {detail && detail.status !== 'pending_signatures' && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">

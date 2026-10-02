@@ -365,12 +365,12 @@ export default function TaskRequestsPage() {
                         <div className={uiCx(uiTypography.helper, 'mb-1')}>
                           {isReceived ? (
                             <span>
-                              From <span className="font-medium text-gray-900">{req.requested_by?.name || 'Unknown'}</span>
+                              From <span className="font-semibold text-gray-900">{req.requested_by?.name || 'Unknown'}</span>
                             </span>
                           ) : (
                             <span>
                               To{' '}
-                              <span className="font-medium text-gray-900">
+                              <span className="font-semibold text-gray-900">
                                 {req.target.type === 'user'
                                   ? req.target.user_name || 'User'
                                   : req.target.division_label || 'Division'}
@@ -378,7 +378,7 @@ export default function TaskRequestsPage() {
                             </span>
                           )}
                         </div>
-                        <div className="text-xs text-gray-400">{formatTimeAgo(req.updated_at || req.created_at)}</div>
+                        <div className="text-sm text-gray-600">{formatTimeAgo(req.updated_at || req.created_at)}</div>
                       </div>
                     </div>
                   </button>
@@ -534,20 +534,20 @@ function RequestDetailsPanel({
           </div>
         </div>
         <div className={uiCx(uiTypography.helper, 'space-y-1')}>
-          <div>Requested by: <span className="font-medium text-gray-900">{request.requested_by?.name || 'Unknown'}</span></div>
-          <div>Target: <span className="font-medium text-gray-900">
+          <div>Requested by: <span className="font-semibold text-gray-900">{request.requested_by?.name || 'Unknown'}</span></div>
+          <div>Target: <span className="font-semibold text-gray-900">
             {request.target.type === 'user'
               ? request.target.user_name || 'Specific user'
               : request.target.division_label || 'Division'}
           </span></div>
           {request.project?.name && (
-            <div>Project: <span className="font-medium text-gray-900">
+            <div>Project: <span className="font-semibold text-gray-900">
               {request.project.code ? `${request.project.code} • ` : ''}
               {request.project.name}
             </span></div>
           )}
           {request.due_date && (
-            <div>Desired date: <span className="font-medium text-gray-900">
+            <div>Desired date: <span className="font-semibold text-gray-900">
               {new Date(request.due_date).toLocaleDateString()}
             </span></div>
           )}
@@ -763,7 +763,7 @@ function ViewRequestModal({
           className="bg-white rounded-xl shadow-xl w-full max-w-[75vw] max-h-[90vh] overflow-hidden flex flex-col border border-gray-200"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="p-8 text-center text-xs text-gray-500">Loading request details...</div>
+          <div className="p-8 text-center text-sm text-gray-600">Loading request details...</div>
         </div>
       </div>
                   </OverlayPortal>
@@ -781,7 +781,7 @@ function ViewRequestModal({
           className="bg-white rounded-xl shadow-xl w-full max-w-[75vw] max-h-[90vh] overflow-hidden flex flex-col border border-gray-200"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="p-8 text-center text-xs text-gray-500">Request not found</div>
+          <div className="p-8 text-center text-sm text-gray-600">Request not found</div>
         </div>
       </div>
       </OverlayPortal>
@@ -812,7 +812,7 @@ function ViewRequestModal({
                 </div>
                 <div className="flex-1">
                   <h2 className="text-sm font-semibold text-gray-900">{request.title}</h2>
-                  <p className="text-xs text-gray-500 mt-0.5">Request details and conversation</p>
+                  <p className="text-sm text-gray-600 mt-0.5">Request details and conversation</p>
                 </div>
               </div>
             </div>
@@ -831,8 +831,8 @@ function ViewRequestModal({
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {request.description && (
               <div className="rounded-xl border border-gray-200 bg-gray-50/50 p-4">
-                <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Initial Request</div>
-                <div className="text-xs text-gray-700 whitespace-pre-wrap">{request.description}</div>
+                <div className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Initial Request</div>
+                <div className="text-sm text-gray-700 whitespace-pre-wrap">{request.description}</div>
               </div>
             )}
 
@@ -842,16 +842,16 @@ function ViewRequestModal({
                 <div className="space-y-3">
                   {request.messages.map((msg) => (
                     <div key={msg.id} className="rounded-xl border border-gray-200 bg-white p-4">
-                      <div className="flex items-center justify-between text-[10px] text-gray-500 mb-2">
-                        <span className="font-medium">{msg.sender_name || 'System'}</span>
+                      <div className="flex items-center justify-between text-xs text-gray-600 mb-2">
+                        <span className="font-semibold">{msg.sender_name || 'System'}</span>
                         <span>{new Date(msg.created_at).toLocaleString()}</span>
                       </div>
-                      <div className="text-xs text-gray-800 whitespace-pre-wrap">{msg.body}</div>
+                      <div className="text-sm text-gray-800 whitespace-pre-wrap">{msg.body}</div>
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="text-xs text-gray-500 text-center py-8 border border-gray-200 rounded-xl bg-gray-50/50">
+                <div className="text-sm text-gray-600 text-center py-8 border border-gray-200 rounded-xl bg-gray-50/50">
                   No messages yet
                 </div>
               )}
@@ -860,18 +860,18 @@ function ViewRequestModal({
             {/* Action Inputs */}
             {request.permissions.can_request_info && (
               <div className="rounded-xl border border-gray-200 bg-gray-50/50 p-4 space-y-2">
-                <label className="block text-xs font-semibold text-gray-700">Request more information</label>
+                <label className="block text-sm font-semibold text-gray-700">Request more information</label>
                 <textarea
                   value={infoMessage}
                   onChange={(e) => setInfoMessage(e.target.value)}
                   rows={3}
                   placeholder="What information do you need?"
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
                 />
                 <button
                   onClick={() => askInfoMutation.mutate(infoMessage)}
                   disabled={askInfoMutation.isLoading || !infoMessage.trim()}
-                  className="px-3 py-2 bg-brand-red text-white rounded-lg hover:opacity-90 transition-colors text-xs font-medium disabled:opacity-60"
+                  className="px-3 py-2 bg-brand-red text-white rounded-lg hover:opacity-90 transition-colors text-sm font-semibold disabled:opacity-60"
                 >
                   {askInfoMutation.isLoading ? 'Sending...' : 'Send Request'}
                 </button>
@@ -880,18 +880,18 @@ function ViewRequestModal({
 
             {request.permissions.can_provide_info && (
               <div className="rounded-xl border border-gray-200 bg-gray-50/50 p-4 space-y-2">
-                <label className="block text-xs font-semibold text-gray-700">Provide clarification</label>
+                <label className="block text-sm font-semibold text-gray-700">Provide clarification</label>
                 <textarea
                   value={clarificationMessage}
                   onChange={(e) => setClarificationMessage(e.target.value)}
                   rows={3}
                   placeholder="Add the requested information..."
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
                 />
                 <button
                   onClick={() => provideInfoMutation.mutate(clarificationMessage)}
                   disabled={provideInfoMutation.isLoading || !clarificationMessage.trim()}
-                  className="px-3 py-2 bg-brand-red text-white rounded-lg hover:opacity-90 transition-colors text-xs font-medium disabled:opacity-60"
+                  className="px-3 py-2 bg-brand-red text-white rounded-lg hover:opacity-90 transition-colors text-sm font-semibold disabled:opacity-60"
                 >
                   {provideInfoMutation.isLoading ? 'Sending...' : 'Send Clarification'}
                 </button>
@@ -902,7 +902,7 @@ function ViewRequestModal({
           {/* Right: Context Panel */}
           <div className="w-80 border-l border-gray-200 bg-gray-50/30 p-4 space-y-4 flex-shrink-0 overflow-y-auto">
             <div>
-              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Status</div>
+              <div className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-3">Status</div>
               <div className="flex flex-wrap gap-2">
                 <AppBadge variant={statusConfig.variant}>{statusConfig.label}</AppBadge>
                 <AppBadge variant={getPriorityBadgeVariant(request.priority)}>{request.priority}</AppBadge>
@@ -910,15 +910,15 @@ function ViewRequestModal({
             </div>
 
             <div>
-              <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Details</div>
-              <div className="space-y-3 text-xs">
+              <div className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Details</div>
+              <div className="space-y-3 text-sm">
                 <div>
-                  <div className="text-gray-500 mb-1">Requested by</div>
-                  <div className="font-medium text-gray-900">{request.requested_by?.name || 'Unknown'}</div>
+                  <div className="text-gray-600 mb-1">Requested by</div>
+                  <div className="font-semibold text-gray-900">{request.requested_by?.name || 'Unknown'}</div>
                 </div>
                 <div>
-                  <div className="text-gray-500 mb-1">Target</div>
-                  <div className="font-medium text-gray-900">
+                  <div className="text-gray-600 mb-1">Target</div>
+                  <div className="font-semibold text-gray-900">
                     {request.target.type === 'user'
                       ? request.target.user_name || 'Specific user'
                       : request.target.division_label || 'Division'}
@@ -926,8 +926,8 @@ function ViewRequestModal({
                 </div>
                 {request.project?.name && (
                   <div>
-                    <div className="text-gray-500 mb-1">Project</div>
-                    <div className="font-medium text-gray-900">
+                    <div className="text-gray-600 mb-1">Project</div>
+                    <div className="font-semibold text-gray-900">
                       {request.project.code ? `${request.project.code} • ` : ''}
                       {request.project.name}
                     </div>
@@ -935,15 +935,15 @@ function ViewRequestModal({
                 )}
                 {request.due_date && (
                   <div>
-                    <div className="text-gray-500 mb-1">Desired date</div>
-                    <div className="font-medium text-gray-900">
+                    <div className="text-gray-600 mb-1">Desired date</div>
+                    <div className="font-semibold text-gray-900">
                       {new Date(request.due_date).toLocaleDateString()}
                     </div>
                   </div>
                 )}
                 <div>
-                  <div className="text-gray-500 mb-1">Created</div>
-                  <div className="font-medium text-gray-900">
+                  <div className="text-gray-600 mb-1">Created</div>
+                  <div className="font-semibold text-gray-900">
                     {new Date(request.created_at).toLocaleDateString()}
                   </div>
                 </div>
@@ -974,13 +974,13 @@ function ViewRequestModal({
                 onChange={(e) => setRefuseMessage(e.target.value)}
                 rows={2}
                 placeholder="Reason (optional)"
-                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs"
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
               />
               <div className="flex gap-2">
                 <button
                   onClick={() => refuseMutation.mutate(refuseMessage)}
                   disabled={refuseMutation.isLoading}
-                  className="px-3 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors text-xs font-medium disabled:opacity-60"
+                  className="px-3 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors text-sm font-semibold disabled:opacity-60"
                 >
                   Confirm Refusal
                 </button>
@@ -989,7 +989,7 @@ function ViewRequestModal({
                     setShowRefuseForm(false);
                     setRefuseMessage('');
                   }}
-                  className="px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-xs font-medium"
+                  className="px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-sm font-semibold"
                 >
                   Cancel
                 </button>
@@ -1351,11 +1351,11 @@ function RequestsListModal({
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setShowHistoryModal(true)}
-                className="px-3 py-2 text-xs font-medium rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
+                className="px-3 py-2 text-sm font-semibold rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
               >
                 History
                 {historyRequests.length > 0 && (
-                  <span className="ml-2 px-1.5 py-0.5 bg-brand-red text-white text-[10px] font-semibold rounded-full">
+                  <span className="ml-2 px-1.5 py-0.5 bg-brand-red text-white text-xs font-semibold rounded-full">
                     {historyRequests.length}
                   </span>
                 )}
@@ -1369,16 +1369,16 @@ function RequestsListModal({
             {/* Left side - List */}
             <div className="w-80 border-r border-gray-200 bg-gray-50 overflow-y-auto flex flex-col">
               <div className="p-3 border-b border-gray-200 bg-white">
-                <div className="text-xs font-medium text-gray-700">
+                <div className="text-sm font-semibold text-gray-700">
                   {activeRequests.length} request{activeRequests.length !== 1 ? 's' : ''}{' '}
-                  <span className="text-[10px] text-gray-500">(in process)</span>
+                  <span className="text-xs text-gray-600">(in process)</span>
                 </div>
               </div>
               <div className="divide-y divide-gray-200 flex-1">
                 {isLoading ? (
-                  <div className="p-4 text-xs text-gray-500">Loading...</div>
+                  <div className="p-4 text-sm text-gray-600">Loading...</div>
                 ) : activeRequests.length === 0 ? (
-                  <div className="p-4 text-xs text-gray-500">No active requests</div>
+                  <div className="p-4 text-sm text-gray-600">No active requests</div>
                 ) : (
                   activeRequests.map((req) => (
                   <button
@@ -1389,18 +1389,18 @@ function RequestsListModal({
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <div className="font-medium text-sm text-gray-900 truncate">{req.title}</div>
+                      <div className="font-semibold text-sm text-gray-900 truncate">{req.title}</div>
                       <AppBadge variant={getStatusBadgeConfig(req.status).variant} className="shrink-0">
                         {req.status_label}
                       </AppBadge>
                     </div>
-                    <div className="text-xs text-gray-500 flex flex-wrap gap-2">
+                    <div className="text-sm text-gray-600 flex flex-wrap gap-2">
                       <span className="capitalize">{req.priority || 'normal'}</span>
                       {req.due_date && (
                         <span>Due: {new Date(req.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
                       )}
                     </div>
-                    <div className="text-xs text-gray-400">
+                    <div className="text-sm text-gray-600">
                       {req.requested_by?.name || req.requested_by?.id || 'Unknown'} •{' '}
                       {new Date(req.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                     </div>
@@ -1413,9 +1413,9 @@ function RequestsListModal({
           {/* Right side - Details */}
           <div className="flex-1 overflow-y-auto bg-white">
             {loadingDetail ? (
-              <div className="p-6 text-sm text-gray-500">Loading request...</div>
+              <div className="p-6 text-sm text-gray-600">Loading request...</div>
             ) : !selected ? (
-              <div className="p-6 text-sm text-gray-500">Select a request to see details.</div>
+              <div className="p-6 text-sm text-gray-600">Select a request to see details.</div>
             ) : (
               <div className="p-6 space-y-6">
                 <div className="flex flex-col gap-1">
@@ -1471,7 +1471,7 @@ function RequestsListModal({
                     <div className="space-y-3">
                       {selected.messages.map((msg) => (
                         <div key={msg.id} className="rounded border p-3 bg-gray-50">
-                          <div className="flex items-center justify-between text-xs text-gray-500">
+                          <div className="flex items-center justify-between text-sm text-gray-600">
                             <span>{msg.sender_name || 'System'}</span>
                             <span>{new Date(msg.created_at).toLocaleString()}</span>
                           </div>
@@ -1480,7 +1480,7 @@ function RequestsListModal({
                       ))}
                     </div>
                   ) : (
-                    <div className="text-sm text-gray-500">No messages yet.</div>
+                    <div className="text-sm text-gray-600">No messages yet.</div>
                   )}
                 </div>
 
@@ -1558,7 +1558,7 @@ function RequestsListModal({
                         <div className="mt-4 pt-4 border-t border-gray-200">
                           <div className="space-y-3">
                             <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                              <label className="block text-sm font-semibold text-gray-700 mb-1">
                                 Reason (optional)
                               </label>
                               <textarea
@@ -1654,7 +1654,7 @@ function RequestsHistoryModal({
       <div className="bg-white rounded-xl max-w-7xl w-full max-h-[90vh] overflow-hidden flex flex-col">
         <div className="sticky top-0 bg-white border-b p-4 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
-          <button onClick={onClose} className="text-2xl font-bold text-gray-400 hover:text-gray-600">
+          <button onClick={onClose} className="text-2xl font-bold text-gray-600 hover:text-gray-600">
             ×
           </button>
         </div>
@@ -1662,16 +1662,16 @@ function RequestsHistoryModal({
           {/* Left side - List */}
           <div className="w-80 border-r bg-gray-50 overflow-y-auto flex flex-col">
             <div className="p-3 border-b bg-white">
-              <div className="text-sm font-medium text-gray-700">
+              <div className="text-sm font-semibold text-gray-700">
                 {requests.length} request{requests.length !== 1 ? 's' : ''}{' '}
-                <span className="text-xs text-gray-500">(completed)</span>
+                <span className="text-sm text-gray-600">(completed)</span>
               </div>
             </div>
             <div className="divide-y flex-1">
               {isLoading ? (
-                <div className="p-4 text-sm text-gray-500">Loading...</div>
+                <div className="p-4 text-sm text-gray-600">Loading...</div>
               ) : requests.length === 0 ? (
-                <div className="p-4 text-sm text-gray-500">No completed requests in history</div>
+                <div className="p-4 text-sm text-gray-600">No completed requests in history</div>
               ) : (
                 requests.map((req) => (
                   <button
@@ -1682,18 +1682,18 @@ function RequestsHistoryModal({
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <div className="font-medium text-sm text-gray-900 truncate">{req.title}</div>
+                      <div className="font-semibold text-sm text-gray-900 truncate">{req.title}</div>
                       <AppBadge variant={getStatusBadgeConfig(req.status).variant} className="shrink-0">
                         {req.status_label}
                       </AppBadge>
                     </div>
-                    <div className="text-xs text-gray-500 flex flex-wrap gap-2">
+                    <div className="text-sm text-gray-600 flex flex-wrap gap-2">
                       <span className="capitalize">{req.priority || 'normal'}</span>
                       {req.due_date && (
                         <span>Due: {new Date(req.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
                       )}
                     </div>
-                    <div className="text-xs text-gray-400">
+                    <div className="text-sm text-gray-600">
                       {req.requested_by?.name || req.requested_by?.id || 'Unknown'} •{' '}
                       {new Date(req.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                     </div>
@@ -1706,9 +1706,9 @@ function RequestsHistoryModal({
           {/* Right side - Details */}
           <div className="flex-1 overflow-y-auto bg-white">
             {loadingDetail ? (
-              <div className="p-6 text-sm text-gray-500">Loading request...</div>
+              <div className="p-6 text-sm text-gray-600">Loading request...</div>
             ) : !selected ? (
-              <div className="p-6 text-sm text-gray-500">Select a request to see details.</div>
+              <div className="p-6 text-sm text-gray-600">Select a request to see details.</div>
             ) : (
               <div className="p-6 space-y-6">
                 <div className="flex flex-col gap-1">
@@ -1764,7 +1764,7 @@ function RequestsHistoryModal({
                     <div className="space-y-3">
                       {selected.messages.map((msg) => (
                         <div key={msg.id} className="rounded border p-3 bg-gray-50">
-                          <div className="flex items-center justify-between text-xs text-gray-500">
+                          <div className="flex items-center justify-between text-sm text-gray-600">
                             <span>{msg.sender_name || 'System'}</span>
                             <span>{new Date(msg.created_at).toLocaleString()}</span>
                           </div>
@@ -1773,7 +1773,7 @@ function RequestsHistoryModal({
                       ))}
                     </div>
                   ) : (
-                    <div className="text-sm text-gray-500">No messages yet.</div>
+                    <div className="text-sm text-gray-600">No messages yet.</div>
                   )}
                 </div>
 
@@ -1792,7 +1792,7 @@ function RequestsHistoryModal({
                           )}
                         </p>
                         {selected.accepted_task_id && (
-                          <p className="text-xs text-gray-500">
+                          <p className="text-sm text-gray-600">
                             Task created on{' '}
                             {selected.updated_at
                               ? new Date(selected.updated_at).toLocaleDateString()
@@ -1808,7 +1808,7 @@ function RequestsHistoryModal({
                           This request has been refused and will not be converted into a task.
                         </p>
                         {selected.updated_at && (
-                          <p className="text-xs text-gray-500">
+                          <p className="text-sm text-gray-600">
                             Refused on {new Date(selected.updated_at).toLocaleDateString()}
                           </p>
                         )}
@@ -2005,7 +2005,7 @@ function CreateTaskRequestModal({
             </button>
             <div>
               <h2 className="text-sm font-semibold text-gray-900">New Request</h2>
-              <p className="text-xs text-gray-500 mt-0.5">Share the context and choose who should receive it.</p>
+              <p className="text-sm text-gray-600 mt-0.5">Share the context and choose who should receive it.</p>
             </div>
           </div>
         </div>
@@ -2016,7 +2016,7 @@ function CreateTaskRequestModal({
             className="rounded-xl border border-gray-200 bg-white p-4 space-y-4"
           >
             <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Title *</label>
+              <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">Title *</label>
               <input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
@@ -2027,12 +2027,12 @@ function CreateTaskRequestModal({
 
             <div className="grid md:grid-cols-2 gap-4">
               <div>
-                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Send to</label>
+                <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">Send to</label>
                 <div className="flex gap-2">
                   <button
                     type="button"
                     onClick={() => setTargetType('user')}
-                    className={`flex-1 px-3 py-2 rounded-lg border text-sm font-medium ${
+                    className={`flex-1 px-3 py-2 rounded-lg border text-sm font-semibold ${
                       targetType === 'user'
                         ? 'bg-brand-red text-white border-brand-red'
                         : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
@@ -2043,7 +2043,7 @@ function CreateTaskRequestModal({
                   <button
                     type="button"
                     onClick={() => setTargetType('division')}
-                    className={`flex-1 px-3 py-2 rounded-lg border text-sm font-medium ${
+                    className={`flex-1 px-3 py-2 rounded-lg border text-sm font-semibold ${
                       targetType === 'division'
                         ? 'bg-brand-red text-white border-brand-red'
                         : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
@@ -2054,7 +2054,7 @@ function CreateTaskRequestModal({
                 </div>
               </div>
               <div>
-                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Priority</label>
+                <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">Priority</label>
                 <select
                   value={priority}
                   onChange={(e) => setPriority(e.target.value)}
@@ -2071,7 +2071,7 @@ function CreateTaskRequestModal({
 
             {targetType === 'user' ? (
               <div>
-                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
+                <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">
                   Choose a user {targetUserId && '(1 selected)'}
                 </label>
                 <div className="relative" ref={workerDropdownRef}>
@@ -2088,7 +2088,7 @@ function CreateTaskRequestModal({
                           return selectedUser?.name || selectedUser?.username || 'Selected';
                         })()}
                   </span>
-                  <span className="text-gray-400">{workerDropdownOpen ? '▲' : '▼'}</span>
+                  <span className="text-gray-600">{workerDropdownOpen ? '▲' : '▼'}</span>
                 </button>
                 {workerDropdownOpen && (
                   <div
@@ -2116,7 +2116,7 @@ function CreateTaskRequestModal({
                               setTargetUserId(filteredUsers[0].id);
                             }
                           }}
-                          className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
+                          className="text-sm px-2 py-1 rounded border hover:bg-gray-50"
                         >
                           Select First
                         </button>
@@ -2128,7 +2128,7 @@ function CreateTaskRequestModal({
                             e.stopPropagation();
                             setTargetUserId('');
                           }}
-                          className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
+                          className="text-sm px-2 py-1 rounded border hover:bg-gray-50"
                         >
                           Clear
                         </button>
@@ -2207,7 +2207,7 @@ function CreateTaskRequestModal({
             </div>
           ) : (
             <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Select division</label>
+              <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">Select division</label>
               <select
                 value={targetDivisionId}
                 onChange={(e) => setTargetDivisionId(e.target.value)}
@@ -2220,14 +2220,14 @@ function CreateTaskRequestModal({
                   </option>
                 ))}
               </select>
-              <p className="text-[10px] text-gray-500 mt-1">
+              <p className="text-xs text-gray-600 mt-1">
                 Everyone in this division will see the request until someone accepts it.
               </p>
             </div>
           )}
 
             <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Project (optional)</label>
+              <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">Project (optional)</label>
               <select
                 value={projectId}
                 onChange={(e) => setProjectId(e.target.value)}
@@ -2250,7 +2250,7 @@ function CreateTaskRequestModal({
             />
 
             <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Description</label>
+              <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">Description</label>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
@@ -2265,7 +2265,7 @@ function CreateTaskRequestModal({
           <button
             type="button"
             onClick={onClose}
-            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50"
+            className="px-3 py-1.5 rounded-lg text-sm font-semibold text-gray-700 border border-gray-200 hover:bg-gray-50"
           >
             Cancel
           </button>

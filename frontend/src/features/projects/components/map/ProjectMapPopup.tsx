@@ -25,13 +25,13 @@ function DivisionChips({ names, dense }: { names: string[]; dense?: boolean }) {
   return (
     <div className={dense ? 'mt-2' : 'mt-3'}>
       {!dense ? (
-        <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500">Division</div>
+        <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-600">Division</div>
       ) : null}
       <div className="flex flex-wrap gap-1">
         {names.map((name) => (
           <span
             key={name}
-            className="inline-flex rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700"
+            className="inline-flex rounded bg-gray-100 px-2 py-0.5 text-sm font-semibold text-gray-700"
           >
             {name}
           </span>
@@ -50,8 +50,8 @@ function AddressBlock({ point }: { point: ProjectMapPoint }) {
   return (
     <div className="mt-3 flex gap-2">
       <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gray-400" aria-hidden />
-      <div className="min-w-0 text-xs leading-relaxed text-gray-600">
-        {street ? <div className="font-medium text-gray-800">{street}</div> : null}
+      <div className="min-w-0 text-sm leading-relaxed text-gray-600">
+        {street ? <div className="font-semibold text-gray-800">{street}</div> : null}
         {cityLine ? <div>{cityLine}</div> : null}
         {!street && !cityLine && fallback ? <div>{fallback}</div> : null}
       </div>
@@ -70,7 +70,7 @@ function PersonBlock({
 }) {
   return (
     <div className={dense ? 'mt-2' : 'mt-3'}>
-      <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500">{label}</div>
+      <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-600">{label}</div>
       {person?.name ? (
         <div className="flex items-center gap-2">
           <AppUserAvatar
@@ -83,7 +83,7 @@ function PersonBlock({
           <span className="text-sm text-gray-800">{person.name}</span>
         </div>
       ) : (
-        <div className="flex items-center gap-1.5 text-sm text-gray-400">
+        <div className="flex items-center gap-1.5 text-sm text-gray-600">
           <User className="h-3.5 w-3.5 shrink-0" aria-hidden />
           <span>Unassigned</span>
         </div>
@@ -104,7 +104,7 @@ function ClusterProjectRow({ point, labels, listKind, onOpen }: ClusterProjectRo
     <div className="border-b border-gray-100 py-3 last:border-0">
       <div className="line-clamp-2 text-sm font-semibold leading-snug text-gray-900">{point.name}</div>
       <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
-        <span className="text-xs text-gray-500">{point.code}</span>
+        <span className="text-sm text-gray-600">{point.code}</span>
         <AppBadge variant={getProjectStatusBadgeVariant(point.status_label || point.status)} className="shrink-0">
           {statusDisplayLabel(point)}
         </AppBadge>
@@ -143,11 +143,11 @@ function ClusterLocationHeader({ group, labels }: { group: LocationGroup; labels
   return (
     <div className="flex gap-2 border-b border-gray-100 pb-2.5">
       <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gray-400" aria-hidden />
-      <div className="min-w-0 text-xs leading-relaxed text-gray-600">
+      <div className="min-w-0 text-sm leading-relaxed text-gray-600">
         {primaryLine ? (
-          <div className="font-medium text-gray-800">{primaryLine}</div>
+          <div className="font-semibold text-gray-800">{primaryLine}</div>
         ) : (
-          <div className="font-medium text-gray-800">{countLabel}</div>
+          <div className="font-semibold text-gray-800">{countLabel}</div>
         )}
         {primaryLine && secondaryParts.length > 0 ? (
           <div>{secondaryParts.join(' · ')}</div>
@@ -170,7 +170,7 @@ export function ProjectMapSinglePopup({ point, labels, listKind = 'projects', on
       <div>
         <div className="line-clamp-2 text-sm font-semibold leading-snug text-gray-900">{point.name}</div>
         <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="text-xs text-gray-500">{point.code}</span>
+          <span className="text-sm text-gray-600">{point.code}</span>
           <AppBadge variant={getProjectStatusBadgeVariant(point.status_label || point.status)} className="shrink-0">
             {statusDisplayLabel(point)}
           </AppBadge>
@@ -236,7 +236,7 @@ export function ProjectMapClusterPopup({ group, labels, listKind = 'projects', o
           type="button"
           variant="ghost"
           size="sm"
-          className="mt-2 w-full text-xs"
+          className="mt-2 w-full text-sm"
           onClick={() => setExpanded(true)}
         >
           {labels.seeAllAtLocation(group.projects.length)}

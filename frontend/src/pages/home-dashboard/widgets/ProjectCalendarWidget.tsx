@@ -158,8 +158,8 @@ export function ProjectCalendarWidget({ config }: ProjectCalendarWidgetProps) {
         />
       </div>
 
-      <div className={uiCx(uiLayout.actionsRow, 'mt-1.5 shrink-0 justify-end text-[10px]')}>
-        <Link to={calendarHref} className="font-medium text-brand-red hover:underline">
+      <div className={uiCx(uiLayout.actionsRow, 'mt-1.5 shrink-0 justify-end text-sm')}>
+        <Link to={calendarHref} className="font-semibold text-brand-red hover:underline">
           Open Project calendar →
         </Link>
       </div>

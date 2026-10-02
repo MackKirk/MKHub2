@@ -54,7 +54,7 @@ export default function ReviewsAdmin() {
       <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
         <div>
           <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Reviews Admin</div>
-          <div className="text-sm text-gray-500 font-medium">Templates, cycles and assignments.</div>
+          <div className="text-sm text-gray-600 font-semibold">Templates, cycles and assignments.</div>
         </div>
       </div>
       <div className="grid md:grid-cols-2 gap-6">
@@ -65,7 +65,7 @@ export default function ReviewsAdmin() {
           </p>
           <Link
             to="/reviews/form-templates"
-            className="inline-flex px-4 py-2 rounded-lg bg-brand-red text-white text-sm font-medium hover:opacity-90 mb-4"
+            className="inline-flex px-4 py-2 rounded-lg bg-brand-red text-white text-sm font-semibold hover:opacity-90 mb-4"
           >
             Open template library
           </Link>
@@ -73,14 +73,14 @@ export default function ReviewsAdmin() {
             <div className="font-semibold mb-1 text-sm">Existing templates</div>
             <div className="divide-y rounded border max-h-48 overflow-y-auto">
               {(templates || []).length === 0 ? (
-                <div className="px-3 py-3 text-sm text-gray-500">No templates yet.</div>
+                <div className="px-3 py-3 text-sm text-gray-600">No templates yet.</div>
               ) : (
                 (templates || []).map((t: any) => (
                   <div key={t.id} className="px-3 py-2 text-sm flex items-center justify-between gap-2">
                     <span className="truncate">{templateOptionLabel(t)}</span>
                     <Link
                       to={`/reviews/form-templates/${encodeURIComponent(t.id)}`}
-                      className="text-xs text-brand-red shrink-0 hover:underline"
+                      className="text-sm text-brand-red shrink-0 hover:underline"
                     >
                       Edit
                     </Link>
@@ -137,7 +137,7 @@ export default function ReviewsAdmin() {
             </div>
             <div className="col-span-2">
               <div className="text-gray-600">Template by department (optional)</div>
-              <p className="text-xs text-gray-500 mb-1">Use a different template for employees in a given division.</p>
+              <p className="text-sm text-gray-600 mb-1">Use a different template for employees in a given division.</p>
               <div className="space-y-1">
                 {templateByDepartment.map((row, idx) => (
                   <div key={idx} className="flex gap-2 items-center">
@@ -162,13 +162,13 @@ export default function ReviewsAdmin() {
                     <button
                       type="button"
                       onClick={() => removeTemplateByDepartmentRow(idx)}
-                      className="px-2 py-1 rounded border text-xs text-red-600"
+                      className="px-2 py-1 rounded border text-sm text-red-600"
                     >
                       Remove
                     </button>
                   </div>
                 ))}
-                <button type="button" onClick={addTemplateByDepartmentRow} className="px-2 py-1 rounded border text-xs">
+                <button type="button" onClick={addTemplateByDepartmentRow} className="px-2 py-1 rounded border text-sm">
                   Add department mapping
                 </button>
               </div>
@@ -209,8 +209,8 @@ export default function ReviewsAdmin() {
               {(cycles || []).map((c: any) => (
                 <div key={c.id} className="px-3 py-2 text-sm flex items-center justify-between">
                   <div>
-                    <div className="font-medium">{c.name}</div>
-                    <div className="text-gray-600 text-xs">
+                    <div className="font-semibold">{c.name}</div>
+                    <div className="text-gray-600 text-sm">
                       {c.period_start || ''} — {c.period_end || ''}
                       {c.template_by_department && Object.keys(c.template_by_department).length > 0 && (
                         <span className="ml-1">(+ {Object.keys(c.template_by_department).length} dept. override(s))</span>
@@ -226,7 +226,7 @@ export default function ReviewsAdmin() {
                         toast.error('Failed');
                       }
                     }}
-                    className="px-2 py-1 rounded border text-xs"
+                    className="px-2 py-1 rounded border text-sm"
                   >
                     Create tasks
                   </button>
@@ -236,7 +236,7 @@ export default function ReviewsAdmin() {
           </div>
           <div className="mt-4">
             <div className="font-semibold mb-1">Compare (self vs manager)</div>
-            <div className="text-xs text-gray-600 mb-2">Pick a cycle to view comparisons for all employees</div>
+            <div className="text-sm text-gray-600 mb-2">Pick a cycle to view comparisons for all employees</div>
             <div className="space-x-2">
               {(cycles || []).map((c: any) => (
                 <button
@@ -250,7 +250,7 @@ export default function ReviewsAdmin() {
                       toast.error('Failed');
                     }
                   }}
-                  className="px-3 py-1 rounded border text-xs"
+                  className="px-3 py-1 rounded border text-sm"
                 >
                   {c.name}
                 </button>

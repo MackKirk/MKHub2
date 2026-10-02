@@ -1094,7 +1094,7 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
             information. Only grant this to trusted users.
           </p>
           {isAdminLocal ? (
-            <p className={uiCx(uiTypography.helper, 'mt-2 font-medium text-amber-800')}>
+            <p className={uiCx(uiTypography.helper, 'mt-2 font-semibold text-amber-800')}>
               When admin is enabled, all permission checks are bypassed. Individual permissions below are ignored.
             </p>
           ) : null}

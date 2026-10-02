@@ -233,8 +233,8 @@ const WorkerQrBadgeCard = forwardRef<
         <div className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-white/10" />
         <div className="pointer-events-none absolute -left-4 bottom-0 h-16 w-16 rounded-full bg-white/5" />
         <div className="min-w-0">
-          <p className={`font-semibold text-white ${isPreview ? 'text-[10px]' : 'text-xs'}`}>Site clock-in badge</p>
-          <p className={`text-white/70 ${isPreview ? 'text-[9px]' : 'text-[10px]'}`}>Subcontractor worker</p>
+          <p className={`font-semibold text-white ${isPreview ? 'text-xs' : 'text-sm'}`}>Site clock-in badge</p>
+          <p className={`text-white/70 ${isPreview ? 'text-[9px]' : 'text-xs'}`}>Subcontractor worker</p>
         </div>
         <img
           src={MKHUB_LOGO_LIGHT}
@@ -255,16 +255,16 @@ const WorkerQrBadgeCard = forwardRef<
           />
         </div>
         <div className={`space-y-0.5 ${isPreview ? 'mt-2.5' : 'mt-4'}`}>
-          <p className={`font-bold text-gray-900 leading-tight ${isPreview ? 'text-xs' : 'text-lg'}`}>{workerName}</p>
+          <p className={`font-bold text-gray-900 leading-tight ${isPreview ? 'text-sm' : 'text-lg'}`}>{workerName}</p>
           {companyName ? (
-            <p className={`text-gray-600 ${isPreview ? 'text-[10px]' : 'text-sm'}`}>{companyName}</p>
+            <p className={`text-gray-600 ${isPreview ? 'text-xs' : 'text-sm'}`}>{companyName}</p>
           ) : null}
           {phone ? (
-            <p className={`font-medium text-gray-500 tabular-nums ${isPreview ? 'text-[10px]' : 'text-sm'}`}>{phone}</p>
+            <p className={`font-semibold text-gray-600 tabular-nums ${isPreview ? 'text-xs' : 'text-sm'}`}>{phone}</p>
           ) : null}
         </div>
         {!isPreview ? (
-          <p className="mt-4 text-[11px] text-gray-400">Scan to clock in or out on site</p>
+          <p className="mt-4 text-xs text-gray-600">Scan to clock in or out on site</p>
         ) : null}
       </div>
     </div>
@@ -337,7 +337,7 @@ function ReadOnlyField({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="space-y-1">
       <div className={uiTypography.controlLabel}>{label}</div>
-      <div className={uiCx(uiTypography.helper, 'break-words whitespace-pre-wrap font-medium text-gray-900')}>
+      <div className={uiCx(uiTypography.helper, 'break-words whitespace-pre-wrap font-semibold text-gray-900')}>
         {isEmpty ? EM_DASH : value}
       </div>
     </div>
@@ -876,7 +876,7 @@ export default function SubcontractorWorkerPage() {
                       <button
                         type="button"
                         onClick={() => setWorkerPhotoPickerOpen(true)}
-                        className="absolute inset-0 flex items-center justify-center bg-black/40 text-[10px] text-white opacity-0 transition-opacity group-hover:opacity-100"
+                        className="absolute inset-0 flex items-center justify-center bg-black/40 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100"
                       >
                         Change
                       </button>
@@ -886,7 +886,7 @@ export default function SubcontractorWorkerPage() {
                     <div className="flex items-center gap-2">
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-bold text-gray-900 truncate">{workerDisplayHeroName(data.worker)}</div>
-                        <div className="text-[10px] text-gray-600 truncate mt-0.5">{data.company?.name || '—'}</div>
+                        <div className="text-xs text-gray-600 truncate mt-0.5">{data.company?.name || '—'}</div>
                       </div>
                       <div className="flex-shrink-0">
                         <WorkerStatusBadge
@@ -910,7 +910,7 @@ export default function SubcontractorWorkerPage() {
                       <button
                         type="button"
                         onClick={() => setWorkerPhotoPickerOpen(true)}
-                        className="absolute inset-0 flex items-center justify-center bg-black/40 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100"
+                        className="absolute inset-0 flex items-center justify-center bg-black/40 text-sm text-white opacity-0 transition-opacity group-hover:opacity-100"
                       >
                         Change
                       </button>
@@ -919,7 +919,7 @@ export default function SubcontractorWorkerPage() {
                   <div className="min-w-0 flex-1">
                     <div className="mb-2">
                       <h1 className="text-sm font-bold text-gray-900">{workerDisplayHeroName(data.worker)}</h1>
-                      <div className="mt-0.5 text-xs text-gray-600">{data.company?.name || '—'}</div>
+                      <div className="mt-0.5 text-sm text-gray-600">{data.company?.name || '—'}</div>
                     </div>
                     <div className="grid gap-x-3 md:grid-cols-3">
                       <div className="flex min-w-0 flex-col gap-1.5">
@@ -1233,36 +1233,36 @@ export default function SubcontractorWorkerPage() {
                           <div className="flex-1 p-3 text-sm min-w-0">
                             <div className="font-semibold text-gray-900">{data.worker.emergency_contact_name || '—'}</div>
                             {data.worker.emergency_contact_relationship && (
-                              <div className="text-gray-600 text-xs mt-1">{data.worker.emergency_contact_relationship}</div>
+                              <div className="text-gray-600 text-sm mt-1">{data.worker.emergency_contact_relationship}</div>
                             )}
                             <div className="mt-2 space-y-1">
                               {data.worker.emergency_contact_phone && (
                                 <div>
-                                  <div className="text-[11px] uppercase text-gray-500">Mobile</div>
+                                  <div className="text-xs uppercase text-gray-600">Mobile</div>
                                   <div className="text-gray-700">{displayWorkerPhone(data.worker.emergency_contact_phone)}</div>
                                 </div>
                               )}
                               {data.worker.emergency_contact_home_phone && (
                                 <div>
-                                  <div className="text-[11px] uppercase text-gray-500">Home</div>
+                                  <div className="text-xs uppercase text-gray-600">Home</div>
                                   <div className="text-gray-700">{displayWorkerPhone(data.worker.emergency_contact_home_phone)}</div>
                                 </div>
                               )}
                               {data.worker.emergency_contact_work_phone && (
                                 <div>
-                                  <div className="text-[11px] uppercase text-gray-500">Work</div>
+                                  <div className="text-xs uppercase text-gray-600">Work</div>
                                   <div className="text-gray-700">{displayWorkerPhone(data.worker.emergency_contact_work_phone)}</div>
                                 </div>
                               )}
                               {data.worker.emergency_contact_email && (
                                 <div>
-                                  <div className="text-[11px] uppercase text-gray-500">Email</div>
+                                  <div className="text-xs uppercase text-gray-600">Email</div>
                                   <div className="text-gray-700 break-all">{data.worker.emergency_contact_email}</div>
                                 </div>
                               )}
                               {data.worker.emergency_contact_address && (
                                 <div>
-                                  <div className="text-[11px] uppercase text-gray-500">Address</div>
+                                  <div className="text-xs uppercase text-gray-600">Address</div>
                                   <div className="text-gray-700 whitespace-pre-wrap">{data.worker.emergency_contact_address}</div>
                                 </div>
                               )}
@@ -1374,7 +1374,7 @@ export default function SubcontractorWorkerPage() {
                       />
                     </div>
                     {data.company && !data.company.is_active && (
-                      <p className="text-xs font-medium text-amber-700">Company is inactive — clock-in may be restricted.</p>
+                      <p className="text-sm font-semibold text-amber-700">Company is inactive — clock-in may be restricted.</p>
                     )}
                   </PersonalUserSection>
                 ) : (
@@ -1393,7 +1393,7 @@ export default function SubcontractorWorkerPage() {
                           fieldHint="Job title\n\nRole on site (e.g. labourer, foreman)."
                         />
                         <div>
-                          <div className="text-xs font-medium text-gray-600 mb-1.5">Employer (subcontractor)</div>
+                          <div className="text-sm font-semibold text-gray-600 mb-1.5">Employer (subcontractor)</div>
                           {data.worker.company_id && data.company?.name ? (
                             <Link
                               to={`/business/subcontractors/companies/${data.worker.company_id}`}
@@ -1405,7 +1405,7 @@ export default function SubcontractorWorkerPage() {
                             <span className="text-sm font-semibold text-gray-900">{data.company?.name || '—'}</span>
                           )}
                           {data.company && !data.company.is_active && (
-                            <p className="text-xs font-medium text-amber-700 mt-1.5">Company is inactive — clock-in may be restricted.</p>
+                            <p className="text-sm font-semibold text-amber-700 mt-1.5">Company is inactive — clock-in may be restricted.</p>
                           )}
                         </div>
                       </div>
@@ -1487,9 +1487,9 @@ export default function SubcontractorWorkerPage() {
                         {(activityFeed || []).map((ev, i) => (
                           <div
                             key={`${ev.type}-${ev.at}-${ev.audit_id ?? ev.attendance_id ?? ev.worker_file_id ?? i}`}
-                            className="px-3 py-2.5 hover:bg-gray-50/90 grid grid-cols-1 md:grid-cols-12 gap-2 text-xs"
+                            className="px-3 py-2.5 hover:bg-gray-50/90 grid grid-cols-1 md:grid-cols-12 gap-2 text-sm"
                           >
-                            <div className="md:col-span-2 text-gray-500 tabular-nums whitespace-nowrap shrink-0">
+                            <div className="md:col-span-2 text-gray-600 tabular-nums whitespace-nowrap shrink-0">
                               {new Date(ev.at).toLocaleString()}
                             </div>
                             <div className="md:col-span-7 min-w-0">
@@ -1503,7 +1503,7 @@ export default function SubcontractorWorkerPage() {
                                 </div>
                               ) : null}
                               {ev.detail_lines && ev.detail_lines.length > 0 ? (
-                                <ul className="mt-1.5 space-y-0.5 font-mono text-[11px] text-gray-600 border-l-2 border-gray-200 pl-2 max-h-40 overflow-y-auto">
+                                <ul className="mt-1.5 space-y-0.5 font-mono text-xs text-gray-600 border-l-2 border-gray-200 pl-2 max-h-40 overflow-y-auto">
                                   {ev.detail_lines.map((line, j) => (
                                     <li key={j} className="break-words">
                                       {line}
@@ -1512,17 +1512,17 @@ export default function SubcontractorWorkerPage() {
                                 </ul>
                               ) : null}
                             </div>
-                            <div className="md:col-span-3 text-gray-500 md:text-right">
+                            <div className="md:col-span-3 text-gray-600 md:text-right">
                               {ev.by_username ? (
                                 <span>
-                                  By <span className="font-medium text-gray-800">{ev.by_username}</span>
+                                  By <span className="font-semibold text-gray-800">{ev.by_username}</span>
                                 </span>
                               ) : ev.by_user_id ? (
-                                <span className="font-mono text-[10px] text-gray-500" title={ev.by_user_id}>
+                                <span className="font-mono text-xs text-gray-600" title={ev.by_user_id}>
                                   By user {ev.by_user_id.slice(0, 8)}…
                                 </span>
                               ) : (
-                                <span className="text-gray-400">—</span>
+                                <span className="text-gray-600">—</span>
                               )}
                             </div>
                           </div>

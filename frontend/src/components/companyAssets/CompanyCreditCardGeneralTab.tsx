@@ -44,7 +44,7 @@ function ReadOnlyField({ label, value }: { label: ReactNode; value?: ReactNode }
   return (
     <div className="space-y-1">
       <div className={uiTypography.controlLabel}>{label}</div>
-      <div className={uiCx(uiTypography.helper, 'break-words font-medium text-gray-900')}>{display}</div>
+      <div className={uiCx(uiTypography.helper, 'break-words font-semibold text-gray-900')}>{display}</div>
     </div>
   );
 }
@@ -99,7 +99,7 @@ export function CompanyCreditCardGeneralTab({ card, canEdit = true, onEditSectio
             ) : undefined
           }
         />
-        <div className={uiCx(uiTypography.helper, 'mt-4 whitespace-pre-wrap break-words font-medium text-gray-900')}>
+        <div className={uiCx(uiTypography.helper, 'mt-4 whitespace-pre-wrap break-words font-semibold text-gray-900')}>
           {card.notes?.trim() ? card.notes : EM_DASH}
         </div>
       </AppCard>

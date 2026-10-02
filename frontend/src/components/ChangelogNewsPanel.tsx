@@ -185,19 +185,19 @@ export default function ChangelogNewsPanel() {
 
                     {older.length > 0 ? (
                       <div>
-                        <div className={uiCx(uiTypography.overline, 'mb-3 text-gray-400')}>Previous updates</div>
+                        <div className={uiCx(uiTypography.overline, 'mb-3 text-gray-600')}>Previous updates</div>
                         <div className="space-y-2">
                           {older.map((entry) => (
                             <details
                               key={entry.id}
                               className="group rounded-xl border border-gray-200 bg-white open:bg-gray-50/90"
                             >
-                              <summary className="flex cursor-pointer list-none items-center justify-between gap-2 rounded-xl px-4 py-3 text-sm font-medium text-gray-800 hover:bg-gray-50 [&::-webkit-details-marker]:hidden">
+                              <summary className="flex cursor-pointer list-none items-center justify-between gap-2 rounded-xl px-4 py-3 text-sm font-semibold text-gray-800 hover:bg-gray-50 [&::-webkit-details-marker]:hidden">
                                 <span className="min-w-0 flex-1 truncate">
                                   {entry.title || `Update ${entry.date}`}
                                 </span>
-                                <span className="shrink-0 text-xs text-gray-500">{formatDisplayDate(entry.date)}</span>
-                                <span className="shrink-0 text-xs text-gray-400 transition-transform group-open:rotate-180">
+                                <span className="shrink-0 text-sm text-gray-600">{formatDisplayDate(entry.date)}</span>
+                                <span className="shrink-0 text-sm text-gray-600 transition-transform group-open:rotate-180">
                                   ▼
                                 </span>
                               </summary>

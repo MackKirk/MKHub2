@@ -81,7 +81,7 @@ export function SubcontractorCompanyOverviewActivity({
             <button
               type="button"
               onClick={onViewWorkers}
-              className="mt-2 text-xs font-medium text-brand-red hover:underline"
+              className="mt-2 text-sm font-semibold text-brand-red hover:underline"
             >
               View workers
             </button>
@@ -91,17 +91,17 @@ export function SubcontractorCompanyOverviewActivity({
         <div className="max-h-[320px] overflow-y-auto space-y-4 pr-1">
           {groups.map((g) => (
             <div key={g.day}>
-              <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-2">{g.day}</div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-gray-600 mb-2">{g.day}</div>
               <ul className="space-y-2">
                 {g.events.map((ev, idx) => (
-                  <li key={eventKey(ev, idx)} className="flex gap-2 text-xs border-b border-gray-50 pb-2 last:border-0">
+                  <li key={eventKey(ev, idx)} className="flex gap-2 text-sm border-b border-gray-50 pb-2 last:border-0">
                     <span className="shrink-0 pt-0.5" aria-hidden>
                       {EVENT_ICONS[ev.type] || '•'}
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                         <span className="font-semibold text-gray-900">{ev.title}</span>
-                        <span className="text-[10px] text-gray-400 tabular-nums whitespace-nowrap">
+                        <span className="text-xs text-gray-600 tabular-nums whitespace-nowrap">
                           {new Date(ev.at).toLocaleTimeString(undefined, {
                             hour: '2-digit',
                             minute: '2-digit',
@@ -109,12 +109,12 @@ export function SubcontractorCompanyOverviewActivity({
                         </span>
                       </div>
                       {ev.subtitle ? (
-                        <div className="text-[11px] text-gray-600 mt-0.5 break-words">
+                        <div className="text-xs text-gray-600 mt-0.5 break-words">
                           {ev.worker_id && ev.type !== 'worker_added' ? (
                             <>
                               <Link
                                 to={`/business/subcontractors/workers/${encodeURIComponent(ev.worker_id)}`}
-                                className="font-medium text-gray-800 hover:text-brand-red"
+                                className="font-semibold text-gray-800 hover:text-brand-red"
                               >
                                 {ev.subtitle.split(' · ')[0]}
                               </Link>
@@ -125,7 +125,7 @@ export function SubcontractorCompanyOverviewActivity({
                           ) : ev.worker_id && ev.type === 'worker_added' ? (
                             <Link
                               to={`/business/subcontractors/workers/${encodeURIComponent(ev.worker_id)}`}
-                              className="font-medium text-gray-800 hover:text-brand-red"
+                              className="font-semibold text-gray-800 hover:text-brand-red"
                             >
                               {ev.subtitle}
                             </Link>
@@ -135,7 +135,7 @@ export function SubcontractorCompanyOverviewActivity({
                               {' · '}
                               <Link
                                 to={`/projects/${encodeURIComponent(ev.project_id)}`}
-                                className="font-medium text-brand-red hover:underline"
+                                className="font-semibold text-brand-red hover:underline"
                               >
                                 Project
                               </Link>
@@ -146,12 +146,12 @@ export function SubcontractorCompanyOverviewActivity({
                         </div>
                       ) : null}
                       {ev.type === 'clock_out' && ev.total_hours != null ? (
-                        <div className="text-[11px] text-gray-500 mt-0.5 tabular-nums">
+                        <div className="text-xs text-gray-600 mt-0.5 tabular-nums">
                           {formatDecimalHoursAsHMin(ev.total_hours)}
                         </div>
                       ) : null}
                       {ev.detail_lines && ev.detail_lines.length > 0 ? (
-                        <ul className="mt-1 space-y-0.5 font-mono text-[10px] text-gray-500 border-l-2 border-gray-200 pl-2 max-h-24 overflow-y-auto">
+                        <ul className="mt-1 space-y-0.5 font-mono text-xs text-gray-600 border-l-2 border-gray-200 pl-2 max-h-24 overflow-y-auto">
                           {ev.detail_lines.slice(0, 4).map((line, j) => (
                             <li key={j} className="break-words">
                               {line}
@@ -160,8 +160,8 @@ export function SubcontractorCompanyOverviewActivity({
                         </ul>
                       ) : null}
                       {ev.by_username ? (
-                        <div className="text-[10px] text-gray-400 mt-1">
-                          By <span className="font-medium text-gray-600">{ev.by_username}</span>
+                        <div className="text-xs text-gray-600 mt-1">
+                          By <span className="font-semibold text-gray-600">{ev.by_username}</span>
                         </div>
                       ) : null}
                     </div>

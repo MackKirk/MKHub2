@@ -405,7 +405,7 @@ function DashboardChartFilters({
   displayMode,
   setDisplayMode,
 }: DashboardChartFiltersProps) {
-  const compactTrigger = 'h-8 !py-1 !text-xs !pr-7';
+  const compactTrigger = 'h-8 !py-1 !text-sm !pr-7';
   return (
     <div className={uiCx(uiLayout.actionsRow, 'shrink-0 flex-wrap gap-1.5')}>
       <AppSelect
@@ -1052,13 +1052,13 @@ export default function BusinessDashboard() {
                                   <CountUp value={total} enabled={hasAnimated} />
                                 )}
                               </div>
-                              <div className="text-[10px] font-medium text-gray-500 mt-0.5 whitespace-nowrap">Opportunities</div>
+                              <div className="text-sm font-semibold text-gray-600 mt-0.5 whitespace-nowrap">Opportunities</div>
                             </div>
                           )}
                           {pieTooltip?.chart === 'opp' &&
                             createPortal(
                               <div
-                                className="fixed z-[9999] pointer-events-none px-2.5 py-1.5 rounded-lg shadow-xl bg-gray-900 text-white text-xs whitespace-nowrap transition-shadow duration-150"
+                                className="fixed z-[9999] pointer-events-none px-2.5 py-1.5 rounded-lg shadow-xl bg-gray-900 text-white text-sm whitespace-nowrap transition-shadow duration-150"
                                 style={{ left: pieTooltipPos.x + 10, top: pieTooltipPos.y + 10 }}
                               >
                                 <div className="font-semibold">{pieTooltip.label}</div>
@@ -1073,13 +1073,13 @@ export default function BusinessDashboard() {
                         </div>
                         <div className="flex-1 min-w-0 overflow-y-auto py-0.5 sm:pl-1">
                           {divisionsForList.length === 0 ? (
-                            <div className="text-xs text-gray-400">No data</div>
+                            <div className="text-sm text-gray-600">No data</div>
                           ) : (
-                            <div className="w-full text-xs">
+                            <div className="w-full text-sm">
                               <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-3 gap-y-0 items-center pb-1.5 mb-0.5 border-b border-gray-100">
-                                <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Division</span>
-                                <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400 text-right min-w-[4.5rem]">{metricColLabel}</span>
-                                <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400 text-right w-10">%</span>
+                                <span className="text-xs font-semibold uppercase tracking-wide text-gray-600">Division</span>
+                                <span className="text-xs font-semibold uppercase tracking-wide text-gray-600 text-right min-w-[4.5rem]">{metricColLabel}</span>
+                                <span className="text-xs font-semibold uppercase tracking-wide text-gray-600 text-right w-10">%</span>
                               </div>
                               {divisionsForList.slice(0, 7).map((div) => {
                                 const valuePercentage = oppDivisionDisplayMode === 'value' && total > 0
@@ -1100,16 +1100,18 @@ export default function BusinessDashboard() {
                                         className="w-2.5 h-2.5 rounded-full shrink-0"
                                         style={{ backgroundColor: dotColor }}
                                       />
-                                      <span className="text-gray-700 truncate">{div.label}</span>
+                                      <AppTooltip content={div.label} followCursor wrap constrain className="min-w-0 flex-1">
+                                        <span className="font-semibold text-gray-700 truncate">{div.label}</span>
+                                      </AppTooltip>
                                     </div>
-                                    <span className="text-gray-900 font-medium tabular-nums text-right min-w-[4.5rem]">
+                                    <span className="text-gray-900 font-semibold tabular-nums text-right min-w-[4.5rem]">
                                       {oppDivisionDisplayMode === 'value' ? (
                                         formatCurrency(div.opportunities_value || 0)
                                       ) : (
                                         <CountUp value={div.opportunities_count || 0} enabled={hasAnimated} />
                                       )}
                                     </span>
-                                    <span className="text-gray-500 tabular-nums text-right w-10">
+                                    <span className="font-semibold text-gray-600 tabular-nums text-right w-10">
                                       {pct.toFixed(0)}%
                                     </span>
                                   </div>
@@ -1282,13 +1284,13 @@ export default function BusinessDashboard() {
                                   <CountUp value={total} enabled={hasAnimated} />
                                 )}
                               </div>
-                              <div className="text-[10px] font-medium text-gray-500 mt-0.5 whitespace-nowrap">Projects</div>
+                              <div className="text-sm font-semibold text-gray-600 mt-0.5 whitespace-nowrap">Projects</div>
                             </div>
                           )}
                           {pieTooltip?.chart === 'proj' &&
                             createPortal(
                               <div
-                                className="fixed z-[9999] pointer-events-none px-2.5 py-1.5 rounded-lg shadow-xl bg-gray-900 text-white text-xs whitespace-nowrap transition-shadow duration-150"
+                                className="fixed z-[9999] pointer-events-none px-2.5 py-1.5 rounded-lg shadow-xl bg-gray-900 text-white text-sm whitespace-nowrap transition-shadow duration-150"
                                 style={{ left: pieTooltipPos.x + 10, top: pieTooltipPos.y + 10 }}
                               >
                                 <div className="font-semibold">{pieTooltip.label}</div>
@@ -1303,13 +1305,13 @@ export default function BusinessDashboard() {
                         </div>
                         <div className="flex-1 min-w-0 overflow-y-auto py-0.5 sm:pl-1">
                           {divisionsForList.length === 0 ? (
-                            <div className="text-xs text-gray-400">No data</div>
+                            <div className="text-sm text-gray-600">No data</div>
                           ) : (
-                            <div className="w-full text-xs">
+                            <div className="w-full text-sm">
                               <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-3 gap-y-0 items-center pb-1.5 mb-0.5 border-b border-gray-100">
-                                <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Division</span>
-                                <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400 text-right min-w-[4.5rem]">{metricColLabel}</span>
-                                <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400 text-right w-10">%</span>
+                                <span className="text-xs font-semibold uppercase tracking-wide text-gray-600">Division</span>
+                                <span className="text-xs font-semibold uppercase tracking-wide text-gray-600 text-right min-w-[4.5rem]">{metricColLabel}</span>
+                                <span className="text-xs font-semibold uppercase tracking-wide text-gray-600 text-right w-10">%</span>
                               </div>
                               {divisionsForList.slice(0, 7).map((div) => {
                                 const valuePercentage = projDivisionDisplayMode === 'value' && total > 0
@@ -1330,16 +1332,18 @@ export default function BusinessDashboard() {
                                         className="w-2.5 h-2.5 rounded-full shrink-0"
                                         style={{ backgroundColor: dotColor }}
                                       />
-                                      <span className="text-gray-700 truncate">{div.label}</span>
+                                      <AppTooltip content={div.label} followCursor wrap constrain className="min-w-0 flex-1">
+                                        <span className="font-semibold text-gray-700 truncate">{div.label}</span>
+                                      </AppTooltip>
                                     </div>
-                                    <span className="text-gray-900 font-medium tabular-nums text-right min-w-[4.5rem]">
+                                    <span className="text-gray-900 font-semibold tabular-nums text-right min-w-[4.5rem]">
                                       {projDivisionDisplayMode === 'value' ? (
                                         formatCurrency(div.projects_value || 0)
                                       ) : (
                                         <CountUp value={div.projects_count || 0} enabled={hasAnimated} />
                                       )}
                                     </span>
-                                    <span className="text-gray-500 tabular-nums text-right w-10">
+                                    <span className="font-semibold text-gray-600 tabular-nums text-right w-10">
                                       {pct.toFixed(0)}%
                                     </span>
                                   </div>
@@ -1423,16 +1427,18 @@ export default function BusinessDashboard() {
                               const valuePercentage = totalValue > 0 ? (valueData.final_total_with_gst / totalValue) * 100 : 0;
                               return (
                                 <div key={status} className="grid grid-cols-[7.5rem_minmax(0,1fr)_auto] gap-x-3 items-center">
-                                  <span className="text-xs text-gray-600 truncate">
-                                    {status}
-                                  </span>
+                                  <AppTooltip content={status} followCursor wrap constrain>
+                                    <span className="text-sm font-semibold text-gray-600 truncate">
+                                      {status}
+                                    </span>
+                                  </AppTooltip>
                                   <div className="bg-gray-100/80 rounded-full h-3.5 min-w-0 relative overflow-hidden">
                                     <div
                                       className="rounded-full h-3.5 transition-all duration-500 ease-out absolute inset-y-0 left-0"
                                       style={{ width: `${finalTotalPercentage}%`, background: barBg }}
                                     />
                                   </div>
-                                  <span className="text-xs font-semibold text-gray-900 whitespace-nowrap tabular-nums text-right min-w-[5.5rem]">
+                                  <span className="text-sm font-semibold text-gray-900 whitespace-nowrap tabular-nums text-right min-w-[5.5rem]">
                                     {formatCurrency(valueData.final_total_with_gst)} ({valuePercentage.toFixed(0)}%)
                                   </span>
                                 </div>
@@ -1443,16 +1449,18 @@ export default function BusinessDashboard() {
                               const barPercentage = (count / maxOpportunityStatusCount) * 100;
                               return (
                                 <div key={status} className="grid grid-cols-[7.5rem_minmax(0,1fr)_auto] gap-x-3 items-center">
-                                  <span className="text-xs text-gray-600 truncate">
-                                    {status}
-                                  </span>
+                                  <AppTooltip content={status} followCursor wrap constrain>
+                                    <span className="text-sm font-semibold text-gray-600 truncate">
+                                      {status}
+                                    </span>
+                                  </AppTooltip>
                                   <div className="bg-gray-100/80 rounded-full h-3.5 min-w-0 relative overflow-hidden">
                                     <div
                                       className="rounded-full h-3.5 transition-all duration-500 ease-out"
                                       style={{ width: `${barPercentage}%`, background: barBg }}
                                     />
                                   </div>
-                                  <span className="text-xs font-semibold text-gray-900 whitespace-nowrap tabular-nums text-right min-w-[5.5rem]">
+                                  <span className="text-sm font-semibold text-gray-900 whitespace-nowrap tabular-nums text-right min-w-[5.5rem]">
                                     <CountUp value={count} enabled={hasAnimated || oppStatusStats !== undefined} /> ({percentage.toFixed(0)}%)
                                   </span>
                                 </div>
@@ -1532,16 +1540,18 @@ export default function BusinessDashboard() {
                               const valuePercentage = totalValue > 0 ? (valueData.final_total_with_gst / totalValue) * 100 : 0;
                               return (
                                 <div key={status} className="grid grid-cols-[7.5rem_minmax(0,1fr)_auto] gap-x-3 items-center">
-                                  <span className="text-xs text-gray-600 truncate">
-                                    {status}
-                                  </span>
+                                  <AppTooltip content={status} followCursor wrap constrain>
+                                    <span className="text-sm font-semibold text-gray-600 truncate">
+                                      {status}
+                                    </span>
+                                  </AppTooltip>
                                   <div className="bg-gray-100/80 rounded-full h-3.5 min-w-0 relative overflow-hidden">
                                     <div
                                       className="rounded-full h-3.5 transition-all duration-500 ease-out absolute inset-y-0 left-0"
                                       style={{ width: `${finalTotalPercentage}%`, background: barBg }}
                                     />
                                   </div>
-                                  <span className="text-xs font-semibold text-gray-900 whitespace-nowrap tabular-nums text-right min-w-[5.5rem]">
+                                  <span className="text-sm font-semibold text-gray-900 whitespace-nowrap tabular-nums text-right min-w-[5.5rem]">
                                     {formatCurrency(valueData.final_total_with_gst)} ({valuePercentage.toFixed(0)}%)
                                   </span>
                                 </div>
@@ -1552,16 +1562,18 @@ export default function BusinessDashboard() {
                               const barPercentage = (count / maxProjectStatusCount) * 100;
                               return (
                                 <div key={status} className="grid grid-cols-[7.5rem_minmax(0,1fr)_auto] gap-x-3 items-center">
-                                  <span className="text-xs text-gray-600 truncate">
-                                    {status}
-                                  </span>
+                                  <AppTooltip content={status} followCursor wrap constrain>
+                                    <span className="text-sm font-semibold text-gray-600 truncate">
+                                      {status}
+                                    </span>
+                                  </AppTooltip>
                                   <div className="bg-gray-100/80 rounded-full h-3.5 min-w-0 relative overflow-hidden">
                                     <div
                                       className="rounded-full h-3.5 transition-all duration-500 ease-out"
                                       style={{ width: `${barPercentage}%`, background: barBg }}
                                     />
                                   </div>
-                                  <span className="text-xs font-semibold text-gray-900 whitespace-nowrap tabular-nums text-right min-w-[5.5rem]">
+                                  <span className="text-sm font-semibold text-gray-900 whitespace-nowrap tabular-nums text-right min-w-[5.5rem]">
                                     <CountUp value={count} enabled={hasAnimated || projStatusStats !== undefined} /> ({percentage.toFixed(0)}%)
                                   </span>
                                 </div>
@@ -1587,7 +1599,7 @@ export default function BusinessDashboard() {
               description={
                 <>
                   <span className="text-red-700">{String(divisionsError)}</span>
-                  <span className="mt-2 block text-gray-500">Check console for details</span>
+                  <span className="mt-2 block text-gray-600">Check console for details</span>
                 </>
               }
             />
@@ -1780,7 +1792,7 @@ export default function BusinessDashboard() {
                       Browse and manage all bidding opportunities
                     </p>
                   </div>
-                  <div className="text-xl text-gray-400">→</div>
+                  <div className="text-xl text-gray-600">→</div>
                 </div>
               </AppCard>
             </Link>
@@ -1797,7 +1809,7 @@ export default function BusinessDashboard() {
                       Browse and manage all active projects
                     </p>
                   </div>
-                  <div className="text-xl text-gray-400">→</div>
+                  <div className="text-xl text-gray-600">→</div>
                 </div>
               </AppCard>
             </Link>

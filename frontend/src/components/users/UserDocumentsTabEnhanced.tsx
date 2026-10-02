@@ -568,7 +568,7 @@ export default function UserDocumentsTabEnhanced({
       <div className="flex h-[calc(100vh-400px)]">
         <div className="flex w-64 flex-col border-r bg-gray-50">
           <div className="border-b p-3">
-            <div className="text-xs font-semibold text-gray-700">File Categories</div>
+            <div className="text-sm font-semibold text-gray-700">File Categories</div>
           </div>
           <div className="flex-1 overflow-y-auto">
             <button
@@ -584,9 +584,9 @@ export default function UserDocumentsTabEnhanced({
               }`}
             >
               <div className="flex items-center gap-2">
-                <span className="text-xs">📁</span>
-                <span className="text-xs">All Files</span>
-                <span className="ml-auto text-[10px] text-gray-500">({docs.length})</span>
+                <span className="text-sm">📁</span>
+                <span className="text-sm">All Files</span>
+                <span className="ml-auto text-xs text-gray-600">({docs.length})</span>
               </div>
             </button>
             {topFolders.map((f) => (
@@ -604,9 +604,9 @@ export default function UserDocumentsTabEnhanced({
                 }`}
               >
                 <div className="flex items-center gap-2">
-                  <span className="text-xs">📁</span>
-                  <span className="truncate text-xs">{f.name}</span>
-                  <span className="ml-auto text-[10px] text-gray-500">({folderDocCount(f.id)})</span>
+                  <span className="text-sm">📁</span>
+                  <span className="truncate text-sm">{f.name}</span>
+                  <span className="ml-auto text-xs text-gray-600">({folderDocCount(f.id)})</span>
                 </div>
               </button>
             ))}
@@ -668,9 +668,9 @@ export default function UserDocumentsTabEnhanced({
                 placeholder="Search by file name..."
                 fieldHint="Search\n\nFilter the file list by name in the current category or folder."
               />
-              <div className="whitespace-nowrap text-xs font-semibold text-gray-700">
+              <div className="whitespace-nowrap text-sm font-semibold text-gray-700">
                 {activeFolderLabel}
-                <span className="ml-1 text-gray-500">({currentFiles.length})</span>
+                <span className="ml-1 text-gray-600">({currentFiles.length})</span>
               </div>
             </div>
             {canEdit && (
@@ -687,14 +687,14 @@ export default function UserDocumentsTabEnhanced({
 
           {selectedCategory !== 'all' && (
             <div className="mb-3 flex flex-wrap items-center gap-1">
-              <span className="text-xs text-gray-500">Location:</span>
+              <span className="text-sm text-gray-600">Location:</span>
               {locationBreadcrumb.map((item, index) => (
                 <span key={item.id ?? 'root'} className="inline-flex items-center gap-1">
-                  {index > 0 && <span className="text-xs text-gray-400">/</span>}
+                  {index > 0 && <span className="text-sm text-gray-600">/</span>}
                   <button
                     type="button"
                     onClick={() => setSelectedFolderId(item.id)}
-                    className={`max-w-[140px] truncate rounded px-2 py-1 text-xs font-medium ${
+                    className={`max-w-[140px] truncate rounded px-2 py-1 text-sm font-semibold ${
                       item.id === selectedFolderId || (item.id === null && selectedFolderId === null)
                         ? 'bg-brand-red text-white'
                         : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -708,7 +708,7 @@ export default function UserDocumentsTabEnhanced({
           )}
 
           {docsLoading && (
-            <div className="rounded-lg border bg-white p-6 text-center text-sm text-gray-500">Loading documents…</div>
+            <div className="rounded-lg border bg-white p-6 text-center text-sm text-gray-600">Loading documents…</div>
           )}
           {docsError && (
             <AppEmptyState
@@ -729,41 +729,41 @@ export default function UserDocumentsTabEnhanced({
                   <table className="w-full">
                     <thead className="border-b bg-gray-50">
                       <tr>
-                        <th className="w-12 px-3 py-2 text-left text-[10px] font-semibold text-gray-700" aria-hidden />
+                        <th className="w-12 px-3 py-2 text-left text-xs font-semibold text-gray-700" aria-hidden />
                         <th
-                          className="cursor-pointer select-none px-3 py-2 text-left text-[10px] font-semibold text-gray-700 hover:bg-gray-100"
+                          className="cursor-pointer select-none px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-100"
                           onClick={() => handleSort('name')}
                         >
                           <div className="flex items-center gap-1">
                             Name
                             {sortBy === 'name' && (
-                              <span className="text-xs">{sortOrder === 'asc' ? '↑' : '↓'}</span>
+                              <span className="text-sm">{sortOrder === 'asc' ? '↑' : '↓'}</span>
                             )}
                           </div>
                         </th>
                         <th
-                          className="cursor-pointer select-none px-3 py-2 text-left text-[10px] font-semibold text-gray-700 hover:bg-gray-100"
+                          className="cursor-pointer select-none px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-100"
                           onClick={() => handleSort('type')}
                         >
                           <div className="flex items-center gap-1">
                             Type
                             {sortBy === 'type' && (
-                              <span className="text-xs">{sortOrder === 'asc' ? '↑' : '↓'}</span>
+                              <span className="text-sm">{sortOrder === 'asc' ? '↑' : '↓'}</span>
                             )}
                           </div>
                         </th>
                         <th
-                          className="cursor-pointer select-none px-3 py-2 text-left text-[10px] font-semibold text-gray-700 hover:bg-gray-100"
+                          className="cursor-pointer select-none px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-100"
                           onClick={() => handleSort('uploaded_at')}
                         >
                           <div className="flex items-center gap-1">
                             Upload Date
                             {sortBy === 'uploaded_at' && (
-                              <span className="text-xs">{sortOrder === 'asc' ? '↑' : '↓'}</span>
+                              <span className="text-sm">{sortOrder === 'asc' ? '↑' : '↓'}</span>
                             )}
                           </div>
                         </th>
-                        <th className="w-24 px-3 py-2 text-left text-[10px] font-semibold text-gray-700">Actions</th>
+                        <th className="w-24 px-3 py-2 text-left text-xs font-semibold text-gray-700">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
@@ -784,9 +784,9 @@ export default function UserDocumentsTabEnhanced({
                               </svg>
                             </div>
                           </td>
-                          <td className="px-3 py-2 text-xs font-semibold text-gray-600">..</td>
-                          <td className="px-3 py-2 text-xs text-gray-500">—</td>
-                          <td className="px-3 py-2 text-xs text-gray-500">—</td>
+                          <td className="px-3 py-2 text-sm font-semibold text-gray-600">..</td>
+                          <td className="px-3 py-2 text-sm text-gray-600">—</td>
+                          <td className="px-3 py-2 text-sm text-gray-600">—</td>
                           <td className="px-3 py-2" />
                         </tr>
                       )}
@@ -810,10 +810,10 @@ export default function UserDocumentsTabEnhanced({
                               </div>
                             </td>
                             <td className="px-3 py-2">
-                              <div className="max-w-xs truncate text-xs font-semibold">{f.name}</div>
+                              <div className="max-w-xs truncate text-sm font-semibold">{f.name}</div>
                             </td>
-                            <td className="px-3 py-2 text-xs text-gray-600">Folder</td>
-                            <td className="px-3 py-2 text-xs text-gray-500">—</td>
+                            <td className="px-3 py-2 text-sm text-gray-600">Folder</td>
+                            <td className="px-3 py-2 text-sm text-gray-600">—</td>
                             <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                               {canEdit && (
                                 <AppListRowIconButton
@@ -851,7 +851,7 @@ export default function UserDocumentsTabEnhanced({
                                 </div>
                               ) : (
                                 <div
-                                  className={`flex h-10 w-8 flex-shrink-0 cursor-pointer select-none items-center justify-center rounded-lg ${icon.color} text-[10px] font-extrabold text-white`}
+                                  className={`flex h-10 w-8 flex-shrink-0 cursor-pointer select-none items-center justify-center rounded-lg ${icon.color} text-xs font-extrabold text-white`}
                                   onClick={() => handleFilePreview(d)}
                                 >
                                   {icon.label}
@@ -904,7 +904,7 @@ export default function UserDocumentsTabEnhanced({
                                 </div>
                               ) : (
                                 <div className="flex items-center gap-1">
-                                  <div className="max-w-xs cursor-pointer truncate text-xs font-semibold">{name}</div>
+                                  <div className="max-w-xs cursor-pointer truncate text-sm font-semibold">{name}</div>
                                   {canEdit && (
                                     <AppListRowIconButton
                                       preset="edit"
@@ -919,10 +919,10 @@ export default function UserDocumentsTabEnhanced({
                               )}
                             </td>
                             <td className="cursor-pointer px-3 py-2" onClick={() => handleFilePreview(d)}>
-                              <div className="text-xs text-gray-600">{getDocTypeLabel(d)}</div>
+                              <div className="text-sm text-gray-600">{getDocTypeLabel(d)}</div>
                             </td>
                             <td className="cursor-pointer px-3 py-2" onClick={() => handleFilePreview(d)}>
-                              <div className="text-xs text-gray-600">
+                              <div className="text-sm text-gray-600">
                                 {d.created_at ? new Date(d.created_at).toLocaleDateString('pt-BR') : '-'}
                               </div>
                             </td>
@@ -1086,7 +1086,7 @@ export default function UserDocumentsTabEnhanced({
             {selectedFolderId && selectedCategory !== 'all' && (
               <p className={uiTypography.helper}>
                 Creating inside{' '}
-                <span className="font-medium text-gray-900">
+                <span className="font-semibold text-gray-900">
                   {(folders || []).find((f) => f.id === selectedFolderId)?.name ?? 'folder'}
                 </span>
               </p>

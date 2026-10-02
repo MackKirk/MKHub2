@@ -599,7 +599,7 @@ export default function EquipmentList() {
                               </td>
                               <td className="min-w-0 px-3 py-3 align-top">
                                 <div className="flex min-w-0 flex-col gap-0.5">
-                                  <span className={uiCx(uiTypography.body, 'truncate font-medium text-gray-900')}>
+                                  <span className={uiCx(uiTypography.body, 'truncate font-semibold text-gray-900')}>
                                     {primaryName}
                                   </span>
                                   {metaLine ? (

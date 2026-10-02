@@ -1082,11 +1082,11 @@ export function ProjectListItem({ project, projectDivisions, projectStatuses, va
           {projectName}
         </span>
       </AppTooltip>
-      <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-600">
+      <div className="flex items-center gap-2 mt-0.5 text-sm text-gray-600">
         <span className="truncate">{project.code || '—'}</span>
         {clientName && (
           <>
-            <span className="text-gray-400">•</span>
+            <span className="text-gray-600">•</span>
             <span className="truncate">{clientName}</span>
           </>
         )}
@@ -1097,38 +1097,38 @@ export function ProjectListItem({ project, projectDivisions, projectStatuses, va
     <div className="min-w-0 flex items-center">
       {heroAddress ? (
         <AppTooltip content={heroAddress} wrap constrain>
-          <span className="block min-w-0 max-w-full truncate text-xs font-semibold text-gray-900">{heroAddress}</span>
+          <span className="block min-w-0 max-w-full truncate text-sm font-semibold text-gray-900">{heroAddress}</span>
         </AppTooltip>
       ) : (
-        <span className="text-xs font-semibold text-gray-900 truncate">—</span>
+        <span className="text-sm font-semibold text-gray-900 truncate">—</span>
       )}
     </div>
   );
   const col2 = (
     <div className="min-w-0 flex items-center">
-      <span className="font-semibold text-gray-900 text-xs whitespace-nowrap truncate">{start || '—'}</span>
+      <span className="font-semibold text-gray-900 text-sm whitespace-nowrap truncate">{start || '—'}</span>
     </div>
   );
   const col3 = (
     <div className="min-w-0 flex items-center">
-      <span className="font-semibold text-gray-900 text-xs whitespace-nowrap truncate">{eta || '—'}</span>
+      <span className="font-semibold text-gray-900 text-sm whitespace-nowrap truncate">{eta || '—'}</span>
     </div>
   );
   const col4 = (
     <div className="min-w-0 flex items-center">
       {!userForAdmin && !listAdminName ? (
-        <span className="text-xs font-semibold text-gray-400">—</span>
+        <span className="text-sm font-semibold text-gray-600">—</span>
       ) : (
         <div className="flex items-center gap-2 min-w-0">
           <UserAvatar user={userForAdmin} size="sm" showTooltip={true} tooltipText={adminDisplayName} />
-          <span className="font-semibold text-gray-900 text-xs truncate min-w-0">{adminDisplayName}</span>
+          <span className="font-semibold text-gray-900 text-sm truncate min-w-0">{adminDisplayName}</span>
         </div>
       )}
     </div>
   );
   const col5 = (
     <div className="min-w-0 flex items-center">
-      <span className="font-semibold text-[#7f1010] whitespace-nowrap text-xs truncate">
+      <span className="font-semibold text-[#7f1010] whitespace-nowrap text-sm truncate">
         {estimatedValue > 0 ? `$${estimatedValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
       </span>
     </div>
@@ -1157,12 +1157,12 @@ export function ProjectListItem({ project, projectDivisions, projectStatuses, va
           ))}
           {projectDivIds.length > 5 && (
             <AppTooltip content={`${projectDivIds.length - 5} more divisions`}>
-              <div className="text-xs text-gray-400 cursor-pointer">+{projectDivIds.length - 5}</div>
+              <div className="text-sm text-gray-600 cursor-pointer">+{projectDivIds.length - 5}</div>
             </AppTooltip>
           )}
         </div>
       ) : (
-        <span className="text-xs font-semibold text-gray-400">—</span>
+        <span className="text-sm font-semibold text-gray-600">—</span>
       )}
     </div>
   );
@@ -1181,7 +1181,7 @@ export function ProjectListItem({ project, projectDivisions, projectStatuses, va
           title={btn.label}
         >
           {btn.icon}
-          <span className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/btn:opacity-100 pointer-events-none z-20 transition-opacity">
+          <span className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1 px-2 py-1 bg-gray-900 text-white text-sm rounded whitespace-nowrap opacity-0 group-hover/btn:opacity-100 pointer-events-none z-20 transition-opacity">
             {btn.label}
             <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-900 rotate-45" />
           </span>
@@ -1353,7 +1353,7 @@ function ProjectListCard({ project, projectDivisions, projectStatuses, projectBa
               <div className="text-sm font-bold text-gray-900 group-hover:text-[#7f1010] transition-colors whitespace-normal break-words">
                 {project.name || 'Project'}
               </div>
-              <div className="text-xs font-semibold text-gray-900 break-words">{project.code || '—'}</div>
+              <div className="text-sm font-semibold text-gray-900 break-words">{project.code || '—'}</div>
             </div>
 
             {/* Quick access - same style as Opportunities (w-8 h-8 rounded-lg) */}
@@ -1370,7 +1370,7 @@ function ProjectListCard({ project, projectDivisions, projectStatuses, projectBa
                   title={btn.label}
                 >
                   {btn.icon}
-                  <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/btn:opacity-100 transition-opacity pointer-events-none z-20">
+                  <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1 px-2 py-1 bg-gray-900 text-white text-sm rounded whitespace-nowrap opacity-0 group-hover/btn:opacity-100 transition-opacity pointer-events-none z-20">
                     {btn.label}
                     <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-900 rotate-45"></div>
                   </div>
@@ -1386,7 +1386,7 @@ function ProjectListCard({ project, projectDivisions, projectStatuses, projectBa
             <div className="flex-1 h-3 bg-gray-200 rounded-full overflow-hidden">
               <div className="h-full bg-brand-red rounded-full transition-all" style={{ width: `${progress}%` }} />
             </div>
-            <span className="text-xs font-semibold text-gray-700 w-12 text-right">{progress}%</span>
+            <span className="text-sm font-semibold text-gray-700 w-12 text-right">{progress}%</span>
           </div>
         </div>
 
@@ -1396,27 +1396,27 @@ function ProjectListCard({ project, projectDivisions, projectStatuses, projectBa
         <div className="grid grid-cols-2 gap-3">
           <div className="min-w-0">
             <div className={uiCx(uiTypography.overline, 'mb-0.5')}>Start Date</div>
-            <div className="text-xs font-semibold text-gray-900 truncate">{start || '—'}</div>
+            <div className="text-sm font-semibold text-gray-900 truncate">{start || '—'}</div>
           </div>
           <div className="min-w-0">
             <div className={uiCx(uiTypography.overline, 'mb-0.5')}>End Date</div>
-            <div className="text-xs font-semibold text-gray-900 truncate">{eta || '—'}</div>
+            <div className="text-sm font-semibold text-gray-900 truncate">{eta || '—'}</div>
           </div>
           <div className="min-w-0">
             <div className={uiCx(uiTypography.overline, 'mb-0.5')}>Project Admin</div>
             {!userForAdminCard && !listAdminName ? (
-              <div className="text-xs font-semibold text-gray-400">—</div>
+              <div className="text-sm font-semibold text-gray-600">—</div>
             ) : (
               <div className="flex items-center gap-2">
                 <UserAvatar user={userForAdminCard} size="sm" showTooltip={true} tooltipText={adminDisplayNameCard} />
-                <div className="text-xs font-semibold text-gray-900 truncate">{adminDisplayNameCard}</div>
+                <div className="text-sm font-semibold text-gray-900 truncate">{adminDisplayNameCard}</div>
               </div>
             )}
           </div>
           <div className="min-w-0">
             <div className={uiCx(uiTypography.overline, 'mb-0.5')}>Estimated Value</div>
             <div className="h-5 flex items-center">
-              <div className="text-xs font-semibold text-[#7f1010] truncate w-full">
+              <div className="text-sm font-semibold text-[#7f1010] truncate w-full">
                 {estimatedValue > 0 ? `$${estimatedValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
               </div>
             </div>
@@ -1425,7 +1425,7 @@ function ProjectListCard({ project, projectDivisions, projectStatuses, projectBa
         {actualValue > 0 && (
           <div>
             <div className={uiCx(uiTypography.overline, 'mb-0.5')}>Actual Value</div>
-            <div className="text-xs font-semibold text-[#7f1010]">${actualValue.toLocaleString()}</div>
+            <div className="text-sm font-semibold text-[#7f1010]">${actualValue.toLocaleString()}</div>
           </div>
         )}
 
@@ -1456,14 +1456,14 @@ function ProjectListCard({ project, projectDivisions, projectStatuses, projectBa
                     content={`${projectDivIds.length - 5} more divisions`}
                     placement="bottom"
                   >
-                    <div className="text-sm text-gray-400 cursor-pointer">
+                    <div className="text-sm text-gray-600 cursor-pointer">
                       +{projectDivIds.length - 5}
                     </div>
                   </AppTooltip>
                 )}
               </div>
             ) : (
-              <div className="text-xs font-semibold text-gray-400">No division</div>
+              <div className="text-sm font-semibold text-gray-600">No division</div>
             )}
           </div>
 
@@ -1485,7 +1485,7 @@ function ProjectListCard({ project, projectDivisions, projectStatuses, projectBa
 function UserInline({ id }:{ id:string }){
   // Disable query to prevent "popping" - show ID or placeholder instead
   // Can be enabled later if needed, or fetch user names in backend batch
-  return <span className="font-medium">—</span>;
+  return <span className="font-semibold">—</span>;
 }
 
 

@@ -5,7 +5,7 @@ import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import SafetySearchableSingle, { type SingleSelectRow } from '@/components/SafetySearchableSingle';
 
-const labelClass = 'text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1';
+const labelClass = 'text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1';
 
 /** Same chrome as `InspectionScheduleForm` / vehicle `SafetySearchableSingle` trigger. */
 const scheduleFieldClass =
@@ -248,14 +248,14 @@ export function WorkOrderNewForm({
       </label>
       {lockEntityAndVehicle ? (
         fleetAssetsLoading ? (
-          <div className={`${lockedFieldBoxClass} text-gray-500 flex items-center`}>Loading vehicles…</div>
+          <div className={`${lockedFieldBoxClass} text-gray-600 flex items-center`}>Loading vehicles…</div>
         ) : (
           <div className={`${lockedFieldBoxClass} flex items-center`}>
             <span className="min-w-0 truncate text-gray-700">{lockedVehicleLabel || '—'}</span>
           </div>
         )
       ) : fleetAssetsLoading ? (
-        <div className={`${scheduleFieldClass} bg-gray-50 text-gray-500`}>Loading vehicles…</div>
+        <div className={`${scheduleFieldClass} bg-gray-50 text-gray-600`}>Loading vehicles…</div>
       ) : fleetAssetsError ? (
         <div className="space-y-2">
           <div className={`${scheduleFieldClass} border-red-200 bg-red-50 text-red-800 text-sm`}>
@@ -267,7 +267,7 @@ export function WorkOrderNewForm({
           <button
             type="button"
             onClick={() => refetchFleetAssets()}
-            className="text-xs font-medium text-brand-red hover:underline"
+            className="text-sm font-semibold text-brand-red hover:underline"
           >
             Retry
           </button>
@@ -477,7 +477,7 @@ export function WorkOrderNewForm({
 
         {!onValidationChange && (
           <div className="flex gap-3 justify-end mt-4 pt-4 border-t border-gray-200">
-            <button type="button" onClick={onCancel} className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50">
+            <button type="button" onClick={onCancel} className="px-3 py-1.5 rounded-lg text-sm font-semibold text-gray-700 border border-gray-200 hover:bg-gray-50">
               Cancel
             </button>
             <button
@@ -505,11 +505,11 @@ export default function WorkOrderNew() {
         <div className="flex items-center justify-between">
           <div>
             <div className="text-sm font-semibold text-gray-900">New Work Order</div>
-            <div className="text-xs text-gray-500 mt-0.5">Create a new work order</div>
+            <div className="text-sm text-gray-600 mt-0.5">Create a new work order</div>
           </div>
           <button
             onClick={() => nav(-1)}
-            className="px-3 py-2 text-xs font-medium text-gray-700 border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors"
+            className="px-3 py-2 text-sm font-semibold text-gray-700 border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors"
           >
             Cancel
           </button>

@@ -72,7 +72,7 @@ function DivisionSelectionModal({
   return (
     <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-xl max-w-md w-full max-h-[80vh] overflow-hidden flex flex-col shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="bg-slate-200 p-2.5 text-gray-900 font-semibold text-xs flex items-center justify-between">
+        <div className="bg-slate-200 p-2.5 text-gray-900 font-semibold text-sm flex items-center justify-between">
           <span>Select Division</span>
           <button onClick={onClose} className="text-gray-600 hover:text-gray-900 transition-colors">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -90,13 +90,13 @@ function DivisionSelectionModal({
                   className="flex flex-col items-center gap-2 p-3 border border-gray-300 rounded-lg hover:border-gray-400 hover:bg-gray-50 transition-all"
                 >
                   <span className="text-2xl">{div.icon}</span>
-                  <span className="text-xs font-medium text-gray-900 text-center">{div.label}</span>
+                  <span className="text-sm font-semibold text-gray-900 text-center">{div.label}</span>
                 </button>
               ))}
             </div>
           ) : (
-            <div className="text-center py-8 text-gray-500">
-              <p className="text-xs">No divisions assigned to this project.</p>
+            <div className="text-center py-8 text-gray-600">
+              <p className="text-sm">No divisions assigned to this project.</p>
             </div>
           )}
         </div>
@@ -250,21 +250,21 @@ export default function PricingAndOptionalForm({
     <div className="space-y-4">
       {/* Pricing Block */}
       <div className="rounded-xl border bg-white overflow-hidden">
-        <div className="bg-slate-200 p-2.5 text-gray-900 font-semibold text-xs">Pricing</div>
+        <div className="bg-slate-200 p-2.5 text-gray-900 font-semibold text-sm">Pricing</div>
         <div className="p-3">
-          <div className="text-[10px] text-gray-600 mb-2">Pricing items compose the project value. Add items and optional services below.</div>
+          <div className="text-xs text-gray-600 mb-2">Pricing items compose the project value. Add items and optional services below.</div>
           {!disabled && (
             <div className="mb-3 py-2 border-b flex flex-wrap items-center gap-3">
-              <div className="text-xs font-medium text-gray-600">PST (%)</div>
-              <input type="number" className="rounded-lg border border-gray-300 bg-white px-2 py-1 w-20 text-xs" value={pstRate} min={0} step={1} onChange={(e) => setPstRate(Number(e.target.value || 0))} disabled={disabled} />
-              <div className="text-xs font-medium text-gray-600">GST (%)</div>
-              <input type="number" className="rounded-lg border border-gray-300 bg-white px-2 py-1 w-20 text-xs" value={gstRate} min={0} step={1} onChange={(e) => setGstRate(Number(e.target.value || 0))} disabled={disabled} />
+              <div className="text-sm font-semibold text-gray-600">PST (%)</div>
+              <input type="number" className="rounded-lg border border-gray-300 bg-white px-2 py-1 w-20 text-sm" value={pstRate} min={0} step={1} onChange={(e) => setPstRate(Number(e.target.value || 0))} disabled={disabled} />
+              <div className="text-sm font-semibold text-gray-600">GST (%)</div>
+              <input type="number" className="rounded-lg border border-gray-300 bg-white px-2 py-1 w-20 text-sm" value={gstRate} min={0} step={1} onChange={(e) => setGstRate(Number(e.target.value || 0))} disabled={disabled} />
             </div>
           )}
           {disabled && (
             <div className="mb-4 flex items-center gap-4">
-              <div className="text-xs font-medium text-gray-600">PST: {pstRate}%</div>
-              <div className="text-xs font-medium text-gray-600">GST: {gstRate}%</div>
+              <div className="text-sm font-semibold text-gray-600">PST: {pstRate}%</div>
+              <div className="text-sm font-semibold text-gray-600">GST: {gstRate}%</div>
             </div>
           )}
           <div className="space-y-2">
@@ -281,7 +281,7 @@ export default function PricingAndOptionalForm({
                     </div>
                   )}
                   <input
-                    className={`flex-1 min-w-0 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs ${disabled ? 'bg-gray-100' : ''}`}
+                    className={`flex-1 min-w-0 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm ${disabled ? 'bg-gray-100' : ''}`}
                     placeholder="Name"
                     value={c.name}
                     onChange={(e) => setPricingItems((arr) => arr.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))}
@@ -290,7 +290,7 @@ export default function PricingAndOptionalForm({
                   />
                   <input
                     type="text"
-                    className="flex-1 min-w-[100px] max-w-[140px] rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs"
+                    className="flex-1 min-w-[100px] max-w-[140px] rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm"
                     placeholder="Price"
                     value={c.price}
                     onChange={(e) => setPricingItems((arr) => arr.map((x, j) => (j === i ? { ...x, price: parseAccounting(e.target.value) } : x)))}
@@ -303,7 +303,7 @@ export default function PricingAndOptionalForm({
                       type="number"
                       min={1}
                       step={1}
-                      className={`flex-1 min-w-0 border-0 rounded-none px-2 py-1.5 text-xs appearance-none [-moz-appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${disabled ? 'bg-gray-100' : ''}`}
+                      className={`flex-1 min-w-0 border-0 rounded-none px-2 py-1.5 text-sm appearance-none [-moz-appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${disabled ? 'bg-gray-100' : ''}`}
                       placeholder="Qty"
                       value={c.quantity || '1'}
                       onChange={(e) => {
@@ -322,14 +322,14 @@ export default function PricingAndOptionalForm({
                     )}
                   </div>
                   <div className={`rounded-lg border border-gray-300 px-2 py-1.5 bg-gray-50 min-w-[100px] max-w-[140px] flex-shrink-0 ${disabled ? '' : ''}`}>
-                    <div className="text-xs font-medium text-gray-700 text-right">${formatAccounting(lineTotal)}</div>
+                    <div className="text-sm font-semibold text-gray-700 text-right">${formatAccounting(lineTotal)}</div>
                   </div>
                   <div className="flex items-center gap-1.5 flex-shrink-0">
-                    <label className={`flex items-center gap-1 text-xs flex-shrink-0 ${disabled ? '' : 'cursor-pointer'}`}>
+                    <label className={`flex items-center gap-1 text-sm flex-shrink-0 ${disabled ? '' : 'cursor-pointer'}`}>
                       <input type="checkbox" checked={c.pst === true} onChange={(e) => setPricingItems((arr) => arr.map((x, j) => (j === i ? { ...x, pst: e.target.checked } : x)))} disabled={disabled} />
                       <span className="text-gray-700 whitespace-nowrap">PST</span>
                     </label>
-                    <label className={`flex items-center gap-1 text-xs flex-shrink-0 ${disabled ? '' : 'cursor-pointer'}`}>
+                    <label className={`flex items-center gap-1 text-sm flex-shrink-0 ${disabled ? '' : 'cursor-pointer'}`}>
                       <input type="checkbox" checked={c.gst === true} onChange={(e) => setPricingItems((arr) => arr.map((x, j) => (j === i ? { ...x, gst: e.target.checked } : x)))} disabled={disabled} />
                       <span className="text-gray-700 whitespace-nowrap">GST</span>
                     </label>
@@ -356,26 +356,26 @@ export default function PricingAndOptionalForm({
                 }
               }}
             >
-              <div className="text-lg text-gray-400 mr-2">+</div>
-              <div className="font-medium text-xs text-gray-700">Add Pricing Item</div>
+              <div className="text-lg text-gray-600 mr-2">+</div>
+              <div className="font-semibold text-sm text-gray-700">Add Pricing Item</div>
             </button>
           )}
           <div className="mt-6">
             <div className="rounded-xl border bg-white overflow-hidden">
-              <div className="bg-gray-500 p-2.5 text-white font-semibold text-xs">Summary</div>
+              <div className="bg-gray-500 p-2.5 text-white font-semibold text-sm">Summary</div>
               <div className="p-3">
                 <div className="grid md:grid-cols-2 gap-3">
                   <div className="rounded-lg border border-gray-200 bg-white p-3">
                     <div className="space-y-1">
-                      <div className="flex items-center justify-between"><span className="text-xs font-semibold">Total Direct Costs</span><span className="text-xs font-semibold">${totalNum.toFixed(2)}</span></div>
-                      {showPstInPdf && pst > 0 && <div className="flex items-center justify-between"><span className="text-xs">PST ({pstRate}%)</span><span className="text-xs">${pst.toFixed(2)}</span></div>}
-                      <div className="flex items-center justify-between"><span className="text-xs font-semibold">Sub-total</span><span className="text-xs font-semibold">${subtotal.toFixed(2)}</span></div>
+                      <div className="flex items-center justify-between"><span className="text-sm font-semibold">Total Direct Costs</span><span className="text-sm font-semibold">${totalNum.toFixed(2)}</span></div>
+                      {showPstInPdf && pst > 0 && <div className="flex items-center justify-between"><span className="text-sm">PST ({pstRate}%)</span><span className="text-sm">${pst.toFixed(2)}</span></div>}
+                      <div className="flex items-center justify-between"><span className="text-sm font-semibold">Sub-total</span><span className="text-sm font-semibold">${subtotal.toFixed(2)}</span></div>
                     </div>
                   </div>
                   <div className="rounded-lg border border-gray-200 bg-white p-3">
                     <div className="space-y-1">
-                      {showGstInPdf && gst > 0 && <div className="flex items-center justify-between"><span className="text-xs">GST ({gstRate}%)</span><span className="text-xs">${gst.toFixed(2)}</span></div>}
-                      <div className="flex items-center justify-between"><span className="text-xs font-semibold">Final Total (with GST)</span><span className="text-xs font-semibold">${grandTotal.toFixed(2)}</span></div>
+                      {showGstInPdf && gst > 0 && <div className="flex items-center justify-between"><span className="text-sm">GST ({gstRate}%)</span><span className="text-sm">${gst.toFixed(2)}</span></div>}
+                      <div className="flex items-center justify-between"><span className="text-sm font-semibold">Final Total (with GST)</span><span className="text-sm font-semibold">${grandTotal.toFixed(2)}</span></div>
                     </div>
                   </div>
                 </div>
@@ -383,8 +383,8 @@ export default function PricingAndOptionalForm({
             </div>
           </div>
           <div className="mt-3 flex items-center gap-2">
-            <div className="text-xs font-semibold">Total: <span className="text-gray-600">${formatAccounting(grandTotal)}</span></div>
-            <label className={`flex items-center gap-1 text-xs text-gray-600 ${disabled ? '' : 'cursor-pointer'}`}>
+            <div className="text-sm font-semibold">Total: <span className="text-gray-600">${formatAccounting(grandTotal)}</span></div>
+            <label className={`flex items-center gap-1 text-sm text-gray-600 ${disabled ? '' : 'cursor-pointer'}`}>
               <input type="checkbox" checked={showTotalInPdf} onChange={(e) => setShowTotalInPdf(e.target.checked)} disabled={disabled} />
               <span>Show Total in PDF</span>
             </label>
@@ -394,21 +394,21 @@ export default function PricingAndOptionalForm({
 
       {/* Optional Services Block */}
       <div className="rounded-xl border bg-white overflow-hidden">
-        <div className="bg-slate-200 p-2.5 text-gray-900 font-semibold text-xs">Optional Services</div>
+        <div className="bg-slate-200 p-2.5 text-gray-900 font-semibold text-sm">Optional Services</div>
         <div className="p-3">
-          <div className="text-[10px] text-gray-600 mb-2">Add optional services that can be selected by the client.</div>
+          <div className="text-xs text-gray-600 mb-2">Add optional services that can be selected by the client.</div>
           <div className="space-y-2">
             {optionalServices.map((s, i) => (
               <div key={i} className="grid grid-cols-5 gap-2">
-                <input className={`col-span-3 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs ${disabled ? 'bg-gray-100' : ''}`} placeholder="Service" value={s.service} onChange={(e) => setOptionalServices((arr) => arr.map((x, j) => (j === i ? { ...x, service: e.target.value } : x)))} disabled={disabled} readOnly={disabled} />
-                <input type="text" className={`col-span-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs ${disabled ? 'bg-gray-100' : ''}`} placeholder="Price" value={s.price} onChange={(e) => setOptionalServices((arr) => arr.map((x, j) => (j === i ? { ...x, price: parseAccounting(e.target.value) } : x)))} onBlur={!disabled ? () => setOptionalServices((arr) => arr.map((x, j) => (j === i ? { ...x, price: formatAccounting(x.price) } : x))) : undefined} disabled={disabled} readOnly={disabled} />
-                {!disabled && <button className="col-span-1 px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 text-xs" onClick={() => setOptionalServices((arr) => arr.filter((_, j) => j !== i))}>Remove</button>}
+                <input className={`col-span-3 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm ${disabled ? 'bg-gray-100' : ''}`} placeholder="Service" value={s.service} onChange={(e) => setOptionalServices((arr) => arr.map((x, j) => (j === i ? { ...x, service: e.target.value } : x)))} disabled={disabled} readOnly={disabled} />
+                <input type="text" className={`col-span-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm ${disabled ? 'bg-gray-100' : ''}`} placeholder="Price" value={s.price} onChange={(e) => setOptionalServices((arr) => arr.map((x, j) => (j === i ? { ...x, price: parseAccounting(e.target.value) } : x)))} onBlur={!disabled ? () => setOptionalServices((arr) => arr.map((x, j) => (j === i ? { ...x, price: formatAccounting(x.price) } : x))) : undefined} disabled={disabled} readOnly={disabled} />
+                {!disabled && <button className="col-span-1 px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 text-sm" onClick={() => setOptionalServices((arr) => arr.filter((_, j) => j !== i))}>Remove</button>}
               </div>
             ))}
             {!disabled && (
               <button className="mt-3 w-full border-2 border-dashed border-gray-300 rounded-lg p-2.5 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center" onClick={() => setOptionalServices((arr) => [...arr, { service: '', price: '' }])}>
-                <div className="text-lg text-gray-400 mr-2">+</div>
-                <div className="font-medium text-xs text-gray-700">Add Service</div>
+                <div className="text-lg text-gray-600 mr-2">+</div>
+                <div className="font-semibold text-sm text-gray-700">Add Service</div>
               </button>
             )}
           </div>
@@ -417,7 +417,7 @@ export default function PricingAndOptionalForm({
 
       {!disabled && (
         <div className="flex justify-end">
-          <button onClick={handleSave} disabled={isSaving} className="px-4 py-2 rounded-lg bg-brand-red text-white text-sm font-medium hover:bg-red-700 disabled:opacity-60">
+          <button onClick={handleSave} disabled={isSaving} className="px-4 py-2 rounded-lg bg-brand-red text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-60">
             {isSaving ? 'Saving...' : 'Save'}
           </button>
         </div>

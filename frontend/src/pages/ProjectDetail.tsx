@@ -228,7 +228,7 @@ function StatusTimer({ project }: { project: any }) {
   if (!timeSince) return null;
   
   return (
-    <div className="text-xs text-gray-500 mt-1">
+    <div className="text-sm text-gray-600 mt-1">
       {timeSince}
     </div>
   );
@@ -652,11 +652,11 @@ function ProjectRecentActivity({
             key={`${log.id}-${idx}`}
             className={uiCx(
               uiTypography.body,
-              'py-1.5 border-b border-gray-100 last:border-0 text-xs',
+              'py-1.5 border-b border-gray-100 last:border-0 text-sm',
             )}
           >
-            <div className="font-medium">{buildRecentActivityLabel(log, isOpportunity, isLeakInvestigation)}</div>
-            <div className={uiCx(uiTypography.helper, 'text-[11px]')}>
+            <div className="font-semibold">{buildRecentActivityLabel(log, isOpportunity, isLeakInvestigation)}</div>
+            <div className={uiCx(uiTypography.helper, 'text-xs')}>
               {formatTimestamp(log.timestamp)}
               {log.actor_name ? ` · by ${log.actor_name}` : ''}
             </div>
@@ -665,7 +665,7 @@ function ProjectRecentActivity({
       ) : useDesignSystem ? (
         <AppEmptyState title="No recent activity" className="py-6" />
       ) : (
-        <div className="text-xs text-gray-400 py-4">No recent activity</div>
+        <div className="text-sm text-gray-600 py-4">No recent activity</div>
       )}
     </div>
   );
@@ -686,7 +686,7 @@ function ProjectRecentActivity({
   return (
     <div className="rounded-xl border border-gray-200/90 bg-white shadow-md overflow-hidden transition-shadow duration-200 hover:shadow-lg hover:border-gray-300/80 flex flex-col min-h-0">
       <div className="p-3 flex flex-col flex-1 min-h-0">
-        <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-2 flex-shrink-0">Recent Activity</div>
+        <div className="text-[10px] font-bold text-gray-600 uppercase tracking-wide mb-2 flex-shrink-0">Recent Activity</div>
         {activityList}
       </div>
     </div>
@@ -783,13 +783,13 @@ function DivisionTooltip({ label, percentage, icon }: { label: string; percentag
         <div className="text-base transition-transform hover:scale-110">
           {icon}
         </div>
-        <div className="text-[10px] font-semibold mt-0.5 text-gray-600">
+        <div className="text-xs font-semibold mt-0.5 text-gray-600">
           {percentage}%
         </div>
       </div>
       {isHovered && position && (
         <div
-          className="fixed px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap pointer-events-none z-[100] shadow-lg"
+          className="fixed px-2 py-1 bg-gray-900 text-white text-sm rounded whitespace-nowrap pointer-events-none z-[100] shadow-lg"
           style={{
             top: `${position.top}px`,
             left: `${position.left}px`,
@@ -876,8 +876,8 @@ function OnSiteLeadsHeroDisplay({
     missingIds.some((id, idx) => directoryQueries[idx]?.isLoading || directoryQueries[idx]?.isFetching);
 
   if (uniqueLeads.length === 0) {
-    if (isResolving) return <div className="text-xs text-gray-400">Loading…</div>;
-    return <div className="text-xs text-gray-400">—</div>;
+    if (isResolving) return <div className="text-sm text-gray-600">Loading…</div>;
+    return <div className="text-sm text-gray-600">—</div>;
   }
 
   if (uniqueLeads.length === 1) {
@@ -890,7 +890,7 @@ function OnSiteLeadsHeroDisplay({
           </div>
         </LeadTooltip>
         <div className="flex-1 min-w-0">
-          <div className="text-xs font-semibold text-gray-900 truncate">{getUserDisplayName(employee)}</div>
+          <div className="text-sm font-semibold text-gray-900 truncate">{getUserDisplayName(employee)}</div>
         </div>
       </div>
     );
@@ -962,7 +962,7 @@ function LeadTooltip({ employee, divisions, children }: { employee: any; divisio
       </div>
       {isHovered && position && (
         <div
-          className="fixed px-2 py-1 bg-gray-900 text-white text-xs rounded pointer-events-none z-[100]"
+          className="fixed px-2 py-1 bg-gray-900 text-white text-sm rounded pointer-events-none z-[100]"
           style={{
             top: `${position.top}px`,
             right: `${position.right}px`,
@@ -1007,7 +1007,7 @@ function UserAvatar({ user, size = 'w-8 h-8', showTooltip = true, tooltipText }:
           onError={() => setImageError(true)}
         />
         {showTooltip && (
-          <div className="absolute right-0 top-full mt-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/avatar:opacity-100 transition-opacity pointer-events-none z-[9999]">
+          <div className="absolute right-0 top-full mt-1 px-2 py-1 bg-gray-900 text-white text-sm rounded whitespace-nowrap opacity-0 group-hover/avatar:opacity-100 transition-opacity pointer-events-none z-[9999]">
             {displayName}
             <div className="absolute -top-1 right-2 w-2 h-2 bg-gray-900 rotate-45"></div>
           </div>
@@ -1017,10 +1017,10 @@ function UserAvatar({ user, size = 'w-8 h-8', showTooltip = true, tooltipText }:
   }
   
   return (
-    <div className={`relative group/avatar ${size} rounded-full bg-indigo-600 flex items-center justify-center text-white font-semibold text-xs`}>
+    <div className={`relative group/avatar ${size} rounded-full bg-indigo-600 flex items-center justify-center text-white font-semibold text-sm`}>
       {initials}
       {showTooltip && (
-        <div className="absolute right-0 top-full mt-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/avatar:opacity-100 transition-opacity pointer-events-none z-[9999]">
+        <div className="absolute right-0 top-full mt-1 px-2 py-1 bg-gray-900 text-white text-sm rounded whitespace-nowrap opacity-0 group-hover/avatar:opacity-100 transition-opacity pointer-events-none z-[9999]">
           {displayName}
           <div className="absolute -top-1 right-2 w-2 h-2 bg-gray-900 rotate-45"></div>
         </div>
@@ -1100,11 +1100,11 @@ function ProjectHeroSiteField({
   return (
     <div>
       <div className="flex items-center gap-1.5 mb-1.5">
-        <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Site</span>
+        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Site</span>
         {hasEditPermission ? (
           <button
             onClick={onEdit}
-            className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
+            className="p-0.5 text-gray-600 hover:text-[#7f1010] transition-colors"
             title="Edit Site"
           >
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1118,11 +1118,11 @@ function ProjectHeroSiteField({
           </button>
         ) : null}
       </div>
-      <div className="text-xs font-semibold text-gray-900 break-words">{displayName}</div>
+      <div className="text-sm font-semibold text-gray-900 break-words">{displayName}</div>
       {addressBelowLines.map((line) => (
         <div
           key={line}
-          className="mt-0.5 text-[11px] font-normal leading-snug text-gray-600 break-words"
+          className="mt-0.5 text-xs font-normal leading-snug text-gray-600 break-words"
         >
           {line}
         </div>
@@ -1151,11 +1151,11 @@ function ProjectHeroContactField({
   return (
     <div>
       <div className="flex items-center gap-1.5 mb-1.5">
-        <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Contact</span>
+        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Contact</span>
         {hasEditPermission && canEdit ? (
           <button
             onClick={onEdit}
-            className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
+            className="p-0.5 text-gray-600 hover:text-[#7f1010] transition-colors"
             title="Edit Contact"
           >
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1169,9 +1169,9 @@ function ProjectHeroContactField({
           </button>
         ) : null}
       </div>
-      <div className="text-xs font-semibold text-gray-900 break-words">{displayName}</div>
+      <div className="text-sm font-semibold text-gray-900 break-words">{displayName}</div>
       {secondaryLine ? (
-        <div className="mt-0.5 text-[11px] font-normal leading-snug text-gray-600 break-words">
+        <div className="mt-0.5 text-xs font-normal leading-snug text-gray-600 break-words">
           {secondaryLine}
         </div>
       ) : null}
@@ -2009,7 +2009,7 @@ export default function ProjectDetail(){
           />
         ) : null}
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-6 text-sm text-amber-950">
-          <p className="font-medium">
+          <p className="font-semibold">
             {noSection
               ? 'You are related to this project but have no section permissions.'
               : 'You do not have permission to view this project.'}
@@ -2023,7 +2023,7 @@ export default function ProjectDetail(){
             <button
               type="button"
               onClick={handlePageBack}
-              className="mt-4 text-sm font-medium text-[#7f1010] hover:underline"
+              className="mt-4 text-sm font-semibold text-[#7f1010] hover:underline"
             >
               Go back
             </button>
@@ -2064,13 +2064,13 @@ export default function ProjectDetail(){
                     const estimators = estimatorIds
                       .map((id: string) => employees?.find((e: any) => String(e.id) === String(id)))
                       .filter(Boolean);
-                    if (estimators.length === 0) return <div className="text-xs text-gray-400">—</div>;
+                    if (estimators.length === 0) return <div className="text-sm text-gray-600">—</div>;
                     if (estimators.length === 1) {
                       const est = estimators[0];
                       return (
                         <div className="flex items-center gap-2">
                           <UserAvatar user={est} size="w-6 h-6" showTooltip={true} />
-                          <div className="text-xs font-semibold text-gray-700">{getUserDisplayName(est)}</div>
+                          <div className="text-sm font-semibold text-gray-700">{getUserDisplayName(est)}</div>
                         </div>
                       );
                     }
@@ -2083,13 +2083,13 @@ export default function ProjectDetail(){
                     );
                   }
                   const adminId = proj?.project_admin_id;
-                  if (!adminId) return <div className="text-xs text-gray-400">—</div>;
+                  if (!adminId) return <div className="text-sm text-gray-600">—</div>;
                   const projectAdmin = employees?.find((e: any) => String(e.id) === String(adminId));
-                  if (!projectAdmin) return <div className="text-xs text-gray-400">—</div>;
+                  if (!projectAdmin) return <div className="text-sm text-gray-600">—</div>;
                   return (
                     <div className="flex items-center gap-2">
                       <UserAvatar user={projectAdmin} size="w-6 h-6" showTooltip={true} />
-                      <div className="text-xs font-semibold text-gray-700">{getUserDisplayName(projectAdmin)}</div>
+                      <div className="text-sm font-semibold text-gray-700">{getUserDisplayName(projectAdmin)}</div>
                     </div>
                   );
                 })()}
@@ -2132,7 +2132,7 @@ export default function ProjectDetail(){
             </div>
             <div>
               <div className="text-sm font-semibold text-gray-900">{getPageTitle(proj, tab)}</div>
-              <div className="text-xs text-gray-500 mt-0.5">{getPageDescription(proj, tab)}</div>
+              <div className="text-sm text-gray-600 mt-0.5">{getPageDescription(proj, tab)}</div>
             </div>
           </div>
         </div>
@@ -2185,7 +2185,7 @@ export default function ProjectDetail(){
                   <button
                     type="button"
                     onClick={() => setPickerOpen(true)}
-                    className="absolute inset-0 flex items-center justify-center bg-black/40 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100"
+                    className="absolute inset-0 flex items-center justify-center bg-black/40 text-sm text-white opacity-0 transition-opacity group-hover:opacity-100"
                   >
                     Change
                   </button>
@@ -2204,7 +2204,7 @@ export default function ProjectDetail(){
                 {/* Status */}
                 <div>
                   <div className="flex items-center gap-1.5 mb-1.5">
-                    <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Status</span>
+                    <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Status</span>
                     {hasEditPermission &&
                       (useDesignSystem ? (
                         <AppHeroEditButton
@@ -2214,7 +2214,7 @@ export default function ProjectDetail(){
                       ) : (
                         <button
                           onClick={() => setEditStatusModal(true)}
-                          className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
+                          className="p-0.5 text-gray-600 hover:text-[#7f1010] transition-colors"
                           title="Edit Status"
                         >
                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2228,7 +2228,7 @@ export default function ProjectDetail(){
                       {statusLabel || '—'}
                     </AppBadge>
                   ) : (
-                    <span className="px-2 py-0.5 rounded text-[10px] font-medium inline-block" style={{ backgroundColor: statusColor, color: '#000' }}>
+                    <span className="px-2 py-0.5 rounded text-xs font-semibold inline-block" style={{ backgroundColor: statusColor, color: '#000' }}>
                       {statusLabel || '—'}
                     </span>
                   )}
@@ -2259,7 +2259,7 @@ export default function ProjectDetail(){
                     ) : (
                       <button
                         onClick={() => setEditProjectNameModal(true)}
-                        className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                        className="text-gray-600 hover:text-[#7f1010] transition-colors"
                         title="Edit Project Name"
                       >
                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2268,7 +2268,7 @@ export default function ProjectDetail(){
                       </button>
                     ))}
                   {proj?.source_production_project ? (
-                    <div className="text-xs text-gray-500">
+                    <div className="text-sm text-gray-600">
                       Inherited from{' '}
                       <Link
                         to={`/projects/${encodeURIComponent(proj.source_production_project.id)}?from=warranty-review`}
@@ -2292,14 +2292,14 @@ export default function ProjectDetail(){
                   <div className={uiCx('min-w-0', HERO_FIELD_STACK)}>
                     {/* Code */}
                     <div>
-                      <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Code</span>
-                      <div className="text-xs font-semibold text-gray-900 mt-0.5">{proj?.code || '—'}</div>
+                      <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Code</span>
+                      <div className="text-sm font-semibold text-gray-900 mt-0.5">{proj?.code || '—'}</div>
                     </div>
 
                     {/* Project Number */}
                     <div>
                       <div className="flex items-center gap-1.5 mb-1.5">
-                        <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Project Number</span>
+                        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Project Number</span>
                         {hasEditPermission &&
                           (useDesignSystem ? (
                             <AppHeroEditButton
@@ -2309,7 +2309,7 @@ export default function ProjectDetail(){
                           ) : (
                             <button
                               onClick={() => setEditProjectNumberModal(true)}
-                              className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
+                              className="p-0.5 text-gray-600 hover:text-[#7f1010] transition-colors"
                               title="Edit Project Number"
                             >
                               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2318,13 +2318,13 @@ export default function ProjectDetail(){
                             </button>
                           ))}
                       </div>
-                      <div className="text-xs font-semibold text-gray-900">{proj?.project_number || '—'}</div>
+                      <div className="text-sm font-semibold text-gray-900">{proj?.project_number || '—'}</div>
                     </div>
 
                     {/* Project Owner / Source */}
                     <div>
                       <div className="flex items-center gap-1.5 mb-0.5">
-                        <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Project Owner / Source</span>
+                        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Project Owner / Source</span>
                         {canChangeProjectOwner &&
                           (useDesignSystem ? (
                             <AppHeroEditButton
@@ -2334,7 +2334,7 @@ export default function ProjectDetail(){
                           ) : (
                             <button
                               onClick={() => setEditProjectOwnerModal(true)}
-                              className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
+                              className="p-0.5 text-gray-600 hover:text-[#7f1010] transition-colors"
                               title="Change Project Owner"
                             >
                               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2346,12 +2346,12 @@ export default function ProjectDetail(){
                       {proj?.client_id ? (
                         <Link
                           to={`/customers/${encodeURIComponent(String(proj.client_id))}`}
-                          className="text-xs font-semibold text-[#7f1010] hover:text-[#a31414] hover:underline break-words block"
+                          className="text-sm font-semibold text-[#7f1010] hover:text-[#a31414] hover:underline break-words block"
                         >
                           {proj?.client_display_name || proj?.client_name || 'Open record'}
                         </Link>
                       ) : (
-                        <div className="text-xs font-semibold text-gray-400">—</div>
+                        <div className="text-sm font-semibold text-gray-600">—</div>
                       )}
                     </div>
 
@@ -2375,7 +2375,7 @@ export default function ProjectDetail(){
                     {isOpportunityStyleTabs && (
                       <div>
                         <div className="flex items-center gap-1.5 mb-1.5">
-                          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Lead Source</span>
+                          <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Lead Source</span>
                           {hasEditPermission &&
                             (useDesignSystem ? (
                               <AppHeroEditButton
@@ -2385,7 +2385,7 @@ export default function ProjectDetail(){
                             ) : (
                               <button
                                 onClick={() => setEditLeadSourceModal(true)}
-                                className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
+                                className="p-0.5 text-gray-600 hover:text-[#7f1010] transition-colors"
                                 title="Edit Lead Source"
                               >
                                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2394,7 +2394,7 @@ export default function ProjectDetail(){
                               </button>
                             ))}
                         </div>
-                        <div className="text-xs font-semibold text-gray-900">{proj?.lead_source || '—'}</div>
+                        <div className="text-sm font-semibold text-gray-900">{proj?.lead_source || '—'}</div>
                       </div>
                     )}
 
@@ -2402,11 +2402,11 @@ export default function ProjectDetail(){
                     {isOpportunityStyleTabs && (
                       <div>
                         <div className="flex items-center gap-1.5 mb-1.5">
-                          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Related Customers</span>
+                          <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Related Customers</span>
                           {hasEditPermission && (
                             <button
                               onClick={() => setEditRelatedCustomersModal(true)}
-                              className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
+                              className="p-0.5 text-gray-600 hover:text-[#7f1010] transition-colors"
                               title="Edit Related Customers"
                             >
                               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2421,7 +2421,7 @@ export default function ProjectDetail(){
                               <span key={rid}>
                                 <Link
                                   to={`/customers/${encodeURIComponent(String(rid))}`}
-                                  className="text-xs font-semibold text-[#7f1010] hover:text-[#a31414] hover:underline break-words"
+                                  className="text-sm font-semibold text-[#7f1010] hover:text-[#a31414] hover:underline break-words"
                                 >
                                   {(proj?.related_client_display_names?.[i] ?? rid) || 'View Customer'}
                                 </Link>
@@ -2430,7 +2430,7 @@ export default function ProjectDetail(){
                             ))}
                           </div>
                         ) : (
-                          <div className="text-xs font-semibold text-gray-400 mt-0.5">—</div>
+                          <div className="text-sm font-semibold text-gray-600 mt-0.5">—</div>
                         )}
                       </div>
                     )}
@@ -2439,9 +2439,9 @@ export default function ProjectDetail(){
                     {isOpportunityStyleTabs && (
                       <div>
                         <div className="flex items-center gap-1.5 mb-1.5">
-                          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Created at</span>
+                          <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Created at</span>
                         </div>
-                        <div className="text-xs font-semibold text-gray-900">
+                        <div className="text-sm font-semibold text-gray-900">
                           {proj?.created_at ? proj.created_at.slice(0, 10) : '—'}
                         </div>
                       </div>
@@ -2451,7 +2451,7 @@ export default function ProjectDetail(){
                     {!isOpportunityStyleTabs && (
                       <div>
                         <div className="flex items-center gap-1.5 mb-1.5">
-                          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Lead Source</span>
+                          <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Lead Source</span>
                           {hasEditPermission &&
                             (useDesignSystem ? (
                               <AppHeroEditButton
@@ -2461,7 +2461,7 @@ export default function ProjectDetail(){
                             ) : (
                               <button
                                 onClick={() => setEditLeadSourceModal(true)}
-                                className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
+                                className="p-0.5 text-gray-600 hover:text-[#7f1010] transition-colors"
                                 title="Edit Lead Source"
                               >
                                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2470,7 +2470,7 @@ export default function ProjectDetail(){
                               </button>
                             ))}
                         </div>
-                        <div className="text-xs font-semibold text-gray-900">{proj?.lead_source || '—'}</div>
+                        <div className="text-sm font-semibold text-gray-900">{proj?.lead_source || '—'}</div>
                       </div>
                     )}
 
@@ -2482,19 +2482,19 @@ export default function ProjectDetail(){
                       return (
                       <div>
                         <div className="flex items-center gap-1.5 mb-1.5">
-                          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Related Customers</span>
+                          <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Related Customers</span>
                           {showInfoTooltip && (
                             <div className="relative group/nonAwarded inline-flex">
                               <button
                                 type="button"
-                                className="p-0.5 text-gray-400 hover:text-gray-600 rounded"
+                                className="p-0.5 text-gray-600 hover:text-gray-600 rounded"
                                 aria-label="Related customers not awarded this bid"
                               >
                                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                                 </svg>
                               </button>
-                              <div className="absolute left-1/2 bottom-full z-[100] mb-2 w-max min-w-[22rem] max-w-[min(100vw-1.5rem,40rem)] -translate-x-1/2 px-3 py-2 text-xs text-white whitespace-normal rounded-lg bg-gray-900 shadow-xl opacity-0 invisible pointer-events-none transition-all duration-200 group-hover/nonAwarded:visible group-hover/nonAwarded:opacity-100">
+                              <div className="absolute left-1/2 bottom-full z-[100] mb-2 w-max min-w-[22rem] max-w-[min(100vw-1.5rem,40rem)] -translate-x-1/2 px-3 py-2 text-sm text-white whitespace-normal rounded-lg bg-gray-900 shadow-xl opacity-0 invisible pointer-events-none transition-all duration-200 group-hover/nonAwarded:visible group-hover/nonAwarded:opacity-100">
                                 <div className="font-semibold mb-1.5 text-white">Not Awarded (Bid)</div>
                                 <ul className="space-y-1 text-gray-200 leading-snug">
                                   {relatedHero.nonAwardedEntries.map((e) => (
@@ -2508,7 +2508,7 @@ export default function ProjectDetail(){
                           {hasEditPermission && (
                             <button
                               onClick={() => setEditRelatedCustomersModal(true)}
-                              className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
+                              className="p-0.5 text-gray-600 hover:text-[#7f1010] transition-colors"
                               title="Edit Related Customers"
                             >
                               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2524,19 +2524,19 @@ export default function ProjectDetail(){
                               <span key={e.id} className="inline-flex items-center gap-1 flex-wrap">
                                 <Link
                                   to={`/customers/${encodeURIComponent(String(e.id))}`}
-                                  className="text-xs font-semibold text-[#7f1010] hover:text-[#a31414] hover:underline break-words"
+                                  className="text-sm font-semibold text-[#7f1010] hover:text-[#a31414] hover:underline break-words"
                                 >
                                   {e.name}
                                 </Link>
-                                {i < relatedHero.displayedEntries.length - 1 ? <span className="text-gray-400">,</span> : null}
+                                {i < relatedHero.displayedEntries.length - 1 ? <span className="text-gray-600">,</span> : null}
                               </span>
                             ))}
                           </div>
                           ) : (
-                            <div className="text-xs font-semibold text-gray-400 mt-0.5">—</div>
+                            <div className="text-sm font-semibold text-gray-600 mt-0.5">—</div>
                           )
                         ) : (
-                          <div className="text-xs font-semibold text-gray-400 mt-0.5">—</div>
+                          <div className="text-sm font-semibold text-gray-600 mt-0.5">—</div>
                         )}
                       </div>
                       );
@@ -2546,11 +2546,11 @@ export default function ProjectDetail(){
                     {!isOpportunityStyleTabs && (
                       <div>
                         <div className="flex items-center gap-1.5 mb-1.5">
-                          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Awarded Date</span>
+                          <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Awarded Date</span>
                           {hasEditPermission && (
                             <button
                               onClick={() => setEditAwardedDateModal(true)}
-                              className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                              className="text-gray-600 hover:text-[#7f1010] transition-colors"
                               title="Edit Awarded Date"
                             >
                               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2559,7 +2559,7 @@ export default function ProjectDetail(){
                             </button>
                           )}
                         </div>
-                        <div className="text-xs font-semibold text-gray-900">{proj?.date_awarded ? proj.date_awarded.slice(0, 10) : '—'}</div>
+                        <div className="text-sm font-semibold text-gray-900">{proj?.date_awarded ? proj.date_awarded.slice(0, 10) : '—'}</div>
                       </div>
                     )}
 
@@ -2567,11 +2567,11 @@ export default function ProjectDetail(){
                     {!isOpportunityStyleTabs && (
                       <div>
                         <div className="flex items-center gap-1.5 mb-1.5">
-                          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Start Date</span>
+                          <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Start Date</span>
                           {hasEditPermission && (
                             <button
                               onClick={() => setEditStartDateModal(true)}
-                              className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                              className="text-gray-600 hover:text-[#7f1010] transition-colors"
                               title="Edit Start Date"
                             >
                               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2580,7 +2580,7 @@ export default function ProjectDetail(){
                             </button>
                           )}
                         </div>
-                        <div className="text-xs font-semibold text-gray-900">{proj?.date_start ? proj.date_start.slice(0, 10) : '—'}</div>
+                        <div className="text-sm font-semibold text-gray-900">{proj?.date_start ? proj.date_start.slice(0, 10) : '—'}</div>
                       </div>
                     )}
 
@@ -2588,11 +2588,11 @@ export default function ProjectDetail(){
                     {!isOpportunityStyleTabs && (
                       <div>
                         <div className="flex items-center gap-1.5 mb-1.5">
-                          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">End Date</span>
+                          <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">End Date</span>
                           {hasEditPermission && (
                             <button
                               onClick={() => setEditEtaModal(true)}
-                              className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                              className="text-gray-600 hover:text-[#7f1010] transition-colors"
                               title="Edit End Date"
                             >
                               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2601,7 +2601,7 @@ export default function ProjectDetail(){
                             </button>
                           )}
                         </div>
-                        <div className="text-xs font-semibold text-gray-900">{proj?.date_eta ? proj.date_eta.slice(0, 10) : '—'}</div>
+                        <div className="text-sm font-semibold text-gray-900">{proj?.date_eta ? proj.date_eta.slice(0, 10) : '—'}</div>
                       </div>
                     )}
                   </div>
@@ -2612,11 +2612,11 @@ export default function ProjectDetail(){
                     {isOpportunityStyleTabs && (
                       <div>
                         <div className="flex items-center gap-1.5 mb-1.5">
-                          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Estimators</span>
+                          <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Estimators</span>
                           {hasEditPermission && (
                             <button
                               onClick={() => setEditEstimatorModal(true)}
-                              className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
+                              className="p-0.5 text-gray-600 hover:text-[#7f1010] transition-colors"
                               title="Edit Estimators"
                             >
                               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2632,7 +2632,7 @@ export default function ProjectDetail(){
                             .filter(Boolean);
                           
                           if (estimators.length === 0) {
-                            return <div className="text-xs text-gray-400">—</div>;
+                            return <div className="text-sm text-gray-600">—</div>;
                           }
                           
                           if (estimators.length === 1) {
@@ -2641,7 +2641,7 @@ export default function ProjectDetail(){
                               <div className="flex items-center gap-2">
                                 <UserAvatar user={est} size="w-6 h-6" showTooltip={true} />
                                 <div className="flex-1 min-w-0">
-                                  <div className="text-xs font-semibold text-gray-900 truncate">{getUserDisplayName(est)}</div>
+                                  <div className="text-sm font-semibold text-gray-900 truncate">{getUserDisplayName(est)}</div>
                                 </div>
                               </div>
                             );
@@ -2663,11 +2663,11 @@ export default function ProjectDetail(){
                     {!isOpportunityStyleTabs && (
                       <div>
                         <div className="flex items-center gap-1.5 mb-1.5">
-                          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Estimators</span>
+                          <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Estimators</span>
                           {hasEditPermission && (
                             <button
                               onClick={() => setEditEstimatorModal(true)}
-                              className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
+                              className="p-0.5 text-gray-600 hover:text-[#7f1010] transition-colors"
                               title="Edit Estimators"
                             >
                               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2683,7 +2683,7 @@ export default function ProjectDetail(){
                             .filter(Boolean);
                           
                           if (estimators.length === 0) {
-                            return <div className="text-xs text-gray-400">—</div>;
+                            return <div className="text-sm text-gray-600">—</div>;
                           }
                           
                           if (estimators.length === 1) {
@@ -2692,7 +2692,7 @@ export default function ProjectDetail(){
                               <div className="flex items-center gap-2">
                                 <UserAvatar user={est} size="w-6 h-6" showTooltip={true} />
                                 <div className="flex-1 min-w-0">
-                                  <div className="text-xs font-semibold text-gray-900 truncate">{getUserDisplayName(est)}</div>
+                                  <div className="text-sm font-semibold text-gray-900 truncate">{getUserDisplayName(est)}</div>
                                 </div>
                               </div>
                             );
@@ -2715,11 +2715,11 @@ export default function ProjectDetail(){
                     {!isOpportunityStyleTabs && (
                       <div>
                         <div className="flex items-center gap-1.5 mb-1.5">
-                          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Project Admin</span>
+                          <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Project Admin</span>
                           {hasEditPermission && (
                             <button
                               onClick={() => setEditProjectAdminModal(true)}
-                              className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
+                              className="p-0.5 text-gray-600 hover:text-[#7f1010] transition-colors"
                               title="Edit Project Admin"
                             >
                               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2731,12 +2731,12 @@ export default function ProjectDetail(){
                         {(() => {
                           const adminId = proj?.project_admin_id;
                           const admin = adminId ? employees?.find((e: any) => String(e.id) === String(adminId)) : null;
-                          if (!admin) return <div className="text-xs text-gray-400">—</div>;
+                          if (!admin) return <div className="text-sm text-gray-600">—</div>;
                           return (
                             <div className="flex items-center gap-2">
                               <UserAvatar user={admin} size="w-6 h-6" showTooltip={true} />
                               <div className="flex-1 min-w-0">
-                                <div className="text-xs font-semibold text-gray-900 truncate">{getUserDisplayName(admin)}</div>
+                                <div className="text-sm font-semibold text-gray-900 truncate">{getUserDisplayName(admin)}</div>
                               </div>
                             </div>
                           );
@@ -2748,11 +2748,11 @@ export default function ProjectDetail(){
                     {!isOpportunityStyleTabs && (
                       <div>
                         <div className="flex items-center gap-1.5 mb-1.5">
-                          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">On-site Leads</span>
+                          <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">On-site Leads</span>
                           {hasEditPermission && (
                             <button
                               onClick={() => setShowOnSiteLeadsModal(true)}
-                              className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
+                              className="p-0.5 text-gray-600 hover:text-[#7f1010] transition-colors"
                               title="Edit On-site Leads"
                             >
                               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2773,11 +2773,11 @@ export default function ProjectDetail(){
                     {!isOpportunityStyleTabs && (
                       <div>
                         <div className="flex items-center gap-1.5 mb-2">
-                          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Progress</span>
+                          <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Progress</span>
                           {hasEditPermission && (
                             <button
                               onClick={() => setEditProgressModal(true)}
-                              className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                              className="text-gray-600 hover:text-[#7f1010] transition-colors"
                               title="Edit Progress"
                             >
                               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2822,7 +2822,7 @@ export default function ProjectDetail(){
           ) : (
             <button
               onClick={() => setIsHeroCollapsed(!isHeroCollapsed)}
-              className="absolute bottom-2 right-2 p-1 rounded hover:bg-gray-100 transition-colors text-gray-500 hover:text-gray-700"
+              className="absolute bottom-2 right-2 p-1 rounded hover:bg-gray-100 transition-colors text-gray-600 hover:text-gray-700"
               title="Collapse"
             >
               <svg
@@ -2867,7 +2867,7 @@ export default function ProjectDetail(){
                     <div className="w-20 h-1.5 bg-gray-200 rounded-full overflow-hidden">
                       <div className="h-full bg-brand-red rounded-full transition-all" style={{ width: `${Math.max(0,Math.min(100,Number(proj?.progress||0)))}%` }} />
                     </div>
-                    <span className="text-xs font-semibold text-gray-700 w-8 text-right">{Math.max(0,Math.min(100,Number(proj?.progress||0)))}%</span>
+                    <span className="text-sm font-semibold text-gray-700 w-8 text-right">{Math.max(0,Math.min(100,Number(proj?.progress||0)))}%</span>
                   </div>
                 )}
                 {/* Project Admin for projects, Estimators for opportunities / leak investigations */}
@@ -2880,7 +2880,7 @@ export default function ProjectDetail(){
                       .filter(Boolean);
                     
                     if (estimators.length === 0) {
-                      return <div className="text-xs text-gray-400">—</div>;
+                      return <div className="text-sm text-gray-600">—</div>;
                     }
                     
                     if (estimators.length === 1) {
@@ -2888,7 +2888,7 @@ export default function ProjectDetail(){
                       return (
                         <div className="flex items-center gap-2">
                           <UserAvatar user={est} size="w-6 h-6" showTooltip={true} />
-                          <div className="text-xs font-semibold text-gray-700">{getUserDisplayName(est)}</div>
+                          <div className="text-sm font-semibold text-gray-700">{getUserDisplayName(est)}</div>
                         </div>
                       );
                     }
@@ -2905,18 +2905,18 @@ export default function ProjectDetail(){
                     // For projects: show Project Admin
                     const adminId = proj?.project_admin_id;
                     if (!adminId) {
-                      return <div className="text-xs text-gray-400">—</div>;
+                      return <div className="text-sm text-gray-600">—</div>;
                     }
                     
                     const projectAdmin = employees?.find((e: any) => String(e.id) === String(adminId));
                     if (!projectAdmin) {
-                      return <div className="text-xs text-gray-400">—</div>;
+                      return <div className="text-sm text-gray-600">—</div>;
                     }
                     
                     return (
                       <div className="flex items-center gap-2">
                         <UserAvatar user={projectAdmin} size="w-6 h-6" showTooltip={true} />
-                        <div className="text-xs font-semibold text-gray-700">{getUserDisplayName(projectAdmin)}</div>
+                        <div className="text-sm font-semibold text-gray-700">{getUserDisplayName(projectAdmin)}</div>
                       </div>
                     );
                   }
@@ -2928,7 +2928,7 @@ export default function ProjectDetail(){
           {/* Expand button - bottom right corner */}
           <button
               onClick={() => setIsHeroCollapsed(!isHeroCollapsed)}
-              className="absolute bottom-2 right-2 p-1 rounded hover:bg-gray-100 transition-colors text-gray-500 hover:text-gray-700"
+              className="absolute bottom-2 right-2 p-1 rounded hover:bg-gray-100 transition-colors text-gray-600 hover:text-gray-700"
               title="Expand"
             >
               <svg
@@ -3067,12 +3067,12 @@ export default function ProjectDetail(){
               }`}
               title={missingMessage || 'Convert this opportunity to an active project'}
             >
-              <span className={`text-lg ${isComplete ? 'text-green-500' : 'text-gray-400'}`}>+</span>
-              <span className={`font-medium text-xs ${isComplete ? 'text-green-700' : 'text-gray-500'}`}>
+              <span className={`text-lg ${isComplete ? 'text-green-500' : 'text-gray-600'}`}>+</span>
+              <span className={`font-semibold text-sm ${isComplete ? 'text-green-700' : 'text-gray-600'}`}>
                 Convert to Project
               </span>
             </button>
-            {!isComplete && <p className="mt-2 text-xs text-gray-600 text-center">{missingMessage}</p>}
+            {!isComplete && <p className="mt-2 text-sm text-gray-600 text-center">{missingMessage}</p>}
           </div>
         );
       })()}
@@ -3279,7 +3279,7 @@ export default function ProjectDetail(){
                       proj?.is_bidding ? 'Failed to delete opportunity' : 'Failed to delete project'
                 );
               }
-            }} className="px-4 py-2 rounded bg-red-600 hover:bg-red-700 text-white text-sm font-medium">{proj?.is_bidding ? 'Delete Opportunity' : 'Delete Project'}</button>
+            }} className="px-4 py-2 rounded bg-red-600 hover:bg-red-700 text-white text-sm font-semibold">{proj?.is_bidding ? 'Delete Opportunity' : 'Delete Project'}</button>
             <button
               type="button"
               onClick={async () => {
@@ -3327,7 +3327,7 @@ export default function ProjectDetail(){
                   );
                 }
               }}
-              className="px-4 py-2 rounded border border-red-300 bg-white hover:bg-red-50 text-red-700 text-sm font-medium"
+              className="px-4 py-2 rounded border border-red-300 bg-white hover:bg-red-50 text-red-700 text-sm font-semibold"
             >
               {proj?.is_bidding
                 ? 'Duplicate Opportunity'
@@ -3337,7 +3337,7 @@ export default function ProjectDetail(){
             </button>
             <button 
               onClick={() => setShowAuditLogModal(true)}
-              className="px-4 py-2 rounded border border-red-300 bg-white hover:bg-red-50 text-red-700 text-sm font-medium"
+              className="px-4 py-2 rounded border border-red-300 bg-white hover:bg-red-50 text-red-700 text-sm font-semibold"
             >
               Audit Log
             </button>
@@ -3677,7 +3677,7 @@ export default function ProjectDetail(){
                   <h2 className="text-xl font-semibold">Audit Log</h2>
                   <button
                     onClick={() => setShowAuditLogModal(false)}
-                    className="text-2xl font-bold text-gray-400 hover:text-gray-600"
+                    className="text-2xl font-bold text-gray-600 hover:text-gray-600"
                   >
                     ×
                   </button>
@@ -3693,7 +3693,7 @@ export default function ProjectDetail(){
                             onClick={() => setAuditLogSection(section as typeof auditLogSection)}
                             className={`w-full text-left px-3 py-2 rounded text-sm ${
                               auditLogSection === section
-                                ? 'bg-blue-100 text-blue-800 font-medium'
+                                ? 'bg-blue-100 text-blue-800 font-semibold'
                                 : 'bg-white text-gray-700 hover:bg-gray-100'
                             }`}
                           >
@@ -4088,14 +4088,14 @@ function EditStartDateModal({ projectId, currentStartDate, designSystem, onClose
             </button>
             <div>
               <h2 className="text-sm font-semibold text-gray-900">Edit Start Date</h2>
-              <p className="text-xs text-gray-500 mt-0.5">When work begins or is scheduled to begin</p>
+              <p className="text-sm text-gray-600 mt-0.5">When work begins or is scheduled to begin</p>
             </div>
           </div>
         </div>
         <div className="flex-1 overflow-y-auto p-4 min-h-0">
           <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
             <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Start Date</label>
+              <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">Start Date</label>
               <input
                 type="date"
                 value={startDate}
@@ -4110,7 +4110,7 @@ function EditStartDateModal({ projectId, currentStartDate, designSystem, onClose
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
+            className="px-3 py-1.5 rounded-lg text-sm font-semibold text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
           >
             Cancel
           </button>
@@ -4208,14 +4208,14 @@ function EditAwardedDateModal({ projectId, currentAwardedDate, designSystem, onC
             </button>
             <div>
               <h2 className="text-sm font-semibold text-gray-900">Edit Awarded Date</h2>
-              <p className="text-xs text-gray-500 mt-0.5">Date the opportunity was awarded / converted to a project</p>
+              <p className="text-sm text-gray-600 mt-0.5">Date the opportunity was awarded / converted to a project</p>
             </div>
           </div>
         </div>
         <div className="flex-1 overflow-y-auto p-4 min-h-0">
           <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
             <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Awarded date</label>
+              <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">Awarded date</label>
               <input
                 type="date"
                 value={awardedDate}
@@ -4230,7 +4230,7 @@ function EditAwardedDateModal({ projectId, currentAwardedDate, designSystem, onC
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
+            className="px-3 py-1.5 rounded-lg text-sm font-semibold text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
           >
             Cancel
           </button>
@@ -4328,14 +4328,14 @@ function EditEtaModal({ projectId, currentEta, designSystem, onClose, onSave }: 
             </button>
             <div>
               <h2 className="text-sm font-semibold text-gray-900">Edit End Date</h2>
-              <p className="text-xs text-gray-500 mt-0.5">Target completion date</p>
+              <p className="text-sm text-gray-600 mt-0.5">Target completion date</p>
             </div>
           </div>
         </div>
         <div className="flex-1 overflow-y-auto p-4 min-h-0">
           <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
             <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">End date</label>
+              <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">End date</label>
               <input
                 type="date"
                 value={eta}
@@ -4350,7 +4350,7 @@ function EditEtaModal({ projectId, currentEta, designSystem, onClose, onSave }: 
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
+            className="px-3 py-1.5 rounded-lg text-sm font-semibold text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
           >
             Cancel
           </button>
@@ -4597,8 +4597,8 @@ function EditRelatedCustomersModal({
                     <AppCheckbox
                       label={
                         <span>
-                          <span className="block font-medium text-gray-900">{c.display_name || c.name || c.id}</span>
-                          <span className="block text-xs text-gray-500">{subtitle}</span>
+                          <span className="block font-semibold text-gray-900">{c.display_name || c.name || c.id}</span>
+                          <span className="block text-sm text-gray-600">{subtitle}</span>
                         </span>
                       }
                       checked={selectedIds.has(cid)}
@@ -4659,7 +4659,7 @@ function EditRelatedCustomersModal({
                       key={rid}
                       className={uiCx('flex items-center gap-3 px-3 py-2', uiColors.surface, 'hover:bg-gray-50')}
                     >
-                      <span className={uiCx(uiTypography.body, 'min-w-0 flex-1 truncate font-medium')}>
+                      <span className={uiCx(uiTypography.body, 'min-w-0 flex-1 truncate font-semibold')}>
                         {nameForId(rid)}
                       </span>
                       <div className="flex shrink-0 items-center gap-1">
@@ -4769,7 +4769,7 @@ function EditRelatedCustomersModal({
             </button>
             <div>
               <h2 className="text-sm font-semibold text-gray-900">Edit Related Customers</h2>
-              <p className="text-xs text-gray-500 mt-0.5">
+              <p className="text-sm text-gray-600 mt-0.5">
                 {isBidding
                   ? 'Link additional customers to this opportunity'
                   : 'Use green for Awarded (Bid Winner) and red for Not Awarded.'}
@@ -4781,7 +4781,7 @@ function EditRelatedCustomersModal({
           <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
           {!isBidding && orderedSelectedIds.length > 0 && (
             <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-2">
+              <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-2">
                 Related customers on this project
               </label>
               <div className="rounded-xl border border-gray-200 divide-y divide-gray-100 max-h-56 overflow-y-auto">
@@ -4793,7 +4793,7 @@ function EditRelatedCustomersModal({
                       className="flex items-center gap-3 px-3 py-2 bg-white hover:bg-gray-50"
                     >
                       <div className="flex-1 min-w-0">
-                        <span className="text-sm font-medium text-gray-900 truncate block">{nameForId(rid)}</span>
+                        <span className="text-sm font-semibold text-gray-900 truncate block">{nameForId(rid)}</span>
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
                         <button
@@ -4851,7 +4851,7 @@ function EditRelatedCustomersModal({
           )}
 
           <div className="mb-3">
-            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
+            <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">
               {isBidding ? 'Search' : 'Add customers (search)'}
             </label>
             <input
@@ -4885,7 +4885,7 @@ function EditRelatedCustomersModal({
                   </span>
                   <div>
                     <div className="font-semibold text-gray-900">{c.display_name || c.name || c.id}</div>
-                    <div className="text-xs text-gray-500 mt-0.5">
+                    <div className="text-sm text-gray-600 mt-0.5">
                       {[c.address_line1, c.city, c.province].filter(Boolean).join(', ') || 'No address'}
                     </div>
                   </div>
@@ -4895,7 +4895,7 @@ function EditRelatedCustomersModal({
                 <button
                   type="button"
                   onClick={() => setDisplayedCount((prev) => prev + 20)}
-                  className="w-full text-center px-3 py-2 bg-gray-50 hover:bg-gray-100 text-xs font-medium text-gray-600 border-t border-gray-100"
+                  className="w-full text-center px-3 py-2 bg-gray-50 hover:bg-gray-100 text-sm font-semibold text-gray-600 border-t border-gray-100"
                 >
                   Load more ({filteredClients.length - displayedCount} remaining)
                 </button>
@@ -4903,10 +4903,10 @@ function EditRelatedCustomersModal({
             </div>
           )}
           {q.trim() && list.length === 0 && (
-            <div className="text-center py-6 text-sm text-gray-500">No customers found matching "{q}"</div>
+            <div className="text-center py-6 text-sm text-gray-600">No customers found matching "{q}"</div>
           )}
           {!q.trim() && list.length === 0 && (
-            <div className="text-center py-6 text-sm text-gray-500">
+            <div className="text-center py-6 text-sm text-gray-600">
               {isBidding ? 'No customers available' : 'Type to search and add customers'}
             </div>
           )}
@@ -4917,7 +4917,7 @@ function EditRelatedCustomersModal({
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
+            className="px-3 py-1.5 rounded-lg text-sm font-semibold text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
           >
             Cancel
           </button>
@@ -5034,14 +5034,14 @@ function EditLeadSourceModal({ projectId, currentLeadSource, designSystem, onClo
             </button>
             <div>
               <h2 className="text-sm font-semibold text-gray-900">Edit Lead Source</h2>
-              <p className="text-xs text-gray-500 mt-0.5">Set how this opportunity was sourced</p>
+              <p className="text-sm text-gray-600 mt-0.5">Set how this opportunity was sourced</p>
             </div>
           </div>
         </div>
         <div className="flex-1 overflow-y-auto p-4 min-h-0">
           <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
             <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Lead Source</label>
+              <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">Lead Source</label>
               <select
                 value={leadSource || ''}
                 onChange={(e) => setLeadSource(e.target.value)}
@@ -5062,7 +5062,7 @@ function EditLeadSourceModal({ projectId, currentLeadSource, designSystem, onClo
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
+            className="px-3 py-1.5 rounded-lg text-sm font-semibold text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
           >
             Cancel
           </button>
@@ -5184,14 +5184,14 @@ function EditProjectNumberModal({
             </button>
             <div>
               <h2 className="text-sm font-semibold text-gray-900">Edit Project Number</h2>
-              <p className="text-xs text-gray-500 mt-0.5">Set the customer-facing project number</p>
+              <p className="text-sm text-gray-600 mt-0.5">Set the customer-facing project number</p>
             </div>
           </div>
         </div>
         <div className="flex-1 overflow-y-auto p-4 min-h-0">
           <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
             <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Project Number</label>
+              <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">Project Number</label>
               <input
                 type="text"
                 value={projectNumber}
@@ -5213,7 +5213,7 @@ function EditProjectNumberModal({
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
+            className="px-3 py-1.5 rounded-lg text-sm font-semibold text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
           >
             Cancel
           </button>
@@ -5314,19 +5314,19 @@ function EditContactModal({
     <div className="space-y-2 text-sm">
       {selectedContact.name && (
         <div>
-          <span className={designSystem ? uiTypography.helper : 'text-gray-600 font-medium'}>Name:</span>
+          <span className={designSystem ? uiTypography.helper : 'text-gray-600 font-semibold'}>Name:</span>
           <span className="ml-2 text-gray-900">{selectedContact.name}</span>
         </div>
       )}
       {selectedContact.email && (
         <div>
-          <span className={designSystem ? uiTypography.helper : 'text-gray-600 font-medium'}>Email:</span>
+          <span className={designSystem ? uiTypography.helper : 'text-gray-600 font-semibold'}>Email:</span>
           <span className="ml-2 text-gray-900">{selectedContact.email}</span>
         </div>
       )}
       {selectedContact.phone && (
         <div>
-          <span className={designSystem ? uiTypography.helper : 'text-gray-600 font-medium'}>Phone:</span>
+          <span className={designSystem ? uiTypography.helper : 'text-gray-600 font-semibold'}>Phone:</span>
           <span className="ml-2 text-gray-900">{selectedContact.phone}</span>
         </div>
       )}
@@ -5383,7 +5383,7 @@ function EditContactModal({
           onClick={(e) => e.stopPropagation()}
         >
           <h2 className="text-sm font-semibold text-gray-900">Edit Contact</h2>
-          <p className="text-xs text-gray-500 mt-2">Add a project owner customer before assigning a contact.</p>
+          <p className="text-sm text-gray-600 mt-2">Add a project owner customer before assigning a contact.</p>
           <div className="mt-4 text-right">
             <button
               type="button"
@@ -5479,17 +5479,17 @@ function EditContactModal({
             </button>
             <div>
               <h2 className="text-sm font-semibold text-gray-900">Edit Contact</h2>
-              <p className="text-xs text-gray-500 mt-0.5">Choose the primary customer contact</p>
+              <p className="text-sm text-gray-600 mt-0.5">Choose the primary customer contact</p>
             </div>
           </div>
         </div>
         <div className="flex-1 overflow-y-auto p-4 min-h-0">
           <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
             {loadingContacts ? (
-              <p className="text-xs text-gray-500">Loading contacts...</p>
+              <p className="text-sm text-gray-600">Loading contacts...</p>
             ) : (
               <div>
-                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Contact</label>
+                <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">Contact</label>
                 <select
                   value={contactId || ''}
                   onChange={(e) => {
@@ -5523,7 +5523,7 @@ function EditContactModal({
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
+            className="px-3 py-1.5 rounded-lg text-sm font-semibold text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
           >
             Cancel
           </button>
@@ -5853,7 +5853,7 @@ function ConvertToProjectModal({
               </button>
               <div>
                 <div className="text-sm font-semibold text-gray-900">Convert to Project</div>
-                <div className="text-xs text-gray-500 mt-0.5">General information and pricing approvals</div>
+                <div className="text-sm text-gray-600 mt-0.5">General information and pricing approvals</div>
               </div>
             </div>
           </div>
@@ -5867,16 +5867,16 @@ function ConvertToProjectModal({
                 </svg>
               </span>
               <p className="text-sm text-amber-900">
-                Converting &quot;{proj?.name || 'this opportunity'}&quot; to an active project will enable workload and timesheet functionality. <span className="font-medium"> Be careful, this action cannot be undone.</span>
+                Converting &quot;{proj?.name || 'this opportunity'}&quot; to an active project will enable workload and timesheet functionality. <span className="font-semibold"> Be careful, this action cannot be undone.</span>
               </p>
             </div>
 
             {relatedAwardOptions.length > 0 && (
               <div className="md:col-span-2">
-                <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-2">
+                <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-2">
                   Related customers – mark awarded (bid winner(s))
                 </label>
-                <p className="text-xs text-gray-500 mb-2">
+                <p className="text-sm text-gray-600 mb-2">
                   Use green for awarded, red for not.
                 </p>
                 <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-48 overflow-y-auto">
@@ -5885,7 +5885,7 @@ function ConvertToProjectModal({
                     return (
                       <div key={rid} className="flex items-center gap-3 px-3 py-2 bg-white hover:bg-gray-50">
                         <div className="flex-1 min-w-0">
-                          <span className="text-sm font-medium truncate">{label}</span>
+                          <span className="text-sm font-semibold truncate">{label}</span>
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
                           <button
@@ -5945,7 +5945,7 @@ function ConvertToProjectModal({
             )}
 
             <div className="space-y-3 min-w-0">
-              <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Project Admin</label>
+              <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">Project Admin</label>
               <div className="relative min-w-0">
                 <div
                   ref={(el) => { triggerRefs.current['projectAdmin'] = el; }}
@@ -5960,10 +5960,10 @@ function ConvertToProjectModal({
                         <span className="flex-1 min-w-0 text-left truncate">{getUserDisplayName(emp)}</span>
                       </>
                     ) : (
-                      <span className="flex-1 min-w-0 text-left text-gray-500">Select...</span>
+                      <span className="flex-1 min-w-0 text-left text-gray-600">Select...</span>
                     );
                   })() : (
-                    <span className="flex-1 min-w-0 text-left text-gray-500">Select...</span>
+                    <span className="flex-1 min-w-0 text-left text-gray-600">Select...</span>
                   )}
                   <svg className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ${openDropdownId === 'projectAdmin' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                 </div>
@@ -5986,15 +5986,15 @@ function ConvertToProjectModal({
                           <>
                             <div className="overflow-y-auto flex-1 min-h-0 p-2">
                               <div onClick={() => { setProjectAdminId(''); closeDropdown(); }} className="flex items-center gap-3 p-2 cursor-pointer hover:bg-gray-50 rounded">
-                                <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-xs">—</div>
+                                <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-sm">—</div>
                                 <span className="text-sm">Clear</span>
                               </div>
                               {getFilteredEmployees('projectAdmin').map((emp: any) => (
                                 <div key={emp.id} onClick={() => { setProjectAdminId(String(emp.id)); closeDropdown(); }} className={`flex items-center gap-3 p-2 cursor-pointer rounded ${projectAdminId === String(emp.id) ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}>
                                   <UserAvatar user={emp} size="w-6 h-6" showTooltip={false} />
                                   <div className="flex-1 min-w-0">
-                                    <div className="text-sm font-medium truncate">{getUserDisplayName(emp)}</div>
-                                    {emp.email && <div className="text-xs text-gray-600 truncate">{emp.email}</div>}
+                                    <div className="text-sm font-semibold truncate">{getUserDisplayName(emp)}</div>
+                                    {emp.email && <div className="text-sm text-gray-600 truncate">{emp.email}</div>}
                                   </div>
                                 </div>
                               ))}
@@ -6010,15 +6010,15 @@ function ConvertToProjectModal({
                             </div>
                             <div className="overflow-y-auto flex-1 min-h-0 p-2">
                               <div onClick={() => { setProjectAdminId(''); closeDropdown(); }} className="flex items-center gap-3 p-2 cursor-pointer hover:bg-gray-50 rounded">
-                                <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-xs">—</div>
+                                <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-sm">—</div>
                                 <span className="text-sm">Clear</span>
                               </div>
                               {getFilteredEmployees('projectAdmin').map((emp: any) => (
                                 <div key={emp.id} onClick={() => { setProjectAdminId(String(emp.id)); closeDropdown(); }} className={`flex items-center gap-3 p-2 cursor-pointer rounded ${projectAdminId === String(emp.id) ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}>
                                   <UserAvatar user={emp} size="w-6 h-6" showTooltip={false} />
                                   <div className="flex-1 min-w-0">
-                                    <div className="text-sm font-medium truncate">{getUserDisplayName(emp)}</div>
-                                    {emp.email && <div className="text-xs text-gray-600 truncate">{emp.email}</div>}
+                                    <div className="text-sm font-semibold truncate">{getUserDisplayName(emp)}</div>
+                                    {emp.email && <div className="text-sm text-gray-600 truncate">{emp.email}</div>}
                                   </div>
                                 </div>
                               ))}
@@ -6033,7 +6033,7 @@ function ConvertToProjectModal({
             </div>
 
             <div className="space-y-3 min-w-0">
-              <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Lead Source</label>
+              <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">Lead Source</label>
               <div className="relative min-w-0">
                 <div
                   ref={(el) => { triggerRefs.current['leadSource'] = el; }}
@@ -6041,7 +6041,7 @@ function ConvertToProjectModal({
                   className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-2 text-sm cursor-pointer bg-white hover:bg-gray-50 min-w-0"
                 >
                   <span className="flex-1 min-w-0 text-left truncate">
-                    {leadSource ? (leadSourcesList.find((ls: any) => (ls.value ?? ls.label ?? ls) === leadSource)?.label ?? leadSource) : <span className="text-gray-500">Select...</span>}
+                    {leadSource ? (leadSourcesList.find((ls: any) => (ls.value ?? ls.label ?? ls) === leadSource)?.label ?? leadSource) : <span className="text-gray-600">Select...</span>}
                   </span>
                   <svg className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ${openDropdownId === 'leadSource' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                 </div>
@@ -6102,7 +6102,7 @@ function ConvertToProjectModal({
 
             {divisionIds.length > 0 && (
               <div className="md:col-span-2 space-y-2">
-                <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">On-site Leads (by division)</label>
+                <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">On-site Leads (by division)</label>
                 <div className="space-y-2">
                   {divisionIds.map((divId: string) => {
                     const divKey = `div-${divId}`;
@@ -6113,7 +6113,7 @@ function ConvertToProjectModal({
                       <div key={divId} className="flex items-center gap-2">
                         <div className="flex items-center gap-1.5 w-36 min-w-0 shrink-0" title={getDivisionLabel(divId)}>
                           <span className="text-base flex-shrink-0">{getDivisionIcon(getDivisionMainLabel(divId), true)}</span>
-                          <span className="text-xs text-gray-600 truncate">{getDivisionLabel(divId)}</span>
+                          <span className="text-sm text-gray-600 truncate">{getDivisionLabel(divId)}</span>
                         </div>
                         <div className="relative flex-1 min-w-0">
                           <div
@@ -6128,8 +6128,8 @@ function ConvertToProjectModal({
                               </>
                             ) : (
                               <>
-                                <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-xs shrink-0">—</div>
-                                <span className="flex-1 text-left text-gray-500 truncate">Select...</span>
+                                <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-sm shrink-0">—</div>
+                                <span className="flex-1 text-left text-gray-600 truncate">Select...</span>
                               </>
                             )}
                             <svg className={`w-4 h-4 text-gray-400 transition-transform shrink-0 ${openDropdownId === divKey ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
@@ -6153,15 +6153,15 @@ function ConvertToProjectModal({
                                     <>
                                       <div className="overflow-y-auto flex-1 min-h-0 p-2">
                                         <div onClick={() => { setDivisionLeads(prev => ({ ...prev, [divId]: '' })); closeDropdown(); }} className="flex items-center gap-3 p-2 cursor-pointer hover:bg-gray-50 rounded">
-                                          <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-xs">—</div>
+                                          <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-sm">—</div>
                                           <span className="text-sm">Clear</span>
                                         </div>
                                         {filteredEmps.map((emp: any) => (
                                           <div key={emp.id} onClick={() => { setDivisionLeads(prev => ({ ...prev, [divId]: String(emp.id) })); closeDropdown(); }} className={`flex items-center gap-3 p-2 cursor-pointer rounded ${leadId === String(emp.id) ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}>
                                             <UserAvatar user={emp} size="w-6 h-6" showTooltip={false} />
                                             <div className="flex-1 min-w-0">
-                                              <div className="text-sm font-medium truncate">{getUserDisplayName(emp)}</div>
-                                              {emp.email && <div className="text-xs text-gray-600 truncate">{emp.email}</div>}
+                                              <div className="text-sm font-semibold truncate">{getUserDisplayName(emp)}</div>
+                                              {emp.email && <div className="text-sm text-gray-600 truncate">{emp.email}</div>}
                                             </div>
                                           </div>
                                         ))}
@@ -6177,15 +6177,15 @@ function ConvertToProjectModal({
                                       </div>
                                       <div className="overflow-y-auto flex-1 min-h-0 p-2">
                                         <div onClick={() => { setDivisionLeads(prev => ({ ...prev, [divId]: '' })); closeDropdown(); }} className="flex items-center gap-3 p-2 cursor-pointer hover:bg-gray-50 rounded">
-                                          <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-xs">—</div>
+                                          <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-sm">—</div>
                                           <span className="text-sm">Clear</span>
                                         </div>
                                         {filteredEmps.map((emp: any) => (
                                           <div key={emp.id} onClick={() => { setDivisionLeads(prev => ({ ...prev, [divId]: String(emp.id) })); closeDropdown(); }} className={`flex items-center gap-3 p-2 cursor-pointer rounded ${leadId === String(emp.id) ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}>
                                             <UserAvatar user={emp} size="w-6 h-6" showTooltip={false} />
                                             <div className="flex-1 min-w-0">
-                                              <div className="text-sm font-medium truncate">{getUserDisplayName(emp)}</div>
-                                              {emp.email && <div className="text-xs text-gray-600 truncate">{emp.email}</div>}
+                                              <div className="text-sm font-semibold truncate">{getUserDisplayName(emp)}</div>
+                                              {emp.email && <div className="text-sm text-gray-600 truncate">{emp.email}</div>}
                                             </div>
                                           </div>
                                         ))}
@@ -6205,17 +6205,17 @@ function ConvertToProjectModal({
             )}
 
             <div>
-              <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Start Date</label>
+              <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">Start Date</label>
               <input type="date" value={dateStart} onChange={e => setDateStart(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
             </div>
             <div>
-              <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">End Date</label>
+              <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">End Date</label>
               <input type="date" value={dateEta} onChange={e => setDateEta(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
             </div>
 
             {additionalCosts.length > 0 && (
               <div className="md:col-span-2">
-                <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-2">Pricing – Approve items for project</label>
+                <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-2">Pricing – Approve items for project</label>
                 <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-48 overflow-y-auto">
                   {additionalCosts.map((item: any, i: number) => {
                     const label = item.label ?? item.name ?? '—';
@@ -6226,14 +6226,14 @@ function ConvertToProjectModal({
                       <div key={i} className="flex items-center gap-3 px-3 py-2 bg-white hover:bg-gray-50">
                         <div className="flex-1 min-w-0">
                           {divId && (
-                            <span className="flex items-center gap-1.5 text-[10px] text-gray-500">
+                            <span className="flex items-center gap-1.5 text-xs text-gray-600">
                               <span className="flex-shrink-0">{getDivisionIcon(getDivisionMainLabel(divId), true)}</span>
                               {getDivisionLabel(divId)}
                             </span>
                           )}
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-sm font-medium truncate">{label}</span>
-                            <span className="text-gray-400">–</span>
+                            <span className="text-sm font-semibold truncate">{label}</span>
+                            <span className="text-gray-600">–</span>
                             <span className="text-sm font-semibold text-gray-900">${Number(value).toLocaleString('en-CA', { minimumFractionDigits: 2 })}</span>
                           </div>
                         </div>
@@ -6272,7 +6272,7 @@ function ConvertToProjectModal({
 
             {optionalServices.length > 0 && (
               <div className="md:col-span-2">
-                <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-2">Optional Services – Approve items for project</label>
+                <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-2">Optional Services – Approve items for project</label>
                 <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-48 overflow-y-auto">
                   {optionalServices.map((item: any, i: number) => {
                     const label = item.service ?? '—';
@@ -6282,8 +6282,8 @@ function ConvertToProjectModal({
                       <div key={i} className="flex items-center gap-3 px-3 py-2 bg-white hover:bg-gray-50">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-sm font-medium truncate">{label}</span>
-                            <span className="text-gray-400">–</span>
+                            <span className="text-sm font-semibold truncate">{label}</span>
+                            <span className="text-gray-600">–</span>
                             <span className="text-sm font-semibold text-gray-900">${price.toLocaleString('en-CA', { minimumFractionDigits: 2 })}</span>
                           </div>
                         </div>
@@ -6322,10 +6322,10 @@ function ConvertToProjectModal({
           </div>
         </div>
         <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-between gap-3 rounded-b-xl">
-          <div className="text-xs text-gray-500">Convert opportunity to active project</div>
+          <div className="text-sm text-gray-600">Convert opportunity to active project</div>
           <div className="flex items-center gap-2">
-            <button type="button" onClick={onClose} disabled={submitting} className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50">Cancel</button>
-            <button type="button" onClick={handleSubmit} disabled={submitting} className="px-3 py-1.5 rounded-lg text-sm font-medium bg-brand-red text-white hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed">
+            <button type="button" onClick={onClose} disabled={submitting} className="px-3 py-1.5 rounded-lg text-sm font-semibold text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50">Cancel</button>
+            <button type="button" onClick={handleSubmit} disabled={submitting} className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-brand-red text-white hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed">
               {submitting ? 'Converting...' : 'Convert'}
             </button>
           </div>
@@ -6350,7 +6350,7 @@ function UpdatesTab({ projectId, items, onRefresh }:{ projectId:string, items: U
         {items.length? items.map(u=> (
           <div key={u.id} className="p-3 text-sm flex items-start justify-between">
             <div>
-              <div className="text-[11px] text-gray-500">{(u.timestamp||'').slice(0,19).replace('T',' ')}</div>
+              <div className="text-xs text-gray-600">{(u.timestamp||'').slice(0,19).replace('T',' ')}</div>
               <div className="text-gray-800 whitespace-pre-wrap">{u.text||''}</div>
             </div>
             <button onClick={async()=>{ if(!confirm('Delete this update?')) return; try{ await api('DELETE', `/projects/${projectId}/updates/${u.id}`); await onRefresh(); toast.success('Deleted'); }catch(_e){ toast.error('Failed'); } }} className="px-2 py-1 rounded bg-gray-100">Delete</button>
@@ -6712,7 +6712,7 @@ function ReportsTabEnhanced({
               <select
                 value={selectedCategoryFilter}
                 onChange={(e) => setSelectedCategoryFilter(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+                className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
               >
                 <option value="">All ({categoryCounts[''] || 0})</option>
                 {commercialCategories.length > 0 && (
@@ -6760,8 +6760,8 @@ function ReportsTabEnhanced({
                     onClick={() => setShowCreateModal(true)}
                     className="border-2 border-dashed border-gray-300 rounded-lg p-4 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex flex-col items-center justify-center min-h-[120px] cursor-pointer"
                   >
-                    <div className="text-lg text-gray-400 mb-1.5">+</div>
-                    <div className="font-medium text-xs text-gray-700">New Note</div>
+                    <div className="text-lg text-gray-600 mb-1.5">+</div>
+                    <div className="font-semibold text-sm text-gray-700">New Note</div>
                   </div>
                 </div>
               )}
@@ -6785,10 +6785,10 @@ function ReportsTabEnhanced({
                   <div className="flex items-start gap-2">
                     <img src={authorInfo.avatar} className="w-8 h-8 rounded-full flex-shrink-0" alt={authorInfo.name} />
                     <div className="flex-1 min-w-0">
-                      <div className={`font-semibold text-xs mb-1 ${isSelected ? 'text-gray-900' : 'text-gray-800'}`}>
+                      <div className={`font-semibold text-sm mb-1 ${isSelected ? 'text-gray-900' : 'text-gray-800'}`}>
                         {r.title || 'Untitled Note'}
                       </div>
-                      <div className="text-[10px] text-gray-500 mb-1 flex flex-wrap items-center gap-1.5">
+                      <div className="text-xs text-gray-600 mb-1 flex flex-wrap items-center gap-1.5">
                         {hasStatusBadges && (
                           <ReportStatusChangeBadges
                             report={r}
@@ -6797,15 +6797,15 @@ function ReportsTabEnhanced({
                             compact
                           />
                         )}
-                        {hasStatusBadges && <span className="text-gray-400">·</span>}
+                        {hasStatusBadges && <span className="text-gray-600">·</span>}
                         <span>{listSubtitle}</span>
                       </div>
                       {preview && (
-                        <div className="text-[10px] text-gray-600 line-clamp-2 mb-1">
+                        <div className="text-xs text-gray-600 line-clamp-2 mb-1">
                           {preview}
                         </div>
                       )}
-                      <div className="flex items-center gap-2 text-[10px] text-gray-400 mt-1">
+                      <div className="flex items-center gap-2 text-xs text-gray-600 mt-1">
                         <span>
                           {reportDate ? reportDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
                         </span>
@@ -6818,7 +6818,7 @@ function ReportsTabEnhanced({
                         {r.category_id && (
                           <>
                             <span>•</span>
-                            <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 text-[10px]">
+                            <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 text-xs">
                               {reportCategories.find(c => (c.value || c.label) === r.category_id)?.label || r.category_id}
                             </span>
                           </>
@@ -6829,10 +6829,10 @@ function ReportsTabEnhanced({
                 </div>
               );
             }) : (
-              <div className="p-8 text-center text-gray-500">
+              <div className="p-8 text-center text-gray-600">
                 <div className="text-sm mb-2">No notes yet</div>
                 {canCreateNote && (
-                  <div className="text-xs">Click "New Note" to create your first note</div>
+                  <div className="text-sm">Click "New Note" to create your first note</div>
                 )}
               </div>
             )}
@@ -6871,8 +6871,8 @@ function ReportsTabEnhanced({
                         <div className="flex items-center gap-2">
                           <img src={authorInfo.avatar} className="w-6 h-6 rounded-full" alt={authorInfo.name} />
                           <div>
-                            <div className="text-xs font-medium text-gray-900">{authorInfo.name}</div>
-                            <div className="text-[10px] text-gray-500">
+                            <div className="text-sm font-semibold text-gray-900">{authorInfo.name}</div>
+                            <div className="text-xs text-gray-600">
                               {reportDate ? reportDate.toLocaleDateString('en-US', { 
                                 weekday: 'long',
                                 month: 'long', 
@@ -6885,7 +6885,7 @@ function ReportsTabEnhanced({
                           </div>
                         </div>
                         {selectedReport.category_id && (
-                          <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-700 text-[10px] font-medium">
+                          <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-700 text-xs font-semibold">
                             {categoryLabel}
                           </span>
                         )}
@@ -6910,14 +6910,14 @@ function ReportsTabEnhanced({
                               toast.error(_e.message || 'Failed to approve note');
                             }
                           }}
-                          className="px-2.5 py-1.5 rounded bg-green-600 hover:bg-green-700 text-white text-xs font-medium flex-shrink-0"
+                          className="px-2.5 py-1.5 rounded bg-green-600 hover:bg-green-700 text-white text-sm font-semibold flex-shrink-0"
                           title="Approve note"
                         >
                           âœ“ Approve
                         </button>
                       )}
                       {selectedReport.financial_type === 'estimate-changes' && selectedReport.approval_status && (
-                        <span className={`px-2.5 py-1.5 rounded text-xs font-medium flex-shrink-0 ${
+                        <span className={`px-2.5 py-1.5 rounded text-sm font-semibold flex-shrink-0 ${
                           selectedReport.approval_status === 'approved' ? 'bg-green-100 text-green-700' :
                           selectedReport.approval_status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
                           'bg-gray-100 text-gray-700'
@@ -6931,7 +6931,7 @@ function ReportsTabEnhanced({
                         <>
                           <button
                             onClick={() => setEditingReport(selectedReport)}
-                            className="px-2.5 py-1.5 rounded text-gray-600 hover:bg-gray-100 text-xs font-medium flex-shrink-0 border border-gray-200"
+                            className="px-2.5 py-1.5 rounded text-gray-600 hover:bg-gray-100 text-sm font-semibold flex-shrink-0 border border-gray-200"
                             title="Edit note"
                           >
                             Edit
@@ -6954,7 +6954,7 @@ function ReportsTabEnhanced({
                               toast.error('Failed to delete note');
                             }
                           }}
-                          className="px-2.5 py-1.5 rounded text-gray-500 hover:bg-red-50 hover:text-red-600 text-xs font-medium flex-shrink-0"
+                          className="px-2.5 py-1.5 rounded text-gray-600 hover:bg-red-50 hover:text-red-600 text-sm font-semibold flex-shrink-0"
                           title="Delete note"
                         >
                           🗑️ Delete
@@ -6974,7 +6974,7 @@ function ReportsTabEnhanced({
                         ? 'bg-red-50 border-red-200' 
                         : 'bg-blue-50 border-blue-200'
                     }`}>
-                      <div className="text-xs font-semibold text-gray-700 mb-1">
+                      <div className="text-sm font-semibold text-gray-700 mb-1">
                         {selectedReport.financial_type === 'additional-income' ? 'Additional Income' : 'Expense'}
                       </div>
                       <div className="text-lg font-bold text-gray-900">
@@ -7024,14 +7024,14 @@ function ReportsTabEnhanced({
                     return (
                       <div className="mb-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
                         <div className="flex items-center justify-between mb-3">
-                          <div className="text-xs font-semibold text-gray-700">Change Order Summary</div>
+                          <div className="text-sm font-semibold text-gray-700">Change Order Summary</div>
                           {selectedReport.approval_status === 'approved' && (
-                            <span className="text-[10px] text-green-600 font-medium">âœ“ Items have been added to the project estimate</span>
+                            <span className="text-xs text-green-600 font-semibold">âœ“ Items have been added to the project estimate</span>
                           )}
                         </div>
                         
                         {items.length === 0 ? (
-                          <div className="text-xs text-gray-500">No items in this estimate change.</div>
+                          <div className="text-sm text-gray-600">No items in this estimate change.</div>
                         ) : (
                           <div className="space-y-3">
                             {orderedSections.map((section: string) => {
@@ -7042,7 +7042,7 @@ function ReportsTabEnhanced({
                               return (
                                 <div key={section} className="border border-gray-200 rounded bg-white">
                                   <div className="px-2.5 py-2 bg-gray-100 border-b border-gray-200">
-                                    <div className="text-xs font-semibold text-gray-700">{sectionName}</div>
+                                    <div className="text-sm font-semibold text-gray-700">{sectionName}</div>
                                   </div>
                                   <div className="divide-y divide-gray-100">
                                     {sectionItems.map((item: any, idx: number) => {
@@ -7051,49 +7051,49 @@ function ReportsTabEnhanced({
                                         <div key={idx} className="px-2.5 py-2">
                                           <div className="flex items-start justify-between gap-4">
                                             <div className="flex-1 min-w-0">
-                                              <div className="text-xs font-medium text-gray-900 mb-1">
+                                              <div className="text-sm font-semibold text-gray-900 mb-1">
                                                 {item.name || 'Unnamed Item'}
                                               </div>
-                                              <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-gray-600">
+                                              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600">
                                                 <span>
-                                                  <span className="font-medium">Qty:</span> {item.quantity || 0} {item.unit || ''}
+                                                  <span className="font-semibold">Qty:</span> {item.quantity || 0} {item.unit || ''}
                                                 </span>
                                                 {item.item_type === 'labour' && item.labour_journey && (
                                                   <>
                                                     <span>
-                                                      <span className="font-medium">Journey:</span> {item.labour_journey} {item.labour_journey_type || 'hours'}
+                                                      <span className="font-semibold">Journey:</span> {item.labour_journey} {item.labour_journey_type || 'hours'}
                                                     </span>
                                                     {item.labour_men && item.labour_men > 0 && (
                                                       <span>
-                                                        <span className="font-medium">Men:</span> {item.labour_men}
+                                                        <span className="font-semibold">Men:</span> {item.labour_men}
                                                       </span>
                                                     )}
                                                   </>
                                                 )}
                                                 <span>
-                                                  <span className="font-medium">Unit Price:</span> ${(item.unit_price || 0).toFixed(2)}
+                                                  <span className="font-semibold">Unit Price:</span> ${(item.unit_price || 0).toFixed(2)}
                                                 </span>
                                                 {item.item_type && (
                                                   <span>
-                                                    <span className="font-medium">Type:</span> {item.item_type}
+                                                    <span className="font-semibold">Type:</span> {item.item_type}
                                                   </span>
                                                 )}
                                                 {item.supplier_name && (
                                                   <span>
-                                                    <span className="font-medium">Supplier:</span> {item.supplier_name}
+                                                    <span className="font-semibold">Supplier:</span> {item.supplier_name}
                                                   </span>
                                                 )}
                                                 {item.taxable && (
-                                                  <span className="text-green-600 font-medium">Taxable</span>
+                                                  <span className="text-green-600 font-semibold">Taxable</span>
                                                 )}
                                               </div>
                                               {item.description && (
-                                                <div className="text-[10px] text-gray-500 mt-1 italic">
+                                                <div className="text-xs text-gray-600 mt-1 italic">
                                                   {item.description}
                                                 </div>
                                               )}
                                             </div>
-                                            <div className="text-xs font-semibold text-gray-900 whitespace-nowrap">
+                                            <div className="text-sm font-semibold text-gray-900 whitespace-nowrap">
                                               ${itemTotal.toFixed(2)}
                                             </div>
                                           </div>
@@ -7103,7 +7103,7 @@ function ReportsTabEnhanced({
                                   </div>
                                   {sectionItems.length > 1 && (
                                     <div className="px-2.5 py-2 bg-gray-50 border-t border-gray-200 flex justify-end">
-                                      <div className="text-xs font-semibold text-gray-700">
+                                      <div className="text-sm font-semibold text-gray-700">
                                         Section Total: ${sectionTotal.toFixed(2)}
                                       </div>
                                     </div>
@@ -7114,7 +7114,7 @@ function ReportsTabEnhanced({
                             
                             <div className="pt-2 border-t border-gray-300">
                               <div className="flex justify-end">
-                                <div className="text-xs font-bold text-gray-900">
+                                <div className="text-sm font-bold text-gray-900">
                                   Grand Total: ${grandTotal.toFixed(2)}
                                 </div>
                               </div>
@@ -7132,7 +7132,7 @@ function ReportsTabEnhanced({
                   {/* Attachments */}
                   {attachments.length > 0 && (
                     <div className="mt-4 pt-4 border-t">
-                      <h3 className="text-xs font-semibold text-gray-900 mb-2">Attachments ({attachments.length})</h3>
+                      <h3 className="text-sm font-semibold text-gray-900 mb-2">Attachments ({attachments.length})</h3>
                       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                         {attachments.map((a: any, i: number) => {
                           const isImage = (a.content_type || '').startsWith('image/') || /\.(jpg|jpeg|png|gif|webp)$/i.test(a.original_name || '');
@@ -7151,7 +7151,7 @@ function ReportsTabEnhanced({
                                     className="w-full h-32 object-cover"
                                   />
                                   <div className="p-2 border-t">
-                                    <div className="text-xs text-gray-600 truncate" title={a.original_name}>
+                                    <div className="text-sm text-gray-600 truncate" title={a.original_name}>
                                       {a.original_name || 'attachment'}
                                     </div>
                                   </div>
@@ -7159,7 +7159,7 @@ function ReportsTabEnhanced({
                               ) : (
                                 <div className="p-3 flex items-center gap-2">
                                   <span className="text-sm">{getAttachmentIcon(a.content_type || '', a.original_name || '')}</span>
-                                  <span className="text-xs text-gray-700 truncate">{a.original_name || 'attachment'}</span>
+                                  <span className="text-sm text-gray-700 truncate">{a.original_name || 'attachment'}</span>
                                 </div>
                               )}
                             </button>
@@ -7172,7 +7172,7 @@ function ReportsTabEnhanced({
               </>
             );
           })() : (
-            <div className="flex-1 flex items-center justify-center text-gray-500">
+            <div className="flex-1 flex items-center justify-center text-gray-600">
               <div className="text-center">
                 <div className="text-lg mb-2">Select a note to view</div>
                 <div className="text-sm">Choose a note from the list on the left</div>
@@ -7210,7 +7210,7 @@ function ReportsTabEnhanced({
               <h3 className="font-semibold">{previewAttachment.original_name}</h3>
               <button
                 onClick={() => setPreviewAttachment(null)}
-                className="text-2xl font-bold text-gray-400 hover:text-gray-600"
+                className="text-2xl font-bold text-gray-600 hover:text-gray-600"
               >
                 &times;
               </button>
@@ -7511,7 +7511,7 @@ function CreateReportModal({ projectId, reportCategories, isReadCategoryAllowed,
           />
           {isEditing && existingAttachments.length > 0 && (
             <div className={uiTypography.helper}>
-              <div className="mb-1 font-medium text-gray-700">Existing attachments</div>
+              <div className="mb-1 font-semibold text-gray-700">Existing attachments</div>
               <ul className="list-disc pl-4 space-y-0.5">
                 {existingAttachments.map((a: any, i: number) => (
                   <li key={a.file_object_id || i}>{a.original_name || 'Attachment'}</li>
@@ -7546,7 +7546,7 @@ function CreateReportModal({ projectId, reportCategories, isReadCategoryAllowed,
             </button>
             <div>
               <h2 className="text-sm font-semibold text-gray-900">{isEditing ? 'Edit Note' : 'New Note'}</h2>
-              <p className="text-xs text-gray-500 mt-0.5">
+              <p className="text-sm text-gray-600 mt-0.5">
                 {isEditing ? 'Update this note or report' : 'Add a note or report to this project'}
               </p>
             </div>
@@ -7559,7 +7559,7 @@ function CreateReportModal({ projectId, reportCategories, isReadCategoryAllowed,
             className="rounded-xl border border-gray-200 bg-white p-4 space-y-4"
           >
             <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Title *</label>
+              <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">Title *</label>
               <input
                 type="text"
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
@@ -7569,7 +7569,7 @@ function CreateReportModal({ projectId, reportCategories, isReadCategoryAllowed,
               />
             </div>
             <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Category</label>
+              <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">Category</label>
               <select
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
                 value={category}
@@ -7608,7 +7608,7 @@ function CreateReportModal({ projectId, reportCategories, isReadCategoryAllowed,
             </div>
             {category === 'additional-income' || category === 'additional-expense' ? (
               <div>
-                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Value *</label>
+                <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">Value *</label>
                 <input
                   type="number"
                   step="0.01"
@@ -7621,7 +7621,7 @@ function CreateReportModal({ projectId, reportCategories, isReadCategoryAllowed,
               </div>
             ) : null}
             <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Description *</label>
+              <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">Description *</label>
               <textarea
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
                 rows={6}
@@ -7641,8 +7641,8 @@ function CreateReportModal({ projectId, reportCategories, isReadCategoryAllowed,
               }
             />
             {isEditing && existingAttachments.length > 0 && (
-              <div className="text-xs text-gray-600">
-                <div className="font-medium text-gray-700 mb-1">Existing attachments</div>
+              <div className="text-sm text-gray-600">
+                <div className="font-semibold text-gray-700 mb-1">Existing attachments</div>
                 <ul className="list-disc pl-4 space-y-0.5">
                   {existingAttachments.map((a: any, i: number) => (
                     <li key={a.file_object_id || i}>{a.original_name || 'Attachment'}</li>
@@ -7657,7 +7657,7 @@ function CreateReportModal({ projectId, reportCategories, isReadCategoryAllowed,
             type="button"
             onClick={onClose}
             disabled={uploading}
-            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
+            className="px-3 py-1.5 rounded-lg text-sm font-semibold text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
           >
             Cancel
           </button>
@@ -7691,7 +7691,7 @@ function AddDivisionDropdown({ divisions, selected, onAdd }:{ divisions:any[], s
   });
   return (
     <div className="relative">
-      <button onClick={()=>setOpen(v=>!v)} className="px-2 py-1 rounded-full border text-xs bg-white">+ Add Division</button>
+      <button onClick={()=>setOpen(v=>!v)} className="px-2 py-1 rounded-full border text-sm bg-white">+ Add Division</button>
       {open && (
         <div className="absolute z-50 mt-2 w-56 rounded-lg border bg-white shadow-lg p-2">
           <input className="w-full border rounded px-2 py-1 text-sm mb-2" placeholder="Search" value={q} onChange={e=>setQ(e.target.value)} />
@@ -7735,7 +7735,7 @@ function EmployeeSelect({ label, value, onChange, employees }:{ label:string, va
   }, [open]);
   return (
     <div ref={containerRef}>
-      <label className="text-xs text-gray-600">{label}</label>
+      <label className="text-sm text-gray-600">{label}</label>
       <div className="relative">
         <button onClick={()=>setOpen(v=>!v)} className="w-full border rounded px-2 py-1.5 flex items-center gap-2 bg-white">
           {current?.profile_photo_file_id ? (<img src={withFileAccessToken(`/files/${current.profile_photo_file_id}/thumbnail?w=64`)} className="w-6 h-6 rounded-full object-cover"/>) : (<span className="w-6 h-6 rounded-full bg-gray-200 inline-block" />)}
@@ -7831,7 +7831,7 @@ function AuditLogEntry({ log }: { log: any }) {
           />
         ) : (
           <div className="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center flex-shrink-0">
-            <span className="text-xs font-medium text-gray-600">
+            <span className="text-sm font-semibold text-gray-600">
               {(log.actor_name || 'U')[0].toUpperCase()}
             </span>
           </div>
@@ -7839,10 +7839,10 @@ function AuditLogEntry({ log }: { log: any }) {
         
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap mb-1">
-            <span className={`px-2 py-0.5 rounded text-xs font-medium ${getActionColor(log.action)}`}>
+            <span className={`px-2 py-0.5 rounded text-sm font-semibold ${getActionColor(log.action)}`}>
               {log.action?.replace('_', ' ') || 'ACTION'}
             </span>
-            <span className="text-xs text-gray-500">
+            <span className="text-sm text-gray-600">
               {log.timestamp ? new Date(log.timestamp).toLocaleString('en-US', {
                 month: 'short',
                 day: 'numeric',
@@ -7855,26 +7855,26 @@ function AuditLogEntry({ log }: { log: any }) {
             {log.actor_name && (
               <>
                 <span className="text-gray-300">•</span>
-                <span className="text-xs font-medium text-gray-700">{log.actor_name}</span>
+                <span className="text-sm font-semibold text-gray-700">{log.actor_name}</span>
               </>
             )}
             {log.affected_user_name && (
               <>
                 <span className="text-gray-300">•</span>
-                <span className="text-xs text-blue-600">for {log.affected_user_name}</span>
+                <span className="text-sm text-blue-600">for {log.affected_user_name}</span>
               </>
             )}
           </div>
           
           {/* Summary line */}
           <div className="text-sm text-gray-700 mb-1">
-            {changes.title && <span className="font-medium">{changes.title}</span>}
-            {changes.file_name && <span className="font-medium">{changes.file_name}</span>}
-            {changes.order_number && !changes.title && <span className="font-medium">Order #{changes.order_number}</span>}
+            {changes.title && <span className="font-semibold">{changes.title}</span>}
+            {changes.file_name && <span className="font-semibold">{changes.file_name}</span>}
+            {changes.order_number && !changes.title && <span className="font-semibold">Order #{changes.order_number}</span>}
             {changes.message && <span>{changes.message}</span>}
             {/* Quick summary for proposal/pricing changes */}
             {isProposalEntity && allKeys.length > 0 && (
-              <span className="text-gray-500 text-xs ml-1">({allKeys.length} field{allKeys.length > 1 ? 's' : ''} updated)</span>
+              <span className="text-gray-600 text-sm ml-1">({allKeys.length} field{allKeys.length > 1 ? 's' : ''} updated)</span>
             )}
           </div>
           
@@ -7882,30 +7882,30 @@ function AuditLogEntry({ log }: { log: any }) {
           {(Object.keys(before).length > 0 || Object.keys(after).length > 0 || Object.keys(changes).length > 0) && (
             <button 
               onClick={() => setExpanded(!expanded)}
-              className="text-xs text-blue-600 hover:text-blue-800 mt-1"
+              className="text-sm text-blue-600 hover:text-blue-800 mt-1"
             >
               {expanded ? '▼ Hide details' : '▶ Show details'}
             </button>
           )}
           
           {expanded && (
-            <div className="mt-2 p-3 bg-gray-50 rounded border text-xs">
+            <div className="mt-2 p-3 bg-gray-50 rounded border text-sm">
               {allKeys.length > 0 ? (
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <div className="font-medium text-gray-500 mb-2">Before</div>
+                    <div className="font-semibold text-gray-600 mb-2">Before</div>
                     {allKeys.map((key) => (
                       <div key={key} className="flex justify-between py-0.5 gap-2">
-                        <span className="text-gray-500 shrink-0">{fieldLabel(key)}:</span>
+                        <span className="text-gray-600 shrink-0">{fieldLabel(key)}:</span>
                         <span className="text-gray-700 text-right break-words">{displayBefore(key)}</span>
                       </div>
                     ))}
                   </div>
                   <div>
-                    <div className="font-medium text-gray-500 mb-2">After</div>
+                    <div className="font-semibold text-gray-600 mb-2">After</div>
                     {allKeys.map((key) => (
                       <div key={key} className="flex justify-between py-0.5 gap-2">
-                        <span className="text-gray-500 shrink-0">{fieldLabel(key)}:</span>
+                        <span className="text-gray-600 shrink-0">{fieldLabel(key)}:</span>
                         <span className="text-gray-700 text-right break-words">{displayAfter(key)}</span>
                       </div>
                     ))}
@@ -7927,7 +7927,7 @@ function AuditLogEntry({ log }: { log: any }) {
                       const display = (resolved[key] != null && resolved[key] !== '') ? String(resolved[key]) : formatValue(val);
                       return (
                         <div key={key} className="flex justify-between py-0.5 gap-2">
-                          <span className="text-gray-500 shrink-0">{fieldLabel(key)}:</span>
+                          <span className="text-gray-600 shrink-0">{fieldLabel(key)}:</span>
                           <span className="text-gray-700 text-right break-words">{display}</span>
                         </div>
                       );
@@ -7938,7 +7938,7 @@ function AuditLogEntry({ log }: { log: any }) {
 
               {log.context && Object.keys(log.context).length > 0 && (
                 <div className="mt-2 pt-2 border-t">
-                  <div className="font-medium text-gray-500 mb-1">Context</div>
+                  <div className="font-semibold text-gray-600 mb-1">Context</div>
                   {Object.entries(log.context).filter(([_, v]) => v != null).map(([key, val]) => {
                     if (key === 'project_name' || key === 'client_name' || key === 'affected_user_name' || key === 'worker_name' || key === 'approved_by_name') return null;
                     const ctxLabel = key === 'project_id' && log.context?.project_name != null ? 'Project'
@@ -7956,7 +7956,7 @@ function AuditLogEntry({ log }: { log: any }) {
                     else ctxVal = typeof val === 'object' ? JSON.stringify(val) : String(val);
                     return (
                       <div key={key} className="flex justify-between py-0.5">
-                        <span className="text-gray-500">{ctxLabel}:</span>
+                        <span className="text-gray-600">{ctxLabel}:</span>
                         <span className="text-gray-700 text-right break-words">{ctxVal}</span>
                       </div>
                     );
@@ -8014,7 +8014,7 @@ function GenericAuditSection({ projectId, section, title }: { projectId: string;
       <div className="border rounded-lg bg-white overflow-hidden">
         {isFetching && (
           <div className="p-3 bg-gray-50 border-b">
-            <span className="text-xs text-gray-500">Loading...</span>
+            <span className="text-sm text-gray-600">Loading...</span>
           </div>
         )}
         
@@ -8022,14 +8022,14 @@ function GenericAuditSection({ projectId, section, title }: { projectId: string;
           {logs.length > 0 ? (
             logs.map((log: any) => <AuditLogEntry key={log.id} log={log} />)
           ) : (
-            <div className="p-6 text-center text-gray-500">
+            <div className="p-6 text-center text-gray-600">
               No activity logs found for this period
             </div>
           )}
         </div>
         
         <div className="p-3 bg-gray-50 border-t flex justify-between items-center">
-          <span className="text-xs text-gray-500">
+          <span className="text-sm text-gray-600">
             Showing {logs.length} entries
           </span>
           <div>
@@ -8195,7 +8195,7 @@ function OnSiteLeadsModal({
                 title={getDivisionLabel(divId)}
               >
                 <DivisionIcon label={getDivisionMainLabel(divId)} size={18} />
-                <span className={uiCx(uiTypography.body, 'font-medium text-gray-900')}>
+                <span className={uiCx(uiTypography.body, 'font-semibold text-gray-900')}>
                   {getDivisionLabel(divId)}
                 </span>
               </div>
@@ -8488,7 +8488,7 @@ function ProjectDescriptionCard({
           {proj?.description?.trim() ? (
             proj.description.trim()
           ) : (
-            <span className="text-gray-400 italic">No description</span>
+            <span className="text-gray-600 italic">No description</span>
           )}
         </p>
       </AppCard>
@@ -8500,7 +8500,7 @@ function ProjectDescriptionCard({
       <div className="overflow-hidden rounded-xl border border-gray-200/90 bg-white shadow-md transition-shadow duration-200 hover:border-gray-300/80 hover:shadow-lg">
         <div className="p-3">
           <div className="mb-2 flex items-center gap-1.5">
-            <div className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Description</div>
+            <div className="text-[10px] font-bold uppercase tracking-wide text-gray-600">Description</div>
             {hasEditPermission ? <AppHeroEditButton title="Edit Description" onClick={onEdit} /> : null}
           </div>
           <p
@@ -8513,7 +8513,7 @@ function ProjectDescriptionCard({
             {proj?.description?.trim() ? (
               proj.description.trim()
             ) : (
-              <span className="text-gray-400 italic">No description</span>
+              <span className="text-gray-600 italic">No description</span>
             )}
           </p>
         </div>
@@ -8609,7 +8609,7 @@ function LastReportsCard({ reports, useDesignSystem }: { reports: Report[]; useD
               'p-2 transition-colors hover:bg-gray-50',
             )}
           >
-            <div className={uiCx(uiTypography.body, 'font-medium text-gray-900')}>
+            <div className={uiCx(uiTypography.body, 'font-semibold text-gray-900')}>
               {report.title || 'Untitled Note'}
             </div>
             {report.description && (
@@ -8626,7 +8626,7 @@ function LastReportsCard({ reports, useDesignSystem }: { reports: Report[]; useD
     ) : useDesignSystem ? (
       <AppEmptyState title="No notes yet" className="py-4" />
     ) : (
-      <div className="text-sm text-gray-500">No notes yet</div>
+      <div className="text-sm text-gray-600">No notes yet</div>
     );
 
   if (useDesignSystem) {
@@ -8658,7 +8658,7 @@ function LastReportsCard({ reports, useDesignSystem }: { reports: Report[]; useD
         <select
           value={selectedCategoryFilter}
           onChange={(e) => setSelectedCategoryFilter(e.target.value)}
-          className="px-2 py-1 rounded border border-gray-300 bg-white text-xs font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent min-w-[150px]"
+          className="px-2 py-1 rounded border border-gray-300 bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent min-w-[150px]"
         >
           <option value="">All ({categoryCounts[''] || 0})</option>
           {commercialCategories.length > 0 && (
@@ -8771,7 +8771,7 @@ function ProjectTabCards({ availableTabs, tabCounts, onTabClick, proj, currentTa
                   : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'
               }`}
             >
-              <span className="text-xs leading-none">{config.icon}</span>
+              <span className="text-sm leading-none">{config.icon}</span>
               {config.label}
               {typeof tabCounts?.[tabKey] === 'number' ? (
                 <AppTabCountBadge count={tabCounts[tabKey]!} isActive={isActive} />
@@ -8833,27 +8833,27 @@ function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj
       <h4 className="text-sm font-semibold text-gray-900 mb-2">Quick Edit</h4>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="text-xs font-medium text-gray-600 mb-1.5">Status</label>
-          <select className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={status} onChange={e=>setStatus(e.target.value)}>
+          <label className="text-sm font-semibold text-gray-600 mb-1.5">Status</label>
+          <select className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={status} onChange={e=>setStatus(e.target.value)}>
             <option value="">Select...</option>
             {sortByLabel(statuses, (s:any)=> (s.label||'').toString()).map((s:any)=> <option key={s.label} value={s.label}>{s.label}</option>)}
           </select>
         </div>
         <div>
-          <label className="text-xs font-medium text-gray-600 mb-1.5">Progress</label>
-          <div className="flex items-center gap-2"><input type="range" min={0} max={100} value={progress} onChange={e=>setProgress(Number(e.target.value||0))} className="flex-1" /><span className="w-10 text-right text-xs">{progress}%</span></div>
+          <label className="text-sm font-semibold text-gray-600 mb-1.5">Progress</label>
+          <div className="flex items-center gap-2"><input type="range" min={0} max={100} value={progress} onChange={e=>setProgress(Number(e.target.value||0))} className="flex-1" /><span className="w-10 text-right text-sm">{progress}%</span></div>
         </div>
         <div className="col-span-2">
-          <label className="text-xs font-medium text-gray-600 mb-1.5">Divisions</label>
+          <label className="text-sm font-semibold text-gray-600 mb-1.5">Divisions</label>
           <div className="flex flex-wrap gap-2 mt-1">
             {divs.map((id)=>{
               const d = divisions.find((x:any)=> String(x.id||x.label||x.value)===id);
               const bg = d?.meta?.color || '#eef2f7';
               const ab = d?.meta?.abbr || d?.label || id;
               return (
-                <span key={id} className="px-2 py-1 rounded-full border text-xs flex items-center gap-1" style={{ backgroundColor: bg }}>
+                <span key={id} className="px-2 py-1 rounded-full border text-sm flex items-center gap-1" style={{ backgroundColor: bg }}>
                   {ab}
-                  <button onClick={()=> setDivs(prev=> prev.filter(x=>x!==id))} className="ml-1 text-[10px]">âœ•</button>
+                  <button onClick={()=> setDivs(prev=> prev.filter(x=>x!==id))} className="ml-1 text-xs">âœ•</button>
                 </span>
               );
             })}
@@ -8861,7 +8861,7 @@ function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj
           </div>
         </div>
         <div className="col-span-2">
-          <label className="text-xs font-medium text-gray-600 mb-1.5 block">Project Divisions</label>
+          <label className="text-sm font-semibold text-gray-600 mb-1.5 block">Project Divisions</label>
           <div className="space-y-2 max-h-64 overflow-y-auto border rounded p-2">
             {(projectDivisionsForPicker||[]).map((div:any)=>{
               const divId = String(div.id);
@@ -8873,7 +8873,7 @@ function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj
                   <button
                     type="button"
                     onClick={()=> setProjectDivs(prev=> prev.includes(divId)? prev.filter(x=>x!==divId) : [...prev, divId])}
-                    className={`w-full text-left px-2 py-1 rounded text-sm font-medium flex items-center gap-2 ${
+                    className={`w-full text-left px-2 py-1 rounded text-sm font-semibold flex items-center gap-2 ${
                       divSelected? 'bg-[#7f1010] text-white': 'bg-gray-50 hover:bg-gray-100'
                     }`}
                   >
@@ -8890,7 +8890,7 @@ function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj
                             key={subId}
                             type="button"
                             onClick={()=> setProjectDivs(prev=> prev.includes(subId)? prev.filter(x=>x!==subId) : [...prev, subId])}
-                            className={`w-full text-left px-2 py-1 rounded text-xs flex items-center gap-2 ${
+                            className={`w-full text-left px-2 py-1 rounded text-sm flex items-center gap-2 ${
                               subSelected? 'bg-[#a31414] text-white': 'bg-gray-50 hover:bg-gray-100'
                             }`}
                           >
@@ -8905,14 +8905,14 @@ function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj
               );
             })}
             {(!projectDivisionsForPicker || projectDivisionsForPicker.length === 0) && (
-              <div className="text-xs text-gray-500">No project divisions available.</div>
+              <div className="text-sm text-gray-600">No project divisions available.</div>
             )}
           </div>
         </div>
         <EmployeeSelect label="Estimator" value={estimator} onChange={setEstimator} employees={employees||[]} />
         {!(proj?.is_bidding) && divs.length > 0 && (
           <div className="col-span-2">
-            <label className="text-xs text-gray-600 mb-2 block">On-site Leads by Division</label>
+            <label className="text-sm text-gray-600 mb-2 block">On-site Leads by Division</label>
             <div className="space-y-2">
               {divs.map((divId) => {
                 const div = divisions.find((d:any) => String(d.id||d.label||d.value) === divId);
@@ -8920,7 +8920,7 @@ function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj
                 const divColor = div?.meta?.color || '#eef2f7';
                 return (
                   <div key={divId} className="flex items-center gap-2">
-                    <span className="px-2 py-1 rounded text-xs border flex-shrink-0" style={{ backgroundColor: divColor, minWidth: '60px', textAlign: 'center' }}>{divLabel}</span>
+                    <span className="px-2 py-1 rounded text-sm border flex-shrink-0" style={{ backgroundColor: divColor, minWidth: '60px', textAlign: 'center' }}>{divLabel}</span>
                     <select 
                       className="flex-1 border rounded px-2 py-1.5 text-sm" 
                       value={divisionLeads[divId] || ''} 
@@ -9153,16 +9153,16 @@ function EditStatusModal({ projectId, currentStatus, currentStatusLabel, setting
             </button>
             <div>
               <h2 className="text-sm font-semibold text-gray-900">Edit Status</h2>
-              <p className="text-xs text-gray-500 mt-0.5">Update the workflow status for this project</p>
+              <p className="text-sm text-gray-600 mt-0.5">Update the workflow status for this project</p>
             </div>
           </div>
         </div>
         <div className="flex-1 overflow-y-auto p-4 min-h-0">
           <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
             <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Status</label>
+              <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">Status</label>
               {projectStatuses.length === 0 ? (
-                <div className="text-sm text-gray-500">
+                <div className="text-sm text-gray-600">
                   No statuses available. In System Settings → project statuses, enable &quot;Show in {isBidding ? 'opportunities' : 'projects'}&quot; for at least one status.
                 </div>
               ) : (
@@ -9180,7 +9180,7 @@ function EditStatusModal({ projectId, currentStatus, currentStatusLabel, setting
               )}
             </div>
             <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Notes (optional)</label>
+              <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">Notes (optional)</label>
               <textarea
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 min-h-[88px]"
                 placeholder="Explain why the status is changing…"
@@ -9195,7 +9195,7 @@ function EditStatusModal({ projectId, currentStatus, currentStatusLabel, setting
           <button
             type="button"
             onClick={onClose}
-            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50"
+            className="px-3 py-1.5 rounded-lg text-sm font-semibold text-gray-700 border border-gray-200 hover:bg-gray-50"
           >
             Cancel
           </button>
@@ -9311,14 +9311,14 @@ function EditProjectNameModal({ projectId, currentName, designSystem, onClose, o
             </button>
             <div>
               <h2 className="text-sm font-semibold text-gray-900">Edit Project Name</h2>
-              <p className="text-xs text-gray-500 mt-0.5">Rename the project as it appears across the app</p>
+              <p className="text-sm text-gray-600 mt-0.5">Rename the project as it appears across the app</p>
             </div>
           </div>
         </div>
         <div className="flex-1 overflow-y-auto p-4 min-h-0">
           <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
             <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Project Name</label>
+              <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">Project Name</label>
               <input
                 type="text"
                 value={projectName}
@@ -9342,8 +9342,8 @@ function EditProjectNameModal({ projectId, currentName, designSystem, onClose, o
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <div className="text-sm text-blue-800">
-                  <div className="font-medium mb-1">Important Information</div>
-                  <ul className="list-disc list-inside space-y-1 text-xs">
+                  <div className="font-semibold mb-1">Important Information</div>
+                  <ul className="list-disc list-inside space-y-1 text-sm">
                     <li>Changing the project name will automatically update the associated folder name in the file system.</li>
                     <li>The project code (e.g., MK-00001/00001-2025) cannot be changed and will remain the same.</li>
                     <li>This change will be reflected across all project views and reports.</li>
@@ -9358,7 +9358,7 @@ function EditProjectNameModal({ projectId, currentName, designSystem, onClose, o
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
+            className="px-3 py-1.5 rounded-lg text-sm font-semibold text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
           >
             Cancel
           </button>
@@ -9467,13 +9467,13 @@ function EditDescriptionModal({ projectId, currentDescription, entityLabel, desi
             </button>
             <div>
               <h2 className="text-sm font-semibold text-gray-900">Edit Description</h2>
-              <p className="text-xs text-gray-500 mt-0.5">General notes and context for this {entityLabel}</p>
+              <p className="text-sm text-gray-600 mt-0.5">General notes and context for this {entityLabel}</p>
             </div>
           </div>
         </div>
         <div className="flex-1 overflow-y-auto p-4 min-h-0">
           <div className="rounded-xl border border-gray-200 bg-white p-4">
-            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Description</label>
+            <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">Description</label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -9488,7 +9488,7 @@ function EditDescriptionModal({ projectId, currentDescription, entityLabel, desi
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
+            className="px-3 py-1.5 rounded-lg text-sm font-semibold text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
           >
             Cancel
           </button>
@@ -9571,13 +9571,13 @@ function EditSiteModal({ projectId, project, designSystem, onClose, onSave, onSi
     <div className="space-y-2 text-sm">
       {selectedSite.site_name && (
         <div>
-          <span className={designSystem ? uiTypography.helper : 'text-gray-600 font-medium'}>Name:</span>
+          <span className={designSystem ? uiTypography.helper : 'text-gray-600 font-semibold'}>Name:</span>
           <span className="ml-2 text-gray-900">{selectedSite.site_name}</span>
         </div>
       )}
       {selectedSite.site_address_line1 && (
         <div>
-          <span className={designSystem ? uiTypography.helper : 'text-gray-600 font-medium'}>Address:</span>
+          <span className={designSystem ? uiTypography.helper : 'text-gray-600 font-semibold'}>Address:</span>
           <span className="ml-2 text-gray-900">{selectedSite.site_address_line1}</span>
           {selectedSite.site_address_line1_complement && (
             <div className={designSystem ? 'ml-12 text-gray-700' : 'ml-20 text-gray-700'}>
@@ -9608,7 +9608,7 @@ function EditSiteModal({ projectId, project, designSystem, onClose, onSave, onSi
       )}
       {(selectedSite.site_city || selectedSite.site_province || selectedSite.site_postal_code) && (
         <div>
-          <span className={designSystem ? uiTypography.helper : 'text-gray-600 font-medium'}>Location:</span>
+          <span className={designSystem ? uiTypography.helper : 'text-gray-600 font-semibold'}>Location:</span>
           <span className="ml-2 text-gray-900">
             {[selectedSite.site_city, selectedSite.site_province, selectedSite.site_postal_code]
               .filter(Boolean)
@@ -9618,13 +9618,13 @@ function EditSiteModal({ projectId, project, designSystem, onClose, onSave, onSi
       )}
       {selectedSite.site_country && (
         <div>
-          <span className={designSystem ? uiTypography.helper : 'text-gray-600 font-medium'}>Country:</span>
+          <span className={designSystem ? uiTypography.helper : 'text-gray-600 font-semibold'}>Country:</span>
           <span className="ml-2 text-gray-900">{selectedSite.site_country}</span>
         </div>
       )}
       {selectedSite.site_notes && (
         <div>
-          <span className={designSystem ? uiTypography.helper : 'text-gray-600 font-medium'}>Notes:</span>
+          <span className={designSystem ? uiTypography.helper : 'text-gray-600 font-semibold'}>Notes:</span>
           <div className="ml-2 mt-1 text-gray-900">{selectedSite.site_notes}</div>
         </div>
       )}
@@ -9761,16 +9761,16 @@ function EditSiteModal({ projectId, project, designSystem, onClose, onSave, onSi
             </button>
             <div>
               <h2 className="text-sm font-semibold text-gray-900">Edit Project Site</h2>
-              <p className="text-xs text-gray-500 mt-0.5">Choose the job site linked to this project</p>
+              <p className="text-sm text-gray-600 mt-0.5">Choose the job site linked to this project</p>
             </div>
           </div>
         </div>
         <div className="flex-1 overflow-y-auto p-4 min-h-0">
           <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
           <div>
-            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Select Site</label>
+            <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">Select Site</label>
             {loadingSites ? (
-              <div className="text-sm text-gray-500 py-2">Loading sites...</div>
+              <div className="text-sm text-gray-600 py-2">Loading sites...</div>
             ) : (
               <select
                 value={siteId}
@@ -9790,7 +9790,7 @@ function EditSiteModal({ projectId, project, designSystem, onClose, onSave, onSi
           {selectedSite && (
             <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
               <div className="mb-3 flex items-center gap-1.5">
-                <div className="text-sm font-medium text-gray-900">Site Information</div>
+                <div className="text-sm font-semibold text-gray-900">Site Information</div>
                 <AppHeroEditButton title="Edit Site" onClick={() => setSiteEditOpen(true)} />
               </div>
               {siteInformationPanel}
@@ -9804,8 +9804,8 @@ function EditSiteModal({ projectId, project, designSystem, onClose, onSave, onSi
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
                 <div className="text-sm text-yellow-800">
-                  <div className="font-medium mb-1">Changing Site</div>
-                  <div className="text-xs">You are changing from <strong>{currentSite.site_name || currentSite.site_address_line1 || 'current site'}</strong> to <strong>{selectedSite?.site_name || selectedSite?.site_address_line1 || 'new site'}</strong>. This will update the project's location information.</div>
+                  <div className="font-semibold mb-1">Changing Site</div>
+                  <div className="text-sm">You are changing from <strong>{currentSite.site_name || currentSite.site_address_line1 || 'current site'}</strong> to <strong>{selectedSite?.site_name || selectedSite?.site_address_line1 || 'new site'}</strong>. This will update the project's location information.</div>
                 </div>
               </div>
             </div>
@@ -9817,7 +9817,7 @@ function EditSiteModal({ projectId, project, designSystem, onClose, onSave, onSi
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
+            className="px-3 py-1.5 rounded-lg text-sm font-semibold text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
           >
             Cancel
           </button>
@@ -9971,7 +9971,7 @@ function EditEstimatorModal({ projectId, currentEstimatorIds, designSystem, onCl
             </button>
             <div>
               <h2 className="text-sm font-semibold text-gray-900">Edit Estimators</h2>
-              <p className="text-xs text-gray-500 mt-0.5">Assign estimating team members</p>
+              <p className="text-sm text-gray-500 mt-0.5">Assign estimating team members</p>
             </div>
           </div>
         </div>
@@ -9979,7 +9979,7 @@ function EditEstimatorModal({ projectId, currentEstimatorIds, designSystem, onCl
           <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
           {/* Search input */}
           <div>
-            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Search Employees</label>
+            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1">Search Employees</label>
             <input
               type="text"
               value={searchQuery}
@@ -9990,7 +9990,7 @@ function EditEstimatorModal({ projectId, currentEstimatorIds, designSystem, onCl
           </div>
 
           <div>
-            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Select Estimators</label>
+            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1">Select Estimators</label>
             <div className="space-y-2 max-h-[300px] overflow-y-auto">
               {filteredEmployees.length === 0 ? (
                 <div className="text-sm text-gray-500 text-center py-4">
@@ -10013,9 +10013,9 @@ function EditEstimatorModal({ projectId, currentEstimatorIds, designSystem, onCl
                     >
                       <UserAvatar user={emp} size="w-8 h-8" showTooltip={false} />
                       <div className="flex-1 min-w-0">
-                        <div className="font-medium text-gray-900">{getUserDisplayName(emp)}</div>
+                        <div className="font-semibold text-gray-900">{getUserDisplayName(emp)}</div>
                         {emp.email && (
-                          <div className="text-xs text-gray-600 truncate">{emp.email}</div>
+                          <div className="text-sm text-gray-600 truncate">{emp.email}</div>
                         )}
                       </div>
                     </div>
@@ -10027,7 +10027,7 @@ function EditEstimatorModal({ projectId, currentEstimatorIds, designSystem, onCl
 
           {estimatorIds.length > 0 && (
             <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-              <div className="text-xs font-medium text-gray-600 mb-2">Selected Estimators ({estimatorIds.length}):</div>
+              <div className="text-sm font-semibold text-gray-600 mb-2">Selected Estimators ({estimatorIds.length}):</div>
               <div className="flex flex-wrap gap-2">
                 {estimatorIds.map(id => {
                   const emp = employees.find((e: any) => String(e.id) === String(id));
@@ -10035,7 +10035,7 @@ function EditEstimatorModal({ projectId, currentEstimatorIds, designSystem, onCl
                   return (
                     <div key={id} className="flex items-center gap-2 bg-white px-2 py-1 rounded border">
                       <UserAvatar user={emp} size="w-6 h-6" showTooltip={false} />
-                      <span className="text-xs font-medium text-gray-700">{getUserDisplayName(emp)}</span>
+                      <span className="text-sm font-semibold text-gray-700">{getUserDisplayName(emp)}</span>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -10061,7 +10061,7 @@ function EditEstimatorModal({ projectId, currentEstimatorIds, designSystem, onCl
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
+            className="px-3 py-1.5 rounded-lg text-sm font-semibold text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
           >
             Cancel
           </button>
@@ -10187,7 +10187,7 @@ function EditProjectAdminModal({ projectId, currentAdminId, employees, designSys
             </button>
             <div>
               <h2 className="text-sm font-semibold text-gray-900">Edit Project Admin</h2>
-              <p className="text-xs text-gray-500 mt-0.5">Assign the primary project administrator</p>
+              <p className="text-sm text-gray-500 mt-0.5">Assign the primary project administrator</p>
             </div>
           </div>
         </div>
@@ -10195,7 +10195,7 @@ function EditProjectAdminModal({ projectId, currentAdminId, employees, designSys
           <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
           {/* Search input */}
           <div>
-            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Search Employees</label>
+            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1">Search Employees</label>
             <input
               type="text"
               value={searchQuery}
@@ -10206,7 +10206,7 @@ function EditProjectAdminModal({ projectId, currentAdminId, employees, designSys
           </div>
 
           <div>
-            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Select Project Admin</label>
+            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1">Select Project Admin</label>
             <div className="space-y-2 max-h-[300px] overflow-y-auto">
               {filteredEmployees.length === 0 ? (
                 <div className="text-sm text-gray-500 text-center py-4">No employees found matching your search.</div>
@@ -10219,12 +10219,12 @@ function EditProjectAdminModal({ projectId, currentAdminId, employees, designSys
                       !adminId ? 'bg-indigo-50 border-indigo-300' : 'bg-white border-gray-200 hover:bg-gray-50'
                     }`}
                   >
-                    <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-xs font-medium">
+                    <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-sm font-semibold">
                       —
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="font-medium text-gray-900">No Admin</div>
-                      <div className="text-xs text-gray-600">Clear selection</div>
+                      <div className="font-semibold text-gray-900">No Admin</div>
+                      <div className="text-sm text-gray-600">Clear selection</div>
                     </div>
                   </div>
                   {filteredEmployees.map((emp: any) => {
@@ -10239,9 +10239,9 @@ function EditProjectAdminModal({ projectId, currentAdminId, employees, designSys
                       >
                         <UserAvatar user={emp} size="w-8 h-8" showTooltip={false} />
                         <div className="flex-1 min-w-0">
-                          <div className="font-medium text-gray-900">{getUserDisplayName(emp)}</div>
+                          <div className="font-semibold text-gray-900">{getUserDisplayName(emp)}</div>
                           {emp.email && (
-                            <div className="text-xs text-gray-600 truncate">{emp.email}</div>
+                            <div className="text-sm text-gray-600 truncate">{emp.email}</div>
                           )}
                         </div>
                       </div>
@@ -10254,11 +10254,11 @@ function EditProjectAdminModal({ projectId, currentAdminId, employees, designSys
 
           {selectedAdmin && (
             <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-              <div className="text-sm font-medium text-gray-900 mb-3">Admin Information</div>
+              <div className="text-sm font-semibold text-gray-900 mb-3">Admin Information</div>
               <div className="flex items-center gap-3 mb-3">
                 <UserAvatar user={selectedAdmin} size="w-12 h-12" showTooltip={false} />
                 <div>
-                  <div className="font-medium text-gray-900">{getUserDisplayName(selectedAdmin)}</div>
+                  <div className="font-semibold text-gray-900">{getUserDisplayName(selectedAdmin)}</div>
                   {selectedAdmin.email && (
                     <div className="text-sm text-gray-600">{selectedAdmin.email}</div>
                   )}
@@ -10269,10 +10269,10 @@ function EditProjectAdminModal({ projectId, currentAdminId, employees, designSys
               </div>
               {selectedAdmin.roles && selectedAdmin.roles.length > 0 && (
                 <div className="mt-2">
-                  <span className="text-xs text-gray-600 font-medium">Roles:</span>
+                  <span className="text-sm text-gray-600 font-semibold">Roles:</span>
                   <div className="flex flex-wrap gap-1 mt-1">
                     {selectedAdmin.roles.map((role: string, idx: number) => (
-                      <span key={idx} className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded text-xs">
+                      <span key={idx} className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded text-sm">
                         {role}
                       </span>
                     ))}
@@ -10289,8 +10289,8 @@ function EditProjectAdminModal({ projectId, currentAdminId, employees, designSys
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
                 <div className="text-sm text-yellow-800">
-                  <div className="font-medium mb-1">Changing Project Admin</div>
-                  <div className="text-xs">You are changing from <strong>{getUserDisplayName(currentAdmin)}</strong> to <strong>{selectedAdmin ? getUserDisplayName(selectedAdmin) : 'no admin'}</strong>.</div>
+                  <div className="font-semibold mb-1">Changing Project Admin</div>
+                  <div className="text-sm">You are changing from <strong>{getUserDisplayName(currentAdmin)}</strong> to <strong>{selectedAdmin ? getUserDisplayName(selectedAdmin) : 'no admin'}</strong>.</div>
                 </div>
               </div>
             </div>
@@ -10302,7 +10302,7 @@ function EditProjectAdminModal({ projectId, currentAdminId, employees, designSys
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
+            className="px-3 py-1.5 rounded-lg text-sm font-semibold text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
           >
             Cancel
           </button>
@@ -10436,7 +10436,7 @@ function EditProgressModal({ projectId, currentProgress, designSystem, onClose, 
       padding: 2px 8px;
       border-radius: 4px;
       font-size: 11px;
-      font-weight: 500;
+      font-weight: 600;
       white-space: nowrap;
       line-height: 1.2;
       flex-shrink: 0;
@@ -10466,14 +10466,14 @@ function EditProgressModal({ projectId, currentProgress, designSystem, onClose, 
             </button>
             <div>
               <h2 className="text-sm font-semibold text-gray-900">Edit Progress</h2>
-              <p className="text-xs text-gray-500 mt-0.5">Update completion percentage</p>
+              <p className="text-sm text-gray-500 mt-0.5">Update completion percentage</p>
             </div>
           </div>
         </div>
         <div className="flex-1 overflow-y-auto p-4 min-h-0">
           <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
             <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Progress (%)</label>
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1">Progress (%)</label>
               <input
                 type="number"
                 min="0"
@@ -10506,7 +10506,7 @@ function EditProgressModal({ projectId, currentProgress, designSystem, onClose, 
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
+            className="px-3 py-1.5 rounded-lg text-sm font-semibold text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
           >
             Cancel
           </button>
@@ -10649,7 +10649,7 @@ function ProjectDivisionsHeroSection({
     <>
       <div>
         <div className={uiCx('flex items-center gap-1.5', compact ? 'mb-1' : 'mb-2')}>
-          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Project Divisions</span>
+          <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Project Divisions</span>
           {hasEditPermission && (
             <button
               onClick={() => setShowEditModal(true)}
@@ -10671,7 +10671,7 @@ function ProjectDivisionsHeroSection({
                     <div className={compact ? 'text-xl transition-transform hover:scale-110' : 'text-2xl transition-transform hover:scale-110'}>
                       {div.icon}
                     </div>
-                    <div className={uiCx('text-xs font-bold text-gray-600', compact ? 'mt-0' : 'mt-0.5')}>
+                    <div className={uiCx('text-sm font-bold text-gray-600', compact ? 'mt-0' : 'mt-0.5')}>
                       {Math.round(div.percentage || 0)}%
                     </div>
                   </div>
@@ -10679,7 +10679,7 @@ function ProjectDivisionsHeroSection({
               ))}
             </div>
           ) : (
-            <div className="text-xs text-gray-400 italic">No divisions assigned</div>
+            <div className="text-sm text-gray-600 italic">No divisions assigned</div>
           )}
         </div>
       </div>
@@ -10828,7 +10828,7 @@ function EditDivisionsModal({ projectId, currentDivisions, currentPercentages, p
                             );
                           }
                         }}
-                        className={`w-full text-left px-3 py-2.5 text-sm font-medium flex items-center gap-2 transition-colors ${
+                        className={`w-full text-left px-3 py-2.5 text-sm font-semibold flex items-center gap-2 transition-colors ${
                           hasSubdivisions
                             ? 'bg-gray-50 hover:bg-gray-100 text-gray-900'
                             : projectDivs.includes(divId)
@@ -10837,7 +10837,7 @@ function EditDivisionsModal({ projectId, currentDivisions, currentPercentages, p
                         }`}
                       >
                         {hasSubdivisions && (
-                          <span className="text-gray-500 text-xs w-4 flex-shrink-0">
+                          <span className="text-gray-600 text-sm w-4 flex-shrink-0">
                             {isExpanded ? '▼' : '▶'}
                           </span>
                         )}
@@ -10859,7 +10859,7 @@ function EditDivisionsModal({ projectId, currentDivisions, currentPercentages, p
                                     prev.includes(subId) ? prev.filter((x) => x !== subId) : [...prev, subId]
                                   )
                                 }
-                                className={`w-full text-left px-3 py-2 rounded-lg text-xs flex items-center gap-2 transition-colors ${
+                                className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2 transition-colors ${
                                   subSelected
                                     ? 'bg-indigo-50 text-gray-900 border border-indigo-200'
                                     : 'bg-white border border-gray-200 hover:bg-gray-50 text-gray-800'
@@ -10876,7 +10876,7 @@ function EditDivisionsModal({ projectId, currentDivisions, currentPercentages, p
                   );
                 })}
                 {projectDivisions.length === 0 && (
-                  <div className="text-xs text-gray-500 text-center py-6">No project divisions available.</div>
+                  <div className="text-sm text-gray-600 text-center py-6">No project divisions available.</div>
                 )}
     </div>
   );
@@ -10931,7 +10931,7 @@ function EditDivisionsModal({ projectId, currentDivisions, currentPercentages, p
               </button>
               <div>
                 <h2 className="text-sm font-semibold text-gray-900">Edit Project Divisions</h2>
-                <p className="text-xs text-gray-500 mt-0.5">
+                <p className="text-sm text-gray-500 mt-0.5">
                   Select divisions for this project. Expand parents to choose subdivisions.
                 </p>
               </div>
@@ -10941,7 +10941,7 @@ function EditDivisionsModal({ projectId, currentDivisions, currentPercentages, p
             <div className="rounded-xl border border-gray-200 bg-white p-4">
               <div className="flex items-center justify-between mb-4">
                 <div className="text-sm text-gray-600">Available divisions</div>
-                {saving && <span className="text-xs text-gray-500">Saving...</span>}
+                {saving && <span className="text-sm text-gray-500">Saving...</span>}
               </div>
               {divisionsBody}
             </div>
@@ -10951,7 +10951,7 @@ function EditDivisionsModal({ projectId, currentDivisions, currentPercentages, p
               type="button"
               onClick={onClose}
               disabled={saving}
-              className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
+              className="px-3 py-1.5 rounded-lg text-sm font-semibold text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
             >
               Cancel
             </button>
@@ -11176,10 +11176,10 @@ function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ 
         {/* Project Image */}
         <div>
           <div className="flex items-center justify-between mb-1.5">
-            <label className="text-xs font-medium text-gray-600">Project Image</label>
+            <label className="text-sm font-semibold text-gray-600">Project Image</label>
             <button
               onClick={() => setPickerOpen(true)}
-              className="text-xs text-[#7f1010] hover:text-[#a31414] font-medium"
+              className="text-sm text-[#7f1010] hover:text-[#a31414] font-semibold"
             >
               Change
             </button>
@@ -11203,11 +11203,11 @@ function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ 
         {/* Project Name - Editable */}
         <div>
           <div className="flex items-center gap-1.5 mb-1.5">
-            <label className="text-xs font-medium text-gray-600 block">Project Name</label>
+            <label className="text-sm font-semibold text-gray-600 block">Project Name</label>
             {!editingName && hasEditPermission && (
               <button
                 onClick={() => setEditingName(true)}
-                className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                className="text-gray-600 hover:text-[#7f1010] transition-colors"
                 title="Edit Project Name"
               >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -11222,7 +11222,7 @@ function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ 
                 type="text"
                 value={projectName}
                 onChange={e => setProjectName(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+                className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
                 placeholder="Project name"
                 autoFocus
               />
@@ -11230,7 +11230,7 @@ function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ 
                 <button
                   onClick={handleSave}
                   disabled={saving || !projectName.trim()}
-                  className="px-3 py-1.5 rounded bg-brand-red text-white text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-3 py-1.5 rounded bg-brand-red text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {saving ? 'Saving...' : 'Save'}
                 </button>
@@ -11240,12 +11240,12 @@ function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ 
                     setProjectName(proj?.name || '');
                   }}
                   disabled={saving}
-                  className="px-3 py-1.5 rounded bg-gray-100 text-gray-700 text-xs font-medium disabled:opacity-50"
+                  className="px-3 py-1.5 rounded bg-gray-100 text-gray-700 text-sm font-semibold disabled:opacity-50"
                 >
                   Cancel
                 </button>
               </div>
-              <div className="text-[11px] text-gray-500">
+              <div className="text-xs text-gray-600">
                 Note: Changing the project name will also update the associated folder name.
               </div>
             </div>
@@ -11257,11 +11257,11 @@ function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ 
         {/* End date - Editable */}
         <div>
           <div className="flex items-center gap-1.5 mb-1.5">
-            <label className="text-xs font-medium text-gray-600 block">End Date</label>
+            <label className="text-sm font-semibold text-gray-600 block">End Date</label>
             {!editingEta && hasEditPermission && (
               <button
                 onClick={() => setEditingEta(true)}
-                className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                className="text-gray-600 hover:text-[#7f1010] transition-colors"
                 title="Edit End Date"
               >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -11276,14 +11276,14 @@ function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ 
                 type="date"
                 value={eta}
                 onChange={e => setEta(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+                className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
                 autoFocus
               />
               <div className="flex items-center gap-2">
                 <button
                   onClick={handleSave}
                   disabled={saving}
-                  className="px-3 py-1.5 rounded bg-brand-red text-white text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-3 py-1.5 rounded bg-brand-red text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {saving ? 'Saving...' : 'Save'}
                 </button>
@@ -11293,7 +11293,7 @@ function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ 
                     setEta((proj?.date_eta||'').slice(0,10));
                   }}
                   disabled={saving}
-                  className="px-3 py-1.5 rounded bg-gray-100 text-gray-700 text-xs font-medium disabled:opacity-50"
+                  className="px-3 py-1.5 rounded bg-gray-100 text-gray-700 text-sm font-semibold disabled:opacity-50"
                 >
                   Cancel
                 </button>
@@ -11307,7 +11307,7 @@ function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ 
         <div className="grid grid-cols-2 gap-3">
           {fields.map((item)=> (
             <div key={item.label}>
-              <div className="text-xs font-medium text-gray-600 mb-1.5">{item.label}</div>
+              <div className="text-sm font-semibold text-gray-600 mb-1.5">{item.label}</div>
               <div className="text-sm font-semibold text-gray-900">{item.value || '-'}</div>
             </div>
           ))}
@@ -11316,11 +11316,11 @@ function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ 
         {/* Project Divisions Section */}
         <div>
           <div className="flex items-center gap-1.5 mb-1.5">
-            <label className="text-xs font-medium text-gray-600 block">Project Divisions</label>
+            <label className="text-sm font-semibold text-gray-600 block">Project Divisions</label>
             {!editingDivisions && hasEditPermission && (
               <button
                 onClick={() => setEditingDivisions(true)}
-                className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                className="text-gray-600 hover:text-[#7f1010] transition-colors"
                 title="Edit Project Divisions"
               >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -11343,7 +11343,7 @@ function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ 
                       <button
                         type="button"
                         onClick={()=> setProjectDivs(prev=> prev.includes(divId)? prev.filter(x=>x!==divId) : [...prev, divId])}
-                        className={`w-full text-left px-2 py-1 rounded text-sm font-medium flex items-center gap-2 ${
+                        className={`w-full text-left px-2 py-1 rounded text-sm font-semibold flex items-center gap-2 ${
                           divSelected? 'bg-[#7f1010] text-white': 'bg-gray-50 hover:bg-gray-100'
                         }`}
                       >
@@ -11360,7 +11360,7 @@ function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ 
                                 key={subId}
                                 type="button"
                                 onClick={()=> setProjectDivs(prev=> prev.includes(subId)? prev.filter(x=>x!==subId) : [...prev, subId])}
-                                className={`w-full text-left px-2 py-1 rounded text-xs flex items-center gap-2 ${
+                                className={`w-full text-left px-2 py-1 rounded text-sm flex items-center gap-2 ${
                                   subSelected? 'bg-[#a31414] text-white': 'bg-gray-50 hover:bg-gray-100'
                                 }`}
                               >
@@ -11375,14 +11375,14 @@ function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ 
                   );
                 })}
                 {(!projectDivisionsForPicker || projectDivisionsForPicker.length === 0) && (
-                  <div className="text-xs text-gray-500 text-center py-4">No project divisions available.</div>
+                  <div className="text-sm text-gray-600 text-center py-4">No project divisions available.</div>
                 )}
               </div>
               <div className="flex items-center gap-2">
                 <button
                   onClick={handleSave}
                   disabled={saving}
-                  className="px-3 py-1.5 rounded bg-brand-red text-white text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-3 py-1.5 rounded bg-brand-red text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {saving ? 'Saving...' : 'Save'}
                 </button>
@@ -11392,7 +11392,7 @@ function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ 
                     setProjectDivs(Array.isArray(proj?.project_division_ids) ? proj.project_division_ids : []);
                   }}
                   disabled={saving}
-                  className="px-3 py-1.5 rounded bg-gray-100 text-gray-700 text-xs font-medium disabled:opacity-50"
+                  className="px-3 py-1.5 rounded bg-gray-100 text-gray-700 text-sm font-semibold disabled:opacity-50"
                 >
                   Cancel
                 </button>
@@ -11425,7 +11425,7 @@ function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ 
                 return (
                   <span
                     key={divId}
-                    className={`px-2 py-1 rounded text-xs font-medium flex items-center gap-1 ${
+                    className={`px-2 py-1 rounded text-sm font-semibold flex items-center gap-1 ${
                       isSubdivision
                         ? 'bg-[#a31414]/10 text-[#a31414] border border-[#a31414]/20'
                         : 'bg-[#7f1010]/10 text-[#7f1010] border border-[#7f1010]/20'
@@ -11439,14 +11439,14 @@ function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ 
               })}
             </div>
           ) : (
-            <div className="text-xs text-gray-500 italic">No divisions assigned</div>
+            <div className="text-sm text-gray-600 italic">No divisions assigned</div>
           )}
         </div>
 
         <div>
-          <label className="text-xs font-medium text-gray-600 mb-1.5 block">Description</label>
+          <label className="text-sm font-semibold text-gray-600 mb-1.5 block">Description</label>
           <textarea
-            className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 min-h-[120px] resize-y"
+            className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 min-h-[120px] resize-y"
             placeholder="Add notes or general information about this project..."
             value={description}
             onChange={e=>setDescription(e.target.value)}
@@ -11456,7 +11456,7 @@ function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ 
           <button
             onClick={handleSave}
             disabled={saving}
-            className="px-2.5 py-1.5 rounded bg-brand-red text-white text-xs font-medium disabled:opacity-60"
+            className="px-2.5 py-1.5 rounded bg-brand-red text-white text-sm font-semibold disabled:opacity-60"
           >
             {saving ? 'Saving...' : 'Save'}
           </button>
@@ -11510,20 +11510,20 @@ function ProjectContactCard({ projectId, proj, clientId, clientFiles }:{ project
           <div>
             <div className="text-sm font-semibold text-gray-900">{displayName}</div>
             {(displayEmail || displayPhone) ? (
-              <div className="text-xs text-gray-600">
+              <div className="text-sm text-gray-600">
                 {displayEmail}
                 {displayEmail && displayPhone ? ' · ' : ''}
                 {displayPhone}
               </div>
             ) : (
-              <div className="text-xs text-gray-500">No contact details</div>
+              <div className="text-sm text-gray-600">No contact details</div>
             )}
           </div>
         </div>
         <div>
-          <label className="text-xs font-medium text-gray-600 mb-1.5 block">Customer contact</label>
+          <label className="text-sm font-semibold text-gray-600 mb-1.5 block">Customer contact</label>
           <select
-            className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+            className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
             value={contactId}
             onChange={e=>setContactId(e.target.value)}
             disabled={!contacts?.length}
@@ -11538,7 +11538,7 @@ function ProjectContactCard({ projectId, proj, clientId, clientFiles }:{ project
           <button
             onClick={handleSave}
             disabled={saving}
-            className="px-2.5 py-1.5 rounded bg-brand-red text-white text-xs font-medium disabled:opacity-60"
+            className="px-2.5 py-1.5 rounded bg-brand-red text-white text-sm font-semibold disabled:opacity-60"
           >
             {saving ? 'Saving...' : 'Save'}
           </button>
@@ -11572,7 +11572,7 @@ function ProjectEtaEdit({ projectId, proj, settings }:{ projectId:string, proj:a
       <div className="flex items-center gap-2">
         <div className="text-sm font-semibold text-gray-900 flex-1">{(proj?.date_eta||'').slice(0,10)||'-'}</div>
         {canEdit && (
-          <button onClick={()=>setIsEditing(true)} className="text-gray-500 hover:text-gray-700" title="Edit End Date">
+          <button onClick={()=>setIsEditing(true)} className="text-gray-600 hover:text-gray-700" title="Edit End Date">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
           </button>
         )}
@@ -11582,7 +11582,7 @@ function ProjectEtaEdit({ projectId, proj, settings }:{ projectId:string, proj:a
   
   return (
     <div className="flex items-center gap-2">
-      <input type="date" className="flex-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={eta} onChange={e=>setEta(e.target.value)} />
+      <input type="date" className="flex-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={eta} onChange={e=>setEta(e.target.value)} />
       <button onClick={async()=>{
         try{
           await api('PATCH', `/projects/${projectId}`, { date_eta: eta||null });
@@ -11591,8 +11591,8 @@ function ProjectEtaEdit({ projectId, proj, settings }:{ projectId:string, proj:a
           toast.success('End date updated');
           setIsEditing(false);
         }catch(_e){ toast.error('Failed to update'); }
-      }} className="px-2.5 py-1.5 rounded bg-brand-red text-white text-xs font-medium">Save</button>
-      <button onClick={()=>{ setIsEditing(false); setEta((proj?.date_eta||'').slice(0,10)); }} className="px-2.5 py-1.5 rounded bg-gray-100 text-gray-700 text-xs font-medium">Cancel</button>
+      }} className="px-2.5 py-1.5 rounded bg-brand-red text-white text-sm font-semibold">Save</button>
+      <button onClick={()=>{ setIsEditing(false); setEta((proj?.date_eta||'').slice(0,10)); }} className="px-2.5 py-1.5 rounded bg-gray-100 text-gray-700 text-sm font-semibold">Cancel</button>
     </div>
   );
 }
@@ -11688,14 +11688,14 @@ function ProjectHeroPricingArea({ projectId, proposals }: { projectId: string; p
   return (
     <div className={HERO_FIELD_STACK}>
       <div>
-        <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Total Area (Pricing)</div>
-        <div className="text-xs font-semibold text-gray-900">
+        <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Total Area (Pricing)</div>
+        <div className="text-sm font-semibold text-gray-900">
           {displayArea.toLocaleString('en-US', { maximumFractionDigits: 2 })} {formatAreaLabel(displayUnit)}
         </div>
       </div>
       <div>
-        <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Cost per Area</div>
-        <div className="text-xs font-semibold text-gray-900">
+        <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Cost per Area</div>
+        <div className="text-sm font-semibold text-gray-900">
           ${costPerArea.toFixed(2)}/{formatAreaLabel(displayUnit)}
         </div>
       </div>

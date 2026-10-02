@@ -27,7 +27,7 @@ function Avatar({ name, url }: { name: string | null; url: string | null }) {
   const src = url ? withFileAccessTokenIfNeeded(url) : '';
   if (!url || imgFailed) {
     return (
-      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center text-[11px] font-semibold text-gray-700 flex-shrink-0">
+      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center text-xs font-semibold text-gray-700 flex-shrink-0">
         {getInitials(name)}
       </div>
     );
@@ -82,13 +82,13 @@ export function InsightsTopContributors({ contributors }: { contributors: TopCon
             return (
               <li key={c.user_id} className="px-4 py-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3 min-w-0">
                 <div className="flex items-start gap-3 min-w-0 flex-1">
-                  <span className="w-5 text-[11px] font-bold text-gray-400 tabular-nums text-right shrink-0 pt-0.5">
+                  <span className="w-5 text-xs font-bold text-gray-600 tabular-nums text-right shrink-0 pt-0.5">
                     {idx + 1}
                   </span>
                   <Avatar name={c.user_name} url={c.user_avatar_url} />
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-semibold text-gray-900 break-words">{c.user_name ?? 'Unknown'}</div>
-                    <div className="text-[11px] text-gray-500 tabular-nums mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5">
+                    <div className="text-xs text-gray-600 tabular-nums mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5">
                       <span>{c.posts_count} posts</span>
                       <span className="text-gray-300">·</span>
                       <span>{c.views_total} views</span>

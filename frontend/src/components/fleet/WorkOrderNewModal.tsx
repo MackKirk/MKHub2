@@ -76,7 +76,7 @@ export default function WorkOrderNewModal({
                 </button>
                 <div>
                   <div className="text-sm font-semibold text-gray-900">New Work Order</div>
-                  <div className="text-xs text-gray-500 mt-0.5">
+                  <div className="text-sm text-gray-600 mt-0.5">
                     {fromInspection
                       ? 'Create a work order linked to this inspection.'
                       : 'Create a new work order'}
@@ -108,7 +108,7 @@ export default function WorkOrderNewModal({
             <button
               type="button"
               onClick={onClose}
-              className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50"
+              className="px-3 py-1.5 rounded-lg text-sm font-semibold text-gray-700 border border-gray-200 hover:bg-gray-50"
             >
               Cancel
             </button>

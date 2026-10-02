@@ -386,7 +386,7 @@ export default function ProjectWarrantiesTab({
               <li key={w.id} className={uiSortableEntityList.rowFlat}>
                 <div className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-3">
                   <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setViewWarrantyId(w.id)}>
-                    <div className={uiCx(uiTypography.body, 'font-medium text-gray-900')}>{w.name}</div>
+                    <div className={uiCx(uiTypography.body, 'font-semibold text-gray-900')}>{w.name}</div>
                     <div className={uiTypography.helper}>
                       {WARRANTY_TYPE_LABELS[w.warranty_type] || w.warranty_type}
                       {' · '}
@@ -449,7 +449,7 @@ export default function ProjectWarrantiesTab({
                   <div className={uiCx(uiLayout.actionsRow, 'items-start justify-between gap-2')}>
                     <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setViewClaimId(c.id)}>
                       <div className={uiCx(uiLayout.actionsRow, 'min-w-0 items-center gap-2')}>
-                        <span className={uiCx(uiTypography.body, 'font-medium')}>{c.claim_number}</span>
+                        <span className={uiCx(uiTypography.body, 'font-semibold')}>{c.claim_number}</span>
                         <AppBadge variant={claimSeverityBadgeVariant(c.severity)}>
                           {CLAIM_SEVERITY_LABELS[c.severity]}
                         </AppBadge>
@@ -495,7 +495,7 @@ export default function ProjectWarrantiesTab({
                 <div className={uiTypography.body}>
                   {formatActivityMessage(entry)}
                   {entry.created_by_display ? (
-                    <span className="text-gray-500"> by {entry.created_by_display}</span>
+                    <span className="text-gray-600"> by {entry.created_by_display}</span>
                   ) : null}
                 </div>
               </li>

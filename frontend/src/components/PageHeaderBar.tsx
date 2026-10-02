@@ -27,7 +27,7 @@ export default function PageHeaderBar({
           {leading}
           <div className="min-w-0">
             <div className="text-sm font-semibold text-gray-900">{title}</div>
-            {subtitle != null && subtitle !== false && <div className="text-xs text-gray-500 mt-0.5">{subtitle}</div>}
+            {subtitle != null && subtitle !== false && <div className="text-sm text-gray-600 mt-0.5">{subtitle}</div>}
           </div>
         </div>
         {trailing ? (

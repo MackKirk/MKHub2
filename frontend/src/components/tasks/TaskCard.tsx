@@ -234,7 +234,7 @@ export default function TaskCard({ task, onClick, showActions = true }: Props) {
             )}
           </div>
           <div className="mt-2 flex items-center justify-between gap-3">
-            <div className={uiCx(uiTypography.helper, 'font-medium')}>{source}</div>
+            <div className={uiCx(uiTypography.helper, 'font-semibold')}>{source}</div>
             <div className="flex shrink-0 items-center gap-3">
               <AppBadge variant={getStatusBadgeVariant(task.status)}>{statusLabel}</AppBadge>
               <span
@@ -245,8 +245,8 @@ export default function TaskCard({ task, onClick, showActions = true }: Props) {
             </div>
           </div>
           {age && age !== 'now' && (
-            <div className={uiCx('mt-2 text-[11px]', uiTypography.helper)}>
-              In this status: <span className="font-medium text-gray-700">{age}</span>
+            <div className={uiCx('mt-2 text-xs', uiTypography.helper)}>
+              In this status: <span className="font-semibold text-gray-700">{age}</span>
             </div>
           )}
         </div>
