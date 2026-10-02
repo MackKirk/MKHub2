@@ -4866,6 +4866,18 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
       toast.error(error?.message || 'Failed to cancel request');
     }
   };
+
+  const handleReview = async (requestId: string, status: 'approved' | 'rejected') => {
+    try {
+      await api('PATCH', `/employees/${userId}/time-off/requests/${requestId}`, { status });
+      toast.success(status === 'approved' ? 'Request approved' : 'Request rejected');
+      refetchRequests();
+      refetchBalances();
+      refetchHistory();
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to update request');
+    }
+  };
   
   const closeAdjustModal = () => {
     setShowAdjustModal(false);
@@ -5150,16 +5162,44 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
             <div className="space-y-2 max-h-64 overflow-y-auto">
               {[...pendingRequests, ...upcomingRequests].slice(0, 5).map((r: any) => (
                 <div key={r.id} className="p-2 border rounded text-sm">
-                  <div className="flex items-center justify-between">
-                    <div>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
                       <div className="font-medium">{r.policy_name}</div>
                       <div className="text-xs text-gray-600">
                         {formatTimeOffDateRange(r.start_date, r.end_date)}
                       </div>
                     </div>
-                    <span className={`px-2 py-0.5 rounded text-xs ${getStatusColor(r.status)}`}>
-                      {r.status}
-                    </span>
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      <span className={`px-2 py-0.5 rounded text-xs ${getStatusColor(r.status)}`}>
+                        {r.status}
+                      </span>
+                      {r.status === 'pending' && hasEditPermission ? (
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => void handleReview(r.id, 'rejected')}
+                            className="text-[11px] font-semibold text-red-600 hover:underline"
+                          >
+                            Reject
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleReview(r.id, 'approved')}
+                            className="text-[11px] font-semibold text-green-700 hover:underline"
+                          >
+                            Approve
+                          </button>
+                        </div>
+                      ) : r.status === 'pending' ? (
+                        <button
+                          type="button"
+                          onClick={() => void handleCancel(r.id)}
+                          className="text-[11px] font-semibold text-red-600 hover:underline"
+                        >
+                          Cancel
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
               ))}

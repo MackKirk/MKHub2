@@ -1529,6 +1529,81 @@ def adjust_time_off_balance(
     }
 
 
+@router.get("/time-off/requests")
+def list_company_time_off_requests(
+    status: Optional[str] = Query(None),
+    kind: Optional[str] = Query(None, description="sick | vacation | all"),
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Company-wide time-off requests for HR review.
+
+    kind filters policy family: sick leave vs vacation/time off.
+    """
+    if not _has_any_time_off_perm(current_user, TIME_OFF_READ_PERMS):
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    query = db.query(TimeOffRequest, User, EmployeeProfile).join(
+        User, User.id == TimeOffRequest.user_id
+    ).outerjoin(
+        EmployeeProfile, EmployeeProfile.user_id == User.id
+    )
+
+    status_filter = (status or "").strip().lower()
+    if status_filter and status_filter != "all":
+        query = query.filter(TimeOffRequest.status == status_filter)
+
+    kind_filter = (kind or "all").strip().lower()
+    if kind_filter == "sick":
+        query = query.filter(TimeOffRequest.policy_name.ilike("%sick%"))
+    elif kind_filter in {"vacation", "time_off", "time-off"}:
+        query = query.filter(
+            ~TimeOffRequest.policy_name.ilike("%sick%"),
+            or_(
+                TimeOffRequest.policy_name.ilike("%vacation%"),
+                TimeOffRequest.policy_name.ilike("%holiday%"),
+                TimeOffRequest.policy_name.ilike("%time off%"),
+                TimeOffRequest.policy_name.ilike("%day off%"),
+                TimeOffRequest.policy_name.ilike("%pto%"),
+            ),
+        )
+
+    rows = (
+        query.order_by(
+            case((TimeOffRequest.status == "pending", 0), else_=1),
+            TimeOffRequest.requested_at.desc(),
+        )
+        .limit(limit)
+        .all()
+    )
+
+    result = []
+    for req, user, profile in rows:
+        first = (profile.first_name if profile else None) or ""
+        last = (profile.last_name if profile else None) or ""
+        name = f"{first} {last}".strip() or (user.username or "")
+        result.append({
+            "id": str(req.id),
+            "user_id": str(user.id),
+            "username": user.username,
+            "employee_name": name,
+            "email": user.email_corporate or user.email_personal,
+            "policy_name": req.policy_name,
+            "start_date": _date_only_api(req.start_date),
+            "end_date": _date_only_api(req.end_date),
+            "hours": float(req.hours),
+            "notes": req.notes,
+            "status": req.status,
+            "requested_at": req.requested_at.isoformat() if req.requested_at else None,
+            "reviewed_at": req.reviewed_at.isoformat() if req.reviewed_at else None,
+            "reviewed_by": str(req.reviewed_by) if req.reviewed_by else None,
+            "review_notes": req.review_notes,
+        })
+    return {"items": result, "total": len(result)}
+
+
 @router.get("/{user_id}/time-off/requests")
 def get_time_off_requests(
     user_id: str,

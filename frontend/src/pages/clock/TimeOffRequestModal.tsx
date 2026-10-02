@@ -45,6 +45,7 @@ export function TimeOffRequestModal({ open, mode, onClose }: TimeOffRequestModal
   const [endDate, setEndDate] = useState(minStart);
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
 
   const { data: balances = [] } = useQuery({
     queryKey: ['time-off-balance', 'me'],
@@ -100,6 +101,23 @@ export function TimeOffRequestModal({ open, mode, onClose }: TimeOffRequestModal
         .slice(0, 4),
     [requests, mode, today],
   );
+
+  const cancelUpcoming = async (row: TimeOffRequest) => {
+    if (row.status !== 'pending') return;
+    setCancellingId(row.id);
+    try {
+      await api('PATCH', `/employees/me/time-off/requests/${row.id}`, { status: 'cancelled' });
+      toast.success('Request cancelled');
+      queryClient.invalidateQueries({ queryKey: ['time-off-balance', 'me'] });
+      queryClient.invalidateQueries({ queryKey: ['time-off-requests', 'me'] });
+      queryClient.invalidateQueries({ queryKey: ['time-off-history', 'me'] });
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { detail?: string } }; message?: string };
+      toast.error(err?.response?.data?.detail || err?.message || 'Could not cancel');
+    } finally {
+      setCancellingId(null);
+    }
+  };
 
   const rangeLabel =
     startDate && endDate
@@ -299,8 +317,20 @@ export function TimeOffRequestModal({ open, mode, onClose }: TimeOffRequestModal
                       </div>
                       <div className="text-[11px] capitalize text-gray-500">{row.status}</div>
                     </div>
-                    <div className="text-xs font-semibold tabular-nums text-gray-900">
-                      {hoursToDays(row.hours).toFixed(1)}d
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      <div className="text-xs font-semibold tabular-nums text-gray-900">
+                        {hoursToDays(row.hours).toFixed(1)}d
+                      </div>
+                      {row.status === 'pending' ? (
+                        <button
+                          type="button"
+                          onClick={() => void cancelUpcoming(row)}
+                          disabled={cancellingId === row.id}
+                          className="text-[11px] font-semibold text-red-600 hover:underline disabled:opacity-50"
+                        >
+                          {cancellingId === row.id ? 'Cancelling…' : 'Cancel'}
+                        </button>
+                      ) : null}
                     </div>
                   </div>
                 ))}
