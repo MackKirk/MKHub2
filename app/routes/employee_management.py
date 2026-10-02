@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from sqlalchemy.orm import Session
-from sqlalchemy import func, or_, and_
+from sqlalchemy import func, or_, and_, case
 from typing import Optional, List
 from datetime import datetime, timezone, date, timedelta
 from decimal import Decimal
@@ -25,10 +25,11 @@ from ..auth.security import (
     _user_is_admin,
 )
 from ..config import settings
-from ..services.bamboohr_client import (
-    BambooHRClient,
-    extract_time_off_request_employee_id,
-    normalize_time_off_status,
+from ..services.bamboohr_client import BambooHRClient
+from ..services.bamboohr_time_off_sync import (
+    resolve_bamboohr_id_for_user,
+    sync_user_time_off_balance,
+    sync_user_time_off_history,
 )
 
 
@@ -1004,64 +1005,8 @@ def update_equipment(
 # =====================
 
 def _get_bamboohr_id_for_user(db: Session, client: BambooHRClient, user: User) -> Optional[tuple]:
-    """
-    Find BambooHR employee by user email. Returns (bamboohr_id, bamboohr_employee_data) or None.
-    Uses directory data first to match by email when available, so we only call get_employee once
-    for the matching employee instead of for every employee.
-    """
-    hub_emails = {
-        (user.email_personal or "").strip().lower(),
-        (user.email_corporate or "").strip().lower(),
-    }
-    hub_emails.discard("")
-    if not hub_emails:
-        return None
-    directory = client.get_employees_directory()
-    employees = directory if isinstance(directory, list) else (directory.get("employees", []) if isinstance(directory, dict) else [])
-    if not employees:
-        return None
-
-    def _email_matches(emp_dict: dict) -> bool:
-        """Check if any email field in emp_dict matches any Hub email for this user."""
-        for key in ("workEmail", "email", "homeEmail", "personalEmail"):
-            val = emp_dict.get(key)
-            if isinstance(val, str) and val.strip().lower() in hub_emails:
-                return True
-        for key, val in emp_dict.items():
-            if isinstance(val, str) and "@" in val and val.strip().lower() in hub_emails:
-                return True
-        return False
-
-    # First pass: match using directory entry fields if they include email (avoids N get_employee calls)
-    for emp in employees:
-        emp_id = str(emp.get("id", "") or "").strip()
-        if not emp_id:
-            continue
-        if _email_matches(emp):
-            try:
-                emp_data = client.get_employee(emp_id)
-                bamboohr_employee = dict(emp_data) if isinstance(emp_data, dict) else {"id": emp_id}
-                if "employee" in bamboohr_employee:
-                    bamboohr_employee = bamboohr_employee["employee"]
-                bamboohr_employee["id"] = emp_id
-                return (emp_id, bamboohr_employee)
-            except Exception:
-                continue
-
-    # Fallback: directory may use numeric field IDs, so fetch each employee until we find the match
-    for emp in employees:
-        emp_id = str(emp.get("id", "") or "").strip()
-        if not emp_id:
-            continue
-        try:
-            emp_data = client.get_employee(emp_id)
-            if _email_matches(emp_data if isinstance(emp_data, dict) else {}):
-                bamboohr_employee = dict(emp_data) if isinstance(emp_data, dict) else {"id": emp_id}
-                bamboohr_employee["id"] = emp_id
-                return (emp_id, bamboohr_employee)
-        except Exception:
-            continue
-    return None
+    """Find BambooHR employee by user email. Returns (bamboohr_id, bamboohr_employee_data) or None."""
+    return resolve_bamboohr_id_for_user(db, client, user)
 
 
 @router.post("/{user_id}/sync-bamboohr")
@@ -1305,63 +1250,12 @@ def sync_user_documents_from_bamboohr(
 # =====================
 
 def _get_time_off_entitlement_days(db: Session, policy_name: str) -> float | None:
-    """
-    Best-effort fallback when BambooHR doesn't expose balance/policy endpoints.
-    Reads from SettingList `time_off_entitlements` where items are:
-      - label: policy name (e.g. "Sick Leave")
-      - value: annual entitlement in DAYS (e.g. "5")
-    """
-    try:
-        lst = db.query(SettingList).filter(SettingList.name == "time_off_entitlements").first()
-        if not lst:
-            return None
-        # Match by label (case-insensitive)
-        items = db.query(SettingItem).filter(SettingItem.list_id == lst.id).all()
-        for it in items:
-            if (it.label or "").strip().lower() == (policy_name or "").strip().lower():
-                try:
-                    return float(it.value) if it.value is not None else None
-                except Exception:
-                    return None
-        return None
-    except Exception:
-        return None
+    from ..services.bamboohr_time_off_sync import get_entitlement_days
+    return get_entitlement_days(db, policy_name)
 
 def _ensure_default_time_off_entitlement(db: Session, policy_name: str) -> float | None:
-    """
-    Create a default entitlement entry if the list doesn't exist.
-    This is a pragmatic fallback for tenants where Bamboo time off policy endpoints are not available.
-    """
-    default_map = {
-        "sick leave": 5.0,
-    }
-    pn = (policy_name or "").strip().lower()
-    if pn not in default_map:
-        return None
-    try:
-        lst = db.query(SettingList).filter(SettingList.name == "time_off_entitlements").first()
-        if not lst:
-            lst = SettingList(name="time_off_entitlements")
-            db.add(lst)
-            db.flush()
-        # upsert item
-        existing = db.query(SettingItem).filter(
-            SettingItem.list_id == lst.id,
-            func.lower(SettingItem.label) == pn,
-        ).first()
-        if not existing:
-            item = SettingItem(
-                list_id=lst.id,
-                label=policy_name,
-                value=str(default_map[pn]),
-                sort_index=0,
-                meta={"source": "default"},
-            )
-            db.add(item)
-            db.flush()
-        return default_map[pn]
-    except Exception:
-        return None
+    from ..services.bamboohr_time_off_sync import ensure_default_entitlement
+    return ensure_default_entitlement(db, policy_name)
 
 
 TIME_OFF_READ_PERMS = (
@@ -1382,6 +1276,27 @@ def _is_sick_leave_policy(policy_name: Optional[str]) -> bool:
         return False
     value = policy_name.lower().strip()
     return value in {"sick leave", "sick"} or "sick" in value
+
+
+def _require_whole_time_off_days(amount_days: float, *, label: str = "Time off") -> float:
+    """Hub policy: new requests/adjustments are whole days only. Imported history may still be fractional."""
+    try:
+        days = float(amount_days)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=f"{label} days must be a number") from exc
+    if days <= 0:
+        raise HTTPException(status_code=400, detail=f"{label} days must be greater than 0")
+    if abs(days - round(days)) > 1e-6:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{label} must be in whole days (half days are not allowed).",
+        )
+    return float(round(days))
+
+
+def _require_whole_time_off_hours(hours: float) -> float:
+    days = _require_whole_time_off_days(float(hours) / 8.0, label="Time off")
+    return days * 8.0
 
 
 def _has_any_time_off_perm(user: User, perms: tuple) -> bool:
@@ -1408,6 +1323,26 @@ def _company_now() -> datetime:
     except Exception:
         tz = ZoneInfo("America/Vancouver")
     return datetime.now(tz)
+
+
+def _date_only_api(value) -> Optional[str]:
+    """
+    Serialize a calendar date for the frontend without UTC off-by-one.
+
+    Plain 'YYYY-MM-DD' is parsed as UTC midnight by JS Date, which becomes the
+    previous local day in Pacific. Noon UTC keeps the same calendar day in all
+    practical timezones for both toLocaleDateString() and timeZone:'UTC'.
+    """
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        value = value.date()
+    if hasattr(value, "isoformat"):
+        return f"{value.isoformat()}T12:00:00.000Z"
+    raw = str(value).strip()
+    if len(raw) >= 10 and raw[4] == "-" and raw[7] == "-":
+        return f"{raw[:10]}T12:00:00.000Z"
+    return raw
 
 
 @router.get("/{user_id}/time-off/balance")
@@ -1450,133 +1385,24 @@ def sync_time_off_balance(
     current_user: User = Depends(get_current_user),
     _=Depends(require_permissions("users:write", "hr:users:edit:job", "hr:users:edit:general"))
 ):
-    """Sync time off balance from BambooHR"""
+    """Sync time off balance from BambooHR (scoped to the profile user, never the admin session)."""
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
     email = user.email_personal or user.email_corporate
     if not email:
         raise HTTPException(status_code=400, detail="User has no email address to match with BambooHR")
-    
+
     try:
         client = BambooHRClient()
         result = _get_bamboohr_id_for_user(db, client, user)
         if not result:
             raise HTTPException(status_code=404, detail=f"Employee not found in BambooHR for email: {email}")
         bamboohr_id, _ = result
-        
-        # Get time off balance from BambooHR
-        balance_data = client.get_time_off_balance(bamboohr_id)
-        if not balance_data:
-            return {"message": "No time off balance data found in BambooHR", "synced": 0}
-        
-        # Parse balance data (format may vary)
-        current_year = datetime.now().year
-        synced_count = 0
-        
-        # Handle different response formats
-        policies = []
-        if isinstance(balance_data, dict):
-            if "policies" in balance_data:
-                policies = balance_data["policies"] if isinstance(balance_data["policies"], list) else [balance_data["policies"]]
-            elif "data" in balance_data:
-                policies = balance_data["data"] if isinstance(balance_data["data"], list) else [balance_data["data"]]
-            else:
-                # Assume the dict itself is a policy
-                policies = [balance_data]
-        elif isinstance(balance_data, list):
-            policies = balance_data
-        
-        for policy_data in policies:
-            if not isinstance(policy_data, dict):
-                continue
-            
-            policy_name = policy_data.get("name") or policy_data.get("policyName") or policy_data.get("type") or "Time Off"
-            
-            # Extract balance information
-            balance_hours = None
-            accrued_hours = None
-            used_hours = 0.0
-            
-            # Try different field names
-            if "balance" in policy_data and policy_data["balance"] is not None:
-                balance_hours = float(policy_data["balance"])
-            elif "balanceHours" in policy_data and policy_data["balanceHours"] is not None:
-                balance_hours = float(policy_data["balanceHours"])
-            elif "available" in policy_data and policy_data["available"] is not None:
-                balance_hours = float(policy_data["available"])
-            
-            if "accrued" in policy_data and policy_data["accrued"] is not None:
-                accrued_hours = float(policy_data["accrued"])
-            elif "accruedHours" in policy_data and policy_data["accruedHours"] is not None:
-                accrued_hours = float(policy_data["accruedHours"])
-            
-            if "used" in policy_data and policy_data["used"] is not None:
-                used_hours = float(policy_data["used"])
-            elif "usedHours" in policy_data and policy_data["usedHours"] is not None:
-                used_hours = float(policy_data["usedHours"])
-
-            # Fallback: if Bamboo doesn't provide balance/accrued, compute from configured entitlement
-            # This is needed for Bamboo tenants where /time_off/balance and /time_off/policies are not available.
-            if (balance_hours is None or accrued_hours is None) and used_hours >= 0:
-                entitlement_days = _get_time_off_entitlement_days(db, policy_name)
-                if entitlement_days is None:
-                    entitlement_days = _ensure_default_time_off_entitlement(db, policy_name)
-                if entitlement_days is not None:
-                    entitlement_hours = float(entitlement_days) * 8.0
-                    if accrued_hours is None:
-                        accrued_hours = entitlement_hours
-                    if balance_hours is None:
-                        balance_hours = entitlement_hours - used_hours
-            
-            # Find or create balance record
-            balance = db.query(TimeOffBalance).filter(
-                TimeOffBalance.user_id == user.id,
-                TimeOffBalance.policy_name == policy_name,
-                TimeOffBalance.year == current_year
-            ).first()
-            
-            if balance:
-                # Only update fields that we have data for (preserve existing values if data is partial)
-                if balance_hours is not None:
-                    balance.balance_hours = balance_hours
-                if accrued_hours is not None:
-                    balance.accrued_hours = accrued_hours
-                balance.used_hours = used_hours
-                balance.last_synced_at = datetime.now(timezone.utc)
-                balance.updated_at = datetime.now(timezone.utc)
-            else:
-                # For new records, use 0.0 as default if values are None
-                balance = TimeOffBalance(
-                    id=uuid_lib.uuid4(),
-                    user_id=user.id,
-                    policy_name=policy_name,
-                    balance_hours=balance_hours if balance_hours is not None else 0.0,
-                    accrued_hours=accrued_hours if accrued_hours is not None else 0.0,
-                    used_hours=used_hours,
-                    year=current_year,
-                    last_synced_at=datetime.now(timezone.utc),
-                    created_at=datetime.now(timezone.utc),
-                    updated_at=datetime.now(timezone.utc)
-                )
-                db.add(balance)
-            
-            synced_count += 1
-        
+        out = sync_user_time_off_balance(db, client, user, bamboohr_id, dry_run=False)
         db.commit()
-        
-        # Check if data came from requests (partial data)
-        source = balance_data.get("_source") if isinstance(balance_data, dict) else None
-        if source == "requests":
-            return {
-                "message": f"Synced {synced_count} time off balance(s) from requests (partial data - only used hours available)", 
-                "synced": synced_count,
-                "partial": True
-            }
-        
-        return {"message": f"Synced {synced_count} time off balance(s)", "synced": synced_count}
-        
+        return out
     except HTTPException:
         raise
     except Exception as e:
@@ -1610,6 +1436,7 @@ def adjust_time_off_balance(
         raise HTTPException(status_code=400, detail="adjustment_type must be 'add' or 'subtract'")
     if not amount_days or float(amount_days) <= 0:
         raise HTTPException(status_code=400, detail="amount_days must be greater than 0")
+    amount_days = _require_whole_time_off_days(amount_days, label="Balance adjustment")
     if not effective_date_str:
         raise HTTPException(status_code=400, detail="effective_date is required")
     if not note or not note.strip():
@@ -1724,8 +1551,8 @@ def get_time_off_requests(
     return [{
         "id": str(r.id),
         "policy_name": r.policy_name,
-        "start_date": r.start_date.isoformat(),
-        "end_date": r.end_date.isoformat(),
+        "start_date": _date_only_api(r.start_date),
+        "end_date": _date_only_api(r.end_date),
         "hours": float(r.hours),
         "notes": r.notes,
         "status": r.status,
@@ -1786,13 +1613,12 @@ def create_time_off_request(
                 detail="Time off must be requested at least 24 hours in advance.",
             )
     
-    # Calculate hours if not provided
+    # Calculate hours if not provided — Hub only allows whole days going forward
     if not hours:
         days = (end_date - start_date).days + 1
-        # Assume 8 hours per day (can be made configurable)
-        hours = days * 8.0
+        hours = _require_whole_time_off_days(days, label="Time off") * 8.0
     else:
-        hours = float(hours)
+        hours = _require_whole_time_off_hours(float(hours))
     
     # Check if user has enough balance
     # For "Sick Leave", allow request even without sufficient balance
@@ -1925,12 +1751,36 @@ def get_time_off_history(
     if year:
         query = query.filter(func.extract('year', TimeOffHistory.transaction_date) == year)
     
-    history = query.order_by(TimeOffHistory.transaction_date.desc()).all()
+    history = query.order_by(
+        TimeOffHistory.transaction_date.desc(),
+        # Same calendar day under DESC: accrual/adjust first, then usage, then
+        # carryover loss last — so the top row's balance matches Bamboo's end-of-day.
+        case(
+            (
+                or_(
+                    TimeOffHistory.bamboohr_transaction_id.ilike("%carryover%"),
+                    TimeOffHistory.description.ilike("%Lost days that exceeded%"),
+                ),
+                2,
+            ),
+            (
+                and_(
+                    TimeOffHistory.used_days.isnot(None),
+                    TimeOffHistory.used_days != 0,
+                ),
+                1,
+            ),
+            else_=0,
+        ).asc(),
+        TimeOffHistory.balance_after.desc(),
+        TimeOffHistory.created_at.desc(),
+    ).all()
+
     
     return [{
         "id": str(h.id),
         "policy_name": h.policy_name,
-        "transaction_date": h.transaction_date.isoformat(),
+        "transaction_date": _date_only_api(h.transaction_date),
         "description": h.description,
         "used_days": float(h.used_days) if h.used_days else None,
         "earned_days": float(h.earned_days) if h.earned_days else None,
@@ -2254,575 +2104,36 @@ def sync_time_off_history(
     current_user: User = Depends(get_current_user),
     _=Depends(require_permissions("users:write", "hr:users:edit:job", "hr:users:edit:general"))
 ):
-    """Sync time off history from BambooHR"""
+    """
+    Sync time off history + Bamboo requests into MKHub.
+
+    Always scopes Bamboo /time_off/requests to the profile user's Bamboo employee
+    id (email match). Never attributes company-wide leave to the logged-in admin.
+    """
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
     email = user.email_personal or user.email_corporate
     if not email:
         raise HTTPException(status_code=400, detail="User has no email address to match with BambooHR")
-    
+
     try:
         client = BambooHRClient()
         result = _get_bamboohr_id_for_user(db, client, user)
         if not result:
             raise HTTPException(status_code=404, detail=f"Employee not found in BambooHR for email: {email}")
         bamboohr_id, _ = result
-        
-        # Try to get time off balance history from BambooHR
-        history_data = client.get_time_off_balance_history(bamboohr_id)
-        if not history_data:
-            # If no history endpoint, try to get from balance data which might include history
-            balance_data = client.get_time_off_balance(bamboohr_id)
-            if balance_data and isinstance(balance_data, dict):
-                history_data = balance_data.get("history") or balance_data.get("transactions")
-        
-        # If still no history, generate from approved time off requests
-        if not history_data:
-            try:
-                # Get approved time off requests from BambooHR
-                requests_data = client.get_time_off_requests(bamboohr_id)
-                if requests_data:
-                    # Convert approved requests to history entries
-                    history_entries = []
-                    # Track policies/years seen so we can add synthetic accrual credits
-                    seen_policy_years: set[tuple[str, int]] = set()
-                    if isinstance(requests_data, list):
-                        for req in requests_data:
-                            if isinstance(req, dict):
-                                req_employee_id = extract_time_off_request_employee_id(req)
-                                if req_employee_id != str(bamboohr_id):
-                                    continue
-                                # Only process approved requests
-                                status = normalize_time_off_status(req.get("status"))
-                                if status in ["approved", "used", "taken", "approvedpaid", "approvedunpaid"]:
-                                    req_id = req.get("id") or req.get("requestId") or req.get("request_id")
-                                    # Extract request details
-                                    start_date = req.get("start") or req.get("startDate")
-                                    end_date = req.get("end") or req.get("endDate")
-                                    policy_name = req.get("policyType") or req.get("policyName") or req.get("policy") or req.get("type") or "Time Off"
-                                    # Notes can come as string or nested dict (e.g. {"note": "fever"})
-                                    notes_raw = req.get("notes") or req.get("note") or req.get("comment") or ""
-                                    notes = ""
-                                    try:
-                                        if isinstance(notes_raw, dict):
-                                            notes = (
-                                                notes_raw.get("note") or
-                                                notes_raw.get("notes") or
-                                                notes_raw.get("comment") or
-                                                notes_raw.get("reason") or
-                                                ""
-                                            )
-                                        elif isinstance(notes_raw, str):
-                                            notes = notes_raw
-                                        else:
-                                            notes = str(notes_raw) if notes_raw else ""
-                                    except Exception:
-                                        notes = str(notes_raw) if notes_raw else ""
-                                    
-                                    # Determine if amount is in days or hours
-                                    days = 0.0
-                                    unit_raw = req.get("unit", "")
-                                    if isinstance(unit_raw, dict):
-                                        unit_raw = unit_raw.get("name") or unit_raw.get("_text") or ""
-                                    unit = str(unit_raw or "").lower()
-                                    
-                                    # Check for explicit hours field
-                                    if "hours" in req and req["hours"] is not None:
-                                        try:
-                                            hours_val = float(req["hours"])
-                                            days = abs(hours_val) / 8.0
-                                        except (ValueError, TypeError):
-                                            pass
-                                    
-                                    # Check for amount field (usually in days for BambooHR)
-                                    elif "amount" in req and req["amount"] is not None:
-                                        try:
-                                            amount = float(req["amount"])
-                                            # Check unit to determine if it's days or hours
-                                            if unit == "hours" or "hour" in unit:
-                                                days = abs(amount) / 8.0
-                                            else:
-                                                # Default assumption: amount is in days (BambooHR API typically returns days)
-                                                days = abs(amount)
-                                        except (ValueError, TypeError):
-                                            pass
-                                    
-                                    # Check for days field
-                                    elif "days" in req and req["days"] is not None:
-                                        try:
-                                            days = abs(float(req["days"]))
-                                        except (ValueError, TypeError):
-                                            pass
-                                    
-                                    # Also check if we can calculate from start/end dates
-                                    if days == 0.0 and start_date and end_date:
-                                        try:
-                                            start = datetime.strptime(start_date.split('T')[0], "%Y-%m-%d").date()
-                                            end = datetime.strptime(end_date.split('T')[0], "%Y-%m-%d").date()
-                                            # Calculate days between dates (inclusive)
-                                            delta = (end - start).days + 1
-                                            if delta > 0:
-                                                days = float(delta)
-                                        except Exception:
-                                            pass
-                                    
-                                    if start_date and end_date and days > 0:
-                                        # Create entry for each day or a single entry for the period
-                                        try:
-                                            start = datetime.strptime(start_date.split('T')[0], "%Y-%m-%d").date()
-                                            end = datetime.strptime(end_date.split('T')[0], "%Y-%m-%d").date()
-                                            
-                                            # Create one entry per day or one entry for the period
-                                            # Using start date as transaction date
-                                            # Format date for description
-                                            try:
-                                                start_date_obj = datetime.strptime(start_date.split('T')[0], "%Y-%m-%d").date()
-                                                date_str = start_date_obj.strftime("%m/%d/%Y")
-                                                if start_date.split('T')[0] == end_date.split('T')[0]:
-                                                    description = f"Time off used for {date_str}"
-                                                else:
-                                                    end_date_obj = datetime.strptime(end_date.split('T')[0], "%Y-%m-%d").date()
-                                                    end_date_str = end_date_obj.strftime("%m/%d/%Y")
-                                                    description = f"Time off used for {date_str} to {end_date_str}"
-                                            except:
-                                                description = f"Time off: {start_date} to {end_date}"
-
-                                            if notes:
-                                                description = f"{description}\n{notes}"
-
-                                            # Try to extract balance-after from request payload (if provided)
-                                            balance_after = (
-                                                req.get("balanceAfter") or req.get("balance_after") or req.get("balance") or
-                                                req.get("balanceRemaining") or req.get("balance_remaining") or req.get("remainingBalance")
-                                            )
-                                            try:
-                                                balance_after = float(balance_after) if balance_after is not None else None
-                                            except Exception:
-                                                balance_after = None
-                                            
-                                            history_entries.append({
-                                                "date": start_date,
-                                                "policyName": policy_name,
-                                                "description": description,
-                                                "used": -days,  # Used days should be negative
-                                                "earned": None,
-                                                "balance": balance_after,
-                                                # Use request id as stable transaction id so resync updates instead of duplicating
-                                                "id": f"req:{req_id}" if req_id else None,
-                                            })
-
-                                            # Track policy+year for synthetic accrual
-                                            try:
-                                                y = datetime.strptime(start_date.split('T')[0], "%Y-%m-%d").date().year
-                                            except Exception:
-                                                y = datetime.now().year
-                                            seen_policy_years.add((policy_name, y))
-                                        except Exception:
-                                            pass
-
-                    # Add synthetic accrual credits (because this Bamboo tenant doesn't expose balance history/policies)
-                    for pol, y in sorted(seen_policy_years, key=lambda x: (x[1], x[0].lower())):
-                        entitlement_days = None
-                        # Prefer existing synced TimeOffBalance for that year (accrued_hours)
-                        try:
-                            bal_row = db.query(TimeOffBalance).filter(
-                                TimeOffBalance.user_id == user.id,
-                                TimeOffBalance.policy_name == pol,
-                                TimeOffBalance.year == y
-                            ).first()
-                            if bal_row and bal_row.accrued_hours is not None:
-                                entitlement_days = float(bal_row.accrued_hours) / 8.0
-                        except Exception:
-                            entitlement_days = None
-
-                        if entitlement_days is None:
-                            entitlement_days = _get_time_off_entitlement_days(db, pol)
-                        if entitlement_days is None:
-                            entitlement_days = _ensure_default_time_off_entitlement(db, pol)
-
-                        if entitlement_days and entitlement_days > 0:
-                            accrual_date = f"{y}-01-01"
-                            history_entries.append({
-                                "date": accrual_date,
-                                "policyName": pol,
-                                "description": f"Accrual for 01/01/{y} to 12/31/{y}",
-                                "used": None,
-                                "earned": float(entitlement_days),
-                                "balance": float(entitlement_days),
-                                "id": f"entitlement:{pol}:{y}",
-                            })
-                    
-                    if history_entries:
-                        # Sort by date (oldest first) for proper balance calculation
-                        history_entries.sort(key=lambda x: x.get("date", "1900-01-01"))
-                        history_data = history_entries
-            except Exception as e:
-                # Log but don't fail if we can't get requests
-                print(f"[DEBUG] Could not get time off requests for history: {e}")
-        
-        # If still no history from BambooHR, try to generate from local approved requests
-        if not history_data:
-            # Get approved time off requests from local database
-            from ..models.models import TimeOffRequest
-            approved_requests = db.query(TimeOffRequest).filter(
-                TimeOffRequest.user_id == user.id,
-                TimeOffRequest.status == "approved"
-            ).all()
-            
-            if approved_requests:
-                history_entries = []
-                seen_policy_years: set[tuple[str, int]] = set()
-                for req in approved_requests:
-                    # Convert hours to days
-                    days = float(req.hours) / 8.0 if req.hours else 0.0
-                    # Format description
-                    try:
-                        start_date_str = req.start_date.strftime("%m/%d/%Y")
-                        if req.start_date == req.end_date:
-                            description = f"Time off used for {start_date_str}"
-                        else:
-                            end_date_str = req.end_date.strftime("%m/%d/%Y")
-                            description = f"Time off used for {start_date_str} to {end_date_str}"
-                        if req.notes:
-                            description += f" - {req.notes}"
-                    except:
-                        description = f"Time off: {req.start_date} to {req.end_date}" + (f" - {req.notes}" if req.notes else "")
-                    
-                    history_entries.append({
-                        "date": req.start_date.isoformat(),
-                        "policyName": req.policy_name,
-                        "description": description,
-                        "used": -days,  # Used days should be negative
-                        "earned": None,
-                        "balance": None
-                    })
-                    seen_policy_years.add((req.policy_name, req.start_date.year))
-
-                # Add synthetic accrual credits from entitlements
-                for pol, y in sorted(seen_policy_years, key=lambda x: (x[1], x[0].lower())):
-                    entitlement_days = _get_time_off_entitlement_days(db, pol)
-                    if entitlement_days is None:
-                        entitlement_days = _ensure_default_time_off_entitlement(db, pol)
-                    if entitlement_days and entitlement_days > 0:
-                        history_entries.append({
-                            "date": f"{y}-01-01",
-                            "policyName": pol,
-                            "description": f"Accrual for 01/01/{y} to 12/31/{y}",
-                            "used": None,
-                            "earned": float(entitlement_days),
-                            "balance": float(entitlement_days),
-                            "id": f"entitlement:{pol}:{y}",
-                        })
-                
-                if history_entries:
-                    history_data = history_entries
-        
-        if not history_data:
-            return {"message": "No time off history data found. History may not be available via BambooHR API.", "synced": 0}
-        
-        # Parse history data (format may vary)
-        synced_count = 0
-        
-        # Handle different response formats
-        transactions = []
-        if isinstance(history_data, list):
-            transactions = history_data
-        elif isinstance(history_data, dict):
-            if "transactions" in history_data:
-                transactions = history_data["transactions"] if isinstance(history_data["transactions"], list) else [history_data["transactions"]]
-            elif "history" in history_data:
-                transactions = history_data["history"] if isinstance(history_data["history"], list) else [history_data["history"]]
-            elif "data" in history_data:
-                transactions = history_data["data"] if isinstance(history_data["data"], list) else [history_data["data"]]
-            else:
-                # Assume the dict itself is a transaction
-                transactions = [history_data]
-        
-        # Get existing balances to map policy names
-        balances = db.query(TimeOffBalance).filter(TimeOffBalance.user_id == user.id).all()
-        policy_map = {b.policy_name: b for b in balances}
-        
-        # Sort transactions by date (oldest first) to calculate balance incrementally
-        def get_trans_date(trans):
-            date_str = trans.get("date") or trans.get("transactionDate") or trans.get("transaction_date") or "1900-01-01"
-            try:
-                if isinstance(date_str, str):
-                    return datetime.strptime(date_str.split('T')[0], "%Y-%m-%d").date()
-                return date_str
-            except:
-                return datetime(1900, 1, 1).date()
-        
-        transactions_sorted = sorted(transactions, key=get_trans_date)
-
-        incoming_sync_ids = set()
-        for trans in transactions_sorted:
-            if not isinstance(trans, dict):
-                continue
-            tid = trans.get("id") or trans.get("transactionId") or trans.get("transaction_id")
-            if tid:
-                incoming_sync_ids.add(str(tid))
-        if incoming_sync_ids:
-            stale_rows = db.query(TimeOffHistory).filter(
-                TimeOffHistory.user_id == user.id,
-                TimeOffHistory.bamboohr_transaction_id.isnot(None),
-            ).all()
-            for row in stale_rows:
-                tid = row.bamboohr_transaction_id or ""
-                if tid.startswith(("req:", "entitlement:")) and tid not in incoming_sync_ids:
-                    db.delete(row)
-        
-        # Track running balance per policy
-        # Initialize with current balance from TimeOffBalance (convert hours to days)
-        policy_balances = {}
-        for policy_name_key, balance_obj in policy_map.items():
-            # Convert hours to days for initial balance
-            policy_balances[policy_name_key] = float(balance_obj.balance_hours) / 8.0
-        
-        # Calculate backwards from current balance to get initial balance for each policy
-        # We'll reverse the transactions, subtract earned, add used to get starting balance
-        transactions_reversed = list(reversed(transactions_sorted))
-        initial_balances = {}
-        
-        # First, collect all unique policy names from transactions
-        all_policies = set()
-        for trans in transactions_sorted:
-            trans_policy = trans.get("policyName") or trans.get("policy_name") or trans.get("name") or "Time Off"
-            all_policies.add(trans_policy)
-        
-        # Calculate initial balance for each policy
-        for policy_name_key in all_policies:
-            # Start with current balance if available, otherwise 0
-            if policy_name_key in policy_balances:
-                initial_balance = policy_balances[policy_name_key]
-            else:
-                initial_balance = 0.0
-            
-            # Work backwards through transactions
-            for trans in transactions_reversed:
-                trans_policy = trans.get("policyName") or trans.get("policy_name") or trans.get("name") or "Time Off"
-                if trans_policy == policy_name_key:
-                    # Work backwards: subtract earned, add used
-                    earned = trans.get("earned") or trans.get("earnedDays") or trans.get("earned_days") or 0.0
-                    used = abs(trans.get("used") or trans.get("usedDays") or trans.get("used_days") or 0.0)
-                    initial_balance = initial_balance - float(earned) + float(used)
-            
-            initial_balances[policy_name_key] = initial_balance
-        
-        # Now reset policy_balances to initial values and calculate forward
-        policy_balances = initial_balances.copy()
-        
-        for trans_data in transactions_sorted:
-            if not isinstance(trans_data, dict):
-                continue
-            
-            # Extract transaction information
-            trans_policy_name = trans_data.get("policyName") or trans_data.get("policy_name") or trans_data.get("name") or policy_name or "Time Off"
-            
-            # Skip if policy filter is set and doesn't match
-            if policy_name and trans_policy_name != policy_name:
-                continue
-            
-            # Parse transaction date
-            trans_date_str = trans_data.get("date") or trans_data.get("transactionDate") or trans_data.get("transaction_date")
-            if not trans_date_str:
-                continue
-            
-            try:
-                if isinstance(trans_date_str, str):
-                    trans_date = datetime.strptime(trans_date_str.split('T')[0], "%Y-%m-%d").date()
-                else:
-                    trans_date = trans_date_str
-            except Exception:
-                continue
-            
-            # Extract description
-            description = (
-                trans_data.get("description") or
-                trans_data.get("note") or
-                trans_data.get("notes") or
-                trans_data.get("comment") or
-                "Time off transaction"
-            )
-            
-            # Extract used/earned days
-            # Note: Used days should be negative (deduction from balance)
-            used_days = None
-            earned_days = None
-            if "used" in trans_data and trans_data["used"] is not None:
-                used_val = float(trans_data["used"])
-                # Ensure used days are negative
-                used_days = -abs(used_val) if used_val != 0 else None
-            elif "usedDays" in trans_data and trans_data["usedDays"] is not None:
-                used_val = float(trans_data["usedDays"])
-                used_days = -abs(used_val) if used_val != 0 else None
-            elif "used_days" in trans_data and trans_data["used_days"] is not None:
-                used_val = float(trans_data["used_days"])
-                used_days = -abs(used_val) if used_val != 0 else None
-            elif "daysUsed" in trans_data and trans_data["daysUsed"] is not None:
-                used_val = float(trans_data["daysUsed"])
-                used_days = -abs(used_val) if used_val != 0 else None
-            
-            # Try different field names for earned days
-            if "earned" in trans_data:
-                earned_days = float(trans_data["earned"]) if trans_data["earned"] else None
-            elif "earnedDays" in trans_data:
-                earned_days = float(trans_data["earnedDays"]) if trans_data["earnedDays"] else None
-            elif "earned_days" in trans_data:
-                earned_days = float(trans_data["earned_days"]) if trans_data["earned_days"] else None
-            elif "daysEarned" in trans_data:
-                earned_days = float(trans_data["daysEarned"]) if trans_data["daysEarned"] else None
-            
-            # Extract balance after transaction
-            balance_after = None
-            if "balance" in trans_data and trans_data["balance"] is not None:
-                balance_after = float(trans_data["balance"])
-            elif "balanceAfter" in trans_data and trans_data["balanceAfter"] is not None:
-                balance_after = float(trans_data["balanceAfter"])
-            elif "balance_after" in trans_data and trans_data["balance_after"] is not None:
-                balance_after = float(trans_data["balance_after"])
-            
-            # If balance not provided, calculate incrementally
-            if balance_after is None:
-                # Initialize balance for this policy if not exists
-                if trans_policy_name not in policy_balances:
-                    # Try to get initial balance from existing balance record
-                    if trans_policy_name in policy_map:
-                        balance = policy_map[trans_policy_name]
-                        # Start from the current balance and work backwards, or start from 0
-                        policy_balances[trans_policy_name] = 0.0  # We'll calculate forward from transactions
-                    else:
-                        policy_balances[trans_policy_name] = 0.0
-                
-                # Calculate new balance: current balance + earned - used
-                current_balance = policy_balances[trans_policy_name]
-                earned = earned_days if earned_days else 0.0
-                # Used days should be negative, so we add them (subtract absolute value)
-                used = abs(used_days) if used_days and used_days < 0 else (abs(used_days) if used_days else 0.0)
-                balance_after = current_balance + earned - used
-                
-                # Update running balance
-                policy_balances[trans_policy_name] = balance_after
-            else:
-                # If we got an explicit balance, keep the running state in sync for subsequent computed rows.
-                policy_balances[trans_policy_name] = balance_after
-            
-            # Get transaction ID from BambooHR
-            bamboohr_trans_id = trans_data.get("id") or trans_data.get("transactionId") or trans_data.get("transaction_id")
-
-            # Upsert strategy:
-            # - Prefer matching by BambooHR transaction id (stable)
-            # - Fallback to match by (policy + date + used/earned) ignoring description
-            existing = None
-            if bamboohr_trans_id:
-                existing = db.query(TimeOffHistory).filter(
-                    TimeOffHistory.user_id == user.id,
-                    TimeOffHistory.policy_name == trans_policy_name,
-                    TimeOffHistory.bamboohr_transaction_id == str(bamboohr_trans_id),
-                ).first()
-
-                # Migration path: if old row exists without transaction_id, adopt it instead of creating a duplicate
-                if not existing:
-                    existing = db.query(TimeOffHistory).filter(
-                        TimeOffHistory.user_id == user.id,
-                        TimeOffHistory.policy_name == trans_policy_name,
-                        TimeOffHistory.transaction_date == trans_date,
-                        TimeOffHistory.bamboohr_transaction_id.is_(None),
-                        or_(
-                            and_(TimeOffHistory.used_days.is_(None), used_days is None),
-                            TimeOffHistory.used_days == used_days,
-                        ),
-                        or_(
-                            and_(TimeOffHistory.earned_days.is_(None), earned_days is None),
-                            TimeOffHistory.earned_days == earned_days,
-                        ),
-                    ).first()
-            else:
-                existing = db.query(TimeOffHistory).filter(
-                    TimeOffHistory.user_id == user.id,
-                    TimeOffHistory.policy_name == trans_policy_name,
-                    TimeOffHistory.transaction_date == trans_date,
-                    or_(
-                        and_(TimeOffHistory.used_days.is_(None), used_days is None),
-                        TimeOffHistory.used_days == used_days,
-                    ),
-                    or_(
-                        and_(TimeOffHistory.earned_days.is_(None), earned_days is None),
-                        TimeOffHistory.earned_days == earned_days,
-                    ),
-                ).first()
-            
-            if existing:
-                # Update existing transaction
-                existing.used_days = used_days
-                existing.earned_days = earned_days
-                existing.balance_after = balance_after
-                existing.description = description
-                existing.bamboohr_transaction_id = str(bamboohr_trans_id) if bamboohr_trans_id else existing.bamboohr_transaction_id
-                existing.last_synced_at = datetime.now(timezone.utc)
-            else:
-                # Create new transaction
-                history = TimeOffHistory(
-                    id=uuid_lib.uuid4(),
-                    user_id=user.id,
-                    policy_name=trans_policy_name,
-                    transaction_date=trans_date,
-                    description=description,
-                    used_days=used_days,
-                    earned_days=earned_days,
-                    balance_after=balance_after,
-                    bamboohr_transaction_id=str(bamboohr_trans_id) if bamboohr_trans_id else None,
-                    created_at=datetime.now(timezone.utc),
-                    last_synced_at=datetime.now(timezone.utc)
-                )
-                db.add(history)
-
-            # Best-effort cleanup: remove old duplicate rows created when description format changed
-            # (same policy+date+amount, but missing transaction id)
-            try:
-                canonical_trans_id = str(bamboohr_trans_id) if bamboohr_trans_id else None
-                duplicates_q = db.query(TimeOffHistory).filter(
-                    TimeOffHistory.user_id == user.id,
-                    TimeOffHistory.policy_name == trans_policy_name,
-                    TimeOffHistory.transaction_date == trans_date,
-                    or_(
-                        and_(TimeOffHistory.used_days.is_(None), used_days is None),
-                        TimeOffHistory.used_days == used_days,
-                    ),
-                    or_(
-                        and_(TimeOffHistory.earned_days.is_(None), earned_days is None),
-                        TimeOffHistory.earned_days == earned_days,
-                    ),
-                )
-                if canonical_trans_id:
-                    duplicates_q = duplicates_q.filter(
-                        or_(
-                            TimeOffHistory.bamboohr_transaction_id.is_(None),
-                            TimeOffHistory.bamboohr_transaction_id != canonical_trans_id,
-                        )
-                    )
-                else:
-                    duplicates_q = duplicates_q.filter(TimeOffHistory.bamboohr_transaction_id.is_(None))
-
-                duplicates = duplicates_q.all()
-                # Keep at most one: prefer the one with bamboohr_transaction_id, otherwise the newest
-                if len(duplicates) > 1:
-                    # sort: has transaction id first, then by created_at desc (if present)
-                    duplicates_sorted = sorted(
-                        duplicates,
-                        key=lambda r: (0 if r.bamboohr_transaction_id else 1, -(r.created_at.timestamp() if r.created_at else 0)),
-                    )
-                    for dup in duplicates_sorted[1:]:
-                        db.delete(dup)
-            except Exception:
-                pass
-            
-            synced_count += 1
-        
+        out = sync_user_time_off_history(
+            db,
+            client,
+            user,
+            bamboohr_id,
+            policy_filter=policy_name,
+            dry_run=False,
+        )
         db.commit()
-        return {"message": f"Synced {synced_count} time off history transaction(s)", "synced": synced_count}
-        
+        return out
     except HTTPException:
         raise
     except Exception as e:
