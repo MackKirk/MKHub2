@@ -20,6 +20,10 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from .pdf_fixed import HEADER_TITLE_MAX_WIDTH, HEADER_TITLE_BASE_SIZE, HEADER_TITLE_MIN_SIZE
+from ..services.optional_service_status import (
+    normalize_optional_service_status,
+    optional_service_visible_in_pdf,
+)
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -1162,11 +1166,20 @@ def build_dynamic_pages(data, output_path):
             # Show pricing if there are valid costs
             show_pricing = len(valid_costs) > 0
             
-            # Calculate total
+            # Calculate total (pricing + approved optional services as fallback)
             sum_costs = 0.0
             for c in valid_costs:
                 try:
                     sum_costs += float(c.get("value") or 0)
+                except Exception:
+                    pass
+            for s in (data.get("optional_services") or []):
+                if not isinstance(s, dict):
+                    continue
+                if normalize_optional_service_status(s) != "approved":
+                    continue
+                try:
+                    sum_costs += float(s.get("price") or 0)
                 except Exception:
                     pass
             total_val = data.get("total")
@@ -1260,11 +1273,17 @@ def build_dynamic_pages(data, output_path):
         story.append(Spacer(1, 20))
         story.append(PricingTable({ **data, "total": total_val, "additional_costs": valid_costs, "section_index": None }))
 
-    # Optional Services Table (only if there are optional services)
+    # Optional Services Table (approved + pending; hide not_approved)
     optional_services = data.get("optional_services") or []
     if optional_services and len(optional_services) > 0:
-        # Filter out empty services
-        valid_services = [s for s in optional_services if s.get("service") and s.get("service").strip()]
+        valid_services = [
+            s
+            for s in optional_services
+            if isinstance(s, dict)
+            and s.get("service")
+            and str(s.get("service")).strip()
+            and optional_service_visible_in_pdf(s)
+        ]
         if valid_services:
             story.append(Spacer(1, 20))
             story.append(OptionalServicesTable({ **data, "optional_services": valid_services }))

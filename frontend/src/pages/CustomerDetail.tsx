@@ -83,6 +83,10 @@ type CustomerTab = 'overview' | 'general' | 'files' | 'contacts' | 'sites' | 'pr
 /** Empty field placeholder (Unicode em dash). */
 const EM_DASH = '\u2014';
 
+/** Matches ProjectDetail hero: 14px bold title, 12px semibold uppercase labels. */
+const customerHeroTitleClass = 'text-sm font-bold text-gray-900';
+const customerHeroLabelClass = 'text-xs font-semibold text-gray-600 uppercase tracking-wide';
+
 /** Hero collapse/expand — expand slower than collapse (same easing as quick info). */
 const HERO_PANEL_EASE = 'ease-[cubic-bezier(0.22,1,0.36,1)]';
 const HERO_PANEL_TRANSITION_BASE = 'overflow-hidden transition-[max-height,opacity]';
@@ -419,16 +423,16 @@ export default function CustomerDetail(){
                 </div>
               </div>
               <div className="min-w-0 flex-1">
-                <h3 className={uiCx(uiTypography.sectionTitle, 'mb-2 truncate')}>{c.display_name || c.name || id}</h3>
+                <h3 className={uiCx(customerHeroTitleClass, 'mb-2 truncate')}>{c.display_name || c.name || id}</h3>
                 <div className="grid grid-cols-[minmax(5rem,auto)_1fr] gap-x-2 gap-y-1.5">
                   <div className="min-w-0">
-                    <div className={uiTypography.overline}>Code</div>
+                    <div className={customerHeroLabelClass}>Code</div>
                     <div className={uiCx(uiTypography.helper, 'mt-0.5 font-semibold text-gray-900')}>
                       {c.code || id?.slice(0, 8) || EM_DASH}
                     </div>
                   </div>
                   <div className="min-w-0">
-                    <div className={uiTypography.overline}>Address</div>
+                    <div className={customerHeroLabelClass}>Address</div>
                     <div
                       className={uiCx(uiTypography.helper, 'mt-0.5 truncate font-semibold text-gray-900')}
                       title={formatAddressDisplay({
@@ -451,7 +455,7 @@ export default function CustomerDetail(){
                     </div>
                   </div>
                   <div className="min-w-0">
-                    <div className={uiTypography.overline}>Status</div>
+                    <div className={customerHeroLabelClass}>Status</div>
                     <div className="mt-0.5">
                       {clientStatusLabel ? (
                         <AppBadge variant={clientStatusVariant}>{clientStatusLabel}</AppBadge>
@@ -461,7 +465,7 @@ export default function CustomerDetail(){
                     </div>
                   </div>
                   <div className="min-w-0">
-                    <div className={uiTypography.overline}>Type</div>
+                    <div className={customerHeroLabelClass}>Type</div>
                     <div className={uiCx(uiTypography.helper, 'mt-0.5 font-semibold text-gray-900')}>
                       {(c as any).client_type ? String((c as any).client_type) : EM_DASH}
                     </div>
@@ -483,7 +487,7 @@ export default function CustomerDetail(){
           aria-hidden={!isHeroCollapsed}
         >
           <div className="flex h-8 items-center justify-between gap-2 px-2.5 py-0">
-            <h3 className={uiCx(uiTypography.sectionTitle, 'min-w-0 flex-1 truncate leading-none')}>
+            <h3 className={uiCx(customerHeroTitleClass, 'min-w-0 flex-1 truncate leading-none')}>
               {c.display_name || c.name || id}
             </h3>
             <div className="flex shrink-0 items-center gap-1">

@@ -24,6 +24,7 @@ from ..models import models
 from ..schemas import files as file_schemas
 
 from ..services.project_utils import sanitize_division_onsite_leads
+from ..services.optional_service_status import is_optional_service_not_approved
 from ..proposals.pdf_merge import generate_pdf
 from ..proposals.pdf_image_optimizer import optimize_image_bytes
 import httpx
@@ -754,8 +755,13 @@ def save_proposal(payload: dict = Body(...), db: Session = Depends(get_db), user
                         summary = f"${float(price):,.2f}"
                     except (ValueError, TypeError):
                         summary = str(price)
-                    if s.get("approved") is False:
+                    status = s.get("status")
+                    if is_optional_service_not_approved(s):
                         summary += " (Not approved)"
+                    elif status == "pending":
+                        summary += " (Pending)"
+                    elif status == "approved":
+                        summary += " (Approved)"
                     create_changes[f"service__{name}"] = summary
             secs = new_data.get("sections") or []
             for s in secs:

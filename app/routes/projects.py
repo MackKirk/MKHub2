@@ -80,6 +80,7 @@ from sqlalchemy import or_, and_, cast, String, Date
 from ..services.project_utils import sanitize_division_onsite_leads
 from ..services.project_duplicate import generate_project_code, duplicate_project_deep
 from ..services.project_customer_participation import project_site_address_payload
+from ..services.optional_service_status import coerce_optional_service_approval
 from ..services.leak_investigation import (
     get_leak_investigation_division_id,
     project_has_leak_investigation_division,
@@ -6482,9 +6483,20 @@ def convert_to_project(
                         updated_services = []
                         for i, item in enumerate(optional_services):
                             if isinstance(item, dict):
-                                approved = optional_service_approvals[i] if i < len(optional_service_approvals) else True
+                                status_raw = (
+                                    optional_service_approvals[i]
+                                    if i < len(optional_service_approvals)
+                                    else "pending"
+                                )
+                                status = coerce_optional_service_approval(status_raw)
                                 new_item = copy.deepcopy(item)
-                                new_item["approved"] = bool(approved)
+                                new_item["status"] = status
+                                # Drop legacy boolean so loaders use the 3-state field.
+                                new_item.pop("approved", None)
+                                if "pst" not in new_item:
+                                    new_item["pst"] = False
+                                if "gst" not in new_item:
+                                    new_item["gst"] = False
                                 updated_services.append(new_item)
                             else:
                                 updated_services.append(copy.deepcopy(item) if item is not None else {})

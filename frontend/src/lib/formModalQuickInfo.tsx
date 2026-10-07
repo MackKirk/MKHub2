@@ -1345,7 +1345,8 @@ export const opportunityConvertToProjectQuickInfo = formModalQuickInfo({
     <>
       Set {uiLabel('Project admin')}, {uiLabel('Lead source')}, {uiLabel('On-site leads')} per division, and{' '}
       {uiLabel('Start date')} / {uiLabel('End date')}. If related customers exist, mark bid winners as awarded. Review
-      pricing line items and optional services, and approve what should carry into the project.
+      pricing line items (approved / not approved) and optional services (pending by default, or approved / not
+      approved).
     </>
   ),
   behavior: (
