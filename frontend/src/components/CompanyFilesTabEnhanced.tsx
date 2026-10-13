@@ -13,6 +13,8 @@ import {
   FileListSelectionBar,
   FileMoveLocationModal,
   FileListDropHint,
+  OsFileDropOverlay,
+  useOsFileDropHighlight,
   UploadProgressPanel,
   dropTargetClass,
   buildFolderFileCounts,
@@ -25,6 +27,7 @@ import {
   getDraggedFileIds,
   isInternalFileDrag,
   isExternalFileDrop,
+  isOsFileDrag,
   setDraggedFileIds,
   useFileDropTarget,
   useFileImageGallery,
@@ -216,6 +219,7 @@ export default function CompanyFilesTabEnhanced() {
 
   const canWriteSelectedDept = !selectedDept || isWriteDepartmentAllowed(selectedDept);
   const canEditInDept = canWrite && canWriteSelectedDept;
+  const osFileDrop = useOsFileDropHighlight(canEditInDept && !!selectedDept);
   const canDeleteInDept = canDelete && canWriteSelectedDept;
   const canMoveInDept = canMove && canWriteSelectedDept;
 
@@ -1342,17 +1346,28 @@ export default function CompanyFilesTabEnhanced() {
 
             <div
               className={uiCx(
-                'flex-1 overflow-y-auto p-4',
+                'relative flex-1 overflow-y-auto p-4',
                 dropTargetClass(isDropActive('root', selectedDept || ''), 'root'),
               )}
+              {...osFileDrop.bind}
               onDragOver={
                 canEditInDept && selectedDept
                   ? (e) => {
                       e.preventDefault();
-                      if (isInternalFileDrag(e.dataTransfer) || (e.dataTransfer.files?.length || 0) > 0) {
+                      if (isInternalFileDrag(e.dataTransfer) || isOsFileDrag(e.dataTransfer)) {
                         setIsDragging(true);
                       }
-                      if (isInternalFileDrag(e.dataTransfer) && !isOverNestedFileDropTarget(e.nativeEvent)) {
+                      if (isOverNestedFileDropTarget(e.nativeEvent)) return;
+                      if (isOsFileDrag(e.dataTransfer)) {
+                        const openFolder = allFolders.find((folder) => folder.id === effectiveFolderId);
+                        setDropTarget({
+                          kind: openFolder ? 'folder' : 'root',
+                          id: openFolder?.id || selectedDept,
+                          label: openFolder?.name || selectedDeptLabel,
+                        });
+                        return;
+                      }
+                      if (isInternalFileDrag(e.dataTransfer)) {
                         setDropTarget({ kind: 'root', id: selectedDept, label: 'Root' });
                       }
                     }
@@ -1386,6 +1401,7 @@ export default function CompanyFilesTabEnhanced() {
                   : undefined
               }
             >
+              <OsFileDropOverlay active={osFileDrop.active} />
               {!selectedDept ? (
                 <AppEmptyState
                   title="Select a File Category"

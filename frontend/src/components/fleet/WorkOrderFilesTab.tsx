@@ -13,6 +13,8 @@ import {
   FileListSelectionBar,
   FileMoveLocationModal,
   FileListDropHint,
+  OsFileDropOverlay,
+  useOsFileDropHighlight,
   UploadProgressPanel,
   FILE_LIBRARY_ACCEPT,
   FILE_LIBRARY_UPLOAD_HINT,
@@ -25,6 +27,7 @@ import {
   getDraggedFileIds,
   isInternalFileDrag,
   isExternalFileDrop,
+  isOsFileDrag,
   setDraggedFileIds,
   useFileDropTarget,
   useFileImageGallery,
@@ -108,10 +111,11 @@ export function WorkOrderFilesTab({ workOrderId, canEdit = true }: Props) {
   });
   const [uploadCategory, setUploadCategory] = useState<string>('outros');
   const [isDragging, setIsDragging] = useState(false);
+  const osFileDrop = useOsFileDropHighlight(canEdit);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkDownloading, setBulkDownloading] = useState(false);
   const fileSelection = useFileListSelection();
-  const { dropTarget, clearDropTarget, makeDropHandlers, isDropActive } = useFileDropTarget();
+  const { dropTarget, setDropTarget, clearDropTarget, makeDropHandlers, isDropActive } = useFileDropTarget();
   const [showUpload, setShowUpload] = useState(false);
   const [uploadQueue, setUploadQueue] = useState<
     Array<{
@@ -715,14 +719,19 @@ export function WorkOrderFilesTab({ workOrderId, canEdit = true }: Props) {
 
                 <div
                   className={uiCx(
-                    'min-w-0 flex-1 overflow-y-auto p-4',
+                    'relative min-w-0 flex-1 overflow-y-auto p-4',
                     isDragging && 'bg-blue-50/50',
                   )}
+                  {...osFileDrop.bind}
                   onDragOver={(e) => {
                     e.preventDefault();
-                    if (isInternalFileDrag(e.dataTransfer) || (e.dataTransfer.files?.length || 0) > 0) {
-                      setIsDragging(true);
-                    }
+                    if (!(isInternalFileDrag(e.dataTransfer) || isOsFileDrag(e.dataTransfer))) return;
+                    setIsDragging(true);
+                    if (!isOsFileDrag(e.dataTransfer)) return;
+                    const destinationId = selectedCategory === 'all' ? uploadCategory : selectedCategory;
+                    const label =
+                      WO_FILE_CATEGORIES.find((c) => c.id === destinationId)?.label || selectedCategoryLabel;
+                    setDropTarget({ kind: 'category', id: destinationId, label });
                   }}
                   onDragLeave={(e) => {
                     leaveContainerDragLeave(e, () => {
@@ -732,6 +741,7 @@ export function WorkOrderFilesTab({ workOrderId, canEdit = true }: Props) {
                   }}
                   onDrop={onDropRight}
                 >
+                  <OsFileDropOverlay active={osFileDrop.active} />
                   <div className={uiCx(uiLayout.actionsRow, 'mb-2 flex-wrap gap-2')}>
                     <AppButton type="button" variant="ghost" size="sm" onClick={openFilesHome}>
                       ← Files Home

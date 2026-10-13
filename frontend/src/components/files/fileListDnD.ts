@@ -58,3 +58,12 @@ export function isInternalFileDrag(dataTransfer: DataTransfer): boolean {
 export function isExternalFileDrop(dataTransfer: DataTransfer): boolean {
   return !isInternalFileDrag(dataTransfer) && (dataTransfer.files?.length ?? 0) > 0;
 }
+
+/**
+ * True while an OS file/folder is being dragged.
+ * `files` is empty until drop; `types` includes "Files" during dragover.
+ */
+export function isOsFileDrag(dataTransfer: DataTransfer): boolean {
+  if (isInternalFileDrag(dataTransfer)) return false;
+  return Array.from(dataTransfer.types).includes('Files');
+}

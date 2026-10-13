@@ -13,6 +13,9 @@ import {
   FILE_LIBRARY_UPLOAD_HINT,
   UploadProgressPanel,
   useFileImageGallery,
+  OsFileDropOverlay,
+  useOsFileDropHighlight,
+  isOsFileDrag,
 } from '@/components/files';
 import {
   projectFilesMoveCategoryQuickInfo,
@@ -96,7 +99,7 @@ export default function UserDocumentsTabEnhanced({
   const [showNewFolderModal, setShowNewFolderModal] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [newFolderCategory, setNewFolderCategory] = useState('');
-  const [isDragging, setIsDragging] = useState(false);
+  const osFileDrop = useOsFileDropHighlight(canEdit);
   const [draggedFileId, setDraggedFileId] = useState<string | null>(null);
   const [fileSearchQuery, setFileSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'uploaded_at' | 'name' | 'type'>('uploaded_at');
@@ -614,21 +617,16 @@ export default function UserDocumentsTabEnhanced({
         </div>
 
         <div
-          className={`flex-1 overflow-y-auto p-4 ${isDragging && canEdit ? 'border-2 border-dashed border-blue-400 bg-blue-50' : ''}`}
+          className="relative flex-1 overflow-y-auto p-4"
+          {...osFileDrop.bind}
           onDragOver={
             canEdit
               ? (e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  setIsDragging(true);
-                }
-              : undefined
-          }
-          onDragLeave={
-            canEdit
-              ? (e) => {
-                  e.preventDefault();
-                  setIsDragging(false);
+                  if (isOsFileDrag(e.dataTransfer)) {
+                    e.dataTransfer.dropEffect = 'copy';
+                  }
                 }
               : undefined
           }
@@ -636,7 +634,6 @@ export default function UserDocumentsTabEnhanced({
             canEdit
               ? async (e) => {
                   e.preventDefault();
-                  setIsDragging(false);
                   if (e.dataTransfer.files?.length) {
                     await uploadMultiple(Array.from(e.dataTransfer.files));
                     toast.success('Uploaded');
@@ -659,6 +656,7 @@ export default function UserDocumentsTabEnhanced({
               : undefined
           }
         >
+          <OsFileDropOverlay active={osFileDrop.active} />
           <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 flex-1 items-center gap-3">
               <AppInput
