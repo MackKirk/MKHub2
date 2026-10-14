@@ -14,12 +14,14 @@ export {
   dropTargetClass,
   isInternalFileDrag,
   isExternalFileDrop,
+  isOsFileDrag,
   type FileDropTarget,
   type FileDropTargetKind,
 } from './fileListDnD';
 export { useFileListSelection, type FileListSelection } from './useFileListSelection';
 export { useFileDropTarget, leaveContainerDragLeave } from './useFileDropTarget';
 export { FileListDropHint, fileDropTargetProps, isOverNestedFileDropTarget } from './FileListDropHint';
+export { OsFileDropOverlay, useOsFileDropHighlight } from './OsFileDropOverlay';
 export { FileListSelectionBar } from './FileListSelectionBar';
 export {
   buildFolderOptionsForCategory,

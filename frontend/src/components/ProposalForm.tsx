@@ -52,6 +52,11 @@ import {
 } from '@/constants/proposalSectionImage';
 import SectionImageLightbox from '@/components/proposal/SectionImageLightbox';
 import SectionImagePreview from '@/components/proposal/SectionImagePreview';
+import {
+  normalizeOptionalService,
+  serializeOptionalService,
+  type OptionalServiceStatus,
+} from '@/lib/optionalServiceStatus';
 // EstimateBuilder removed - now using simple pricing items
 
 /** Opportunity proposal tab — `fieldHint` for App* controls (`Title\n\nBody`). */
@@ -73,7 +78,8 @@ const PROPOSAL_FIELD_HINTS = {
   pricingName: 'Item name\n\nLine item description in the pricing table.',
   pricingPrice: 'Price\n\nLine price before tax; formatted when you leave the field.',
   areaDisplayUnit: 'Area display unit\n\nUnit for area totals and cost per area in the summary.',
-  optionalService: 'Service\n\nOptional line the client may accept; does not change the proposal total.',
+  optionalService:
+    'Service\n\nOptional line the client may accept. On projects, approved optionals count toward totals with their PST/GST flags.',
   optionalPrice: 'Price\n\nPrice shown for this optional service.',
   termsTemplate: 'Terms template\n\nLoad standard terms from settings; you can still edit the text below.',
   termsText: 'Terms text\n\nContract terms printed at the end of the proposal PDF.',
@@ -208,8 +214,18 @@ export type PricingItem = {
 type OptionalServiceItem = {
   service: string;
   price: string;
-  approved?: boolean;
+  status: OptionalServiceStatus;
+  pst?: boolean;
+  gst?: boolean;
 };
+
+const EMPTY_OPTIONAL_SERVICE = (): OptionalServiceItem => ({
+  service: '',
+  price: '',
+  status: 'pending',
+  pst: false,
+  gst: false,
+});
 
 // Area conversion: internal standard is sqft. 1 SQS = 100 sqft; 1 m² ≈ 10.7639 sqft
 const SQFT_PER_SQS = 100;
@@ -788,35 +804,53 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
     return pricingItems.filter(c => c.approved !== false);
   }, [pricingItems, isBidding]);
 
+  // On projects, approved optional services also count toward totals (with their PST/GST flags).
+  const optionalsForTotals = useMemo(() => {
+    if (isBidding !== false) return [] as OptionalServiceItem[];
+    return optionalServices.filter((s) => s.status === 'approved');
+  }, [optionalServices, isBidding]);
+
   const totalNum = useMemo(()=>{ 
-    return itemsForTotals.reduce((a,c)=> {
+    const pricingTotal = itemsForTotals.reduce((a,c)=> {
       const price = Number(parseAccounting(c.price)||'0');
       const qty = Number(c.quantity || '1');
       return a + (price * qty);
-    }, 0); 
-  }, [itemsForTotals]);
+    }, 0);
+    const optionalTotal = optionalsForTotals.reduce((a, s) => {
+      return a + (Number(parseAccounting(s.price) || '0') || 0);
+    }, 0);
+    return pricingTotal + optionalTotal;
+  }, [itemsForTotals, optionalsForTotals]);
 
   // Calculate PST only on items marked for PST
   const totalForPst = useMemo(() => {
-    return itemsForTotals
+    const fromPricing = itemsForTotals
       .filter(c => c.pst === true)
       .reduce((a, c) => {
         const price = Number(parseAccounting(c.price)||'0');
         const qty = Number(c.quantity || '1');
         return a + (price * qty);
       }, 0);
-  }, [itemsForTotals]);
+    const fromOptional = optionalsForTotals
+      .filter((s) => s.pst === true)
+      .reduce((a, s) => a + (Number(parseAccounting(s.price) || '0') || 0), 0);
+    return fromPricing + fromOptional;
+  }, [itemsForTotals, optionalsForTotals]);
 
   // Calculate GST only on items marked for GST
   const totalForGst = useMemo(() => {
-    return itemsForTotals
+    const fromPricing = itemsForTotals
       .filter(c => c.gst === true)
       .reduce((a, c) => {
         const price = Number(parseAccounting(c.price)||'0');
         const qty = Number(c.quantity || '1');
         return a + (price * qty);
       }, 0);
-  }, [itemsForTotals]);
+    const fromOptional = optionalsForTotals
+      .filter((s) => s.gst === true)
+      .reduce((a, s) => a + (Number(parseAccounting(s.price) || '0') || 0), 0);
+    return fromPricing + fromOptional;
+  }, [itemsForTotals, optionalsForTotals]);
   
   // Update React Query cache with current pricing items for real-time percentage calculation
   useEffect(() => {
@@ -974,7 +1008,16 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
     });
     setPricingItems(loadedItems);
     const os = Array.isArray(d.optional_services)? d.optional_services : [];
-    setOptionalServices(os.map((s:any)=> ({ service: String(s.service||''), price: formatAccounting(s.price ?? ''), approved: s.approved !== false })));
+    setOptionalServices(os.map((s: any) => {
+      const n = normalizeOptionalService(s);
+      return {
+        service: n.service,
+        price: formatAccounting(n.price),
+        status: n.status,
+        pst: n.pst,
+        gst: n.gst,
+      };
+    }));
     setShowTotalInPdf(d.show_total_in_pdf !== undefined ? Boolean(d.show_total_in_pdf) : true);
     setPstRate(d.pst_rate !== undefined && d.pst_rate !== null ? Number(d.pst_rate) : 7);
     setGstRate(d.gst_rate !== undefined && d.gst_rate !== null ? Number(d.gst_rate) : 5);
@@ -1433,7 +1476,15 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
           }
           return base;
         }),
-        optional_services: servicesToSave.map(s=> ({ service: s.service, price: Number(parseAccounting(s.price)||'0'), approved: s.approved !== false })),
+        optional_services: servicesToSave.map((s) =>
+          serializeOptionalService({
+            service: s.service,
+            price: Number(parseAccounting(s.price) || '0'),
+            status: s.status,
+            pst: s.pst === true,
+            gst: s.gst === true,
+          }),
+        ),
         pst_rate: pstRate,
         gst_rate: gstRate,
         area_display_unit: areaDisplayUnit,
@@ -1608,7 +1659,15 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
           }
           return base;
         }),
-        optional_services: optionalServicesRef.current.map(s=> ({ service: s.service, price: Number(parseAccounting(s.price)||'0'), approved: s.approved !== false })),
+        optional_services: optionalServicesRef.current.map((s) =>
+          serializeOptionalService({
+            service: s.service,
+            price: Number(parseAccounting(s.price) || '0'),
+            status: s.status,
+            pst: s.pst === true,
+            gst: s.gst === true,
+          }),
+        ),
         pst_rate: pstRate,
         gst_rate: gstRate,
         area_display_unit: areaDisplayUnit,
@@ -1767,7 +1826,20 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
       form.append('pst_rate', String(pstRate));
       form.append('gst_rate', String(gstRate));
       form.append('additional_costs', JSON.stringify(pricingItems.map(c=> ({ label: c.name, value: Number(parseAccounting(c.price)||'0'), quantity: c.quantity || '1', pst: c.pst === true, gst: c.gst === true, show_unit_price_in_pdf: c.show_unit_price_in_pdf === true }))));
-      form.append('optional_services', JSON.stringify(optionalServices.map(s=> ({ service: s.service, price: Number(parseAccounting(s.price)||'0'), approved: s.approved !== false }))));
+      form.append(
+        'optional_services',
+        JSON.stringify(
+          optionalServices.map((s) =>
+            serializeOptionalService({
+              service: s.service,
+              price: Number(parseAccounting(s.price) || '0'),
+              status: s.status,
+              pst: s.pst === true,
+              gst: s.gst === true,
+            }),
+          ),
+        ),
+      );
       form.append('sections', JSON.stringify(sanitizeSections(sections)));
       if (coverFoId) form.append('cover_file_object_id', coverFoId);
       if (page2FoId) form.append('page2_file_object_id', page2FoId);
@@ -2876,6 +2948,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
               const divisionInfo = getDivisionInfoById(c.division_id, projectDivisions);
               
               const isNotApproved = isBidding === false && c.approved === false;
+              const isApprovedOnProject = isBidding === false && !isNotApproved;
               const rowDisabled = disabled || isNotApproved;
               return (
                 <div
@@ -2883,6 +2956,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                   className={uiCx(
                     'relative -mx-2 flex w-full min-w-0 flex-col gap-1.5 rounded-lg p-2',
                     isNotApproved && 'border border-amber-200 bg-amber-50',
+                    isApprovedOnProject && 'border border-green-200 bg-green-50',
                   )}
                 >
                   <div
@@ -2891,7 +2965,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                       designSystem ? 'sm:items-start' : 'items-stretch sm:items-center',
                     )}
                   >
-                  {isNotApproved && (
+                  {isNotApproved ? (
                     <div className="flex flex-shrink-0 flex-col items-start gap-1">
                       <span
                         className="inline-flex w-fit items-center rounded-md border border-amber-300 bg-amber-200 px-2 py-1 text-xs font-semibold text-amber-900"
@@ -2899,52 +2973,17 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                       >
                         Not approved
                       </span>
-                      {canApprovePricing ? (
-                        <button
-                          type="button"
-                          className="rounded-md border border-dashed border-gray-400 bg-transparent px-1.5 py-0.5 text-xs font-semibold leading-tight text-gray-600 hover:border-gray-500 hover:bg-gray-50 hover:text-gray-800"
-                          onClick={async () => {
-                            const result = await confirm({
-                              title: 'Approve pricing item',
-                              message:
-                                'Approve this item? It will become editable again and count toward project totals.',
-                              confirmText: 'Approve',
-                              cancelText: 'Cancel',
-                            });
-                            if (result === 'confirm') {
-                              saveTriggeredByApprovalChangeRef.current = true;
-                              setPricingItems((arr) =>
-                                arr.map((x, j) => (j === i ? { ...x, approved: true } : x)),
-                              );
-                            }
-                          }}
-                        >
-                          Approve
-                        </button>
-                      ) : null}
-                      {canDeletePricing ? (
-                        <button
-                          type="button"
-                          className="rounded-md border border-dashed border-red-400 bg-transparent px-1.5 py-0.5 text-xs font-semibold leading-tight text-red-700 hover:border-red-500 hover:bg-red-50 hover:text-red-800"
-                          onClick={async () => {
-                            const result = await confirm({
-                              title: 'Delete pricing item',
-                              message:
-                                'Permanently delete this item? This cannot be undone.',
-                              confirmText: 'Delete',
-                              cancelText: 'Cancel',
-                            });
-                            if (result === 'confirm') {
-                              saveTriggeredByApprovalChangeRef.current = true;
-                              setPricingItems((arr) => arr.filter((_, j) => j !== i));
-                            }
-                          }}
-                        >
-                          Delete
-                        </button>
-                      ) : null}
                     </div>
-                  )}
+                  ) : isApprovedOnProject ? (
+                    <div className="flex flex-shrink-0 flex-col items-start gap-1">
+                      <span
+                        className="inline-flex w-fit items-center rounded-md border border-green-300 bg-green-100 px-2 py-1 text-xs font-semibold text-green-900"
+                        title="This item is approved and counts toward project totals."
+                      >
+                        Approved
+                      </span>
+                    </div>
+                  ) : null}
                   {/* Division Icon */}
                   {divisionInfo &&
                     (designSystem ? (
@@ -3439,6 +3478,125 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                         </svg>
                       </button>
                     ))}
+                  {isNotApproved && (canApprovePricing || canDeletePricing) ? (
+                    designSystem ? (
+                      <ProposalInlineControlSpacer>
+                        <div className="flex items-center gap-1">
+                          {canApprovePricing ? (
+                            <button
+                              type="button"
+                              title="Approve"
+                              aria-label="Approve"
+                              className={uiCx(
+                                'flex w-8 shrink-0 items-center justify-center rounded bg-green-100 transition-colors hover:bg-green-200',
+                                PROPOSAL_INLINE_CONTROL_H,
+                              )}
+                              onClick={async () => {
+                                const result = await confirm({
+                                  title: 'Approve pricing item',
+                                  message:
+                                    'Approve this item? It will become editable again and count toward project totals.',
+                                  confirmText: 'Approve',
+                                  cancelText: 'Cancel',
+                                });
+                                if (result === 'confirm') {
+                                  saveTriggeredByApprovalChangeRef.current = true;
+                                  setPricingItems((arr) =>
+                                    arr.map((x, j) => (j === i ? { ...x, approved: true } : x)),
+                                  );
+                                }
+                              }}
+                            >
+                              <svg className="h-4 w-4 text-green-700" fill="currentColor" viewBox="0 0 20 20" aria-hidden>
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                              </svg>
+                            </button>
+                          ) : null}
+                          {canDeletePricing ? (
+                            <button
+                              type="button"
+                              title="Delete"
+                              aria-label="Delete"
+                              className={uiCx(
+                                'flex w-8 shrink-0 items-center justify-center rounded bg-red-100 transition-colors hover:bg-red-200',
+                                PROPOSAL_INLINE_CONTROL_H,
+                              )}
+                              onClick={async () => {
+                                const result = await confirm({
+                                  title: 'Delete pricing item',
+                                  message: 'Permanently delete this item? This cannot be undone.',
+                                  confirmText: 'Delete',
+                                  cancelText: 'Cancel',
+                                });
+                                if (result === 'confirm') {
+                                  saveTriggeredByApprovalChangeRef.current = true;
+                                  setPricingItems((arr) => arr.filter((_, j) => j !== i));
+                                }
+                              }}
+                            >
+                              <svg className="h-4 w-4 text-red-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          ) : null}
+                        </div>
+                      </ProposalInlineControlSpacer>
+                    ) : (
+                      <div className="flex shrink-0 items-center gap-1">
+                        {canApprovePricing ? (
+                          <button
+                            type="button"
+                            title="Approve"
+                            aria-label="Approve"
+                            className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-green-100 p-1 transition-colors hover:bg-green-200"
+                            onClick={async () => {
+                              const result = await confirm({
+                                title: 'Approve pricing item',
+                                message:
+                                  'Approve this item? It will become editable again and count toward project totals.',
+                                confirmText: 'Approve',
+                                cancelText: 'Cancel',
+                              });
+                              if (result === 'confirm') {
+                                saveTriggeredByApprovalChangeRef.current = true;
+                                setPricingItems((arr) =>
+                                  arr.map((x, j) => (j === i ? { ...x, approved: true } : x)),
+                                );
+                              }
+                            }}
+                          >
+                            <svg className="h-4 w-4 text-green-700" fill="currentColor" viewBox="0 0 20 20" aria-hidden>
+                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                            </svg>
+                          </button>
+                        ) : null}
+                        {canDeletePricing ? (
+                          <button
+                            type="button"
+                            title="Delete"
+                            aria-label="Delete"
+                            className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-red-100 p-1 transition-colors hover:bg-red-200"
+                            onClick={async () => {
+                              const result = await confirm({
+                                title: 'Delete pricing item',
+                                message: 'Permanently delete this item? This cannot be undone.',
+                                confirmText: 'Delete',
+                                cancelText: 'Cancel',
+                              });
+                              if (result === 'confirm') {
+                                saveTriggeredByApprovalChangeRef.current = true;
+                                setPricingItems((arr) => arr.filter((_, j) => j !== i));
+                              }
+                            }}
+                          >
+                            <svg className="h-4 w-4 text-red-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        ) : null}
+                      </div>
+                    )
+                  ) : null}
                   </div>
                   {c.area_value != null && c.area_value > 0 && c.area_unit && (
                     <div className="text-xs text-gray-600 truncate px-0.5">
@@ -3611,413 +3769,423 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
           );
         })()}
 
-        {/* Optional Services Block - shown in both Proposal and Pricing (same data; does not affect total). On Pricing tab: always expanded, same style as Pricing block. */}
-        <div className={dsSectionShell}>
-          {showOnlyPricing ? (
-            <>
-              <div className={designSystem ? uiCx('border-b border-gray-100 px-4 py-3', uiTypography.sectionTitle) : 'bg-slate-200 p-2.5 text-gray-900 font-semibold text-sm'}>Optional Services</div>
-              <div className={dsSectionBodyPad}>
-                <div className="text-xs text-gray-600 mb-2">Optional services the client can accept or decline. These do not affect the proposal total.</div>
-                <div className="space-y-2">
-                  {optionalServices.map((s, i)=> {
-                    const isNotApproved = isBidding === false && s.approved === false;
-                    const rowDisabled = disabled || isNotApproved;
-                    return (
-                    <div
-                      key={i}
-                      className={uiCx(
-                        'relative -mx-2 flex w-full min-w-0 flex-col gap-1.5 rounded-lg p-2',
-                        isNotApproved && 'border border-amber-200 bg-amber-50',
-                      )}
-                    >
-                      {isNotApproved && (
-                        <div className="flex flex-shrink-0 flex-col items-start gap-1">
-                          <span
-                            className="inline-flex w-fit items-center rounded-md border border-amber-300 bg-amber-200 px-2 py-1 text-xs font-semibold text-amber-900"
-                            title="This service was not approved during conversion and is read-only."
-                          >
-                            Not approved
-                          </span>
-                          {canApprovePricing ? (
-                            <button
-                              type="button"
-                              className="rounded-md border border-dashed border-gray-400 bg-transparent px-1.5 py-0.5 text-xs font-semibold leading-tight text-gray-600 hover:border-gray-500 hover:bg-gray-50 hover:text-gray-800"
-                              onClick={async () => {
-                                const result = await confirm({
-                                  title: 'Approve optional service',
-                                  message: 'Approve this service? It will become editable again.',
-                                  confirmText: 'Approve',
-                                  cancelText: 'Cancel',
-                                });
-                                if (result === 'confirm') {
-                                  saveTriggeredByApprovalChangeRef.current = true;
-                                  setOptionalServices((arr) =>
-                                    arr.map((x, j) => (j === i ? { ...x, approved: true } : x)),
-                                  );
-                                }
-                              }}
-                            >
-                              Approve
-                            </button>
-                          ) : null}
-                          {canDeletePricing ? (
-                            <button
-                              type="button"
-                              className="rounded-md border border-dashed border-red-400 bg-transparent px-1.5 py-0.5 text-xs font-semibold leading-tight text-red-700 hover:border-red-500 hover:bg-red-50 hover:text-red-800"
-                              onClick={async () => {
-                                const result = await confirm({
-                                  title: 'Delete optional service',
-                                  message: 'Permanently delete this service? This cannot be undone.',
-                                  confirmText: 'Delete',
-                                  cancelText: 'Cancel',
-                                });
-                                if (result === 'confirm') {
-                                  saveTriggeredByApprovalChangeRef.current = true;
-                                  setOptionalServices((arr) => arr.filter((_, j) => j !== i));
-                                }
-                              }}
-                            >
-                              Delete
-                            </button>
-                          ) : null}
-                        </div>
-                      )}
-                      <div
-                        className={uiCx(
-                          'flex w-full min-w-0 flex-col gap-1.5 sm:flex-row sm:gap-2',
-                          designSystem ? 'sm:items-start' : 'items-stretch sm:items-center',
-                        )}
-                      >
-                      {designSystem ? (
-                        <>
-                          <ProposalInlineInput
-                            className="min-w-0 flex-1"
-                            label="Service"
-                            placeholder="Service"
-                            value={s.service}
-                            onChange={(e) => {
-                              const v = e.target.value;
-                              setOptionalServices((arr) => arr.map((x, j) => (j === i ? { ...x, service: v } : x)));
-                            }}
-                            disabled={rowDisabled}
-                            readOnly={rowDisabled}
-                            fieldHint={PROPOSAL_FIELD_HINTS.optionalService}
-                          />
-                          <ProposalInlineInput
-                            className="min-w-[100px] max-w-[140px] shrink-0"
-                            label="Price"
-                            placeholder="Price"
-                            value={s.price}
-                            onChange={(e) => {
-                              const v = parseAccounting(e.target.value);
-                              setOptionalServices((arr) => arr.map((x, j) => (j === i ? { ...x, price: v } : x)));
-                            }}
-                            onBlur={
-                              !rowDisabled
-                                ? () =>
-                                    setOptionalServices((arr) =>
-                                      arr.map((x, j) => (j === i ? { ...x, price: formatAccounting(x.price) } : x)),
-                                    )
-                                : undefined
-                            }
-                            disabled={rowDisabled}
-                            readOnly={rowDisabled}
-                            fieldHint={PROPOSAL_FIELD_HINTS.optionalPrice}
-                          />
-                          {!rowDisabled && (
-                            <ProposalInlineControlSpacer>
-                              <button
-                                type="button"
-                                className={uiCx(
-                                  'flex w-8 shrink-0 items-center justify-center rounded bg-red-100 transition-colors hover:bg-red-200',
-                                  PROPOSAL_INLINE_CONTROL_H,
-                                )}
-                                onClick={async () => {
-                                  if (isBidding) {
-                                    const deleteResult = await confirm({
-                                      title: 'Remove service',
-                                      message: 'Are you sure you want to remove this service? This action cannot be undone.',
-                                      confirmText: 'Remove',
-                                      cancelText: 'Cancel',
-                                    });
-                                    if (deleteResult !== 'confirm') return;
-                                  }
-                                  setOptionalServices((arr) => arr.filter((_, j) => j !== i));
-                                }}
-                                title="Remove"
-                              >
-                                <svg className="h-4 w-4 text-red-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                              </button>
-                            </ProposalInlineControlSpacer>
-                          )}
-                        </>
-                      ) : (
-                        <>
-                          <input className={`min-w-0 flex-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${rowDisabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Service" value={s.service} onChange={e=>{ const v=e.target.value; setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, service:v }: x)); }} disabled={rowDisabled} readOnly={rowDisabled} />
-                          <input type="text" className={`min-w-[100px] max-w-[140px] shrink-0 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${rowDisabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Price" value={s.price} onChange={e=>{ const v = parseAccounting(e.target.value); setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, price:v }: x)); }} onBlur={!rowDisabled ? ()=> setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, price: formatAccounting(x.price) }: x)) : undefined} disabled={rowDisabled} readOnly={rowDisabled} />
-                          {!rowDisabled && (
-                            <button
-                              type="button"
-                              className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-red-100 p-1 transition-colors hover:bg-red-200"
-                              onClick={async () => {
-                                if (isBidding) {
-                                  const deleteResult = await confirm({
-                                    title: 'Remove service',
-                                    message: 'Are you sure you want to remove this service? This action cannot be undone.',
-                                    confirmText: 'Remove',
-                                    cancelText: 'Cancel',
-                                  });
-                                  if (deleteResult !== 'confirm') return;
-                                }
-                                setOptionalServices((arr) => arr.filter((_, j) => j !== i));
-                              }}
-                              title="Remove"
-                            >
-                              <svg className="h-4 w-4 text-red-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                              </svg>
-                            </button>
-                          )}
-                        </>
-                      )}
-                      </div>
-                    </div>
-                    );
-                  })}
-                  {!disabled &&
-                    (designSystem ? (
-                      <AppListCreateItem
-                        layout="row"
-                        className="mt-3 !min-h-0 py-2.5"
-                        label="Add Service"
-                        onClick={() => setOptionalServices((arr) => [...arr, { service: '', price: '' }])}
-                      />
-                    ) : (
-                      <button
-                        type="button"
-                        className="mt-3 flex w-full items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-white p-2.5 text-center transition-all hover:border-brand-red hover:bg-gray-50 disabled:opacity-60"
-                        onClick={() => setOptionalServices((arr) => [...arr, { service: '', price: '' }])}
-                      >
-                        <div className="mr-2 text-lg text-gray-600">+</div>
-                        <div className="text-sm font-semibold text-gray-700">Add Service</div>
-                      </button>
-                    ))}
-                </div>
-              </div>
-            </>
-          ) : (
-            <>
-              <div 
-                className={dsSectionHeader}
-                onClick={() => setSectionsExpanded(prev => ({ ...prev, optionalServices: !prev.optionalServices }))}
-              >
-                <span>Optional Services</span>
-                <svg 
-                  className={`w-5 h-5 transition-transform duration-200 ${sectionsExpanded.optionalServices ? 'rotate-180' : ''}`}
-                  fill="none" 
-                  stroke="currentColor" 
-                  viewBox="0 0 24 24"
+        {/* Optional Services Block - shown in both Proposal and Pricing. On projects, approved optionals count toward totals. */}
+        {(() => {
+          const isProjectContext = isBidding === false;
+          const helperText = isProjectContext
+            ? 'Editors can approve or decline pending services. Re-approving, resetting to pending, or deleting a decided item requires approve/delete permission. Approved services count toward project totals (with PST/GST); pending and not approved do not.'
+            : 'If no services are added, the "Optional Services" section will be hidden in the PDF.';
+
+          const setOptionalStatus = (index: number, status: OptionalServiceStatus) => {
+            saveTriggeredByApprovalChangeRef.current = true;
+            setOptionalServices((arr) => arr.map((x, j) => (j === index ? { ...x, status } : x)));
+          };
+
+          const confirmResetOptionalToPending = async (index: number) => {
+            const result = await confirm({
+              title: 'Reset optional service to pending',
+              message:
+                'Reset to pending? Editors will be able to approve or decline again. If it was approved, it will be removed from project totals until re-approved.',
+              confirmText: 'Reset to pending',
+              cancelText: 'Cancel',
+            });
+            if (result === 'confirm') setOptionalStatus(index, 'pending');
+          };
+
+          const confirmApproveOptional = async (index: number) => {
+            const result = await confirm({
+              title: 'Approve optional service',
+              message:
+                'Approve this service? It will count toward project totals with its PST/GST flags.',
+              confirmText: 'Approve',
+              cancelText: 'Cancel',
+            });
+            if (result === 'confirm') setOptionalStatus(index, 'approved');
+          };
+
+          const confirmDeleteOptional = async (index: number) => {
+            const result = await confirm({
+              title: 'Delete optional service',
+              message: 'Permanently delete this service? This cannot be undone.',
+              confirmText: 'Delete',
+              cancelText: 'Cancel',
+            });
+            if (result === 'confirm') {
+              saveTriggeredByApprovalChangeRef.current = true;
+              setOptionalServices((arr) => arr.filter((_, j) => j !== index));
+            }
+          };
+
+          const handleOptionalRemoveClick = async (index: number) => {
+            const current = optionalServices[index];
+            const status = current?.status ?? 'pending';
+
+            if (isProjectContext && (status === 'pending' || status === 'approved')) {
+              if (disabled) return;
+              const result = await confirm({
+                title: 'Optional service',
+                message:
+                  'Mark this service as not approved (kept for tracking, excluded from totals), or delete it permanently.',
+                confirmText: 'Mark as "Not approved"',
+                cancelText: 'Cancel',
+                showDiscard: canDeletePricing,
+                discardText: 'Delete permanently',
+              });
+              if (result === 'confirm') {
+                setOptionalStatus(index, 'not_approved');
+              } else if (result === 'discard' && canDeletePricing) {
+                const deleteResult = await confirm({
+                  title: 'Delete optional service',
+                  message: 'Permanently delete this service? This cannot be undone.',
+                  confirmText: 'Delete',
+                  cancelText: 'Cancel',
+                });
+                if (deleteResult === 'confirm') {
+                  saveTriggeredByApprovalChangeRef.current = true;
+                  setOptionalServices((arr) => arr.filter((_, j) => j !== index));
+                }
+              }
+              return;
+            }
+
+            if (isBidding) {
+              const deleteResult = await confirm({
+                title: 'Remove service',
+                message: 'Are you sure you want to remove this service? This action cannot be undone.',
+                confirmText: 'Remove',
+                cancelText: 'Cancel',
+              });
+              if (deleteResult !== 'confirm') return;
+            }
+            setOptionalServices((arr) => arr.filter((_, j) => j !== index));
+          };
+
+          const renderStatusChrome = (s: OptionalServiceItem) => {
+            if (!isProjectContext) return null;
+            if (s.status === 'not_approved') {
+              return (
+                <span
+                  className="inline-flex w-fit shrink-0 items-center rounded-md border border-amber-300 bg-amber-200 px-2 py-1 text-xs font-semibold text-amber-900"
+                  title="This service is not approved and is read-only. It does not count toward totals."
                 >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
+                  Not approved
+                </span>
+              );
+            }
+            if (s.status === 'pending') {
+              return (
+                <span
+                  className="inline-flex w-fit shrink-0 items-center rounded-md border border-gray-300 bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-800"
+                  title="Awaiting client decision. Does not count toward totals until approved."
+                >
+                  Pending
+                </span>
+              );
+            }
+            return (
+              <span
+                className="inline-flex w-fit shrink-0 items-center rounded-md border border-green-300 bg-green-100 px-2 py-1 text-xs font-semibold text-green-900"
+                title="This service is approved and counts toward project totals."
+              >
+                Approved
+              </span>
+            );
+          };
+
+          const renderOptionalRow = (s: OptionalServiceItem, i: number) => {
+            const isNotApproved = isProjectContext && s.status === 'not_approved';
+            const isApproved = isProjectContext && s.status === 'approved';
+            const isPending = isProjectContext && s.status === 'pending';
+            const rowDisabled = disabled || isNotApproved;
+            const showTrailingApprove = (isPending && !disabled) || (isNotApproved && canApprovePricing);
+            const showTrailingPending = (isApproved || isNotApproved) && canApprovePricing;
+            const showTrailingRemove = !isNotApproved && !disabled;
+            const showTrailingDelete = isNotApproved && canDeletePricing;
+            const trailingRemoveTitle =
+              isPending || isApproved ? 'Mark as not approved' : 'Remove';
+            const approveIcon = (
+              <svg className="h-4 w-4 text-green-700" fill="currentColor" viewBox="0 0 20 20" aria-hidden>
+                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+              </svg>
+            );
+            const pendingIcon = (
+              <svg className="h-4 w-4 text-gray-700" fill="currentColor" viewBox="0 0 20 20" aria-hidden>
+                <path fillRule="evenodd" d="M3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
+              </svg>
+            );
+            const removeIcon = (
+              <svg className="h-4 w-4 text-red-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            );
+
+            const showTrailingActions =
+              showTrailingApprove || showTrailingPending || showTrailingRemove || showTrailingDelete;
+            const iconBtnClass = designSystem
+              ? uiCx('flex w-8 shrink-0 items-center justify-center rounded transition-colors', PROPOSAL_INLINE_CONTROL_H)
+              : 'flex h-7 w-7 shrink-0 items-center justify-center rounded p-1 transition-colors';
+            const trailingIconRow = (
+              <div className="flex items-center gap-1">
+                {showTrailingApprove ? (
+                  <button
+                    type="button"
+                    title="Approve"
+                    aria-label="Approve"
+                    className={uiCx(iconBtnClass, 'bg-green-100 hover:bg-green-200')}
+                    onClick={() => confirmApproveOptional(i)}
+                  >
+                    {approveIcon}
+                  </button>
+                ) : null}
+                {showTrailingPending ? (
+                  <button
+                    type="button"
+                    title="Pending"
+                    aria-label="Pending"
+                    className={uiCx(iconBtnClass, 'bg-gray-100 hover:bg-gray-200')}
+                    onClick={() => confirmResetOptionalToPending(i)}
+                  >
+                    {pendingIcon}
+                  </button>
+                ) : null}
+                {showTrailingRemove ? (
+                  <button
+                    type="button"
+                    title={trailingRemoveTitle}
+                    aria-label={trailingRemoveTitle}
+                    className={uiCx(iconBtnClass, 'bg-red-100 hover:bg-red-200')}
+                    onClick={() => handleOptionalRemoveClick(i)}
+                  >
+                    {removeIcon}
+                  </button>
+                ) : null}
+                {showTrailingDelete ? (
+                  <button
+                    type="button"
+                    title="Delete"
+                    aria-label="Delete"
+                    className={uiCx(iconBtnClass, 'bg-red-100 hover:bg-red-200')}
+                    onClick={() => confirmDeleteOptional(i)}
+                  >
+                    {removeIcon}
+                  </button>
+                ) : null}
               </div>
-              {sectionsExpanded.optionalServices && (
-              <div className={dsSectionBodyPad}>
-              <div className="text-xs text-gray-600 mb-2">If no services are added, the "Optional Services" section will be hidden in the PDF.</div>
-                <div className="space-y-2">
-                  {optionalServices.map((s, i)=> {
-                    const isNotApproved = isBidding === false && s.approved === false;
-                    const rowDisabled = disabled || isNotApproved;
-                    return (
-                    <div
-                      key={i}
-                      className={uiCx(
-                        'relative -mx-2 flex w-full min-w-0 flex-col gap-1.5 rounded-lg p-2',
-                        isNotApproved && 'border border-amber-200 bg-amber-50',
-                      )}
-                    >
-                      {isNotApproved && (
-                        <div className="flex flex-shrink-0 flex-col items-start gap-1">
-                          <span
-                            className="inline-flex w-fit items-center rounded-md border border-amber-300 bg-amber-200 px-2 py-1 text-xs font-semibold text-amber-900"
-                            title="This service was not approved during conversion and is read-only."
-                          >
-                            Not approved
-                          </span>
-                          {canApprovePricing ? (
-                            <button
-                              type="button"
-                              className="rounded-md border border-dashed border-gray-400 bg-transparent px-1.5 py-0.5 text-xs font-semibold leading-tight text-gray-600 hover:border-gray-500 hover:bg-gray-50 hover:text-gray-800"
-                              onClick={async () => {
-                                const result = await confirm({
-                                  title: 'Approve optional service',
-                                  message: 'Approve this service? It will become editable again.',
-                                  confirmText: 'Approve',
-                                  cancelText: 'Cancel',
-                                });
-                                if (result === 'confirm') {
-                                  saveTriggeredByApprovalChangeRef.current = true;
-                                  setOptionalServices((arr) =>
-                                    arr.map((x, j) => (j === i ? { ...x, approved: true } : x)),
-                                  );
-                                }
-                              }}
-                            >
-                              Approve
-                            </button>
-                          ) : null}
-                          {canDeletePricing ? (
-                            <button
-                              type="button"
-                              className="rounded-md border border-dashed border-red-400 bg-transparent px-1.5 py-0.5 text-xs font-semibold leading-tight text-red-700 hover:border-red-500 hover:bg-red-50 hover:text-red-800"
-                              onClick={async () => {
-                                const result = await confirm({
-                                  title: 'Delete optional service',
-                                  message: 'Permanently delete this service? This cannot be undone.',
-                                  confirmText: 'Delete',
-                                  cancelText: 'Cancel',
-                                });
-                                if (result === 'confirm') {
-                                  saveTriggeredByApprovalChangeRef.current = true;
-                                  setOptionalServices((arr) => arr.filter((_, j) => j !== i));
-                                }
-                              }}
-                            >
-                              Delete
-                            </button>
-                          ) : null}
-                        </div>
-                      )}
-                      <div
-                        className={uiCx(
-                          'flex w-full min-w-0 flex-col gap-1.5 sm:flex-row sm:gap-2',
-                          designSystem ? 'sm:items-start' : 'items-stretch sm:items-center',
-                        )}
-                      >
-                      {designSystem ? (
-                        <>
-                          <ProposalInlineInput
-                            className="min-w-0 flex-1"
-                            label="Service"
-                            placeholder="Service"
-                            value={s.service}
-                            onChange={(e) => {
-                              const v = e.target.value;
-                              setOptionalServices((arr) => arr.map((x, j) => (j === i ? { ...x, service: v } : x)));
-                            }}
-                            disabled={rowDisabled}
-                            readOnly={rowDisabled}
-                            fieldHint={PROPOSAL_FIELD_HINTS.optionalService}
-                          />
-                          <ProposalInlineInput
-                            className="min-w-[100px] max-w-[140px] shrink-0"
-                            label="Price"
-                            placeholder="Price"
-                            value={s.price}
-                            onChange={(e) => {
-                              const v = parseAccounting(e.target.value);
-                              setOptionalServices((arr) => arr.map((x, j) => (j === i ? { ...x, price: v } : x)));
-                            }}
-                            onBlur={
-                              !rowDisabled
-                                ? () =>
-                                    setOptionalServices((arr) =>
-                                      arr.map((x, j) => (j === i ? { ...x, price: formatAccounting(x.price) } : x)),
-                                    )
-                                : undefined
-                            }
-                            disabled={rowDisabled}
-                            readOnly={rowDisabled}
-                            fieldHint={PROPOSAL_FIELD_HINTS.optionalPrice}
-                          />
-                          {!rowDisabled && (
-                            <ProposalInlineControlSpacer>
-                              <button
-                                type="button"
-                                className={uiCx(
-                                  'flex w-8 shrink-0 items-center justify-center rounded bg-red-100 transition-colors hover:bg-red-200',
-                                  PROPOSAL_INLINE_CONTROL_H,
-                                )}
-                                onClick={async () => {
-                                  if (isBidding) {
-                                    const deleteResult = await confirm({
-                                      title: 'Remove service',
-                                      message: 'Are you sure you want to remove this service? This action cannot be undone.',
-                                      confirmText: 'Remove',
-                                      cancelText: 'Cancel',
-                                    });
-                                    if (deleteResult !== 'confirm') return;
-                                  }
-                                  setOptionalServices((arr) => arr.filter((_, j) => j !== i));
-                                }}
-                                title="Remove"
-                              >
-                                <svg className="h-4 w-4 text-red-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                              </button>
-                            </ProposalInlineControlSpacer>
-                          )}
-                        </>
-                      ) : (
-                        <>
-                          <input className={`min-w-0 flex-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${rowDisabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Service" value={s.service} onChange={e=>{ const v=e.target.value; setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, service:v }: x)); }} disabled={rowDisabled} readOnly={rowDisabled} />
-                          <input type="text" className={`min-w-[100px] max-w-[140px] shrink-0 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${rowDisabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Price" value={s.price} onChange={e=>{ const v = parseAccounting(e.target.value); setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, price:v }: x)); }} onBlur={!rowDisabled ? ()=> setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, price: formatAccounting(x.price) }: x)) : undefined} disabled={rowDisabled} readOnly={rowDisabled} />
-                          {!rowDisabled && (
-                            <button
-                              type="button"
-                              className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-red-100 p-1 transition-colors hover:bg-red-200"
-                              onClick={async () => {
-                                if (isBidding) {
-                                  const deleteResult = await confirm({
-                                    title: 'Remove service',
-                                    message: 'Are you sure you want to remove this service? This action cannot be undone.',
-                                    confirmText: 'Remove',
-                                    cancelText: 'Cancel',
-                                  });
-                                  if (deleteResult !== 'confirm') return;
-                                }
-                                setOptionalServices((arr) => arr.filter((_, j) => j !== i));
-                              }}
-                              title="Remove"
-                            >
-                              <svg className="h-4 w-4 text-red-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                              </svg>
-                            </button>
-                          )}
-                        </>
-                      )}
-                      </div>
-                    </div>
-                    );
-                  })}
-                  {!disabled &&
-                    (designSystem ? (
-                      <AppListCreateItem
-                        layout="row"
-                        className="mt-3 !min-h-0 py-2.5"
-                        label="Add Service"
-                        onClick={() => setOptionalServices((arr) => [...arr, { service: '', price: '' }])}
+            );
+            const trailingActions = showTrailingActions ? (
+              designSystem ? (
+                <ProposalInlineControlSpacer>{trailingIconRow}</ProposalInlineControlSpacer>
+              ) : (
+                trailingIconRow
+              )
+            ) : null;
+
+            return (
+              <div
+                key={i}
+                className={uiCx(
+                  'relative -mx-2 flex w-full min-w-0 flex-col gap-1.5 rounded-lg p-2',
+                  isNotApproved && 'border border-amber-200 bg-amber-50',
+                  isApproved && 'border border-green-200 bg-green-50',
+                  isPending && 'border border-gray-200 bg-gray-50',
+                )}
+              >
+                <div
+                  className={uiCx(
+                    'flex w-full min-w-0 flex-col gap-1.5 sm:flex-row sm:gap-2',
+                    designSystem ? 'sm:items-start' : 'items-stretch sm:items-center',
+                  )}
+                >
+                  {renderStatusChrome(s)}
+                  {designSystem ? (
+                    <>
+                      <ProposalInlineInput
+                        className="min-w-0 flex-1"
+                        label="Service"
+                        placeholder="Service"
+                        value={s.service}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setOptionalServices((arr) => arr.map((x, j) => (j === i ? { ...x, service: v } : x)));
+                        }}
+                        disabled={rowDisabled}
+                        readOnly={rowDisabled}
+                        fieldHint={PROPOSAL_FIELD_HINTS.optionalService}
                       />
-                    ) : (
-                      <button
-                        type="button"
-                        className="mt-3 flex w-full items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-white p-2.5 text-center transition-all hover:border-brand-red hover:bg-gray-50 disabled:opacity-60"
-                        onClick={() => setOptionalServices((arr) => [...arr, { service: '', price: '' }])}
-                      >
-                        <div className="mr-2 text-lg text-gray-600">+</div>
-                        <div className="text-sm font-semibold text-gray-700">Add Service</div>
-                      </button>
-                    ))}
+                      <ProposalInlineInput
+                        className="min-w-[100px] max-w-[140px] shrink-0"
+                        label="Price"
+                        placeholder="Price"
+                        value={s.price}
+                        onChange={(e) => {
+                          const v = parseAccounting(e.target.value);
+                          setOptionalServices((arr) => arr.map((x, j) => (j === i ? { ...x, price: v } : x)));
+                        }}
+                        onBlur={
+                          !rowDisabled
+                            ? () =>
+                                setOptionalServices((arr) =>
+                                  arr.map((x, j) => (j === i ? { ...x, price: formatAccounting(x.price) } : x)),
+                                )
+                            : undefined
+                        }
+                        disabled={rowDisabled}
+                        readOnly={rowDisabled}
+                        fieldHint={PROPOSAL_FIELD_HINTS.optionalPrice}
+                      />
+                      <ProposalInlineCheckbox
+                        label="PST"
+                        fieldHint={PROPOSAL_FIELD_HINTS.pst}
+                        checked={s.pst === true}
+                        onChange={(checked) =>
+                          setOptionalServices((arr) => arr.map((x, j) => (j === i ? { ...x, pst: checked } : x)))
+                        }
+                        disabled={rowDisabled}
+                      />
+                      <ProposalInlineCheckbox
+                        label="GST"
+                        fieldHint={PROPOSAL_FIELD_HINTS.gst}
+                        checked={s.gst === true}
+                        onChange={(checked) =>
+                          setOptionalServices((arr) => arr.map((x, j) => (j === i ? { ...x, gst: checked } : x)))
+                        }
+                        disabled={rowDisabled}
+                      />
+                      {trailingActions}
+                    </>
+                  ) : (
+                    <>
+                      <input
+                        className={`min-w-0 flex-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${rowDisabled ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                        placeholder="Service"
+                        value={s.service}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setOptionalServices((arr) => arr.map((x, j) => (j === i ? { ...x, service: v } : x)));
+                        }}
+                        disabled={rowDisabled}
+                        readOnly={rowDisabled}
+                      />
+                      <input
+                        type="text"
+                        className={`min-w-[100px] max-w-[140px] shrink-0 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${rowDisabled ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                        placeholder="Price"
+                        value={s.price}
+                        onChange={(e) => {
+                          const v = parseAccounting(e.target.value);
+                          setOptionalServices((arr) => arr.map((x, j) => (j === i ? { ...x, price: v } : x)));
+                        }}
+                        onBlur={
+                          !rowDisabled
+                            ? () =>
+                                setOptionalServices((arr) =>
+                                  arr.map((x, j) => (j === i ? { ...x, price: formatAccounting(x.price) } : x)),
+                                )
+                            : undefined
+                        }
+                        disabled={rowDisabled}
+                        readOnly={rowDisabled}
+                      />
+                      <label className="flex shrink-0 items-center gap-1 text-xs text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={s.pst === true}
+                          disabled={rowDisabled}
+                          onChange={(e) =>
+                            setOptionalServices((arr) =>
+                              arr.map((x, j) => (j === i ? { ...x, pst: e.target.checked } : x)),
+                            )
+                          }
+                        />
+                        PST
+                      </label>
+                      <label className="flex shrink-0 items-center gap-1 text-xs text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={s.gst === true}
+                          disabled={rowDisabled}
+                          onChange={(e) =>
+                            setOptionalServices((arr) =>
+                              arr.map((x, j) => (j === i ? { ...x, gst: e.target.checked } : x)),
+                            )
+                          }
+                        />
+                        GST
+                      </label>
+                      {trailingActions}
+                    </>
+                  )}
                 </div>
               </div>
+            );
+          };
+
+          const listBody = (
+            <div className={dsSectionBodyPad}>
+              <div className="mb-2 text-xs text-gray-600">{helperText}</div>
+              <div className="space-y-2">
+                {optionalServices.map((s, i) => renderOptionalRow(s, i))}
+                {!disabled &&
+                  (designSystem ? (
+                    <AppListCreateItem
+                      layout="row"
+                      className="mt-3 !min-h-0 py-2.5"
+                      label="Add Service"
+                      onClick={() => setOptionalServices((arr) => [...arr, EMPTY_OPTIONAL_SERVICE()])}
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      className="mt-3 flex w-full items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-white p-2.5 text-center transition-all hover:border-brand-red hover:bg-gray-50 disabled:opacity-60"
+                      onClick={() => setOptionalServices((arr) => [...arr, EMPTY_OPTIONAL_SERVICE()])}
+                    >
+                      <div className="mr-2 text-lg text-gray-600">+</div>
+                      <div className="text-sm font-semibold text-gray-700">Add Service</div>
+                    </button>
+                  ))}
+              </div>
+            </div>
+          );
+
+          return (
+            <div className={dsSectionShell}>
+              {showOnlyPricing ? (
+                <>
+                  <div
+                    className={
+                      designSystem
+                        ? uiCx('border-b border-gray-100 px-4 py-3', uiTypography.sectionTitle)
+                        : 'bg-slate-200 p-2.5 text-sm font-semibold text-gray-900'
+                    }
+                  >
+                    Optional Services
+                  </div>
+                  {listBody}
+                </>
+              ) : (
+                <>
+                  <div
+                    className={dsSectionHeader}
+                    onClick={() =>
+                      setSectionsExpanded((prev) => ({ ...prev, optionalServices: !prev.optionalServices }))
+                    }
+                  >
+                    <span>Optional Services</span>
+                    <svg
+                      className={`h-5 w-5 transition-transform duration-200 ${sectionsExpanded.optionalServices ? 'rotate-180' : ''}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                  {sectionsExpanded.optionalServices && listBody}
+                </>
               )}
-            </>
-          )}
-        </div>
+            </div>
+          );
+        })()}
 
         {/* Terms Block - hidden when showOnlyPricing */}
         {!showOnlyPricing && (

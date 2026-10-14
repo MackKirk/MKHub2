@@ -30,6 +30,7 @@ import { useNavigateBack } from '@/hooks/useNavigateBack';
 import { useUnsavedChanges } from '@/components/UnsavedChangesProvider';
 import CalendarMock from '@/components/CalendarMock';
 import { ProjectConvertToProjectModalDsForm } from '@/components/ProjectConvertToProjectModalDsForm';
+import type { OptionalServiceStatus } from '@/lib/optionalServiceStatus';
 import { RmOpportunityFromProjectModal } from '@/components/RmOpportunityFromProjectModal';
 import { ProjectReportsTabDs } from '@/components/ProjectReportsTabDs';
 import DispatchTab from '@/components/DispatchTab';
@@ -5568,7 +5569,7 @@ function ConvertToProjectModal({
   const [dateStart, setDateStart] = useState<string>((proj?.date_start || '').toString().slice(0, 10));
   const [leadSource, setLeadSource] = useState<string>(proj?.lead_source || '');
   const [pricingApprovals, setPricingApprovals] = useState<boolean[]>([]);
-  const [optionalServiceApprovals, setOptionalServiceApprovals] = useState<boolean[]>([]);
+  const [optionalServiceApprovals, setOptionalServiceApprovals] = useState<OptionalServiceStatus[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const [searchQueries, setSearchQueries] = useState<Record<string, string>>({});
@@ -5636,7 +5637,7 @@ function ConvertToProjectModal({
 
   useEffect(() => {
     if (optionalServices.length > 0 && optionalServiceApprovals.length !== optionalServices.length) {
-      setOptionalServiceApprovals(optionalServices.map(() => true));
+      setOptionalServiceApprovals(optionalServices.map(() => 'pending'));
     }
   }, [optionalServices.length]);
 
@@ -5775,10 +5776,10 @@ function ConvertToProjectModal({
     });
   }, []);
 
-  const handleOptionalServiceApprovalChange = useCallback((index: number, approved: boolean) => {
+  const handleOptionalServiceApprovalChange = useCallback((index: number, status: OptionalServiceStatus) => {
     setOptionalServiceApprovals((prev) => {
       const next = [...prev];
-      if (index < next.length) next[index] = approved;
+      if (index < next.length) next[index] = status;
       return next;
     });
   }, []);
@@ -6272,12 +6273,13 @@ function ConvertToProjectModal({
 
             {optionalServices.length > 0 && (
               <div className="md:col-span-2">
-                <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-2">Optional Services – Approve items for project</label>
+                <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-2">Optional Services – set status for project</label>
                 <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-48 overflow-y-auto">
                   {optionalServices.map((item: any, i: number) => {
                     const label = item.service ?? '—';
                     const price = Number(item.price ?? 0);
-                    const approved = i < optionalServiceApprovals.length ? optionalServiceApprovals[i] : true;
+                    const status: OptionalServiceStatus =
+                      i < optionalServiceApprovals.length ? optionalServiceApprovals[i] : 'pending';
                     return (
                       <div key={i} className="flex items-center gap-3 px-3 py-2 bg-white hover:bg-gray-50">
                         <div className="flex-1 min-w-0">
@@ -6290,10 +6292,22 @@ function ConvertToProjectModal({
                         <div className="flex items-center gap-1 shrink-0">
                           <button
                             type="button"
-                            onClick={() => setOptionalServiceApprovals(prev => { const n = [...prev]; if (i < n.length) n[i] = true; return n; })}
+                            onClick={() => setOptionalServiceApprovals(prev => { const n = [...prev]; if (i < n.length) n[i] = 'pending'; return n; })}
+                            title="Pending"
+                            className={`flex items-center justify-center w-7 h-7 rounded-lg border-2 transition-all ${
+                              status === 'pending' ? 'bg-gray-100 text-gray-800 border-gray-400 scale-105 shadow-md' : 'bg-white text-gray-300 border-gray-200 hover:border-gray-300 hover:text-gray-400'
+                            }`}
+                          >
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
+                            </svg>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setOptionalServiceApprovals(prev => { const n = [...prev]; if (i < n.length) n[i] = 'approved'; return n; })}
                             title="Approved"
                             className={`flex items-center justify-center w-7 h-7 rounded-lg border-2 transition-all ${
-                              approved ? 'bg-green-100 text-green-700 border-green-400 scale-105 shadow-md' : 'bg-white text-gray-300 border-gray-200 hover:border-gray-300 hover:text-gray-400'
+                              status === 'approved' ? 'bg-green-100 text-green-700 border-green-400 scale-105 shadow-md' : 'bg-white text-gray-300 border-gray-200 hover:border-gray-300 hover:text-gray-400'
                             }`}
                           >
                             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -6302,10 +6316,10 @@ function ConvertToProjectModal({
                           </button>
                           <button
                             type="button"
-                            onClick={() => setOptionalServiceApprovals(prev => { const n = [...prev]; if (i < n.length) n[i] = false; return n; })}
-                            title="Not Approved"
+                            onClick={() => setOptionalServiceApprovals(prev => { const n = [...prev]; if (i < n.length) n[i] = 'not_approved'; return n; })}
+                            title="Not approved"
                             className={`flex items-center justify-center w-7 h-7 rounded-lg border-2 transition-all ${
-                              !approved ? 'bg-red-100 text-red-700 border-red-400 scale-105 shadow-md' : 'bg-white text-gray-300 border-gray-200 hover:border-gray-300 hover:text-gray-400'
+                              status === 'not_approved' ? 'bg-red-100 text-red-700 border-red-400 scale-105 shadow-md' : 'bg-white text-gray-300 border-gray-200 hover:border-gray-300 hover:text-gray-400'
                             }`}
                           >
                             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">

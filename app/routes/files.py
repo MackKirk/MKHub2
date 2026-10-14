@@ -6,7 +6,7 @@ from typing import Optional
 from urllib.parse import unquote, quote
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Form, File, UploadFile
-from fastapi.responses import Response
+from fastapi.responses import RedirectResponse, Response, StreamingResponse
 from sqlalchemy.orm import Session
 from slugify import slugify
 import httpx
@@ -858,6 +858,7 @@ def serve_local_file_inline(
 @router.get("/{file_id:uuid}")
 def serve_file_inline_by_id(
     file_id: uuid.UUID,
+    request: Request,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_bearer_or_query_token),
 ):
@@ -897,28 +898,66 @@ def serve_file_inline_by_id(
             guessed = guess_type(str(file_path))
             if guessed[0]:
                 ct = guessed[0]
+        headers = {"Content-Disposition": "inline", "Accept-Ranges": "bytes"}
+        if ct.startswith("video/"):
+            headers["Cache-Control"] = "private, max-age=3600"
         return FileResponse(
             path=str(file_path),
             media_type=ct,
-            headers={"Content-Disposition": "inline"},
+            headers=headers,
         )
+
+    video = content_type.startswith("video/") or fo.key.lower().endswith(
+        (".mp4", ".webm", ".mov", ".m4v")
+    )
+    # The player buffers straight from storage. Proxying the whole clip made play wait
+    # until the API had downloaded it first.
+    if video:
+        direct = storage.get_download_url(fo.key, expires_s=3600)
+        if direct:
+            return RedirectResponse(direct, status_code=307)
 
     url = storage.get_download_url(fo.key, expires_s=300)
     if not url:
         raise HTTPException(status_code=404, detail="File not available in blob storage")
+    upstream_headers = {}
+    range_header = request.headers.get("range")
+    if range_header:
+        upstream_headers["Range"] = range_header
+    client = httpx.Client(timeout=httpx.Timeout(120.0, connect=10.0))
     try:
-        with httpx.Client(timeout=120.0) as client:
-            r = client.get(url)
-            r.raise_for_status()
-            body = r.content
+        upstream = client.send(client.build_request("GET", url, headers=upstream_headers), stream=True)
     except httpx.HTTPError as e:
+        client.close()
         logger.warning("Inline fetch failed for file %s: %s", file_id, e)
         raise HTTPException(status_code=502, detail="Could not read file from storage") from e
+    if upstream.status_code not in (200, 206):
+        upstream.close()
+        client.close()
+        logger.warning("Inline fetch failed for file %s: HTTP %s", file_id, upstream.status_code)
+        raise HTTPException(status_code=502, detail="Could not read file from storage")
 
-    return Response(
-        content=body,
+    headers = {"Content-Disposition": "inline", "Accept-Ranges": "bytes"}
+    content_range = upstream.headers.get("content-range")
+    if content_range:
+        headers["Content-Range"] = content_range
+    content_length = upstream.headers.get("content-length")
+    if content_length:
+        headers["Content-Length"] = content_length
+
+    def chunks():
+        try:
+            for chunk in upstream.iter_bytes(chunk_size=64 * 1024):
+                yield chunk
+        finally:
+            upstream.close()
+            client.close()
+
+    return StreamingResponse(
+        chunks(),
+        status_code=upstream.status_code,
         media_type=content_type,
-        headers={"Content-Disposition": "inline"},
+        headers=headers,
     )
 
 

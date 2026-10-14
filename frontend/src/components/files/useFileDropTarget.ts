@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import type { DragEvent } from 'react';
-import type { FileDropTarget, FileDropTargetKind } from './fileListDnD';
+import { isOsFileDrag, type FileDropTarget, type FileDropTargetKind } from './fileListDnD';
 
 type DropHandler = (e: DragEvent) => void | Promise<void>;
 
@@ -66,7 +66,7 @@ export function useFileDropTarget() {
         onDragOver: (e: DragEvent) => {
           e.preventDefault();
           e.stopPropagation();
-          e.dataTransfer.dropEffect = 'move';
+          e.dataTransfer.dropEffect = isOsFileDrag(e.dataTransfer) ? 'copy' : 'move';
           setDropTargetIfNeeded({ kind, id, label });
         },
         onDragEnter: (e: DragEvent) => {

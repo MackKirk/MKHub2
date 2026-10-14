@@ -253,11 +253,12 @@ def compute_proposal_diff(old_data: Dict, new_data: Dict, source: Optional[str] 
             if str(op) != str(np_):
                 before[sk] = op
                 after[sk] = np_
-            oa = old_svc.get('approved', True)
-            na = svc.get('approved', True)
-            if oa is not na and not (oa is None and na is None):
-                before[f"{sk}__approved"] = oa
-                after[f"{sk}__approved"] = na
+            for field in ('status', 'pst', 'gst', 'approved'):
+                ov = old_svc.get(field)
+                nv = svc.get(field)
+                if str(ov) != str(nv) and not (ov is None and nv is None):
+                    before[f"{sk}__{field}"] = ov
+                    after[f"{sk}__{field}"] = nv
     for name, svc in old_svc_map.items():
         if name not in new_svc_map:
             sk = f"service__{name}"

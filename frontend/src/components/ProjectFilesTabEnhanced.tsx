@@ -21,6 +21,8 @@ import {
   FileListSelectionBar,
   FileMoveLocationModal,
   FileListDropHint,
+  OsFileDropOverlay,
+  useOsFileDropHighlight,
   FILE_LIBRARY_ACCEPT,
   dropTargetClass,
   buildFolderFileCounts,
@@ -34,6 +36,7 @@ import {
   getDraggedFileIds,
   isInternalFileDrag,
   isExternalFileDrop,
+  isOsFileDrag,
   setDraggedFileIds,
   useFileDropTarget,
   useFileImageGallery,
@@ -457,6 +460,7 @@ export default function ProjectFilesTabEnhanced({
     fileSelection.getSelectionState(visibleFileIds);
 
   const canSelectInCurrentView = canWriteFiles && filesSection === 'active';
+  const osFileDrop = useOsFileDropHighlight(canWriteFiles && filesSection === 'active');
 
   useEffect(() => {
     fileSelection.clear();
@@ -1659,7 +1663,7 @@ export default function ProjectFilesTabEnhanced({
 
           {/* Right Content Area — same height as category column */}
           <div 
-            className={`flex-1 min-h-0 min-w-0 overflow-y-auto p-4 ${dropTargetClass(
+            className={`relative flex-1 min-h-0 min-w-0 overflow-y-auto p-4 ${dropTargetClass(
               selectedCategory !== 'all' && selectedCategory !== 'uncategorized' && isDropActive('root', selectedCategory),
               'root',
             )}`}
@@ -1668,16 +1672,33 @@ export default function ProjectFilesTabEnhanced({
                 ? { height: categoryColumnHeight, maxHeight: categoryColumnHeight }
                 : undefined
             }
+            {...osFileDrop.bind}
             onDragOver={canWriteFiles ? (e) => {
               e.preventDefault();
-              if (isInternalFileDrag(e.dataTransfer) || (e.dataTransfer.files?.length || 0) > 0) {
+              if (isInternalFileDrag(e.dataTransfer) || isOsFileDrag(e.dataTransfer)) {
                 setIsDragging(true);
+              }
+              if (isOverNestedFileDropTarget(e)) return;
+              if (isOsFileDrag(e.dataTransfer)) {
+                const openFolder = selectedFolderId
+                  ? projectFolders.find((folder) => folder.id === selectedFolderId)
+                  : undefined;
+                const label = openFolder
+                  ? openFolder.name
+                  : selectedCategory === 'uncategorized' || selectedCategory === 'all'
+                    ? 'Uncategorized'
+                    : visibleCategories.find((c: { id: string }) => c.id === selectedCategory)?.name || 'Files';
+                setDropTarget({
+                  kind: openFolder ? 'folder' : 'category',
+                  id: openFolder ? openFolder.id : selectedCategory,
+                  label,
+                });
+                return;
               }
               if (
                 selectedCategory !== 'all' &&
                 selectedCategory !== 'uncategorized' &&
-                isInternalFileDrag(e.dataTransfer) &&
-                !isOverNestedFileDropTarget(e)
+                isInternalFileDrag(e.dataTransfer)
               ) {
                 setDropTarget({ kind: 'root', id: selectedCategory, label: 'Root' });
               }
@@ -1711,6 +1732,7 @@ export default function ProjectFilesTabEnhanced({
               }
             } : undefined}
           >
+            <OsFileDropOverlay active={osFileDrop.active} />
             <div className="mb-3 flex flex-wrap items-center gap-2">
               {designSystem ? (
                 <AppButton type="button" variant="ghost" size="sm" onClick={openFilesHome}>

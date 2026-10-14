@@ -16,8 +16,8 @@ const fleetHeroAssignButtonClass =
 const fleetHeroReturnButtonClass =
   'h-24 w-24 sm:h-28 sm:w-28 rounded-xl border-2 border-emerald-600 bg-emerald-50 text-emerald-950 text-sm font-semibold shadow-sm hover:bg-emerald-100 active:scale-[0.98] transition flex flex-col items-center justify-center gap-1 px-1 py-2 text-center leading-tight';
 
-/** Matches ProjectDetail hero metadata (design-system route). */
-export const fleetHeroLabelClass = 'text-sm font-semibold text-gray-600 uppercase tracking-wide';
+/** Matches ProjectDetail hero labels: 12px semibold uppercase gray-600. */
+export const fleetHeroLabelClass = 'text-xs font-semibold text-gray-600 uppercase tracking-wide';
 export const fleetHeroValueClass = 'text-sm font-semibold text-gray-900 mt-0.5';
 export const fleetHeroValueMutedClass = 'text-sm font-semibold text-gray-600 mt-0.5';
 

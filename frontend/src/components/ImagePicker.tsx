@@ -174,6 +174,8 @@ export default function ImagePicker({
   preserveTransparency = false,
   /** Document Creator preserve-frame replace: Fill / Fit / Fit-with-background composition. */
   enableFitModes = false,
+  /** File the parent already chose. Loaded once per open via the existing file path. */
+  initialFile = null,
 }:{
   isOpen:boolean,
   onClose:()=>void,
@@ -195,6 +197,7 @@ export default function ImagePicker({
   /** When true, PNG/GIF/WebP exports keep alpha (document creator). Default false for proposals. */
   preserveTransparency?: boolean,
   enableFitModes?: boolean,
+  initialFile?: File | null,
 }){
   const progressOverlayClassName =
     overlayClassName === uiModalLayer.nestedPicker
@@ -888,6 +891,17 @@ export default function ImagePicker({
       loadFromFileObject(fileObjectId);
     }
   }, [isOpen, fileObjectId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const loadedInitialFileRef = useRef<File | null>(null);
+  useEffect(() => {
+    if (!isOpen) {
+      loadedInitialFileRef.current = null;
+      return;
+    }
+    if (!initialFile || loadedInitialFileRef.current === initialFile) return;
+    loadedInitialFileRef.current = initialFile;
+    void loadFromFile(initialFile);
+  }, [isOpen, initialFile]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openImageEditorFromPicker = () => {
     const el = dialogRef.current;
@@ -1607,8 +1621,39 @@ export default function ImagePicker({
               )}
             </div>
 
-            <div className="min-h-0 w-fit max-w-full overflow-y-auto bg-slate-50/80">
-              <div className="p-4" style={{ width: cw + 6 + 32 }}>
+            <div className="flex min-h-0 w-fit max-w-full flex-col overflow-hidden bg-slate-50/80">
+              {enableFitModes && (
+                <div className="shrink-0 space-y-2 px-4 pt-4" style={{ width: cw + 6 + 32 }}>
+                  {showAspectHint && (
+                    <p className={`${editorCaptionClass} text-center text-slate-500`}>
+                      This image has a different shape from the selected area. Choose how you want it to fit.
+                    </p>
+                  )}
+                  <div className="flex flex-wrap items-center justify-center gap-2">
+                    <span className={editorToolbarMicroLabelClass}>Image fit</span>
+                    <div className={`${editorSegmentedControlTrackClass} min-w-0 flex-wrap`}>
+                      {FIT_MODE_OPTIONS.map((opt) => (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          disabled={!img || !allowEdit}
+                          onPointerDown={(e) => e.preventDefault()}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => applyFitMode(opt.id)}
+                          className={`flex h-full min-h-0 items-center justify-center px-2.5 text-xs font-semibold transition-[background-color,color,box-shadow] duration-150 disabled:opacity-50 ${
+                            fitMode === opt.id
+                              ? editorSegmentedSegmentSelectedClass
+                              : editorSegmentedSegmentIdleClass
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div className="min-h-0 flex-1 overflow-y-auto p-4" style={{ width: cw + 6 + 32 }}>
                 {allowOrientationToggle && (
                   <div className="mb-3 flex justify-center">
                     <div className={`${editorSegmentedControlTrackClass} shrink-0`}>
@@ -1630,35 +1675,6 @@ export default function ImagePicker({
                       >
                         Portrait
                       </button>
-                    </div>
-                  </div>
-                )}
-                {enableFitModes && showAspectHint && (
-                  <p className={`${editorCaptionClass} mb-2 text-center text-slate-500`}>
-                    This image has a different shape from the selected area. Choose how you want it to fit.
-                  </p>
-                )}
-                {enableFitModes && (
-                  <div className="mb-3 flex flex-wrap items-center justify-center gap-2">
-                    <span className={editorToolbarMicroLabelClass}>Image fit</span>
-                    <div className={`${editorSegmentedControlTrackClass} min-w-0 flex-wrap`}>
-                      {FIT_MODE_OPTIONS.map((opt) => (
-                        <button
-                          key={opt.id}
-                          type="button"
-                          disabled={!img || !allowEdit}
-                          onPointerDown={(e) => e.preventDefault()}
-                          onMouseDown={(e) => e.preventDefault()}
-                          onClick={() => applyFitMode(opt.id)}
-                          className={`flex h-full min-h-0 items-center justify-center px-2.5 text-xs font-semibold transition-[background-color,color,box-shadow] duration-150 disabled:opacity-50 ${
-                            fitMode === opt.id
-                              ? editorSegmentedSegmentSelectedClass
-                              : editorSegmentedSegmentIdleClass
-                          }`}
-                        >
-                          {opt.label}
-                        </button>
-                      ))}
                     </div>
                   </div>
                 )}
@@ -1807,8 +1823,11 @@ export default function ImagePicker({
                     </>
                   )}
                 </p>
-                <div className="mt-3 flex w-full flex-nowrap items-center gap-2" style={{ width: cw + 6 }}>
-                  <div className="custom-slider-container mb-0 min-w-0 flex-1">
+                </div>
+              </div>
+              <div className="shrink-0 border-t border-slate-200/80 px-4 py-3" style={{ width: cw + 6 + 32 }}>
+                <div className="flex w-full flex-wrap items-center gap-2">
+                  <div className="custom-slider-container mb-0 min-w-[12rem] flex-1">
                     <span className="flex w-11 shrink-0 text-sm font-semibold text-slate-700">Zoom</span>
                     <input
                       type="range"
@@ -1887,7 +1906,6 @@ export default function ImagePicker({
                     )}
                     {isConfirming ? 'Processing…' : 'Confirm'}
                   </button>
-                </div>
                 </div>
               </div>
             </div>

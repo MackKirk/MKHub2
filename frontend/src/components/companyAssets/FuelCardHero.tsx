@@ -21,7 +21,6 @@ import {
   uiBorders,
   uiCx,
   uiRadius,
-  uiTypography,
 } from '@/components/ui';
 
 const fleetHeroAssignButtonClass =
@@ -146,7 +145,7 @@ function FuelCardHeroBody({
                     {isInCustody ? 'Assigned' : 'Available'}
                   </AppBadge>
                   {isInCustody && assignedToName?.trim() ? (
-                    <div className={uiCx(uiTypography.helper, 'truncate')}>{assignedToName.trim()}</div>
+                    <div className={uiCx(fleetHeroValueClass, 'truncate')}>{assignedToName.trim()}</div>
                   ) : null}
                 </div>
               </FleetHeroStat>

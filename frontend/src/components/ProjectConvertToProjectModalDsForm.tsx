@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
-import { AlertTriangle, Check, X } from 'lucide-react';
+import { AlertTriangle, Check, Minus, X } from 'lucide-react';
 import { DivisionIcon } from '@/components/DivisionIcon';
 import { mapEmployeeToAppUserSelect } from '@/lib/clientUi';
+import type { OptionalServiceStatus } from '@/lib/optionalServiceStatus';
 import { sortByLabel } from '@/lib/sortOptions';
 import {
   AppDatePicker,
@@ -85,6 +86,75 @@ function ConvertBinaryChoice({
   );
 }
 
+function ConvertTernaryChoice({
+  value,
+  onPending,
+  onApproved,
+  onNotApproved,
+}: {
+  value: OptionalServiceStatus;
+  onPending: () => void;
+  onApproved: () => void;
+  onNotApproved: () => void;
+}) {
+  const pendingClass =
+    value === 'pending'
+      ? 'bg-gray-100 text-gray-800 border-gray-400 shadow-sm'
+      : 'bg-white text-gray-300 border-gray-200 hover:border-gray-300 hover:text-gray-600';
+  const approvedClass =
+    value === 'approved'
+      ? 'bg-green-100 text-green-700 border-green-400 shadow-sm'
+      : 'bg-white text-gray-300 border-gray-200 hover:border-gray-300 hover:text-gray-600';
+  const notApprovedClass =
+    value === 'not_approved'
+      ? 'bg-red-100 text-red-700 border-red-400 shadow-sm'
+      : 'bg-white text-gray-300 border-gray-200 hover:border-gray-300 hover:text-gray-400';
+
+  return (
+    <div className="flex shrink-0 items-center gap-1">
+      <AppTooltip content="Pending" placement="top">
+        <button
+          type="button"
+          onClick={onPending}
+          className={uiCx(
+            'flex h-7 w-7 items-center justify-center rounded-lg border-2 transition-colors',
+            pendingClass,
+          )}
+          aria-label="Pending"
+        >
+          <Minus className="h-4 w-4" aria-hidden />
+        </button>
+      </AppTooltip>
+      <AppTooltip content="Approved" placement="top">
+        <button
+          type="button"
+          onClick={onApproved}
+          className={uiCx(
+            'flex h-7 w-7 items-center justify-center rounded-lg border-2 transition-colors',
+            approvedClass,
+          )}
+          aria-label="Approved"
+        >
+          <Check className="h-4 w-4" aria-hidden />
+        </button>
+      </AppTooltip>
+      <AppTooltip content="Not approved" placement="top">
+        <button
+          type="button"
+          onClick={onNotApproved}
+          className={uiCx(
+            'flex h-7 w-7 items-center justify-center rounded-lg border-2 transition-colors',
+            notApprovedClass,
+          )}
+          aria-label="Not approved"
+        >
+          <X className="h-4 w-4" aria-hidden />
+        </button>
+      </AppTooltip>
+    </div>
+  );
+}
+
 export type ProjectConvertToProjectModalDsFormProps = {
   proj: any;
   employees: any[];
@@ -107,8 +177,8 @@ export type ProjectConvertToProjectModalDsFormProps = {
   pricingApprovals: boolean[];
   onPricingApprovalChange: (index: number, approved: boolean) => void;
   optionalServices: OptionalServiceRow[];
-  optionalServiceApprovals: boolean[];
-  onOptionalServiceApprovalChange: (index: number, approved: boolean) => void;
+  optionalServiceApprovals: OptionalServiceStatus[];
+  onOptionalServiceApprovalChange: (index: number, status: OptionalServiceStatus) => void;
   getDivisionLabel: (divId: string) => string;
   getDivisionMainLabel: (divId: string) => string;
 };
@@ -319,16 +389,18 @@ export function ProjectConvertToProjectModalDsForm({
       {optionalServices.length > 0 ? (
         <div className={uiSpacing.sectionStack}>
           <div>
-            <p className={uiTypography.overline}>Optional Services – approve items for project</p>
+            <p className={uiTypography.overline}>Optional Services – set status for project</p>
             <p className={uiCx(uiTypography.helper, 'mt-1')}>
-              Choose which optional services carry into the active project.
+              Pending (default), approved (counts toward totals), or not approved. Approved optionals can still be
+              changed later on the Pricing tab.
             </p>
           </div>
           <div className={uiCx(uiBorders.subtle, uiRadius.control, uiColors.surface, 'max-h-48 divide-y overflow-y-auto')}>
             {optionalServices.map((item, i) => {
               const label = item.service ?? '—';
               const price = Number(item.price ?? 0);
-              const approved = i < optionalServiceApprovals.length ? optionalServiceApprovals[i] : true;
+              const status: OptionalServiceStatus =
+                i < optionalServiceApprovals.length ? optionalServiceApprovals[i] : 'pending';
               return (
                 <div
                   key={i}
@@ -343,12 +415,11 @@ export function ProjectConvertToProjectModalDsForm({
                       </span>
                     </div>
                   </div>
-                  <ConvertBinaryChoice
-                    value={approved}
-                    yesTitle="Approved"
-                    noTitle="Not approved"
-                    onYes={() => onOptionalServiceApprovalChange(i, true)}
-                    onNo={() => onOptionalServiceApprovalChange(i, false)}
+                  <ConvertTernaryChoice
+                    value={status}
+                    onPending={() => onOptionalServiceApprovalChange(i, 'pending')}
+                    onApproved={() => onOptionalServiceApprovalChange(i, 'approved')}
+                    onNotApproved={() => onOptionalServiceApprovalChange(i, 'not_approved')}
                   />
                 </div>
               );

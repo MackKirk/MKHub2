@@ -13,6 +13,8 @@ import {
   FileListSelectionBar,
   FileMoveLocationModal,
   FileListDropHint,
+  OsFileDropOverlay,
+  useOsFileDropHighlight,
   UploadProgressPanel,
   dropTargetClass,
   fileDropTargetProps,
@@ -23,6 +25,7 @@ import {
   getDraggedFileIds,
   isInternalFileDrag,
   isExternalFileDrop,
+  isOsFileDrag,
   setDraggedFileIds,
   useFileDropTarget,
   useFileImageGallery,
@@ -56,6 +59,7 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
   const canEditFiles = !!hasEditPermission;
   /** Admin-only: Library vs soft-deleted customer files (same pattern as project Files tab). */
   const [filesSection, setFilesSection] = useState<'active' | 'deleted'>('active');
+  const osFileDrop = useOsFileDropHighlight(canEditFiles && filesSection === 'active');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const { viewMode, tileSize, setViewMode, setTileSize } = usePersistedFileViewMode('customer-files-view', {
     category:
@@ -65,7 +69,7 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkDownloading, setBulkDownloading] = useState(false);
   const fileSelection = useFileListSelection();
-  const { dropTarget, clearDropTarget, makeDropHandlers, isDropActive } = useFileDropTarget();
+  const { dropTarget, setDropTarget, clearDropTarget, makeDropHandlers, isDropActive } = useFileDropTarget();
   const [showUpload, setShowUpload] = useState(false);
   const [uploadQueue, setUploadQueue] = useState<Array<{ id: string; file: File; progress: number; status: 'pending' | 'uploading' | 'success' | 'error'; error?: string }>>([]);
   const imageGallery = useFileImageGallery();
@@ -770,7 +774,7 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
             onCreateFolder={() => {}}
           />
         ) : (
-        <div className="rounded-xl border bg-white overflow-hidden">
+        <div className="overflow-hidden rounded-xl border bg-white">
           <div className="flex h-[calc(100vh-400px)]">
             <div className="w-64 border-r bg-gray-50 flex flex-col">
               <div className="p-3 border-b">
@@ -848,8 +852,22 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
               </div>
             </div>
             <div
-              className={uiCx('flex-1 overflow-y-auto p-4', isDragging && canEditFiles ? 'bg-blue-50/50' : '')}
-              onDragOver={canEditFiles ? (e) => { e.preventDefault(); if (isInternalFileDrag(e.dataTransfer) || (e.dataTransfer.files?.length || 0) > 0) setIsDragging(true); } : undefined}
+              className={uiCx('relative flex-1 overflow-y-auto p-4', isDragging && canEditFiles ? 'bg-blue-50/50' : '')}
+              {...osFileDrop.bind}
+              onDragOver={canEditFiles ? (e) => {
+                e.preventDefault();
+                if (!(isInternalFileDrag(e.dataTransfer) || isOsFileDrag(e.dataTransfer))) return;
+                e.dataTransfer.dropEffect = isOsFileDrag(e.dataTransfer) ? 'copy' : 'move';
+                setIsDragging(true);
+                if (!isOsFileDrag(e.dataTransfer)) return;
+                const label =
+                  selectedCategory === 'all' || selectedCategory === 'uncategorized'
+                    ? selectedCategory === 'uncategorized'
+                      ? 'Uncategorized'
+                      : 'All Files'
+                    : visibleCategories.find((c: { id: string; name?: string }) => c.id === selectedCategory)?.name || 'Files';
+                setDropTarget({ kind: 'category', id: selectedCategory, label });
+              } : undefined}
               onDragLeave={canEditFiles ? (e) => {
                 leaveContainerDragLeave(e, () => {
                   setIsDragging(false);
@@ -873,6 +891,7 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
                 }
               } : undefined}
             >
+              <OsFileDropOverlay active={osFileDrop.active} />
               <div className="mb-2 flex flex-wrap items-center gap-2">
                 <AppButton type="button" variant="ghost" size="sm" onClick={openFilesHome}>
                   ← Files Home
