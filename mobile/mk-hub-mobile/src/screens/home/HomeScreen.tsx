@@ -17,6 +17,7 @@ import type { CompositeNavigationProp } from "@react-navigation/native";
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useAuth } from "../../hooks/useAuth";
+import { shouldRegisterHours } from "../../lib/hoursRegistration";
 import { useCommunityBadge } from "../../hooks/useCommunityBadge";
 import { useStartupAlerts } from "../../hooks/useStartupAlerts";
 import { useTasksBadge } from "../../hooks/useTasksBadge";
@@ -136,17 +137,23 @@ export const HomeScreen: React.FC = () => {
     [navigation]
   );
 
+  const mustRegisterHours = shouldRegisterHours(user?.pay_type, user?.needs_register_hours);
+
   const quickActions: QuickAction[] = useMemo(
     () => [
-      {
-        label: "Clock In/Out",
-        subtitle: "Track your time",
-        icon: "time-outline",
-        accentColor: "#166534",
-        tintBg: "#DCFCE7",
-        watermark: CLOCK_WATERMARK,
-        onPress: () => navigation.navigate("Clock")
-      },
+      ...(mustRegisterHours
+        ? [
+            {
+              label: "Clock In/Out",
+              subtitle: "Track your time",
+              icon: "time-outline" as const,
+              accentColor: "#166534",
+              tintBg: "#DCFCE7",
+              watermark: CLOCK_WATERMARK,
+              onPress: () => navigation.navigate("Clock")
+            }
+          ]
+        : []),
       {
         label: "Schedule",
         subtitle: "View your shifts",
@@ -175,7 +182,7 @@ export const HomeScreen: React.FC = () => {
         onPress: () => goStack("TimeOff", { mode: "sick" })
       }
     ],
-    [goStack, navigation]
+    [goStack, mustRegisterHours, navigation]
   );
 
   const loadNovidades = useCallback(async () => {
@@ -205,12 +212,18 @@ export const HomeScreen: React.FC = () => {
     }, [loadNovidades, refreshTasks])
   );
 
-  const renderSectionHeader = (title: string, onViewAll?: () => void) => (
+  const renderSectionHeader = (title: string, onOpen?: () => void) => (
     <View style={styles.sectionHeader}>
       <Text style={styles.sectionTitle}>{title}</Text>
-      {onViewAll ? (
-        <TouchableOpacity onPress={onViewAll} hitSlop={8}>
-          <Text style={styles.viewAll}>View all</Text>
+      {onOpen ? (
+        <TouchableOpacity
+          onPress={onOpen}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={`Open ${title}`}
+          style={styles.sectionOpenBtn}
+        >
+          <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
         </TouchableOpacity>
       ) : null}
     </View>
@@ -268,7 +281,7 @@ export const HomeScreen: React.FC = () => {
         </View>
 
         <View style={styles.section}>
-          {renderSectionHeader("Quick Actions", openMenu)}
+          {renderSectionHeader("Quick Actions")}
           <View style={styles.quickGrid}>
             {quickActions.map((item) => (
               <TouchableOpacity
@@ -557,10 +570,9 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     color: colors.textPrimary
   },
-  viewAll: {
-    fontFamily: typography.button.fontFamily,
-    fontSize: 13,
-    color: HOME_GREEN
+  sectionOpenBtn: {
+    padding: 2,
+    marginRight: -2
   },
   quickGrid: {
     flexDirection: "row",

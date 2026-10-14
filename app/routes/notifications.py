@@ -153,6 +153,32 @@ def list_notifications(
                     notif_type = "shift"
                     link = "/schedule" if project_id else None
                     
+            elif notif.template_key == "hours_reminder":
+                title = title or "Log your hours"
+                message = message or "It's 6 PM — don't forget to log today's hours in MK Hub."
+                notif_type = "hours_reminder"
+                link = link or "/home?open=hours"
+            elif (notif.template_key or "").startswith("property_"):
+                place = str(payload.get("property_name") or "A property").strip() or "A property"
+                property_titles = {
+                    "property_lease_expired": "Lease expired",
+                    "property_lease_expiring": "Lease expiring",
+                    "property_insurance_expired": "Insurance expired",
+                    "property_insurance_expiring": "Insurance expiring",
+                    "property_tax_due": "Property tax due",
+                    "property_permit_expired": "Permit expired",
+                    "property_permit_expiring": "Permit expiring",
+                }
+                title = property_titles.get(notif.template_key, "Property alert")
+                if not message:
+                    message = f"{place}: {title}."
+                notif_type = notif.template_key
+                link = link or "/properties/list"
+            elif (notif.template_key or "").startswith("warranty_"):
+                title = "Warranty"
+                if not message:
+                    message = payload.get("message") or "You have a warranty alert."
+                notif_type = notif.template_key
             elif notif.template_key.startswith("attendance_"):
                 attendance_type = payload.get("type", notif.template_key.replace("attendance_", ""))
                 if attendance_type == "approved":
@@ -169,9 +195,10 @@ def list_notifications(
                     message = "You have an attendance notification"
                 notif_type = "attendance"
             else:
-                # Generic fallback
-                title = "Notification"
-                message = "You have a new notification"
+                if not title:
+                    title = "Notification"
+                if not message:
+                    message = "You have a new notification"
         
         # If still no title/message, use defaults
         if not title:

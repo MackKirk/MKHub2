@@ -224,11 +224,18 @@ export function MyTimeOffPanel({ mode }: MyTimeOffPanelProps) {
           <div className="divide-y divide-gray-100">
             {historyRows.map((row) => {
               const { title, note } = splitTimeOffHistoryDescription(row.description);
+              const titleLower = title.toLowerCase();
+              const isCancelled = titleLower.startsWith('cancelled');
+              const isRejected = titleLower.startsWith('rejected');
               return (
               <div key={row.id} className="flex items-center justify-between gap-3 py-2.5">
                 <div className="min-w-0">
-                  <div className="text-sm font-semibold text-gray-900">{row.policy_name}</div>
-<div className="mt-0.5 text-sm text-gray-600">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="text-sm font-semibold text-gray-900">{row.policy_name}</div>
+                    {isCancelled ? <AppBadge variant="neutral">Cancelled</AppBadge> : null}
+                    {isRejected ? <AppBadge variant="danger">Rejected</AppBadge> : null}
+                  </div>
+                  <div className="mt-0.5 text-xs text-gray-600">
                     {formatShortDate(row.transaction_date)}
                     {title ? ` · ${title}` : ''}
                   </div>
@@ -238,13 +245,17 @@ export function MyTimeOffPanel({ mode }: MyTimeOffPanelProps) {
                     </div>
                   ) : null}
                 </div>
-                <div className="shrink-0 text-sm font-semibold tabular-nums text-gray-900">
+                <div
+                  className={uiCx(
+                    'shrink-0 text-sm font-semibold tabular-nums',
+                    isCancelled || isRejected ? 'text-gray-400' : 'text-gray-900',
+                  )}
+                >
                   {Number(row.balance_after).toFixed(1)} days
                 </div>
               </div>
               );
-            })}
-          </div>
+            })}          </div>
         )}
       </AppCard>
 

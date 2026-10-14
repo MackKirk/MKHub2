@@ -14,6 +14,7 @@ import {
   Wrench,
 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { shouldRegisterHours } from '@/lib/payType';
 import { getTodayLocal } from '@/lib/dateUtils';
 import { ClockInOutModalLayer } from '@/components/ClockInOutModalLayer';
 import { TimeOffRequestModal } from '@/pages/clock/TimeOffRequestModal';
@@ -149,6 +150,14 @@ export function HomeQuickAccess() {
   const todayStr = getTodayLocal();
   const [clockModal, setClockModal] = useState<'in' | 'out' | null>(null);
   const [timeOffMode, setTimeOffMode] = useState<TimeOffMode | null>(null);
+  const { data: meProfile } = useQuery({
+    queryKey: ['me-profile'],
+    queryFn: () => api<any>('GET', '/auth/me/profile'),
+  });
+  const mustRegisterHours = shouldRegisterHours(
+    meProfile?.profile?.pay_type,
+    meProfile?.profile?.needs_register_hours,
+  );
 
   // Sidebar Personal → Time Off / Sick Leave / Clock In/Out land here with ?open=
   useEffect(() => {
@@ -156,8 +165,13 @@ export function HomeQuickAccess() {
     if (!open) return;
 
     if (open === 'hours' || open === 'log-hours' || open === 'clock') {
-      setTimeOffMode(null);
-      setClockModal('in');
+      if (!meProfile) return;
+      if (!mustRegisterHours) {
+        setClockModal(null);
+      } else {
+        setTimeOffMode(null);
+        setClockModal('in');
+      }
     } else if (open === 'time-off' || open === 'vacation') {
       setClockModal(null);
       setTimeOffMode('vacation');
@@ -171,7 +185,7 @@ export function HomeQuickAccess() {
     const next = new URLSearchParams(searchParams);
     next.delete('open');
     setSearchParams(next, { replace: true });
-  }, [searchParams, setSearchParams]);
+  }, [meProfile, mustRegisterHours, searchParams, setSearchParams]);
 
   const { data: currentUser } = useQuery({
     queryKey: ['me'],
@@ -270,7 +284,7 @@ export function HomeQuickAccess() {
 
   return (
     <section className="space-y-2">
-      {clockModal ? (
+      {clockModal && mustRegisterHours ? (
         <ClockInOutModalLayer
           selectedDate={todayStr}
           clockType={clockModal}
@@ -285,16 +299,18 @@ export function HomeQuickAccess() {
 
       <div className="grid grid-cols-1 gap-1.5 pt-1 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-stretch">
         <div className="grid h-full min-h-0 min-w-0 auto-rows-[minmax(2.25rem,1fr)] grid-cols-2 gap-1.5 sm:grid-cols-4 xl:grid-cols-7">
-          <QuickActionCard
-            label="Log hours"
-            icon={<Clock className="h-3.5 w-3.5" />}
-            accent="#166534"
-            tint="#DCFCE7"
-            watermark="/assets/brand/clock-watermark.png"
-            badge={priorClockCount}
-            badgeLabel={`${priorClockCount} pending from previous days`}
-            onClick={() => setClockModal('in')}
-          />
+          {mustRegisterHours ? (
+            <QuickActionCard
+              label="Log hours"
+              icon={<Clock className="h-3.5 w-3.5" />}
+              accent="#166534"
+              tint="#DCFCE7"
+              watermark="/assets/brand/clock-watermark.png"
+              badge={priorClockCount}
+              badgeLabel={`${priorClockCount} pending from previous days`}
+              onClick={() => setClockModal('in')}
+            />
+          ) : null}
           <QuickActionCard
             label="Time Off"
             icon={<Sun className="h-3.5 w-3.5" />}

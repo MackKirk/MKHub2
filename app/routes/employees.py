@@ -10,6 +10,7 @@ from ..db import get_db
 from ..models.models import User, EmployeeProfile, user_divisions, SettingItem
 from ..auth.security import get_current_user, _has_permission
 from ..services.hierarchy import get_manager_chain, get_direct_reports
+from ..services.user_display import employee_name_match, profile_search_label
 
 
 router = APIRouter(prefix="/employees", tags=["employees"])
@@ -26,14 +27,7 @@ def _divisions_for_user(db: Session, user_id: uuid.UUID) -> List[Dict[str, str]]
 
 
 def _employee_display_name(u: User, ep: Optional[EmployeeProfile]) -> str:
-    name = (getattr(ep, "preferred_name", None) or "").strip() if ep else ""
-    if not name:
-        first = (getattr(ep, "first_name", None) or "").strip() if ep else ""
-        last = (getattr(ep, "last_name", None) or "").strip() if ep else ""
-        name = " ".join([x for x in [first, last] if x])
-    if not name:
-        name = u.username or str(u.id)
-    return name
+    return profile_search_label(u, ep) or (u.username or str(u.id))
 
 
 def _employee_directory_payload(u: User, ep: Optional[EmployeeProfile], divisions: List[Dict[str, str]]) -> Dict[str, Any]:
@@ -129,7 +123,7 @@ def list_employees(
         query = query.filter(User.is_active == True)  # noqa: E712
     if q:
         like = f"%{q}%"
-        query = query.filter((User.username.ilike(like)) | (EmployeeProfile.first_name.ilike(like)) | (EmployeeProfile.last_name.ilike(like)) | (EmployeeProfile.preferred_name.ilike(like)))
+        query = query.filter(employee_name_match(like, include_email=False))
     if sort == "name":
         query = query.order_by(
             nullslast(asc(func.lower(func.coalesce(EmployeeProfile.first_name, "")))),

@@ -247,12 +247,22 @@ def create_salary_history(
     
     effective_date = datetime.fromisoformat(effective_date_str.replace('Z', '+00:00'))
     
+    from ..services.hours_registration import canonical_pay_type
+
+    raw_pay_type = payload.get("pay_type")
+    if raw_pay_type is None or not str(raw_pay_type).strip():
+        pay_type = profile.pay_type if profile else None
+    else:
+        pay_type = canonical_pay_type(str(raw_pay_type))
+        if pay_type is None:
+            raise HTTPException(status_code=400, detail="pay_type must be hourly, salary, or contract")
+
     # Create salary history entry
     salary_history = EmployeeSalaryHistory(
         user_id=user.id,
         previous_salary=previous_salary,
         new_salary=payload.get("new_salary"),
-        pay_type=payload.get("pay_type"),
+        pay_type=pay_type,
         effective_date=effective_date,
         justification=payload.get("justification", ""),
         requested_by=current_user.id,
@@ -266,7 +276,10 @@ def create_salary_history(
     # Update profile with new salary
     if profile:
         profile.pay_rate = payload.get("new_salary")
-        profile.pay_type = payload.get("pay_type")
+        if pay_type:
+            profile.pay_type = pay_type
+            if pay_type != "salary":
+                profile.needs_register_hours = False
         profile.updated_at = datetime.now(timezone.utc)
         profile.updated_by = current_user.id
     
@@ -1740,6 +1753,209 @@ def create_time_off_request(
     }
 
 
+def _hub_request_history_tx_id(request_id) -> str:
+    return f"hub-request:{request_id}"
+
+
+def _format_time_off_range_label(*, start_date: date, end_date: date) -> str:
+    if start_date == end_date:
+        return start_date.strftime("%m/%d/%Y")
+    return f"{start_date.strftime('%m/%d/%Y')} to {end_date.strftime('%m/%d/%Y')}"
+
+
+def _format_time_off_used_description(
+    *,
+    start_date: date,
+    end_date: date,
+    notes: Optional[str] = None,
+) -> str:
+    """Match Bamboo-style history title so the Hub UI can split title/note cleanly."""
+    description = f"Time off used for {_format_time_off_range_label(start_date=start_date, end_date=end_date)}"
+    notes_text = (notes or "").strip()
+    if notes_text:
+        description = f"{description}\n{notes_text}"
+    return description
+
+
+def _format_time_off_status_description(
+    *,
+    status: str,
+    start_date: date,
+    end_date: date,
+    notes: Optional[str] = None,
+    review_notes: Optional[str] = None,
+) -> str:
+    """Audit row for cancelled / rejected Hub requests (no balance impact)."""
+    label = "Cancelled" if status == "cancelled" else "Rejected"
+    description = (
+        f"{label} request for {_format_time_off_range_label(start_date=start_date, end_date=end_date)}"
+    )
+    notes_text = (notes or "").strip()
+    if notes_text:
+        description = f"{description}\n{notes_text}"
+    review_text = (review_notes or "").strip()
+    if review_text and status == "rejected":
+        description = f"{description}\nReview: {review_text}"
+    return description
+
+
+def _current_balance_days(
+    db: Session,
+    *,
+    user_id,
+    policy_name: str,
+    year: Optional[int] = None,
+) -> float:
+    year = year or datetime.now().year
+    balance = db.query(TimeOffBalance).filter(
+        TimeOffBalance.user_id == user_id,
+        TimeOffBalance.policy_name == policy_name,
+        TimeOffBalance.year == year,
+    ).first()
+    if not balance:
+        return 0.0
+    return float(balance.balance_hours or 0) / 8.0
+
+
+def _upsert_hub_request_history(
+    db: Session,
+    *,
+    user: User,
+    request: TimeOffRequest,
+    description: str,
+    used_days: Optional[float],
+    earned_days: Optional[float],
+    balance_after: float,
+) -> TimeOffHistory:
+    tx_id = _hub_request_history_tx_id(request.id)
+    existing = (
+        db.query(TimeOffHistory)
+        .filter(
+            TimeOffHistory.user_id == user.id,
+            TimeOffHistory.bamboohr_transaction_id == tx_id,
+        )
+        .first()
+    )
+    if existing:
+        existing.policy_name = request.policy_name
+        existing.transaction_date = request.start_date
+        existing.description = description
+        existing.used_days = used_days
+        existing.earned_days = earned_days
+        existing.balance_after = balance_after
+        return existing
+    entry = TimeOffHistory(
+        id=uuid_lib.uuid4(),
+        user_id=user.id,
+        policy_name=request.policy_name,
+        transaction_date=request.start_date,
+        description=description,
+        used_days=used_days,
+        earned_days=earned_days,
+        balance_after=balance_after,
+        bamboohr_transaction_id=tx_id,
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(entry)
+    return entry
+
+
+def _record_hub_request_closed(
+    db: Session,
+    *,
+    user: User,
+    request: TimeOffRequest,
+    status: str,
+) -> None:
+    """Write / replace Hub request history as Cancelled or Rejected (balance unchanged)."""
+    balance_after = _current_balance_days(
+        db, user_id=user.id, policy_name=request.policy_name
+    )
+    description = _format_time_off_status_description(
+        status=status,
+        start_date=request.start_date,
+        end_date=request.end_date,
+        notes=request.notes,
+        review_notes=request.review_notes,
+    )
+    _upsert_hub_request_history(
+        db,
+        user=user,
+        request=request,
+        description=description,
+        used_days=None,
+        earned_days=None,
+        balance_after=balance_after,
+    )
+
+
+def _apply_approved_time_off_request(
+    db: Session,
+    *,
+    user: User,
+    request: TimeOffRequest,
+    reviewer: User,
+    update_balance: bool = True,
+) -> None:
+    """
+    Deduct balance and append a TimeOffHistory usage row for a Hub-approved request.
+
+    History was previously only created by Bamboo sync / manual adjust, so Hub
+    approve left the ledger empty even though balance changed.
+
+    Set update_balance=False to backfill history for requests that already had
+    balance deducted under the old approve path.
+    """
+    current_year = datetime.now().year
+    hours = float(request.hours or 0)
+    if hours <= 0:
+        # Derive from inclusive date span when hours were not stored
+        days = (request.end_date - request.start_date).days + 1
+        hours = max(days, 1) * 8.0
+    used_days = hours / 8.0
+
+    balance = db.query(TimeOffBalance).filter(
+        TimeOffBalance.user_id == user.id,
+        TimeOffBalance.policy_name == request.policy_name,
+        TimeOffBalance.year == current_year,
+    ).first()
+    if not balance:
+        balance = TimeOffBalance(
+            id=uuid_lib.uuid4(),
+            user_id=user.id,
+            policy_name=request.policy_name,
+            balance_hours=0.0,
+            accrued_hours=0.0,
+            used_hours=0.0,
+            year=current_year,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+        db.add(balance)
+        db.flush()
+
+    if update_balance:
+        balance.used_hours = float(balance.used_hours or 0) + hours
+        balance.balance_hours = float(balance.balance_hours or 0) - hours
+        balance.updated_at = datetime.now(timezone.utc)
+
+    balance_after_days = float(balance.balance_hours) / 8.0
+    description = _format_time_off_used_description(
+        start_date=request.start_date,
+        end_date=request.end_date,
+        notes=request.notes,
+    )
+    _upsert_hub_request_history(
+        db,
+        user=user,
+        request=request,
+        description=description,
+        used_days=-abs(used_days),
+        earned_days=None,
+        balance_after=balance_after_days,
+    )
+
+
 @router.patch("/{user_id}/time-off/requests/{request_id}")
 def update_time_off_request(
     user_id: str,
@@ -1778,27 +1994,24 @@ def update_time_off_request(
         # User can cancel their own request
         request.status = "cancelled"
         request.updated_at = datetime.now(timezone.utc)
+        _record_hub_request_closed(db, user=user, request=request, status="cancelled")
     elif new_status in ["approved", "rejected"] and can_manage:
+        if request.status != "pending":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Only pending requests can be {new_status}",
+            )
         # Admin can approve/reject
         request.status = new_status
         request.reviewed_at = datetime.now(timezone.utc)
         request.reviewed_by = current_user.id
         request.review_notes = review_notes
         request.updated_at = datetime.now(timezone.utc)
-        
-        # If approved, update balance
+
         if new_status == "approved":
-            current_year = datetime.now().year
-            balance = db.query(TimeOffBalance).filter(
-                TimeOffBalance.user_id == user.id,
-                TimeOffBalance.policy_name == request.policy_name,
-                TimeOffBalance.year == current_year
-            ).first()
-            
-            if balance:
-                balance.used_hours = float(balance.used_hours) + float(request.hours)
-                balance.balance_hours = float(balance.balance_hours) - float(request.hours)
-                balance.updated_at = datetime.now(timezone.utc)
+            _apply_approved_time_off_request(db, user=user, request=request, reviewer=current_user)
+        else:
+            _record_hub_request_closed(db, user=user, request=request, status="rejected")
     else:
         raise HTTPException(status_code=403, detail="Not authorized to update this request")
     
@@ -1962,6 +2175,15 @@ def add_time_off_history_entry(
     }
 
 
+def _history_used_days_abs(entry: TimeOffHistory) -> float:
+    """Usage magnitude (Bamboo stores negative used_days; Hub adjust stores positive)."""
+    return abs(float(entry.used_days or 0))
+
+
+def _history_earned_days_abs(entry: TimeOffHistory) -> float:
+    return abs(float(entry.earned_days or 0))
+
+
 def _recompute_balance_from_history(db: Session, user_id: uuid_lib.UUID, policy_name: str, year: int) -> None:
     """Recompute TimeOffBalance for user/policy/year from remaining TimeOffHistory entries."""
     remaining = (
@@ -1971,7 +2193,11 @@ def _recompute_balance_from_history(db: Session, user_id: uuid_lib.UUID, policy_
             TimeOffHistory.policy_name == policy_name,
             func.extract("year", TimeOffHistory.transaction_date) == year,
         )
-        .order_by(TimeOffHistory.transaction_date.desc())
+        .order_by(
+            TimeOffHistory.transaction_date.desc(),
+            TimeOffHistory.created_at.desc(),
+            TimeOffHistory.id.desc(),
+        )
         .all()
     )
     if not remaining:
@@ -1980,8 +2206,8 @@ def _recompute_balance_from_history(db: Session, user_id: uuid_lib.UUID, policy_
         used_days_total = 0.0
     else:
         balance_days = float(remaining[0].balance_after)
-        accrued_days = sum(float(h.earned_days or 0) for h in remaining)
-        used_days_total = sum(float(h.used_days or 0) for h in remaining)
+        accrued_days = sum(_history_earned_days_abs(h) for h in remaining)
+        used_days_total = sum(_history_used_days_abs(h) for h in remaining)
     balance_hours = balance_days * 8.0
     accrued_hours = accrued_days * 8.0
     used_hours = used_days_total * 8.0
@@ -2025,7 +2251,7 @@ def _recalculate_history_chain_zero_opening(
             TimeOffHistory.policy_name == policy_name,
             func.extract("year", TimeOffHistory.transaction_date) == year,
         )
-        .order_by(TimeOffHistory.transaction_date.asc(), TimeOffHistory.id.asc())
+        .order_by(TimeOffHistory.transaction_date.asc(), TimeOffHistory.created_at.asc(), TimeOffHistory.id.asc())
         .all()
     )
     if not rows:
@@ -2033,10 +2259,121 @@ def _recalculate_history_chain_zero_opening(
         return
     running = 0.0
     for h in rows:
-        running += float(h.earned_days or 0) - float(h.used_days or 0)
+        running += _history_earned_days_abs(h) - _history_used_days_abs(h)
         h.balance_after = running
     db.flush()
     _recompute_balance_from_history(db, user_id, policy_name, year)
+
+
+def _delete_history_entry_as_never_existed(db: Session, entry: TimeOffHistory) -> None:
+    """
+    Admin delete: reverse the entry's effect on balance and rebuild the year ledger
+    so remaining balance_after values stay consistent — as if the usage never existed.
+
+    For Hub-approved request rows, keep an audit history line marked Cancelled.
+    """
+    user_id = entry.user_id
+    policy_name = entry.policy_name
+    year = entry.transaction_date.year if hasattr(entry.transaction_date, "year") else int(entry.transaction_date)
+    used = _history_used_days_abs(entry)
+    earned = _history_earned_days_abs(entry)
+    tx_id = str(entry.bamboohr_transaction_id or "").strip()
+    keep_cancelled_marker = False
+    linked_request = None
+
+    # Reverse impact on the live balance before removing / converting the row
+    balance = db.query(TimeOffBalance).filter(
+        TimeOffBalance.user_id == user_id,
+        TimeOffBalance.policy_name == policy_name,
+        TimeOffBalance.year == year,
+    ).first()
+    if balance and (used or earned):
+        balance.balance_hours = float(balance.balance_hours or 0) + (used * 8.0) - (earned * 8.0)
+        balance.used_hours = max(0.0, float(balance.used_hours or 0) - (used * 8.0))
+        balance.accrued_hours = max(0.0, float(balance.accrued_hours or 0) - (earned * 8.0))
+        balance.updated_at = datetime.now(timezone.utc)
+
+    # Hub-approved request linked to this ledger row → cancel + keep cancelled history
+    if tx_id.startswith("hub-request:"):
+        raw_id = tx_id.split(":", 1)[1].strip()
+        try:
+            req_uuid = uuid_lib.UUID(raw_id)
+        except ValueError:
+            req_uuid = None
+        if req_uuid:
+            linked_request = (
+                db.query(TimeOffRequest)
+                .filter(
+                    TimeOffRequest.id == req_uuid,
+                    TimeOffRequest.user_id == user_id,
+                )
+                .first()
+            )
+            if linked_request:
+                if linked_request.status == "approved":
+                    linked_request.status = "cancelled"
+                    linked_request.updated_at = datetime.now(timezone.utc)
+                    linked_request.review_notes = (
+                        f"{(linked_request.review_notes or '').strip()} "
+                        f"[Cancelled: history deleted by admin]"
+                    ).strip()
+                # Convert usage row into a cancelled audit marker (shows in History)
+                if used or earned or not (entry.description or "").lower().startswith("cancelled"):
+                    keep_cancelled_marker = True
+                    entry.used_days = None
+                    entry.earned_days = None
+                    entry.description = _format_time_off_status_description(
+                        status="cancelled",
+                        start_date=linked_request.start_date,
+                        end_date=linked_request.end_date,
+                        notes=linked_request.notes,
+                        review_notes=linked_request.review_notes,
+                    )
+                    entry.balance_after = (
+                        float(balance.balance_hours or 0) / 8.0 if balance else float(entry.balance_after or 0)
+                    )
+
+    if not keep_cancelled_marker:
+        db.delete(entry)
+    db.flush()
+
+    # Rebuild balance_after chain while preserving the restored live balance as the end state
+    remaining = (
+        db.query(TimeOffHistory)
+        .filter(
+            TimeOffHistory.user_id == user_id,
+            TimeOffHistory.policy_name == policy_name,
+            func.extract("year", TimeOffHistory.transaction_date) == year,
+        )
+        .order_by(
+            TimeOffHistory.transaction_date.asc(),
+            TimeOffHistory.created_at.asc(),
+            TimeOffHistory.id.asc(),
+        )
+        .all()
+    )
+    if not remaining:
+        if balance:
+            balance.updated_at = datetime.now(timezone.utc)
+        return
+
+    if balance is not None:
+        end_days = float(balance.balance_hours or 0) / 8.0
+        net = sum(_history_earned_days_abs(h) - _history_used_days_abs(h) for h in remaining)
+        opening = end_days - net
+    else:
+        opening = 0.0
+
+    running = opening
+    for h in remaining:
+        running += _history_earned_days_abs(h) - _history_used_days_abs(h)
+        h.balance_after = running
+    db.flush()
+
+    if balance is not None:
+        balance.accrued_hours = sum(_history_earned_days_abs(h) for h in remaining) * 8.0
+        balance.used_hours = sum(_history_used_days_abs(h) for h in remaining) * 8.0
+        balance.updated_at = datetime.now(timezone.utc)
 
 
 @router.patch("/{user_id}/time-off/history/{entry_id}")
@@ -2145,7 +2482,12 @@ def delete_time_off_history_entry(
     current_user: User = Depends(get_current_user),
     _=Depends(require_roles("admin")),
 ):
-    """Delete a time off history entry (admin only). Recomputes balance from remaining history."""
+    """
+    Delete a time off history entry (admin only).
+
+    Treats the row as if it never existed: restores balance (and cancels a linked
+    Hub-approved request when applicable), then realigns remaining ledger balances.
+    """
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -2159,10 +2501,7 @@ def delete_time_off_history_entry(
     ).first()
     if not entry:
         raise HTTPException(status_code=404, detail="History entry not found")
-    policy_name = entry.policy_name
-    year = entry.transaction_date.year if hasattr(entry.transaction_date, "year") else int(entry.transaction_date)
-    db.delete(entry)
-    _recompute_balance_from_history(db, user.id, policy_name, year)
+    _delete_history_entry_as_never_existed(db, entry)
     try:
         db.commit()
     except Exception as e:

@@ -97,10 +97,12 @@ import {
   userLegalDocumentsQuickInfo,
   userVisaEntryQuickInfo,
   userOrganizationQuickInfo,
+  userSalaryQuickInfo,
   userSalaryEntryQuickInfo,
   userTimeOffBalanceAdjustQuickInfo,
   scWorkerManualAttendanceQuickInfo,
 } from '@/lib/formModalQuickInfo';
+import { canonicalPayType, PAY_TYPE_OPTIONS, payTypeLabel } from '@/lib/payType';
 import { userProfileFieldHint } from '@/lib/userProfileFieldHints';
 
 const USER_TAB_LABELS: Record<string, string> = {
@@ -1263,9 +1265,7 @@ export default function UserInfo(){
                   {canViewJobCompensation && (
                     <SalarySection
                       p={p}
-                      editable={false}
                       userId={String(userId)}
-                      settings={settings}
                       canEdit={canEditGeneral}
                     />
                   )}
@@ -3794,77 +3794,77 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
 }
 
 
-function SalarySection({ p, editable, userId, collectChanges, settings, canEdit, embedded }: { p:any, editable:boolean, userId:string, collectChanges?: (kv:Record<string,any>)=>void, settings?: any, canEdit:boolean, embedded?: boolean }){
+function SalarySection({ p, userId, canEdit }: { p: any; userId: string; canEdit: boolean }){
   const queryClient = useQueryClient();
   const [showAddEntry, setShowAddEntry] = useState(false);
-  const isEditable = !!editable;
-  const showFieldHints = !!embedded;
-  const [form, setForm] = useState<any>(()=>({
-    pay_rate: p.pay_rate||'',
-    pay_type: p.pay_type||'',
-    needs_register_hours: !!p.needs_register_hours,
-  }));
   const [showPayRate, setShowPayRate] = useState(false);
+  const [showPayTypeEdit, setShowPayTypeEdit] = useState(false);
+  const [payTypeDraft, setPayTypeDraft] = useState('');
+  const [needsHoursDraft, setNeedsHoursDraft] = useState(false);
+  const [savingPayType, setSavingPayType] = useState(false);
   const [savingHoursFlag, setSavingHoursFlag] = useState(false);
-  const prevEditableRef = useRef(editable);
-  
-  useEffect(() => {
-    // When entering edit mode, initialize form with current p values
-    if (editable && !prevEditableRef.current) {
-      setForm({ pay_rate: p.pay_rate||'', pay_type: p.pay_type||'', needs_register_hours: !!p.needs_register_hours });
-    }
-    // When exiting edit mode, update form with latest p values
-    if (!editable && prevEditableRef.current) {
-      setForm({ pay_rate: p.pay_rate||'', pay_type: p.pay_type||'', needs_register_hours: !!p.needs_register_hours });
-    }
-    prevEditableRef.current = editable;
-  }, [editable, p.pay_rate, p.pay_type, p.needs_register_hours]);
 
-  useEffect(() => {
-    if (!editable) {
-      setForm((s: any) => ({
-        ...s,
-        pay_rate: p.pay_rate || '',
-        pay_type: p.pay_type || '',
-        needs_register_hours: !!p.needs_register_hours,
-      }));
-    }
-  }, [editable, p.pay_rate, p.pay_type, p.needs_register_hours]);
-  
-  const onField = (key:string, value:any)=>{ 
-    setForm((s:any)=>({ ...s, [key]: value })); 
-    collectChanges?.({ [key]: value }); 
-  };
-
-  const payTypeValue = String(isEditable ? form.pay_type : p.pay_type || '').trim();
-  const isSalaryPay = payTypeValue.toLowerCase().includes('salary');
+  const storedPayType = String(p.pay_type || '').trim();
+  const canonical = canonicalPayType(storedPayType);
+  const isSalaryPay = canonical === 'salary';
+  const payTypeDisplay = payTypeLabel(storedPayType) || '—';
 
   const saveNeedsRegisterHours = async (checked: boolean) => {
-    onField('needs_register_hours', checked);
-    if (collectChanges) return;
-    if (!canEdit) return;
+    if (!canEdit || savingHoursFlag) return;
+    setSavingHoursFlag(true);
     try {
-      setSavingHoursFlag(true);
       await api('PUT', `/auth/users/${encodeURIComponent(String(userId))}/profile`, {
         needs_register_hours: checked,
       });
-      toast.success(checked ? 'Hours registration enabled' : 'Hours registration disabled');
+      toast.success(checked ? 'Hours registration on' : 'Hours registration off');
       await queryClient.invalidateQueries({ queryKey: ['userProfile', userId] });
+      await queryClient.invalidateQueries({ queryKey: ['me-profile'] });
     } catch (e: any) {
-      onField('needs_register_hours', !checked);
-      toast.error(e?.message || 'Failed to update');
+      toast.error(e?.message || 'Failed to update hours registration');
     } finally {
       setSavingHoursFlag(false);
     }
   };
 
-  const fields = (
-    <div className="space-y-4">
-      <div className="grid gap-4 md:grid-cols-2">
-        <AppCard bodyClassName={uiSpacing.cardPadding}>
-          <div className={uiCx(uiLayout.actionsRow, 'mb-2')}>
-            <span className={uiTypography.overline}>Pay Rate</span>
-            {!isEditable ? (
+  const openPayTypeEdit = () => {
+    setPayTypeDraft(canonical);
+    setNeedsHoursDraft(!!p.needs_register_hours);
+    setShowPayTypeEdit(true);
+  };
+
+  const savePayType = async () => {
+    if (savingPayType) return;
+    if (!payTypeDraft) {
+      toast.error('Pay type is required');
+      return;
+    }
+    setSavingPayType(true);
+    try {
+      await api('PUT', `/auth/users/${encodeURIComponent(String(userId))}/profile`, {
+        pay_type: payTypeDraft,
+        needs_register_hours: payTypeDraft === 'salary' ? needsHoursDraft : false,
+      });
+      toast.success('Pay type updated');
+      setShowPayTypeEdit(false);
+      await queryClient.invalidateQueries({ queryKey: ['userProfile', userId] });
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to update pay type');
+    } finally {
+      setSavingPayType(false);
+    }
+  };
+
+  return (
+    <UserInfoSectionCard
+      preset="billing"
+      title="Salary"
+      description="Current pay rate and type. Pay type controls clock-in and hours reminders."
+    >
+      <div className="space-y-4">
+        <div className="grid gap-4 md:grid-cols-2">
+          <AppCard bodyClassName={uiSpacing.cardPadding}>
+            <div className={uiCx(uiLayout.actionsRow, 'mb-2')}>
+              <span className={uiTypography.overline}>Pay Rate</span>
               <AppButton
                 type="button"
                 variant="ghost"
@@ -3876,100 +3876,111 @@ function SalarySection({ p, editable, userId, collectChanges, settings, canEdit,
               >
                 {showPayRate ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </AppButton>
-            ) : null}
-          </div>
-          {isEditable ? (
-            <AppInput
-              label="Pay rate"
-              value={form.pay_rate}
-              onChange={(e) => onField('pay_rate', e.target.value)}
-              placeholder="$29.00 / Hour"
-              fieldHint={showFieldHints ? userProfileFieldHint('pay_rate') : undefined}
-            />
-          ) : (
-            <div className={uiTypography.sectionTitle}>{showPayRate ? String(p.pay_rate || '') || '—' : '••••'}</div>
-          )}
-        </AppCard>
-        <AppCard bodyClassName={uiSpacing.cardPadding}>
-          <span className={uiTypography.overline}>Pay Type</span>
-          <div className="mt-2">
-            {isEditable ? (
-              settings?.pay_types?.length ? (
-                <AppSelect
-                  label="Pay type"
-                  placeholder="Select..."
-                  value={form.pay_type}
-                  onChange={(e) => onField('pay_type', e.target.value)}
-                  fieldHint={showFieldHints ? userProfileFieldHint('pay_type') : undefined}
-                  options={sortByLabel(settings.pay_types, (it: any) => (it.label || '').toString()).map((it: any) => ({
-                    value: it.label,
-                    label: it.label,
-                  }))}
-                />
-              ) : (
-                <AppInput
-                  label="Pay type"
-                  value={form.pay_type}
-                  onChange={(e) => onField('pay_type', e.target.value)}
-                  placeholder="Hourly / Salary / Contract..."
-                  fieldHint={showFieldHints ? userProfileFieldHint('pay_type') : undefined}
-                />
-              )
-            ) : (
-              <div className={uiTypography.sectionTitle}>{String(p.pay_type || '') || '—'}</div>
-            )}
-          </div>
-        </AppCard>
-      </div>
-      {isSalaryPay ? (
-        <AppCard bodyClassName={uiSpacing.cardPadding}>
-          {canEdit || isEditable ? (
-            <AppCheckbox
-              label="Needs to register hours"
-              checked={!!form.needs_register_hours}
-              disabled={savingHoursFlag}
-              onChange={(checked) => void saveNeedsRegisterHours(checked)}
-              fieldHint={userProfileFieldHint('needs_register_hours')}
-            />
-          ) : (
-            <div>
-              <div className={uiTypography.overline}>Needs to register hours</div>
-              <div className={uiCx(uiTypography.sectionTitle, 'mt-1')}>
-                {p.needs_register_hours ? 'Yes' : 'No'}
-              </div>
-              <p className={uiCx(uiTypography.helper, 'mt-1')}>
-                Salary roles skip hour logging and reminders unless this is enabled.
-              </p>
             </div>
-          )}
-        </AppCard>
-      ) : null}
-    </div>
-  );
-
-  if (embedded) return fields;
-
-  return (
-    <UserInfoSectionCard
-      preset="billing"
-      title="Salary"
-      description="Current pay rate and type on file."
-      headerAction={
-        !isEditable && canEdit ? (
-          <AppButton type="button" size="sm" onClick={() => setShowAddEntry(true)}>
-            New Entry
-          </AppButton>
-        ) : null
-      }
-    >
-      {fields}
+            <div className={uiTypography.sectionTitle}>{showPayRate ? String(p.pay_rate || '') || '—' : '••••'}</div>
+            <p className={uiCx(uiTypography.helper, 'mt-1')}>Change the rate with a new salary entry.</p>
+          </AppCard>
+          <AppCard bodyClassName={uiSpacing.cardPadding}>
+            <div className={uiCx(uiLayout.actionsRow, 'mb-2')}>
+              <span className={uiTypography.overline}>Pay Type</span>
+              {canEdit ? (
+                <AppHeroEditButton title="Edit pay type" aria-label="Edit pay type" onClick={openPayTypeEdit} />
+              ) : null}
+            </div>
+            <div className={uiTypography.sectionTitle}>{payTypeDisplay}</div>
+            {!canonical && storedPayType ? (
+              <p className={uiCx(uiTypography.helper, 'mt-1')}>
+                Choose Hourly, Salary, or Contract so clock-in and reminders follow the right rule.
+              </p>
+            ) : (
+              <p className={uiCx(uiTypography.helper, 'mt-1')}>
+                {isSalaryPay
+                  ? 'Salary skips clock-in and hours reminders unless hours registration is on.'
+                  : 'Hourly and contract must clock in and can receive hours reminders.'}
+              </p>
+            )}
+          </AppCard>
+        </div>
+        {isSalaryPay ? (
+          <AppCard bodyClassName={uiSpacing.cardPadding}>
+            {canEdit ? (
+              <AppCheckbox
+                label="Register hours"
+                checked={!!p.needs_register_hours}
+                disabled={savingHoursFlag}
+                onChange={(checked) => void saveNeedsRegisterHours(checked)}
+                fieldHint={userProfileFieldHint('needs_register_hours')}
+              />
+            ) : (
+              <div>
+                <div className={uiTypography.overline}>Register hours</div>
+                <div className={uiCx(uiTypography.sectionTitle, 'mt-1')}>
+                  {p.needs_register_hours ? 'Yes' : 'No'}
+                </div>
+              </div>
+            )}
+            <p className={uiCx(uiTypography.helper, canEdit ? 'mt-2' : 'mt-1')}>
+              When this is on, clock-in and hours reminders treat this person as hourly. Pay type stays Salary.
+            </p>
+          </AppCard>
+        ) : null}
+      </div>
       <SalaryHistorySection
         userId={userId}
         canEdit={canEdit}
-        settings={settings}
+        currentPayType={storedPayType}
         showAdd={showAddEntry}
         onShowAddChange={setShowAddEntry}
       />
+      <AppFormModal
+        open={showPayTypeEdit}
+        onClose={() => {
+          if (!savingPayType) setShowPayTypeEdit(false);
+        }}
+        title="Edit pay type"
+        description="Choose how this employee is paid. This does not change the pay rate."
+        formWidth="comfortable"
+        quickInfo={userSalaryQuickInfo}
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+            <AppButton
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={savingPayType}
+              onClick={() => setShowPayTypeEdit(false)}
+            >
+              Cancel
+            </AppButton>
+            <AppButton type="button" size="sm" disabled={savingPayType || !payTypeDraft} loading={savingPayType} onClick={() => void savePayType()}>
+              {savingPayType ? 'Saving...' : 'Save'}
+            </AppButton>
+          </div>
+        }
+      >
+        <div className={uiSpacing.sectionStack}>
+          <AppSelect
+            label="Pay type *"
+            placeholder="Select..."
+            value={payTypeDraft}
+            onChange={(e) => setPayTypeDraft(e.target.value)}
+            fieldHint={userProfileFieldHint('pay_type')}
+            options={PAY_TYPE_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
+          />
+          {payTypeDraft === 'salary' ? (
+            <AppCheckbox
+              label="Register hours"
+              checked={needsHoursDraft}
+              onChange={setNeedsHoursDraft}
+              fieldHint={userProfileFieldHint('needs_register_hours')}
+            />
+          ) : (
+            <p className={uiTypography.helper}>
+              Hourly and contract employees always clock in and can receive hours reminders.
+            </p>
+          )}
+        </div>
+      </AppFormModal>
     </UserInfoSectionCard>
   );
 }
@@ -3977,13 +3988,13 @@ function SalarySection({ p, editable, userId, collectChanges, settings, canEdit,
 function SalaryHistorySection({
   userId,
   canEdit,
-  settings,
+  currentPayType,
   showAdd,
   onShowAddChange,
 }: {
   userId: string;
   canEdit: boolean;
-  settings?: any;
+  currentPayType?: string;
   showAdd: boolean;
   onShowAddChange: (open: boolean) => void;
 }){
@@ -3999,6 +4010,14 @@ function SalaryHistorySection({
   const [justification, setJustification] = useState('');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
+  const wasAddOpenRef = useRef(false);
+
+  useEffect(() => {
+    if (showAdd && !wasAddOpenRef.current) {
+      setPayType(canonicalPayType(currentPayType) || '');
+    }
+    wasAddOpenRef.current = showAdd;
+  }, [showAdd, currentPayType]);
 
   const reset = ()=>{
     setEffectiveDate('');
@@ -4012,6 +4031,7 @@ function SalaryHistorySection({
     if (saving) return;
     if (!effectiveDate) { toast.error('Effective date is required'); return; }
     if (!String(newSalary||'').trim()) { toast.error('Pay rate is required'); return; }
+    if (!String(payType||'').trim()) { toast.error('Pay type is required'); return; }
     if (!String(justification||'').trim()) { toast.error('Change reason is required'); return; }
 
     setSaving(true);
@@ -4048,6 +4068,15 @@ function SalaryHistorySection({
     <div>
       <div className="mb-2 text-sm font-semibold text-gray-700">History</div>
 
+      {canEdit ? (
+        <AppListCreateItem
+          label="New salary entry"
+          layout="row"
+          className="mb-3 w-full"
+          onClick={() => onShowAddChange(true)}
+        />
+      ) : null}
+
       {isLoading ? (
         <div className="text-sm text-gray-600">Loading...</div>
       ) : (rows && rows.length > 0) ? (
@@ -4070,7 +4099,7 @@ function SalaryHistorySection({
                 return (
                   <tr key={r.id} className="border-b align-top">
                     <td className="py-1.5 px-2 whitespace-nowrap text-gray-900">{formatDate(r.effective_date)}</td>
-                    <td className="py-1.5 px-2 whitespace-nowrap text-gray-900">{String(r.pay_type||'') || '—'}</td>
+                    <td className="py-1.5 px-2 whitespace-nowrap text-gray-900">{payTypeLabel(r.pay_type) || '—'}</td>
                     <td className="py-1.5 px-2 whitespace-nowrap text-gray-900">{payLabel}</td>
                     <td className="py-1.5 px-2 whitespace-pre-line text-gray-900">{String(r.justification||'') || '—'}</td>
                     <td className="py-1.5 px-2 whitespace-pre-line text-gray-900">{String(r.notes||'') || '—'}</td>
@@ -4122,27 +4151,14 @@ function SalaryHistorySection({
               onChange={(e) => setEffectiveDate(e.target.value)}
               fieldHint={userProfileFieldHint('salary_effective_date')}
             />
-            {settings?.pay_types?.length ? (
-              <AppSelect
-                label="Pay type"
-                placeholder="Select..."
-                value={payType}
-                onChange={(e) => setPayType(e.target.value)}
-                fieldHint={userProfileFieldHint('pay_type')}
-                options={sortByLabel(settings.pay_types, (it: any) => (it.label || '').toString()).map((it: any) => ({
-                  value: it.label,
-                  label: it.label,
-                }))}
-              />
-            ) : (
-              <AppInput
-                label="Pay type"
-                value={payType}
-                onChange={(e) => setPayType(e.target.value)}
-                placeholder="Hourly / Salary / Contract..."
-                fieldHint={userProfileFieldHint('pay_type')}
-              />
-            )}
+            <AppSelect
+              label="Pay type *"
+              placeholder="Select..."
+              value={payType}
+              onChange={(e) => setPayType(e.target.value)}
+              fieldHint={userProfileFieldHint('pay_type')}
+              options={PAY_TYPE_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
+            />
           </div>
           <AppInput
             label="Pay rate *"

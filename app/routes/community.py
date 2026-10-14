@@ -654,6 +654,8 @@ def suggest_mentions(
     current_user: User = Depends(get_current_user),
 ):
     """Autocomplete for @mentions: users, divisions (settings), community groups."""
+    from ..services.user_display import user_search_label
+
     term = (q or "").strip().lower()
     items: List[dict] = []
 
@@ -665,8 +667,23 @@ def suggest_mentions(
         .all()
     )
     for ep, u in profs:
-        label = ep.preferred_name or f"{ep.first_name or ''} {ep.last_name or ''}".strip() or u.username or ""
-        hay = f"{label} {u.username or ''}".lower()
+        label = user_search_label(
+            preferred_name=ep.preferred_name,
+            first_name=ep.first_name,
+            last_name=ep.last_name,
+            username=u.username,
+        )
+        hay = " ".join(
+            part
+            for part in (
+                label,
+                ep.preferred_name,
+                ep.first_name,
+                ep.last_name,
+                u.username,
+            )
+            if part
+        ).lower()
         if term and term not in hay:
             continue
         items.append(

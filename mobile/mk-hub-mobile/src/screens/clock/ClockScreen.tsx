@@ -21,6 +21,7 @@ import { ScreenLayout } from "../../components/ScreenLayout";
 import { ClockActionModal } from "../../components/clock/ClockActionModal";
 import { useHubMenu } from "../../navigation/HubMenuProvider";
 import { useAuth } from "../../hooks/useAuth";
+import { shouldRegisterHours } from "../../lib/hoursRegistration";
 import { typography } from "../../theme/typography";
 import { formatDateLocal } from "../../lib/dateUtils";
 import {
@@ -327,6 +328,20 @@ export const ClockScreen: React.FC = () => {
       </TouchableOpacity>
     </View>
   );
+
+  const mustRegisterHours = shouldRegisterHours(user?.pay_type, user?.needs_register_hours);
+  if (user && !mustRegisterHours && !hasOpenClockIn) {
+    return (
+      <ScreenLayout scroll={false} style={styles.screen} contentStyle={styles.layout}>
+        {header}
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>
+            Hours logging is off for this salary role.
+          </Text>
+        </View>
+      </ScreenLayout>
+    );
+  }
 
   if (loading && !dayState) {
     return (

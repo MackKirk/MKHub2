@@ -25,11 +25,9 @@ ws_router = APIRouter(prefix="/chat", tags=["chat"])
 
 
 def _user_basic(u: User, ep: Optional[EmployeeProfile]) -> dict:
-    name = (getattr(ep, "preferred_name", None) or "").strip() if ep else ""
-    if not name:
-        first = (getattr(ep, "first_name", None) or "").strip() if ep else ""
-        last = (getattr(ep, "last_name", None) or "").strip() if ep else ""
-        name = " ".join([x for x in [first, last] if x])
+    from ..services.user_display import profile_search_label
+
+    name = profile_search_label(u, ep)
     avatar_id = str(getattr(ep, "profile_photo_file_id")) if ep and getattr(ep, "profile_photo_file_id", None) else None
     avatar_url = f"/files/{avatar_id}/thumbnail?w=40" if avatar_id else None
     return {"id": str(u.id), "username": u.username, "name": name or u.username, "avatar_url": avatar_url}
@@ -40,13 +38,9 @@ def list_users(q: Optional[str] = None, limit: int = 50, db: Session = Depends(g
     query = db.query(User, EmployeeProfile).outerjoin(EmployeeProfile, EmployeeProfile.user_id == User.id)
     if q:
         like = f"%{q}%"
-        query = query.filter(
-            (User.username.ilike(like))
-            | (User.email_personal.ilike(like))
-            | (EmployeeProfile.first_name.ilike(like))
-            | (EmployeeProfile.last_name.ilike(like))
-            | (EmployeeProfile.preferred_name.ilike(like))
-        )
+        from ..services.user_display import employee_name_match
+
+        query = query.filter(employee_name_match(like))
     rows = query.order_by(User.created_at.desc()).limit(max(1, min(200, limit))).all()
     return [_user_basic(u, ep) for u, ep in rows]
 
