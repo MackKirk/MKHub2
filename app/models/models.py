@@ -2427,6 +2427,11 @@ class Shift(Base):
     job_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), index=True)  # Job type/task identifier (to be linked to Job model when available)
     job_name: Mapped[Optional[str]] = mapped_column(String(255))  # Job name snapshot (for reference)
     notes: Mapped[Optional[str]] = mapped_column(Text)
+    # Worker confirmation: pending (not seen) | viewed | accepted | declined
+    ack_status: Mapped[str] = mapped_column(String(20), default="pending", server_default="pending", nullable=False)
+    ack_viewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    ack_responded_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    ack_note: Mapped[Optional[str]] = mapped_column(Text)
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
@@ -2437,6 +2442,54 @@ class Shift(Base):
     __table_args__ = (
         Index('idx_shifts_worker_date_time', 'worker_id', 'date', 'start_time', 'end_time'),
         Index('idx_shifts_project_date', 'project_id', 'date'),
+    )
+
+
+class ShiftResponse(Base):
+    """History of a worker seeing, accepting, or declining a shift."""
+    __tablename__ = "shift_responses"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    shift_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("shifts.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    worker_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    project_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    action: Mapped[str] = mapped_column(String(20), nullable=False)  # viewed|accepted|declined|reset
+    note: Mapped[Optional[str]] = mapped_column(Text)
+    shift_date: Mapped[Date] = mapped_column(Date, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    __table_args__ = (
+        Index("idx_shift_responses_worker_created", "worker_id", "created_at"),
+    )
+
+
+class ShiftNoteTemplate(Base):
+    """Reusable shift note. Project-scoped or available on every project."""
+    __tablename__ = "shift_note_templates"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    scope: Mapped[str] = mapped_column(String(20), nullable=False)  # project|global
+    project_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        Index("idx_shift_note_templates_scope", "scope"),
     )
 
 

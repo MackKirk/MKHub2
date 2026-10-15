@@ -13,6 +13,7 @@ import {
   isAdminRole,
 } from '@/lib/projectLinePermissionKeys';
 import { JOB_TYPES } from '@/constants/jobTypes';
+import { shiftAckMeta, shiftAckTracked } from '@/lib/shiftAck';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { CreateShiftModal } from '@/components/DispatchTab';
 import EditShiftModal from '@/components/EditShiftModal';
@@ -216,6 +217,18 @@ function ScheduledShiftRow({
       <div className="flex min-w-0 flex-1 items-center gap-1.5">
         <AppUserAvatar user={worker} size="sm" />
         <span className="truncate text-sm font-semibold text-gray-900">{worker.name}</span>
+        {shiftAckTracked(shift.ack_status) ? (
+          <span
+            className={`shrink-0 text-xs font-semibold ${shiftAckMeta(shift.ack_status).tone}`}
+            title={
+              shift.ack_status === 'declined' && shift.ack_note
+                ? `Declined: ${shift.ack_note}`
+                : shiftAckMeta(shift.ack_status).longLabel
+            }
+          >
+            {shiftAckMeta(shift.ack_status).shortLabel}
+          </span>
+        ) : null}
       </div>
       {canEdit ? (
         <div className="flex shrink-0 items-center gap-0.5">

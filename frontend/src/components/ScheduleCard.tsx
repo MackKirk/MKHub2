@@ -26,6 +26,8 @@ import {
   Clock,
   MapPin,
 } from 'lucide-react';
+import ShiftAckPanel from '@/components/ShiftAckPanel';
+import { shiftAckMeta, shiftAckTracked } from '@/lib/shiftAck';
 
 function attendanceBadgeVariant(status: string): 'success' | 'warning' | 'danger' {
   if (status === 'approved') return 'success';
@@ -64,6 +66,9 @@ type Shift = {
   end_time: string;
   status: string;
   job_name?: string;
+  notes?: string | null;
+  ack_status?: string | null;
+  ack_note?: string | null;
   geofences?: any[];
 };
 
@@ -484,6 +489,17 @@ export default function ScheduleCard() {
                               <MapPin className="h-3.5 w-3.5 flex-shrink-0" />
                               <span className="line-clamp-1">{projectAddress}</span>
                             </div>
+
+                            {shift.notes?.trim() ? (
+                              <p className="text-sm text-gray-700 mb-2 line-clamp-2 whitespace-pre-wrap">
+                                {shift.notes.trim()}
+                              </p>
+                            ) : null}
+                            {shiftAckTracked(shift.ack_status) ? (
+                              <div className={uiCx('text-sm font-semibold mb-1', shiftAckMeta(shift.ack_status).tone)}>
+                                {shiftAckMeta(shift.ack_status).shortLabel}
+                              </div>
+                            ) : null}
                             
                             {/* Attendance Status */}
                             {(shiftClockIn || shiftClockOut) && (
@@ -574,6 +590,29 @@ export default function ScheduleCard() {
                   <div className={uiTypography.sectionTitle}>{selectedShift.job_name}</div>
                 </div>
               )}
+
+              {selectedShift.notes?.trim() ? (
+                <div className={uiCx(uiRadius.control, uiBorders.subtle, uiColors.surfaceSubtle, uiSpacing.cardPadding)}>
+                  <div className={uiCx(uiTypography.overline, 'mb-1.5')}>Note</div>
+                  <div className="text-sm text-gray-900 whitespace-pre-wrap">{selectedShift.notes.trim()}</div>
+                </div>
+              ) : null}
+
+              {shiftAckTracked(selectedShift.ack_status) ? (
+                <div className={uiCx(uiRadius.control, uiBorders.subtle, uiColors.surfaceSubtle, uiSpacing.cardPadding)}>
+                  <div className={uiCx(uiTypography.overline, 'mb-1.5')}>Confirmation</div>
+                  <ShiftAckPanel
+                    mode="worker"
+                    shift={selectedShift}
+                    onUpdated={(updated) => {
+                      setSelectedShift((prev) =>
+                        prev && prev.id === updated.id ? { ...prev, ...updated } : prev,
+                      );
+                      void refetchShifts();
+                    }}
+                  />
+                </div>
+              ) : null}
             </div>
 
             {/* People Section */}

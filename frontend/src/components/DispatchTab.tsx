@@ -50,6 +50,9 @@ import {
   uiTypography,
 } from '@/components/ui';
 import { JOB_TYPES } from '@/constants/jobTypes';
+import { shiftAckMeta, shiftAckTracked } from '@/lib/shiftAck';
+import ShiftNoteField from '@/components/ShiftNoteField';
+import { persistShiftNoteLibrary } from '@/lib/shiftNoteLibrary';
 
 // Helper function to convert 24h time (HH:MM:SS or HH:MM) to 12h format (h:mm AM/PM)
 function formatTime12h(timeStr: string | null | undefined): string {
@@ -781,6 +784,18 @@ export default function DispatchTab({
                                       {shift.job_name}
                                     </div>
                                   )}
+                                  {shiftAckTracked(shift.ack_status) ? (
+                                    <div
+                                      className={`text-[10px] font-semibold mt-0.5 truncate ${shiftAckMeta(shift.ack_status).tone}`}
+                                      title={
+                                        shift.ack_status === 'declined' && shift.ack_note
+                                          ? `Declined: ${shift.ack_note}`
+                                          : shiftAckMeta(shift.ack_status).longLabel
+                                      }
+                                    >
+                                      {shiftAckMeta(shift.ack_status).shortLabel}
+                                    </div>
+                                  ) : null}
                                   {/* NOTE: During testing phase, past date validation is disabled */}
                                   {/* {deleteMode && !canDelete && (
                                     <div className="text-[8px] text-red-600 mt-0.5 font-semibold">
@@ -1210,6 +1225,8 @@ export function CreateShiftModal({
   const [startTime, setStartTime] = useState(() => resolvePresetTimes('all_day').start);
   const [endTime, setEndTime] = useState(() => resolvePresetTimes('all_day').end);
   const [jobType, setJobType] = useState('');
+  const [notes, setNotes] = useState('');
+  const [noteFlags, setNoteFlags] = useState({ saveOnProject: false, saveGlobal: false });
   const [error, setError] = useState('');
   const [overlapWarnings, setOverlapWarnings] = useState<
     { workerId: string; workerName: string; date: string; conflicts: any[] }[]
@@ -1531,6 +1548,23 @@ export function CreateShiftModal({
         }
       }
 
+      if (notes.trim() && (noteFlags.saveOnProject || noteFlags.saveGlobal)) {
+        try {
+          await persistShiftNoteLibrary({
+            projectId,
+            body: notes,
+            saveOnProject: noteFlags.saveOnProject,
+            saveGlobal: noteFlags.saveGlobal,
+          });
+        } catch (e: any) {
+          toast.error(
+            e?.response?.data?.detail ||
+              e?.message ||
+              'The shift will still be created, but the note could not be saved for reuse.',
+          );
+        }
+      }
+
       const geofenceRadius = defaultGeofenceRadius ?? 150;
       const breakMin = defaultBreakMin ?? 30;
 
@@ -1556,6 +1590,7 @@ export function CreateShiftModal({
             geofences,
             job_type: jobType || null,
             job_name: jobType || null,
+            notes: notes.trim() || null,
           });
         }
       }
@@ -1695,6 +1730,7 @@ export function CreateShiftModal({
         onClose={onClose}
         title="Create Shift"
         description="Add shifts for workers on the project"
+        formWidth="wide"
         quickInfo={createShiftQuickInfo}
         footer={
           <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
@@ -1865,6 +1901,15 @@ export function CreateShiftModal({
             options={jobOpts}
             fieldHint="Job Type\n\nOptional label for the type of work during this shift."
           />
+
+          <ShiftNoteField
+            projectId={projectId}
+            value={notes}
+            onChange={setNotes}
+            disabled={saving}
+            flags={noteFlags}
+            onFlagsChange={setNoteFlags}
+          />
         </form>
       </AppFormModal>
     );
@@ -1876,7 +1921,7 @@ export function CreateShiftModal({
       onClick={onClose}
     >
       <div
-        className="max-w-2xl w-full max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
+        className="max-w-4xl w-full max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
@@ -2188,6 +2233,16 @@ export function CreateShiftModal({
                 ))}
               </select>
             </div>
+
+            <ShiftNoteField
+              projectId={projectId}
+              value={notes}
+              onChange={setNotes}
+              disabled={saving}
+              variant="legacy"
+              flags={noteFlags}
+              onFlagsChange={setNoteFlags}
+            />
           </form>
         </div>
         <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">

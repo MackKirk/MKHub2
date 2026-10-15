@@ -1444,14 +1444,15 @@ export const createShiftQuickInfo = formModalQuickInfo({
     <>
       Choose {uiLabel('Workers')}, pick {uiLabel('Single Date')} or {uiLabel('Date Range')}, select a time of day (
       {uiLabel('All day')}, {uiLabel('Morning')}, {uiLabel('Afternoon')}, {uiLabel('Evening')}, or {uiLabel('Custom')}), and optionally assign
-      a {uiLabel('Job Type')}. If the project still has divisions without an on-site lead, turn on{' '}
+      a {uiLabel('Job Type')} or a {uiLabel('Note for the worker')}. If the project still has divisions without an on-site lead, turn on{' '}
       {uiLabel('Also assign as on-site lead')} when needed. The button label shows how many shifts will be created.
     </>
   ),
   behavior: (
     <>
       In range mode you can {uiLabel('Exclude weekends')} so Saturday and Sunday are skipped. Each worker × date
-      combination becomes its own shift. Overlapping times for the same worker show a warning but do not block saving.
+      combination becomes its own shift. A note is copied onto every shift in the batch and shown on the worker&apos;s
+      schedule. Overlapping times for the same worker show a warning but do not block saving.
       On-site lead is optional and collapsed by default; when used it only fills empty division slots.
     </>
   ),

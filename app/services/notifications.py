@@ -198,11 +198,33 @@ def send_shift_notification(
             except:
                 if start_time and end_time:
                     message += f" from {start_time} to {end_time}"
+        message += ". Please open your schedule and confirm whether you will attend"
         link = "/schedule" if project_id else None
     elif notification_type == "updated":
         title = "Shift Updated"
         message = f"Your shift for {project_name} has been updated"
+        if shift_data.get("ack_reset"):
+            message += ". Please confirm this shift again on your schedule"
         link = "/schedule" if project_id else None
+    elif notification_type == "accepted":
+        worker_name = shift_data.get("worker_name") or "A worker"
+        title = "Shift accepted"
+        message = f"{worker_name} accepted the shift on {project_name}"
+        if date_str:
+            message += f" ({date_str})"
+        link = f"/projects/{project_id}?tab=dispatch" if project_id else "/schedule"
+    elif notification_type == "declined":
+        worker_name = shift_data.get("worker_name") or "A worker"
+        title = "Shift declined"
+        message = f"{worker_name} declined the shift on {project_name}"
+        if date_str:
+            message += f" ({date_str})"
+        decline_note = (shift_data.get("ack_note") or "").strip()
+        if decline_note:
+            if len(decline_note) > 180:
+                decline_note = decline_note[:177].rstrip() + "..."
+            message += f". Reason: {decline_note}"
+        link = f"/projects/{project_id}?tab=dispatch" if project_id else "/schedule"
     elif notification_type == "cancelled":
         title = "Shift Cancelled"
         message = f"Your shift for {project_name} has been cancelled"
@@ -211,6 +233,13 @@ def send_shift_notification(
         title = "Shift Notification"
         message = f"You have a shift notification for {project_name}"
         link = "/schedule" if project_id else None
+
+    if notification_type in ("created", "updated"):
+        notes_text = (shift_data.get("notes") or "").strip()
+        if notes_text:
+            if len(notes_text) > 180:
+                notes_text = notes_text[:177].rstrip() + "..."
+            message += f". Note: {notes_text}"
     
     payload = {
         "title": title,

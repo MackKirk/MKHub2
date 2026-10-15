@@ -311,7 +311,9 @@ def create_app() -> FastAPI:
     app.include_router(print_shop_supplies_router, dependencies=_hub)
     app.include_router(inbound_email_router, dependencies=_hub)
     from .routes import dispatch
+    from .routes.shift_note_templates import router as shift_note_templates_router
     app.include_router(dispatch.router, dependencies=_hub)
+    app.include_router(shift_note_templates_router, dependencies=_hub)
     # Legacy UI redirects to new React routes (exact paths)
     legacy_map = {
         "/ui/login.html": "/login",
@@ -3476,6 +3478,75 @@ def create_app() -> FastAPI:
                         db.commit()
                     except Exception as _e:
                         print(f"[startup] quotes outcome columns migration (non-critical): {_e}")
+
+                    try:
+                        ack_columns = [
+                            ("notes", "TEXT"),
+                            ("ack_status", "VARCHAR(20) NOT NULL DEFAULT 'pending'"),
+                            ("ack_viewed_at", "TIMESTAMPTZ" if is_pg else "DATETIME"),
+                            ("ack_responded_at", "TIMESTAMPTZ" if is_pg else "DATETIME"),
+                            ("ack_note", "TEXT"),
+                        ]
+                        for col, ddl in ack_columns:
+                            exists = False
+                            if is_pg:
+                                exists = _pg_column_exists(db, "shifts", col)
+                            else:
+                                info = db.execute(text("PRAGMA table_info(shifts)")).fetchall()
+                                exists = any(row[1] == col for row in info)
+                            if not exists:
+                                db.execute(text(f"ALTER TABLE shifts ADD COLUMN {col} {ddl}"))
+                                db.commit()
+                                print(f"[startup] Added shifts.{col}")
+                                if col == "ack_status":
+                                    db.execute(text("UPDATE shifts SET ack_status = 'not_required'"))
+                                    db.commit()
+                                    print("[startup] Marked existing shifts as not requiring confirmation")
+                        if is_pg:
+                            table_rows = db.execute(
+                                text(
+                                    """
+                                    SELECT 1 FROM information_schema.tables
+                                    WHERE table_schema = 'public' AND table_name = 'shift_responses'
+                                    LIMIT 1
+                                    """
+                                )
+                            ).fetchall()
+                        else:
+                            table_rows = db.execute(
+                                text(
+                                    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'shift_responses'"
+                                )
+                            ).fetchall()
+                        if not table_rows:
+                            from .models.models import ShiftResponse
+                            Base.metadata.create_all(bind=engine, tables=[ShiftResponse.__table__])
+                            db.commit()
+                            print("[startup] Created shift_responses table")
+                        if is_pg:
+                            note_rows = db.execute(
+                                text(
+                                    """
+                                    SELECT 1 FROM information_schema.tables
+                                    WHERE table_schema = 'public' AND table_name = 'shift_note_templates'
+                                    LIMIT 1
+                                    """
+                                )
+                            ).fetchall()
+                        else:
+                            note_rows = db.execute(
+                                text(
+                                    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'shift_note_templates'"
+                                )
+                            ).fetchall()
+                        if not note_rows:
+                            from .models.models import ShiftNoteTemplate
+                            Base.metadata.create_all(bind=engine, tables=[ShiftNoteTemplate.__table__])
+                            db.commit()
+                            print("[startup] Created shift_note_templates table")
+                    except Exception as _e:
+                        db.rollback()
+                        print(f"[startup] shift confirmation columns (non-critical): {_e}")
 
                     print("[startup] Schema migrations check completed")
             except Exception as e:
