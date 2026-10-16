@@ -70,6 +70,7 @@ from .routes.safety import router as safety_router
 from .routes.form_templates import router as form_templates_router
 from .routes.form_custom_lists import router as form_custom_lists_router
 from .routes.training import router as training_router
+from .routes.tutorials import router as tutorials_router
 from .routes.bug_report import router as bug_report_router
 from .routes.search import router as search_router
 from .routes.admin_system import router as admin_system_router
@@ -251,6 +252,7 @@ def create_app() -> FastAPI:
                 "script-src 'self'; "
                 "worker-src 'self' blob:; "
                 "connect-src 'self'; "
+                "media-src 'self' blob: https://*.blob.core.windows.net; "
                 "frame-ancestors 'none'; "
                 "base-uri 'self'"
             )
@@ -301,6 +303,7 @@ def create_app() -> FastAPI:
     app.include_router(form_custom_lists_router, dependencies=_hub)
     app.include_router(form_templates_router, dependencies=_hub)
     app.include_router(training_router, dependencies=_hub)
+    app.include_router(tutorials_router, dependencies=_hub)
     app.include_router(bug_report_router, dependencies=_hub)
     app.include_router(search_router, dependencies=_hub)
     app.include_router(admin_system_router, dependencies=_hub)
@@ -2855,6 +2858,38 @@ def create_app() -> FastAPI:
                     except Exception as e:
                         db.rollback()
                         print(f"[startup] training_quizzes max_attempts migration (non-critical): {e}")
+
+                    # Hub tutorial media + editable section content
+                    try:
+                        from .models.models import TutorialMediaItem, TutorialMediaSlot, TutorialSection
+                        from .services.tutorial_media_items import copy_legacy_slots
+
+                        Base.metadata.create_all(
+                            bind=engine,
+                            tables=[
+                                TutorialMediaSlot.__table__,
+                                TutorialMediaItem.__table__,
+                                TutorialSection.__table__,
+                            ],
+                        )
+                        copied = copy_legacy_slots(db)
+                        _add_column_if_missing(
+                            db, "tutorial_media_items", "frame_x", "DOUBLE PRECISION NOT NULL DEFAULT 50"
+                        )
+                        _add_column_if_missing(
+                            db, "tutorial_media_items", "frame_y", "DOUBLE PRECISION NOT NULL DEFAULT 0"
+                        )
+                        _add_column_if_missing(
+                            db, "tutorial_media_items", "frame_zoom", "DOUBLE PRECISION NOT NULL DEFAULT 1"
+                        )
+                        db.commit()
+                        print(
+                            "[startup] Ensured tutorial media tables"
+                            + (f" (copied {copied} legacy slots)" if copied else "")
+                        )
+                    except Exception as e:
+                        db.rollback()
+                        print(f"[startup] tutorial tables create_all (non-critical): {e}")
 
                     # Corporate credit card inventory (last four + expiry only; no full PAN)
                     rows = db.execute(

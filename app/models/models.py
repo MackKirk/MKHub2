@@ -186,6 +186,57 @@ class FileObject(Base):
     tags: Mapped[Optional[dict]] = mapped_column(JSON)
 
 
+class TutorialMediaSlot(Base):
+    """Admin-editable media override for a tutorial section."""
+
+    __tablename__ = "tutorial_media_slots"
+
+    tutorial_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    section_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    file_object_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("file_objects.id"), nullable=False
+    )
+    updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+
+class TutorialMediaItem(Base):
+    """Ordered image/clip belonging to a tutorial section (carousel)."""
+
+    __tablename__ = "tutorial_media_items"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    tutorial_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    section_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    file_object_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("file_objects.id"), nullable=False
+    )
+    caption: Mapped[Optional[str]] = mapped_column(String(120))
+    frame_x: Mapped[float] = mapped_column(Float, nullable=False, default=50)
+    frame_y: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    frame_zoom: Mapped[float] = mapped_column(Float, nullable=False, default=1)
+    updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+
+class TutorialSection(Base):
+    """Admin overrides and custom steps for a seeded tutorial (markdown body)."""
+
+    __tablename__ = "tutorial_sections"
+
+    tutorial_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    section_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    body_md: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    allows_media: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    origin: Mapped[str] = mapped_column(String(20), nullable=False, default="custom")  # seed | custom
+    hidden: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+
 class Project(Base):
     __tablename__ = "projects"
 

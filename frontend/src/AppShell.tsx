@@ -1034,6 +1034,13 @@ export default function AppShell({ children }: PropsWithChildren){
         }
       }
     }
+    items.push({
+      type: 'page',
+      id: 'tutorials',
+      title: 'Tutorials',
+      subtitle: 'Help',
+      href: '/tutorials',
+    });
     if (isAdmin) {
       items.push({
         type: 'page',
@@ -1551,29 +1558,48 @@ export default function AppShell({ children }: PropsWithChildren){
                     );
                   })}
 
-                  {isAdmin ? (
-                    <>
+                  <>
                       <div className="my-1.5 border-t border-white/10" aria-hidden />
                       <NavLink
-                        to="/logs"
+                        to="/tutorials"
                         end
                         onClick={closeNav}
                         className={() =>
                           uiCx(
                             'mx-1.5 flex items-center gap-2.5 rounded-lg px-2.5 py-2 transition-colors',
-                            location.pathname === '/logs'
+                            location.pathname === '/tutorials' || location.pathname.startsWith('/tutorials/')
                               ? 'bg-brand-red text-white'
                               : 'text-gray-300 hover:bg-white/5 hover:text-white',
                           )
                         }
                       >
                         <span className="flex-shrink-0 opacity-80">
-                          <IconLogs />
+                          <IconAcademic />
                         </span>
-                        <span className="text-sm">Audit log</span>
+                        <span className="text-sm">Tutorials</span>
                       </NavLink>
+                      {isAdmin ? (
+                        <NavLink
+                          to="/logs"
+                          end
+                          onClick={closeNav}
+                          className={() =>
+                            uiCx(
+                              'mx-1.5 flex items-center gap-2.5 rounded-lg px-2.5 py-2 transition-colors',
+                              location.pathname === '/logs'
+                                ? 'bg-brand-red text-white'
+                                : 'text-gray-300 hover:bg-white/5 hover:text-white',
+                            )
+                          }
+                        >
+                          <span className="flex-shrink-0 opacity-80">
+                            <IconLogs />
+                          </span>
+                          <span className="text-sm">Audit log</span>
+                        </NavLink>
+                      ) : null}
                     </>
-                  ) : null}
+
                 </div>
 
                 {/* Right: sub-items for selected category */}

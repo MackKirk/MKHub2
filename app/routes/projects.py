@@ -77,7 +77,7 @@ from ..services.project_change_owner import change_project_owner
 from sqlalchemy import or_, and_, cast, String, Date
 
 
-from ..services.project_utils import sanitize_division_onsite_leads
+from ..services.project_utils import reconcile_project_division_ids, sanitize_division_onsite_leads
 from ..services.project_duplicate import generate_project_code, duplicate_project_deep
 from ..services.project_customer_participation import project_site_address_payload
 from ..services.optional_service_status import coerce_optional_service_approval
@@ -6509,16 +6509,10 @@ def convert_to_project(
                     proposal_id_for_audit = str(proposal.id)
 
                 if updated_costs is not None:
-                    # Keep only divisions that have at least one approved item
                     current_division_ids = list(getattr(p, "project_division_ids", None) or [])
-                    approved_division_ids = set()
-                    for item in updated_costs:
-                        if isinstance(item, dict) and item.get("approved", True) is True:
-                            did = item.get("division_id")
-                            if did is not None:
-                                approved_division_ids.add(str(did))
-                    new_division_ids = [did for did in current_division_ids if str(did) in approved_division_ids]
-                    p.project_division_ids = new_division_ids if new_division_ids else current_division_ids
+                    new_division_ids = reconcile_project_division_ids(current_division_ids, updated_costs)
+                    if [str(d) for d in new_division_ids] != [str(d) for d in current_division_ids]:
+                        p.project_division_ids = new_division_ids
 
                     # Clear orphaned project_division_percentages for removed divisions
                     pct = getattr(p, "project_division_percentages", None) or {}

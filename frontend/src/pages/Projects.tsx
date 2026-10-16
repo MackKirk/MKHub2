@@ -66,11 +66,13 @@ function UserAvatar({
   size = 'sm',
   showTooltip = true,
   tooltipText,
+  followCursor = false,
 }: {
   user: any;
   size?: 'sm' | 'md';
   showTooltip?: boolean;
   tooltipText?: string;
+  followCursor?: boolean;
 }) {
   const displayName = tooltipText || getUserDisplayName(user) || 'Unknown';
   const avatar = <AppUserAvatar user={user} size={size} />;
@@ -80,7 +82,7 @@ function UserAvatar({
   }
 
   return (
-    <AppTooltip content={displayName} className="group/avatar shrink-0">
+    <AppTooltip content={displayName} followCursor={followCursor} className="group/avatar shrink-0">
       {avatar}
     </AppTooltip>
   );
@@ -1077,7 +1079,7 @@ export function ProjectListItem({ project, projectDivisions, projectStatuses, va
   const projectName = project.name || 'Project';
   const col1 = (
     <div className="min-w-0">
-      <AppTooltip content={projectName} wrap constrain>
+      <AppTooltip content={projectName} wrap constrain followCursor>
         <span className="block min-w-0 max-w-full truncate text-sm font-bold text-gray-900 group-hover:text-[#7f1010] transition-colors">
           {projectName}
         </span>
@@ -1096,7 +1098,7 @@ export function ProjectListItem({ project, projectDivisions, projectStatuses, va
   const colAddress = (
     <div className="min-w-0 flex items-center">
       {heroAddress ? (
-        <AppTooltip content={heroAddress} wrap constrain>
+        <AppTooltip content={heroAddress} wrap constrain followCursor>
           <span className="block min-w-0 max-w-full truncate text-sm font-semibold text-gray-900">{heroAddress}</span>
         </AppTooltip>
       ) : (
@@ -1120,7 +1122,7 @@ export function ProjectListItem({ project, projectDivisions, projectStatuses, va
         <span className="text-sm font-semibold text-gray-600">—</span>
       ) : (
         <div className="flex items-center gap-2 min-w-0">
-          <UserAvatar user={userForAdmin} size="sm" showTooltip={true} tooltipText={adminDisplayName} />
+          <UserAvatar user={userForAdmin} size="sm" showTooltip={true} tooltipText={adminDisplayName} followCursor />
           <span className="font-semibold text-gray-900 text-sm truncate min-w-0">{adminDisplayName}</span>
         </div>
       )}
@@ -1149,14 +1151,14 @@ export function ProjectListItem({ project, projectDivisions, projectStatuses, va
       {divisionIcons.length > 0 ? (
         <div className="flex items-center gap-1.5 flex-wrap">
           {divisionIcons.map((div) => (
-            <AppTooltip key={div.id} content={div.label}>
+            <AppTooltip key={div.id} content={div.label} followCursor>
               <div className="flex items-center justify-center cursor-pointer hover:scale-110 transition-transform">
                 {div.icon}
               </div>
             </AppTooltip>
           ))}
           {projectDivIds.length > 5 && (
-            <AppTooltip content={`${projectDivIds.length - 5} more divisions`}>
+            <AppTooltip content={`${projectDivIds.length - 5} more divisions`} followCursor>
               <div className="text-sm text-gray-600 cursor-pointer">+{projectDivIds.length - 5}</div>
             </AppTooltip>
           )}

@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     # Google Maps / Places
     google_places_api_key: Optional[str] = Field(default=None, alias="GOOGLE_PLACES_API_KEY")
 
+    # Invoice product suggestions. Empty key keeps the local PDF parser.
+    openai_api_key: Optional[str] = Field(default=None, alias="OPENAI_API_KEY")
+    openai_model: str = Field(default="gpt-4o-mini", alias="OPENAI_MODEL")
+
     # Mail / Public
     public_base_url: str = Field(default="http://localhost:8000", alias="PUBLIC_BASE_URL")
     smtp_host: Optional[str] = Field(default=None, alias="SMTP_HOST")

@@ -69,6 +69,7 @@ const backendProxyPrefixes = [
   '/task-requests',
   '/tasks',
   '/training',
+  '/tutorials',
   '/ui',
   '/users',
 ] as const;

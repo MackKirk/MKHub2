@@ -1,5 +1,6 @@
-import { useMemo, useState, useEffect, useLayoutEffect, useRef, useCallback, useImperativeHandle, forwardRef, type InputHTMLAttributes, type Dispatch, type SetStateAction, type ReactNode } from 'react';
+import { useMemo, useState, useEffect, useLayoutEffect, useRef, useCallback, useImperativeHandle, forwardRef, type DragEvent, type InputHTMLAttributes, type Dispatch, type SetStateAction, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useLocation } from 'react-router-dom';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
@@ -48,6 +49,19 @@ import {
   getProductUnitInfo,
   isProductSection,
 } from '@/lib/estimateProductInfo';
+import {
+  EstimateSectionInvoiceNames,
+  EstimateSectionInvoicePreviewHost,
+  EstimateSectionInvoices,
+  normalizeSectionInvoices,
+  type SectionInvoiceLink,
+} from '@/components/EstimateSectionInvoices';
+import { InvoiceProductMatchModal, type InvoiceMatchedItem } from '@/components/InvoiceProductMatchModal';
+import {
+  hasProjectFeatureWritePermission,
+  isAdminRole,
+  resolveProjectBusinessLine,
+} from '@/lib/projectLinePermissionKeys';
 import { formatAccounting, parseAccounting, parseAccountingNumber } from '@/lib/accountingFormat';
 import {
   buildSectionTaxRatesMap,
@@ -127,17 +141,16 @@ export type EstimateBuilderRef = {
   getTotalEstimate: () => number; // Returns Total Estimate (before GST)
   getPst: () => number;
   getGst: () => number;
-  getEstimateData: () => { items: Item[], markup: number, pstRate: number, gstRate: number, profitRate: number, sectionOrder: string[], sectionNames: Record<string, string>, sectionTaxRates: Record<string, SectionTaxRates> } | null;
+  getEstimateData: () => { items: Item[], markup: number, pstRate: number, gstRate: number, profitRate: number, sectionOrder: string[], sectionNames: Record<string, string>, sectionTaxRates: Record<string, SectionTaxRates>, sectionInvoices: Record<string, SectionInvoiceLink[]> } | null;
 };
 
 const ESTIMATE_INLINE_CONTROL_H = 'h-8';
-const ESTIMATE_PRODUCT_PRICE_CELL = 'pr-5';
-const ESTIMATE_PRODUCT_QUANTITY_CELL = 'pl-2';
-const ESTIMATE_PRODUCT_PRICE_FIELD = 'min-w-[100px] max-w-[140px] shrink-0';
-const ESTIMATE_PRODUCT_QTY_FIELD = 'min-w-[80px] max-w-[120px] shrink-0';
-const ESTIMATE_PRODUCT_TOTAL_FIELD = 'min-w-[100px] max-w-[140px] shrink-0';
+const ESTIMATE_PRODUCT_PRICE_FIELD = 'w-[6.5rem] shrink-0';
+const ESTIMATE_PRODUCT_QTY_FIELD = 'w-[16.5rem] shrink-0';
+const ESTIMATE_PRODUCT_TOTAL_FIELD = 'w-[6.5rem] shrink-0';
+const ESTIMATE_PRODUCT_TAX_CELL = 'flex w-9 shrink-0 items-center justify-center';
 const ESTIMATE_PRODUCT_LIST_LABEL_ROW = 'mb-0.5 h-3 shrink-0';
-const ESTIMATE_PRODUCT_ROW = 'flex w-full min-w-0 items-start gap-2';
+const ESTIMATE_PRODUCT_ROW = 'flex w-full min-w-0 items-start gap-1';
 const ESTIMATE_PRODUCT_TABLE_SHELL = uiCx('overflow-hidden rounded-lg border bg-white', uiBorders.subtle);
 const ESTIMATE_PRODUCT_TABLE_BAND = uiCx(
   ESTIMATE_PRODUCT_ROW,
@@ -200,20 +213,124 @@ function EstimateProductListControlSpacer({
   return (
     <div className={uiCx('flex shrink-0 flex-col', className)}>
       <div className={ESTIMATE_PRODUCT_LIST_LABEL_ROW} aria-hidden />
-      <div className={uiCx('flex items-center', ESTIMATE_INLINE_CONTROL_H)}>{children}</div>
+      <div className={uiCx('flex w-full min-w-0 items-center', ESTIMATE_INLINE_CONTROL_H)}>{children}</div>
     </div>
   );
 }
 
 const estimateSummaryShell = uiCx(uiRadius.card, uiBorders.subtle, uiColors.surface, 'overflow-hidden');
-const estimateSectionShell = uiCx(uiRadius.card, uiBorders.subtle, uiColors.surface, 'overflow-hidden');
-const estimateSectionHeader = 'flex items-center gap-2 border-b border-gray-100 px-4 py-3';
+const estimateSectionShell = uiCx(uiRadius.card, 'border border-gray-300', uiColors.surface, 'overflow-hidden');
+const estimateSectionHeader = 'flex items-center gap-2 px-4 py-1.5';
 const estimateSummaryInnerCard = 'rounded-lg border border-gray-200 bg-white p-3';
 const estimateSummaryRow = 'flex items-center justify-between rounded px-1 py-1 -mx-1 hover:bg-gray-50';
 const estimateSummaryLabel = 'text-sm';
 const estimateSummaryLabelBold = 'text-sm font-semibold';
 
 /** Dense line-item table input chrome for designSystem path (ProposalInlineInput pattern). */
+function EstimateNumberStepper({
+  value,
+  min = 0,
+  step = 1,
+  disabled,
+  integer,
+  onChange,
+  trailing,
+  className,
+}: {
+  value: number | '';
+  min?: number;
+  step?: number;
+  disabled?: boolean;
+  integer?: boolean;
+  onChange: (next: number) => void;
+  trailing?: ReactNode;
+  className?: string;
+}) {
+  const numeric = typeof value === 'number' && Number.isFinite(value) ? value : 0;
+  const bump = (direction: 1 | -1) => {
+    const decimals = (String(step).split('.')[1] || '').length;
+    const factor = 10 ** Math.min(decimals, 4);
+    const next = Math.round((numeric + direction * step) * factor) / factor;
+    onChange(Math.max(min, next));
+  };
+  return (
+    <div className={uiCx('flex min-w-0 items-center overflow-hidden rounded-lg border border-gray-300 bg-white', ESTIMATE_INLINE_CONTROL_H, className)}>
+      <input
+        type="number"
+        min={min}
+        step={step}
+        className={uiCx(
+          'min-w-0 flex-1 appearance-none border-0 bg-transparent px-1.5 text-right text-sm text-gray-900 [-moz-appearance:textfield] focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none',
+          disabled && 'cursor-not-allowed bg-gray-100',
+          ESTIMATE_INLINE_CONTROL_H,
+          'py-0',
+        )}
+        value={value}
+        disabled={disabled}
+        readOnly={disabled}
+        onChange={(e) => {
+          if (disabled) return;
+          const raw = e.target.value;
+          if (raw === '') {
+            onChange(0);
+            return;
+          }
+          const parsed = integer ? parseInt(raw, 10) : Number(raw);
+          onChange(Number.isFinite(parsed) ? parsed : 0);
+        }}
+      />
+      {trailing}
+      {!disabled ? (
+        <div className="flex h-full w-6 shrink-0 flex-col border-l border-gray-200 bg-white">
+          <button
+            type="button"
+            onClick={() => bump(1)}
+            className="flex flex-1 items-center justify-center border-b border-gray-200 px-0.5 py-0 text-[9px] leading-tight hover:bg-gray-100"
+            title="Increase"
+          >
+            ▲
+          </button>
+          <button
+            type="button"
+            onClick={() => bump(-1)}
+            className="flex flex-1 items-center justify-center px-0.5 py-0 text-[9px] leading-tight hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+            title="Decrease"
+            disabled={numeric <= min}
+          >
+            ▼
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function EstimateTaxRateField({
+  label,
+  value,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  disabled?: boolean;
+  onChange: (next: number) => void;
+}) {
+  return (
+    <label className="block w-28 space-y-1.5">
+      <AppControlLabel label={label} />
+      <EstimateNumberStepper
+        className="w-full"
+        value={value}
+        min={0}
+        step={0.01}
+        disabled={disabled}
+        onChange={onChange}
+      />
+    </label>
+  );
+}
+
 function EstimateInlineInput({
   className,
   ...props
@@ -230,6 +347,34 @@ function EstimateInlineInput({
         className,
       )}
       {...props}
+    />
+  );
+}
+
+/** Keeps the typed text, including a trailing decimal, until blur. */
+function EstimatePriceInput({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (price: number) => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  return (
+    <EstimateInlineInput
+      className="w-full text-right"
+      inputMode="decimal"
+      value={draft !== null ? draft : formatAccounting(value ?? 0)}
+      onFocus={() => setDraft(formatAccounting(value ?? 0))}
+      onChange={(e) => {
+        const next = parseAccounting(e.target.value);
+        setDraft(next);
+        onChange(parseAccountingNumber(next));
+      }}
+      onBlur={() => {
+        onChange(parseAccountingNumber(draft ?? String(value ?? 0)));
+        setDraft(null);
+      }}
     />
   );
 }
@@ -312,15 +457,11 @@ function EstimateProductListRow({
   onViewProduct: () => void;
   onReplaceProduct: () => void;
 }) {
-  const [priceFocused, setPriceFocused] = useState(false);
   const lineTotal = calculateProductLineTotal(item);
   const unitInfo = getProductUnitInfo(item);
   const isFromReport = !!item.added_via_report_id;
   const imageSrc = item.product_image || '/ui/assets/image placeholders/no_image.png';
   const qty = Math.max(1, Math.round(item.quantity || 1));
-  const priceDisplay = priceFocused
-    ? String(item.unit_price ?? '')
-    : formatAccounting(item.unit_price ?? 0);
 
   return (
     <div className={uiCx(isFromReport && 'rounded-lg bg-yellow-50 px-2')}>
@@ -392,89 +533,52 @@ function EstimateProductListRow({
           </EstimateProductListControlSpacer>
         </div>
 
-        <EstimateProductListControlSpacer className={uiCx(ESTIMATE_PRODUCT_PRICE_FIELD, ESTIMATE_PRODUCT_PRICE_CELL)}>
+        <EstimateProductListControlSpacer className={ESTIMATE_PRODUCT_PRICE_FIELD}>
           {canEdit ? (
-            <EstimateInlineInput
-              className="w-full text-left"
-              value={priceDisplay}
-              onFocus={() => setPriceFocused(true)}
-              onChange={(e) => onPriceChange(parseAccountingNumber(e.target.value))}
-              onBlur={(e) => {
-                setPriceFocused(false);
-                onPriceChange(parseAccountingNumber(e.target.value));
-              }}
-            />
+            <EstimatePriceInput value={item.unit_price ?? 0} onChange={onPriceChange} />
           ) : (
-            <div className="w-full truncate px-2 text-left text-sm text-gray-900">
+            <div className="w-full truncate px-2.5 text-right text-sm text-gray-900">
               ${formatAccounting(item.unit_price ?? 0)}
             </div>
           )}
         </EstimateProductListControlSpacer>
 
-        <EstimateProductListControlSpacer className={uiCx(ESTIMATE_PRODUCT_QTY_FIELD, ESTIMATE_PRODUCT_QUANTITY_CELL)}>
-          <div className={uiCx('flex w-full items-center overflow-hidden rounded-lg border border-gray-300 bg-white', ESTIMATE_INLINE_CONTROL_H)}>
-            <input
-              type="number"
-              min={1}
-              step={1}
-              className={uiCx(
-                'min-w-0 flex-1 appearance-none border-0 bg-transparent px-2 text-sm text-gray-900 [-moz-appearance:textfield] focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none',
-                !canEdit && 'cursor-not-allowed bg-gray-100',
-                ESTIMATE_INLINE_CONTROL_H,
-                'py-0',
-              )}
-              value={qty}
-              onChange={(e) => {
-                const num = parseInt(e.target.value, 10) || 1;
-                onQuantityChange(Math.max(1, num));
-              }}
-              disabled={!canEdit}
-              readOnly={!canEdit}
-            />
-            {canEdit && (
-              <div className="flex w-6 shrink-0 flex-col border-l border-gray-200 bg-white">
-                <button
-                  type="button"
-                  onClick={() => onQuantityChange(qty + 1)}
-                  className="flex flex-1 items-center justify-center border-b border-gray-200 px-0.5 py-0 text-[9px] leading-tight hover:bg-gray-100"
-                  title="Increase"
-                >
-                  ▲
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onQuantityChange(Math.max(1, qty - 1))}
-                  className="flex flex-1 items-center justify-center px-0.5 py-0 text-[9px] leading-tight hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
-                  title="Decrease"
-                  disabled={qty <= 1}
-                >
-                  ▼
-                </button>
-              </div>
-            )}
-          </div>
+        <EstimateProductListControlSpacer className={ESTIMATE_PRODUCT_QTY_FIELD}>
+          <EstimateNumberStepper
+            className="w-full"
+            value={qty}
+            min={1}
+            step={1}
+            integer
+            disabled={!canEdit}
+            onChange={(next) => onQuantityChange(Math.max(1, next))}
+          />
         </EstimateProductListControlSpacer>
 
         <EstimateProductListControlSpacer className={ESTIMATE_PRODUCT_TOTAL_FIELD}>
-          <div className="w-full overflow-hidden whitespace-nowrap text-right text-sm font-semibold text-gray-700">
+          <div className="w-full overflow-hidden whitespace-nowrap text-center text-sm font-semibold text-gray-700">
             ${formatAccounting(lineTotal)}
           </div>
         </EstimateProductListControlSpacer>
 
         <EstimateProductListControlSpacer className="shrink-0">
           <div className="flex items-center gap-1.5">
-            <AppCheckboxControl
-              aria-label="PST"
-              checked={item.pst === true}
-              disabled={!canEdit}
-              onClick={() => onPstChange(!(item.pst === true))}
-            />
-            <AppCheckboxControl
-              aria-label="GST"
-              checked={item.gst === true}
-              disabled={!canEdit}
-              onClick={() => onGstChange(!(item.gst === true))}
-            />
+            <div className={ESTIMATE_PRODUCT_TAX_CELL}>
+              <AppCheckboxControl
+                aria-label="PST"
+                checked={item.pst === true}
+                disabled={!canEdit}
+                onClick={() => onPstChange(!(item.pst === true))}
+              />
+            </div>
+            <div className={ESTIMATE_PRODUCT_TAX_CELL}>
+              <AppCheckboxControl
+                aria-label="GST"
+                checked={item.gst === true}
+                disabled={!canEdit}
+                onClick={() => onGstChange(!(item.gst === true))}
+              />
+            </div>
           </div>
         </EstimateProductListControlSpacer>
 
@@ -508,8 +612,6 @@ function EstimateProductListRow({
   );
 }
 
-const ESTIMATE_LABOUR_COMPOSITION_FIELD = 'min-w-[11rem] max-w-[16rem] shrink-0';
-const ESTIMATE_LABOUR_PRICE_FIELD = 'min-w-[7.5rem] max-w-[10rem] shrink-0';
 
 function getLabourStyleSectionMeta(section: string): {
   type: 'labour' | 'subcontractor' | 'miscellaneous' | 'shop';
@@ -543,7 +645,6 @@ function EstimateLabourStyleListRow({
   onUpdate: (patch: Partial<Item>) => void;
   onRemove: () => void;
 }) {
-  const [priceFocused, setPriceFocused] = useState(false);
   const lineTotal = calculateItemBaseTotal(item);
   const isFromReport = !!item.added_via_report_id;
   const isShopOrMisc =
@@ -553,9 +654,6 @@ function EstimateLabourStyleListRow({
     section.startsWith('Miscellaneous Section') ||
     item.item_type === 'shop' ||
     item.item_type === 'miscellaneous';
-  const priceDisplay = priceFocused
-    ? String(item.unit_price ?? '')
-    : formatAccounting(item.unit_price ?? 0);
   const richComposition = formatLabourRichComposition(item);
 
   return (
@@ -587,64 +685,57 @@ function EstimateLabourStyleListRow({
           </EstimateProductListControlSpacer>
         </div>
 
-        <EstimateProductListControlSpacer className={ESTIMATE_LABOUR_COMPOSITION_FIELD}>
+        <EstimateProductListControlSpacer className={ESTIMATE_PRODUCT_PRICE_FIELD}>
+          {canEdit ? (
+            <EstimatePriceInput
+              value={item.unit_price ?? 0}
+              onChange={(price) => onUpdate({ unit_price: price })}
+            />
+          ) : (
+            <div className="w-full truncate px-2.5 text-right text-sm text-gray-900">
+              ${formatAccounting(item.unit_price ?? 0)}
+            </div>
+          )}
+        </EstimateProductListControlSpacer>
+
+        <EstimateProductListControlSpacer className={ESTIMATE_PRODUCT_QTY_FIELD}>
           {item.item_type === 'labour' && item.labour_journey_type ? (
             item.labour_journey_type === 'contract' ? (
-              <div className="flex w-full items-center gap-1">
-                <EstimateInlineInput
-                  type="number"
-                  className="w-16"
+              <div className="flex w-full min-w-0 items-center gap-1">
+                <EstimateNumberStepper
+                  className="min-w-0 flex-1"
                   value={item.labour_journey ?? ''}
                   min={0}
                   step={0.5}
                   disabled={!canEdit}
-                  readOnly={!canEdit}
-                  onChange={(e) => {
-                    if (!canEdit) return;
-                    const v = e.target.value;
-                    onUpdate({ labour_journey: v === '' ? 0 : Number(v) || 0 });
-                  }}
+                  onChange={(next) => onUpdate({ labour_journey: next })}
                 />
-                <span className="shrink-0 text-sm text-gray-600">{item.unit || ''}</span>
+                <span className="min-w-0 truncate text-xs text-gray-600">{item.unit || ''}</span>
               </div>
             ) : (
-              <div className="flex w-full items-center gap-1">
-                <EstimateInlineInput
-                  type="number"
-                  className="w-14"
+              <div className="flex w-full min-w-0 items-center gap-1">
+                <EstimateNumberStepper
+                  className="min-w-0 flex-1"
                   value={item.labour_journey ?? ''}
                   min={0}
                   step={0.5}
                   disabled={!canEdit}
-                  readOnly={!canEdit}
-                  onChange={(e) => {
-                    if (!canEdit) return;
-                    const v = e.target.value;
-                    onUpdate({
-                      labour_journey: v === '' ? 0 : Number(v) || 0,
-                      ...CLEAR_LABOUR_RICH_EXTRAS,
-                    });
-                  }}
+                  onChange={(next) => onUpdate({ labour_journey: next, ...CLEAR_LABOUR_RICH_EXTRAS })}
                 />
-                <span className="shrink-0 text-sm text-gray-600">{item.labour_journey_type}</span>
-                <span className="text-sm text-gray-600">×</span>
-                <EstimateInlineInput
-                  type="number"
-                  className="w-12"
+                <span className="shrink-0 text-xs text-gray-600">{item.labour_journey_type}</span>
+                <span className="shrink-0 text-xs text-gray-600">×</span>
+                <EstimateNumberStepper
+                  className="min-w-0 flex-1"
                   value={item.labour_men ?? ''}
                   min={0}
                   step={1}
+                  integer
                   disabled={!canEdit}
-                  readOnly={!canEdit}
-                  onChange={(e) => {
-                    if (!canEdit) return;
-                    const v = e.target.value;
-                    const newMen = v === '' ? 0 : Number(v) || 0;
+                  onChange={(newMen) => {
                     const patch: Partial<Item> = {
                       labour_men: newMen,
                       ...CLEAR_LABOUR_RICH_EXTRAS,
                     };
-                    // Legacy description pattern "Name - N men" only
                     if (item.description?.includes(' - ') && /\d+\s*men\s*$/i.test(item.description)) {
                       const baseName = item.description.split(' - ')[0];
                       patch.description = newMen > 0 ? `${baseName} - ${newMen} men` : baseName;
@@ -652,76 +743,49 @@ function EstimateLabourStyleListRow({
                     onUpdate(patch);
                   }}
                 />
-                <span className="shrink-0 text-sm text-gray-600">men</span>
+                <span className="shrink-0 text-xs text-gray-600">men</span>
               </div>
             )
           ) : (
-            <div className="flex w-full items-center gap-1">
-              <div className={uiCx('flex flex-1 items-center overflow-hidden rounded-lg border border-gray-300 bg-white', ESTIMATE_INLINE_CONTROL_H)}>
-                <input
-                  type="number"
-                  min={0}
-                  step={isShopOrMisc ? 1 : 0.01}
-                  className={uiCx(
-                    'min-w-0 flex-1 appearance-none border-0 bg-transparent px-2 text-sm text-gray-900 [-moz-appearance:textfield] focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none',
-                    !canEdit && 'cursor-not-allowed bg-gray-100',
-                    ESTIMATE_INLINE_CONTROL_H,
-                    'py-0',
-                  )}
-                  value={item.quantity ?? ''}
-                  disabled={!canEdit}
-                  readOnly={!canEdit}
-                  onChange={(e) => {
-                    if (!canEdit) return;
-                    const v = e.target.value;
-                    onUpdate({ quantity: v === '' ? 0 : Number(v) || 0 });
-                  }}
-                />
-              </div>
-              <span className="shrink-0 text-sm text-gray-600">{item.unit || ''}</span>
-            </div>
-          )}
-        </EstimateProductListControlSpacer>
-
-        <EstimateProductListControlSpacer className={ESTIMATE_LABOUR_PRICE_FIELD}>
-          {canEdit ? (
-            <EstimateInlineInput
-              className="w-full text-left"
-              value={priceDisplay}
-              onFocus={() => setPriceFocused(true)}
-              onChange={(e) => onUpdate({ unit_price: parseAccountingNumber(e.target.value) })}
-              onBlur={(e) => {
-                setPriceFocused(false);
-                onUpdate({ unit_price: parseAccountingNumber(e.target.value) });
-              }}
+            <EstimateNumberStepper
+              className="w-full"
+              value={item.quantity ?? ''}
+              min={0}
+              step={isShopOrMisc ? 1 : 0.01}
+              integer={isShopOrMisc}
+              disabled={!canEdit}
+              onChange={(next) => onUpdate({ quantity: next })}
+              trailing={item.unit ? (
+                <span className="max-w-[4.5rem] shrink-0 truncate pr-1 text-xs text-gray-500">{item.unit}</span>
+              ) : undefined}
             />
-          ) : (
-            <div className="w-full truncate px-2 text-left text-sm text-gray-900">
-              ${formatAccounting(item.unit_price ?? 0)}
-            </div>
           )}
         </EstimateProductListControlSpacer>
 
         <EstimateProductListControlSpacer className={ESTIMATE_PRODUCT_TOTAL_FIELD}>
-          <div className="w-full overflow-hidden whitespace-nowrap text-right text-sm font-semibold text-gray-700">
+          <div className="w-full overflow-hidden whitespace-nowrap text-center text-sm font-semibold text-gray-700">
             ${formatAccounting(lineTotal)}
           </div>
         </EstimateProductListControlSpacer>
 
         <EstimateProductListControlSpacer className="shrink-0">
           <div className="flex items-center gap-1.5">
-            <AppCheckboxControl
-              aria-label="PST"
-              checked={item.pst === true}
-              disabled={!canEdit}
-              onClick={() => onUpdate({ pst: !(item.pst === true) })}
-            />
-            <AppCheckboxControl
-              aria-label="GST"
-              checked={item.gst === true}
-              disabled={!canEdit}
-              onClick={() => onUpdate({ gst: !(item.gst === true) })}
-            />
+            <div className={ESTIMATE_PRODUCT_TAX_CELL}>
+              <AppCheckboxControl
+                aria-label="PST"
+                checked={item.pst === true}
+                disabled={!canEdit}
+                onClick={() => onUpdate({ pst: !(item.pst === true) })}
+              />
+            </div>
+            <div className={ESTIMATE_PRODUCT_TAX_CELL}>
+              <AppCheckboxControl
+                aria-label="GST"
+                checked={item.gst === true}
+                disabled={!canEdit}
+                onClick={() => onUpdate({ gst: !(item.gst === true) })}
+              />
+            </div>
           </div>
         </EstimateProductListControlSpacer>
 
@@ -775,12 +839,14 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
   const [sectionTaxRates, setSectionTaxRates] = useState<Record<string, SectionTaxRates>>(() =>
     buildSectionTaxRatesMap(defaultSections, undefined),
   );
+  const [sectionInvoices, setSectionInvoices] = useState<Record<string, SectionInvoiceLink[]>>({});
+  const [invoiceMatch, setInvoiceMatch] = useState<{ section: string; fileId: string; name: string } | null>(null);
   const [addingToSection, setAddingToSection] = useState<{section: string, type: 'product' | 'labour' | 'subcontractor' | 'miscellaneous' | 'shop', replaceItemIndex?: number} | null>(null);
   const [dirty, setDirty] = useState(false);
   const [footerVisible, setFooterVisible] = useState<boolean>(false);
-  const savedStateRef = useRef<{ items: Item[], markup: number, pstRate: number, gstRate: number, profitRate: number, sectionOrder: string[], sectionNames: Record<string, string>, sectionTaxRates: Record<string, SectionTaxRates> } | null>(null);
+  const savedStateRef = useRef<{ items: Item[], markup: number, pstRate: number, gstRate: number, profitRate: number, sectionOrder: string[], sectionNames: Record<string, string>, sectionTaxRates: Record<string, SectionTaxRates>, sectionInvoices: Record<string, SectionInvoiceLink[]> } | null>(null);
   const isSavingRef = useRef<boolean>(false);
-  const pendingSaveRef = useRef<{ items: Item[], markup: number, pstRate: number, gstRate: number, profitRate: number, sectionOrder: string[], sectionNames: Record<string, string>, sectionTaxRates: Record<string, SectionTaxRates> } | null>(null);
+  const pendingSaveRef = useRef<{ items: Item[], markup: number, pstRate: number, gstRate: number, profitRate: number, sectionOrder: string[], sectionNames: Record<string, string>, sectionTaxRates: Record<string, SectionTaxRates>, sectionInvoices: Record<string, SectionInvoiceLink[]> } | null>(null);
   const builderRootRef = useRef<HTMLDivElement>(null);
   const preservedScrollTopRef = useRef<number | null>(null);
 
@@ -892,6 +958,40 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
     return true;
   }, [statusLabel, settings, canEditProp, isBidding]);
 
+  const location = useLocation();
+  const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
+  const { data: project } = useQuery({
+    queryKey: ['project', projectId],
+    queryFn: () => api<any>('GET', `/projects/${projectId}`),
+    enabled: !!projectId,
+  });
+  const isAdmin = isAdminRole(me?.roles);
+  const filePermissions = useMemo(() => new Set<string>(me?.permissions || []), [me?.permissions]);
+  const resolvedBusinessLine = useMemo(
+    () => resolveProjectBusinessLine(project?.business_line, location.pathname),
+    [project?.business_line, location.pathname],
+  );
+  const { data: categoryPerms } = useQuery({
+    queryKey: ['project-files-category-perms', resolvedBusinessLine],
+    queryFn: () =>
+      api<any>(
+        'GET',
+        `/auth/me/project-files-category-permissions?business_line=${encodeURIComponent(resolvedBusinessLine)}`,
+      ),
+    enabled: !!resolvedBusinessLine,
+  });
+  const canAttachPurchasingInvoice = useMemo(() => {
+    if (!canEdit) return false;
+    if (isAdmin) return true;
+    if (!hasProjectFeatureWritePermission(filePermissions, resolvedBusinessLine, 'files', false, location.pathname)) {
+      return false;
+    }
+    const writeAllowList: string[] | null = Array.isArray(categoryPerms?.write_categories)
+      ? categoryPerms.write_categories
+      : null;
+    return writeAllowList === null ? true : writeAllowList.includes('purchasing');
+  }, [canEdit, isAdmin, filePermissions, resolvedBusinessLine, categoryPerms, location.pathname]);
+
   // Fetch estimate by project_id if only projectId is provided
   const { data: projectEstimates } = useQuery({
     queryKey: ['projectEstimates', projectId],
@@ -980,6 +1080,8 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
           gstRate: estimateData.gst_rate,
         }),
       );
+      const loadedInvoices = normalizeSectionInvoices(estimateData.section_invoices);
+      setSectionInvoices(loadedInvoices);
       if (est.markup !== undefined) setMarkup(est.markup);
       
       // Convert loaded items to Item format
@@ -1042,6 +1144,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
         sectionOrder: loadedSectionOrder,
         sectionNames: loadedSectionNames,
         sectionTaxRates: loadedTaxRates,
+        sectionInvoices: loadedInvoices,
       };
       setDirty(false);
     }
@@ -1110,6 +1213,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
         sectionOrder,
         sectionNames,
         sectionTaxRates,
+        sectionInvoices,
       };
       pendingSaveRef.current = currentState;
       
@@ -1122,6 +1226,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
         section_order: sectionOrder,
         section_names: sectionNames,
         section_tax_rates: sectionTaxRates,
+        section_invoices: sectionInvoices,
         items: items.map(it=> ({ 
           material_id: it.material_id, 
           quantity: it.quantity, 
@@ -1192,7 +1297,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
     } finally {
       isSavingRef.current = false;
     }
-  }, [projectId, markup, profitRate, sectionOrder, sectionNames, sectionTaxRates, items, currentEstimateId, canEdit, queryClient, dirty, onEstimateSaved]);
+  }, [projectId, markup, profitRate, sectionOrder, sectionNames, sectionTaxRates, sectionInvoices, items, currentEstimateId, canEdit, queryClient, dirty, onEstimateSaved]);
 
   // Keep pendingSaveRef updated with current state whenever it changes
   useEffect(() => {
@@ -1206,9 +1311,10 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
         sectionOrder,
         sectionNames,
         sectionTaxRates,
+        sectionInvoices,
       };
     }
-  }, [items, markup, pstRate, gstRate, profitRate, sectionOrder, sectionNames, sectionTaxRates, dirty, canEdit, projectId]);
+  }, [items, markup, pstRate, gstRate, profitRate, sectionOrder, sectionNames, sectionTaxRates, sectionInvoices, dirty, canEdit, projectId]);
 
   // Save before leaving page/component (visibilitychange and beforeunload)
   useEffect(() => {
@@ -1240,6 +1346,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
             section_order: pendingSaveRef.current.sectionOrder,
             section_names: pendingSaveRef.current.sectionNames,
             section_tax_rates: pendingSaveRef.current.sectionTaxRates,
+            section_invoices: pendingSaveRef.current.sectionInvoices,
             items: pendingSaveRef.current.items.map(it=> ({
               material_id: it.material_id,
               quantity: it.quantity,
@@ -1467,7 +1574,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
   // Track dirty state
   useEffect(() => {
     if (!savedStateRef.current) {
-      savedStateRef.current = { items, markup, pstRate, gstRate, profitRate, sectionOrder, sectionNames, sectionTaxRates };
+      savedStateRef.current = { items, markup, pstRate, gstRate, profitRate, sectionOrder, sectionNames, sectionTaxRates, sectionInvoices };
       setDirty(false);
       return;
     }
@@ -1478,8 +1585,9 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
     const sectionOrderChanged = JSON.stringify(sectionOrder) !== JSON.stringify(saved.sectionOrder);
     const sectionNamesChanged = JSON.stringify(sectionNames) !== JSON.stringify(saved.sectionNames);
     const sectionTaxRatesChanged = JSON.stringify(sectionTaxRates) !== JSON.stringify(saved.sectionTaxRates);
-    setDirty(itemsChanged || markupChanged || profitRateChanged || sectionOrderChanged || sectionNamesChanged || sectionTaxRatesChanged);
-  }, [items, markup, profitRate, sectionOrder, sectionNames, sectionTaxRates]);
+    const sectionInvoicesChanged = JSON.stringify(sectionInvoices) !== JSON.stringify(saved.sectionInvoices);
+    setDirty(itemsChanged || markupChanged || profitRateChanged || sectionOrderChanged || sectionNamesChanged || sectionTaxRatesChanged || sectionInvoicesChanged);
+  }, [items, markup, profitRate, sectionOrder, sectionNames, sectionTaxRates, sectionInvoices]);
 
   // Manual save function (user clicks Save button)
   const handleManualSave = useCallback(async () => {
@@ -1503,8 +1611,9 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
       sectionOrder,
       sectionNames,
       sectionTaxRates,
+      sectionInvoices,
     })
-  }), [dirty, canEdit, performSave, grandTotal, finalTotal, pst, gst, items, markup, pstRate, gstRate, profitRate, sectionOrder, sectionNames, sectionTaxRates]);
+  }), [dirty, canEdit, performSave, grandTotal, finalTotal, pst, gst, items, markup, pstRate, gstRate, profitRate, sectionOrder, sectionNames, sectionTaxRates, sectionInvoices]);
 
   // Sync section order with items (add new sections that appear in items)
   useEffect(()=>{
@@ -1522,7 +1631,8 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
   const [draggingSection, setDraggingSection] = useState<string|null>(null);
   const [dragOverSection, setDragOverSection] = useState<string|null>(null);
   const onSectionDragStart = (section: string) => setDraggingSection(section);
-  const onSectionDragOver = (e: any, section: string) => {
+  const onSectionDragOver = (e: React.DragEvent, section: string) => {
+    if (!draggingSection) return;
     e.preventDefault();
     setDragOverSection(section);
   };
@@ -1605,6 +1715,11 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
         const newNames = { ...prev };
         delete newNames[section];
         return newNames;
+      });
+      setSectionInvoices(prev => {
+        const next = { ...prev };
+        delete next[section];
+        return next;
       });
     }
   }, [confirm, canEdit, groupedItems, getSectionDisplayName]);
@@ -1833,6 +1948,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
   );
 
   return (
+    <EstimateSectionInvoicePreviewHost>
     <div ref={builderRootRef} className="[overflow-anchor:none]">
       {showRestrictionWarning && (
         <div
@@ -1871,6 +1987,20 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
           product={viewingProduct}
           onClose={() => setViewingProductId(null)}
           designSystem={designSystem}
+        />
+      )}
+
+      {invoiceMatch && (
+        <InvoiceProductMatchModal
+          open
+          fileId={invoiceMatch.fileId}
+          fileName={invoiceMatch.name}
+          onClose={() => setInvoiceMatch(null)}
+          onAdd={(rows: InvoiceMatchedItem[]) => {
+            const target = invoiceMatch.section;
+            setItems((prev) => [...prev, ...rows.map((row) => ({ ...row, section: target }))]);
+            setInvoiceMatch(null);
+          }}
         />
       )}
 
@@ -1997,8 +2127,10 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                  )}
                  onDragOver={canEdit ? (e) => onSectionDragOver(e, section) : undefined}
                  onDrop={canEdit ? onSectionDrop : undefined}>
-              <div className={designSystem ? estimateSectionHeader : uiCx('flex items-center gap-2 border-b px-4 py-2 bg-gray-200')}>
-                <div className="flex items-center gap-2 flex-1">
+              <div className={designSystem ? 'border-b border-gray-200 bg-gray-50' : 'border-b bg-gray-200'}>
+              <div className={designSystem ? estimateSectionHeader : uiCx('flex items-center gap-2 px-4 py-2')}>
+                <div className="flex min-w-0 flex-1 flex-col">
+                <div className="flex min-w-0 items-center gap-2">
                 {canEdit && (
                   <span 
                     className="inline-flex items-center justify-center w-5 h-5 text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing" 
@@ -2167,78 +2299,59 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                   )
                 )}
                 </div>
+                <EstimateSectionInvoiceNames
+                  invoices={sectionInvoices[section] || []}
+                  className={canEdit ? 'pl-7' : undefined}
+                />
+                </div>
                 <div className="ml-auto flex items-end gap-2">
-                  {designSystem ? (
-                    <>
-                      <AppInput
-                        type="number"
-                        label="PST (%)"
-                        className="w-24"
-                        value={getSectionTaxRates(section, sectionTaxRates).pstRate}
-                        min={0}
-                        step={0.01}
-                        onChange={(e) => {
-                          const value = Number(e.target.value || 0);
-                          setSectionTaxRates((prev) => ({
-                            ...prev,
-                            [section]: { ...getSectionTaxRates(section, prev), pstRate: value },
-                          }));
-                        }}
-                        disabled={!canEdit}
-                      />
-                      <AppInput
-                        type="number"
-                        label="GST (%)"
-                        className="w-24"
-                        value={getSectionTaxRates(section, sectionTaxRates).gstRate}
-                        min={0}
-                        step={0.01}
-                        onChange={(e) => {
-                          const value = Number(e.target.value || 0);
-                          setSectionTaxRates((prev) => ({
-                            ...prev,
-                            [section]: { ...getSectionTaxRates(section, prev), gstRate: value },
-                          }));
-                        }}
-                        disabled={!canEdit}
-                      />
-                    </>
-                  ) : (
-                    <>
-                      <label className="text-sm text-gray-600">PST (%)</label>
-                      <input
-                        type="number"
-                        className="w-16 rounded border px-2 py-1 text-sm"
-                        value={getSectionTaxRates(section, sectionTaxRates).pstRate}
-                        min={0}
-                        step={0.01}
-                        onChange={(e) => {
-                          const value = Number(e.target.value || 0);
-                          setSectionTaxRates((prev) => ({
-                            ...prev,
-                            [section]: { ...getSectionTaxRates(section, prev), pstRate: value },
-                          }));
-                        }}
-                        disabled={!canEdit}
-                      />
-                      <label className="text-sm text-gray-600">GST (%)</label>
-                      <input
-                        type="number"
-                        className="w-16 rounded border px-2 py-1 text-sm"
-                        value={getSectionTaxRates(section, sectionTaxRates).gstRate}
-                        min={0}
-                        step={0.01}
-                        onChange={(e) => {
-                          const value = Number(e.target.value || 0);
-                          setSectionTaxRates((prev) => ({
-                            ...prev,
-                            [section]: { ...getSectionTaxRates(section, prev), gstRate: value },
-                          }));
-                        }}
-                        disabled={!canEdit}
-                      />
-                    </>
-                  )}
+                  <EstimateTaxRateField
+                    label="PST (%)"
+                    value={getSectionTaxRates(section, sectionTaxRates).pstRate}
+                    disabled={!canEdit}
+                    onChange={(value) => {
+                      setSectionTaxRates((prev) => ({
+                        ...prev,
+                        [section]: { ...getSectionTaxRates(section, prev), pstRate: value },
+                      }));
+                    }}
+                  />
+                  <EstimateTaxRateField
+                    label="GST (%)"
+                    value={getSectionTaxRates(section, sectionTaxRates).gstRate}
+                    disabled={!canEdit}
+                    onChange={(value) => {
+                      setSectionTaxRates((prev) => ({
+                        ...prev,
+                        [section]: { ...getSectionTaxRates(section, prev), gstRate: value },
+                      }));
+                    }}
+                  />
+                  <EstimateSectionInvoices
+                    projectId={projectId}
+                    clientId={project?.client_id ? String(project.client_id) : null}
+                    invoices={sectionInvoices[section] || []}
+                    canAttach={canAttachPurchasingInvoice}
+                    showFindProducts={section.startsWith('Product Section')}
+                    onInvoicesAdded={(added) => {
+                      if (!section.startsWith('Product Section')) return;
+                      if (items.some((item) => item.section === section)) return;
+                      const first = added[0];
+                      if (!first) return;
+                      setInvoiceMatch({ section, fileId: first.file_object_id, name: first.name });
+                    }}
+                    onFindProducts={(invoice) => {
+                      setInvoiceMatch({ section, fileId: invoice.file_object_id, name: invoice.name });
+                    }}
+                    onChange={(next) => {
+                      setSectionInvoices((prev) => {
+                        const updated = { ...prev };
+                        if (next.length) updated[section] = next;
+                        else delete updated[section];
+                        return updated;
+                      });
+                    }}
+                  />
                 {canEdit && (
                   designSystem ? (
                     <AppListRowIconButton
@@ -2284,6 +2397,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                 )}
                 </div>
               </div>
+              </div>
               {showProductList ? (
                 <div className="p-4">
                   <div className={ESTIMATE_PRODUCT_TABLE_SHELL}>
@@ -2292,24 +2406,20 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                       <div className="min-w-0 flex-1">
                         <EstimateProductHeaderCell>Product</EstimateProductHeaderCell>
                       </div>
-                      <EstimateProductHeaderCell
-                        className={uiCx(ESTIMATE_PRODUCT_PRICE_FIELD, ESTIMATE_PRODUCT_PRICE_CELL)}
-                      >
+                      <EstimateProductHeaderCell className={uiCx(ESTIMATE_PRODUCT_PRICE_FIELD, 'pr-2.5')} align="right">
                         Price
                       </EstimateProductHeaderCell>
-                      <EstimateProductHeaderCell
-                        className={uiCx(ESTIMATE_PRODUCT_QTY_FIELD, ESTIMATE_PRODUCT_QUANTITY_CELL)}
-                      >
+                      <EstimateProductHeaderCell className={uiCx(ESTIMATE_PRODUCT_QTY_FIELD, 'pr-8')} align="right">
                         Quantity
                       </EstimateProductHeaderCell>
-                      <EstimateProductHeaderCell className={ESTIMATE_PRODUCT_TOTAL_FIELD} align="right">
+                      <EstimateProductHeaderCell className={ESTIMATE_PRODUCT_TOTAL_FIELD} align="center">
                         Total
                       </EstimateProductHeaderCell>
                       <div className="flex shrink-0 items-center gap-1.5">
-                        <EstimateProductHeaderCell className="w-9" align="center">
+                        <EstimateProductHeaderCell className={ESTIMATE_PRODUCT_TAX_CELL} align="center">
                           PST
                         </EstimateProductHeaderCell>
-                        <EstimateProductHeaderCell className="w-9" align="center">
+                        <EstimateProductHeaderCell className={ESTIMATE_PRODUCT_TAX_CELL} align="center">
                           GST
                         </EstimateProductHeaderCell>
                       </div>
@@ -2384,9 +2494,9 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                           Section Subtotal:
                         </span>
                       </div>
-                      <div className={uiCx(ESTIMATE_PRODUCT_PRICE_FIELD, ESTIMATE_PRODUCT_PRICE_CELL)} aria-hidden />
-                      <div className={uiCx(ESTIMATE_PRODUCT_QTY_FIELD, ESTIMATE_PRODUCT_QUANTITY_CELL)} aria-hidden />
-                      <div className={uiCx(ESTIMATE_PRODUCT_TOTAL_FIELD, 'flex min-h-8 items-center justify-end')}>
+                      <div className={ESTIMATE_PRODUCT_PRICE_FIELD} aria-hidden />
+                      <div className={ESTIMATE_PRODUCT_QTY_FIELD} aria-hidden />
+                      <div className={uiCx(ESTIMATE_PRODUCT_TOTAL_FIELD, 'flex min-h-8 items-center justify-center')}>
                         <span className="text-sm font-bold tabular-nums text-gray-900">
                           ${productSectionSubtotal.toFixed(2)}
                         </span>
@@ -2424,18 +2534,21 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                           <div className="min-w-0 flex-1">
                             <EstimateProductHeaderCell>{labourMeta.itemLabel}</EstimateProductHeaderCell>
                           </div>
-                          <EstimateProductHeaderCell className={ESTIMATE_LABOUR_COMPOSITION_FIELD}>
-                            {labourMeta.midLabel}
-                          </EstimateProductHeaderCell>
-                          <EstimateProductHeaderCell className={ESTIMATE_LABOUR_PRICE_FIELD}>
+                          <EstimateProductHeaderCell className={uiCx(ESTIMATE_PRODUCT_PRICE_FIELD, 'pr-2.5')} align="right">
                             Price
                           </EstimateProductHeaderCell>
-                          <EstimateProductHeaderCell className={ESTIMATE_PRODUCT_TOTAL_FIELD} align="right">
+                          <EstimateProductHeaderCell
+                            className={uiCx(ESTIMATE_PRODUCT_QTY_FIELD, labourMeta.midLabel === 'Composition' ? undefined : 'pr-8')}
+                            align={labourMeta.midLabel === 'Composition' ? 'center' : 'right'}
+                          >
+                            {labourMeta.midLabel}
+                          </EstimateProductHeaderCell>
+                          <EstimateProductHeaderCell className={ESTIMATE_PRODUCT_TOTAL_FIELD} align="center">
                             Total
                           </EstimateProductHeaderCell>
                           <div className="flex shrink-0 items-center gap-1.5">
-                            <EstimateProductHeaderCell className="w-9" align="center">PST</EstimateProductHeaderCell>
-                            <EstimateProductHeaderCell className="w-9" align="center">GST</EstimateProductHeaderCell>
+                            <EstimateProductHeaderCell className={ESTIMATE_PRODUCT_TAX_CELL} align="center">PST</EstimateProductHeaderCell>
+                            <EstimateProductHeaderCell className={ESTIMATE_PRODUCT_TAX_CELL} align="center">GST</EstimateProductHeaderCell>
                           </div>
                           {canEdit ? <div className="w-8 shrink-0" aria-hidden /> : null}
                         </div>
@@ -2485,9 +2598,9 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                               Section Subtotal:
                             </span>
                           </div>
-                          <div className={ESTIMATE_LABOUR_COMPOSITION_FIELD} aria-hidden />
-                          <div className={ESTIMATE_LABOUR_PRICE_FIELD} aria-hidden />
-                          <div className={uiCx(ESTIMATE_PRODUCT_TOTAL_FIELD, 'flex min-h-8 items-center justify-end')}>
+                          <div className={ESTIMATE_PRODUCT_PRICE_FIELD} aria-hidden />
+                          <div className={ESTIMATE_PRODUCT_QTY_FIELD} aria-hidden />
+                          <div className={uiCx(ESTIMATE_PRODUCT_TOTAL_FIELD, 'flex min-h-8 items-center justify-center')}>
                             <span className="text-sm font-bold tabular-nums text-gray-900">
                               ${labourSectionSubtotal.toFixed(2)}
                             </span>
@@ -3670,6 +3783,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                           section_order: sectionOrder,
                           section_names: sectionNames,
                           section_tax_rates: sectionTaxRates,
+                          section_invoices: sectionInvoices,
                           items: items.map(it=> ({ 
                             material_id: it.material_id, 
                             quantity: it.quantity, 
@@ -3759,6 +3873,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                           section_order: sectionOrder,
                           section_names: sectionNames,
                           section_tax_rates: sectionTaxRates,
+                          section_invoices: sectionInvoices,
                           items: items.map(it=> ({ 
                             material_id: it.material_id, 
                             quantity: it.quantity, 
@@ -3860,6 +3975,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
         </div>
       )}
     </div>
+    </EstimateSectionInvoicePreviewHost>
   );
 });
 

@@ -121,6 +121,8 @@ import TrainingAdmin from './pages/TrainingAdmin';
 import TrainingCourseEdit from './pages/TrainingCourseEdit';
 import TrainingLearningDashboard from './pages/TrainingLearningDashboard';
 import SystemAdmin from './pages/SystemAdmin';
+import Tutorials from './pages/Tutorials';
+import TutorialDetail from './pages/TutorialDetail';
 import Attendance from './pages/Attendance';
 import VeriClockImport from './pages/VeriClockImport';
 import Notifications from './pages/Notifications';
@@ -328,6 +330,8 @@ export default function App(){
           <Route path="/training/admin/new" element={<AppShell><TrainingCourseEdit/></AppShell>} />
           <Route path="/training/admin/:courseId" element={<AppShell><TrainingCourseEdit/></AppShell>} />
           <Route path="/training/:courseId" element={<AppShell><TrainingCourse/></AppShell>} />
+          <Route path="/tutorials" element={<AppShell><Tutorials /></AppShell>} />
+          <Route path="/tutorials/:tutorialId" element={<AppShell><TutorialDetail /></AppShell>} />
           <Route path="/logs" element={<AppShell><SystemAdmin /></AppShell>} />
           <Route path="/admin/system" element={<Navigate to="/logs" replace />} />
           <Route path="/notifications" element={<AppShell><Notifications/></AppShell>} />

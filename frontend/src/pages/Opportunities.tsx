@@ -73,6 +73,7 @@ import {
   uiTypography,
 } from '@/components/ui';
 import { OPPORTUNITY_MAP_LABELS } from '@/features/projects/lib/mapViewLabels';
+import { OPPORTUNITIES_LIST_TUTORIAL_ID, ViewTutorialLink } from '@/features/tutorials';
 
 /** Same avatar as AppUserSelect list rows (`AppUserAvatar` sm = 24px, gray placeholder). */
 function UserAvatar({
@@ -80,11 +81,13 @@ function UserAvatar({
   size = 'sm',
   showTooltip = true,
   tooltipText,
+  followCursor = false,
 }: {
   user: any;
   size?: 'sm' | 'md';
   showTooltip?: boolean;
   tooltipText?: string;
+  followCursor?: boolean;
 }) {
   const displayName = tooltipText || getUserDisplayName(user) || 'Unknown';
   const avatar = <AppUserAvatar user={user} size={size} />;
@@ -94,7 +97,7 @@ function UserAvatar({
   }
 
   return (
-    <AppTooltip content={displayName} className="group/avatar shrink-0">
+    <AppTooltip content={displayName} followCursor={followCursor} className="group/avatar shrink-0">
       {avatar}
     </AppTooltip>
   );
@@ -165,7 +168,7 @@ export default function Opportunities() {
   const businessDashboardPath = businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE ? '/rm-business' : '/business';
   const navigateBackFromOpportunities = useNavigateBack(businessDashboardPath);
   const newOpportunityPath = `${businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE ? '/rm-projects' : '/projects'}/new?is_bidding=true`;
-  
+
   const [q, setQ] = useState(queryParam);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [hasAnimated, setHasAnimated] = useState(false);
@@ -631,6 +634,7 @@ export default function Opportunities() {
                 Clear
               </AppButton>
             )}
+            <ViewTutorialLink tutorialId={OPPORTUNITIES_LIST_TUTORIAL_ID} />
           </div>
           <div className={uiCx('mt-3 border-t border-gray-100 pt-3', uiLayout.actionsRow, 'flex-wrap items-center gap-2')}>
             <span className={uiCx(uiTypography.overline, 'shrink-0')}>Quick filters:</span>
@@ -1117,7 +1121,7 @@ export function OpportunityListItem({ opportunity, onOpenReportModal, projectSta
   const opportunityName = opportunity.name || 'Opportunity';
   const col1 = (
     <div className="min-w-0">
-      <AppTooltip content={opportunityName} wrap constrain>
+      <AppTooltip content={opportunityName} wrap constrain followCursor>
         <span className="block min-w-0 max-w-full truncate text-sm font-bold text-gray-900 group-hover:text-[#7f1010] transition-colors">
           {opportunityName}
         </span>
@@ -1136,7 +1140,7 @@ export function OpportunityListItem({ opportunity, onOpenReportModal, projectSta
   const colAddress = (
     <div className="min-w-0 flex items-center">
       {heroAddress ? (
-        <AppTooltip content={heroAddress} wrap constrain>
+        <AppTooltip content={heroAddress} wrap constrain followCursor>
           <span className="block min-w-0 max-w-full truncate text-sm font-semibold text-gray-900">{heroAddress}</span>
         </AppTooltip>
       ) : (
@@ -1156,7 +1160,7 @@ export function OpportunityListItem({ opportunity, onOpenReportModal, projectSta
         <span className="text-sm font-semibold text-gray-600">—</span>
       ) : (
         <div className="flex items-center gap-2 min-w-0">
-          <UserAvatar user={userForAvatar} size="sm" showTooltip={true} tooltipText={estimatorDisplayName} />
+          <UserAvatar user={userForAvatar} size="sm" showTooltip={true} tooltipText={estimatorDisplayName} followCursor />
           <span className="font-semibold text-gray-900 text-sm truncate min-w-0">{estimatorDisplayName}</span>
         </div>
       )}
@@ -1185,14 +1189,14 @@ export function OpportunityListItem({ opportunity, onOpenReportModal, projectSta
       {divisionIcons.length > 0 ? (
         <div className="flex items-center gap-1.5 flex-wrap">
           {divisionIcons.map((div) => (
-            <AppTooltip key={div.id} content={div.label}>
+            <AppTooltip key={div.id} content={div.label} followCursor>
               <div className="flex items-center justify-center cursor-pointer hover:scale-110 transition-transform">
                 {div.icon}
               </div>
             </AppTooltip>
           ))}
           {projectDivIds.length > 5 && (
-            <AppTooltip content={`${projectDivIds.length - 5} more divisions`}>
+            <AppTooltip content={`${projectDivIds.length - 5} more divisions`} followCursor>
               <div className="text-sm text-gray-600 cursor-pointer">+{projectDivIds.length - 5}</div>
             </AppTooltip>
           )}
