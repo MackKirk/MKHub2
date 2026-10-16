@@ -11,6 +11,9 @@ import {
   resolvePresetTimes,
   type ShiftTimePreset,
 } from '@/lib/shiftTimePresets';
+import ShiftAckPanel from '@/components/ShiftAckPanel';
+import ShiftNoteField from '@/components/ShiftNoteField';
+import { persistShiftNoteLibrary } from '@/lib/shiftNoteLibrary';
 import {
   AppButton,
   AppControlLabelRow,
@@ -18,7 +21,6 @@ import {
   AppFormModal,
   AppInput,
   AppSelect,
-  AppTextarea,
   AppTimePicker,
   uiCx,
   uiLayout,
@@ -55,6 +57,7 @@ export default function EditShiftModal({
   const [endTime, setEndTime] = useState(shift?.end_time?.slice(0, 5) || '17:00');
   const [jobType, setJobType] = useState(shift?.job_name || shift?.job_id || '');
   const [notes, setNotes] = useState(shift?.notes || '');
+  const [noteFlags, setNoteFlags] = useState({ saveOnProject: false, saveGlobal: false });
   const [error, setError] = useState('');
   const [conflictWarning, setConflictWarning] = useState('');
   const [saving, setSaving] = useState(false);
@@ -71,6 +74,7 @@ export default function EditShiftModal({
       setTimePreset(detectPreset(start, end));
       setJobType(shift.job_name || shift.job_id || '');
       setNotes(shift.notes || '');
+      setNoteFlags({ saveOnProject: false, saveGlobal: false });
       setConflictWarning('');
     }
   }, [shift]);
@@ -113,6 +117,22 @@ export default function EditShiftModal({
     setSaving(true);
 
     try {
+      if (notes.trim() && (noteFlags.saveOnProject || noteFlags.saveGlobal)) {
+        try {
+          await persistShiftNoteLibrary({
+            projectId: shift.project_id || project?.id,
+            body: notes,
+            saveOnProject: noteFlags.saveOnProject,
+            saveGlobal: noteFlags.saveGlobal,
+          });
+        } catch (e: any) {
+          toast.error(
+            e?.response?.data?.detail ||
+              e?.message ||
+              'The shift will still be updated, but the note could not be saved for reuse.',
+          );
+        }
+      }
       const updated = await api<any>('PATCH', `/dispatch/shifts/${shift.id}`, {
         start_time: startTime,
         end_time: endTime,
@@ -264,15 +284,16 @@ export default function EditShiftModal({
             fieldHint="Job Type\n\nOptional label for the type of work during this shift."
           />
 
-          <AppTextarea
-            label="Notes"
+          <ShiftNoteField
+            projectId={_projectId}
             value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            disabled={!canEdit}
-            rows={3}
-            placeholder="Optional notes for this shift..."
-            helperText="Visible on the calendar when notes are saved."
+            onChange={setNotes}
+            disabled={!canEdit || saving}
+            flags={noteFlags}
+            onFlagsChange={setNoteFlags}
           />
+
+          <ShiftAckPanel mode="dispatcher" shift={shift} />
         </div>
       </AppFormModal>
     );
@@ -345,18 +366,16 @@ export default function EditShiftModal({
                 ))}
               </select>
             </div>
-            <div>
-              <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">
-                Notes
-              </label>
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                disabled={!canEdit}
-                rows={3}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-              />
-            </div>
+            <ShiftNoteField
+              projectId={_projectId}
+              value={notes}
+              onChange={setNotes}
+              disabled={!canEdit || saving}
+              variant="legacy"
+              flags={noteFlags}
+              onFlagsChange={setNoteFlags}
+            />
+            <ShiftAckPanel mode="dispatcher" shift={shift} />
           </div>
           <div className="flex-shrink-0 border-t border-gray-200 p-4 flex justify-end gap-2">
             <button

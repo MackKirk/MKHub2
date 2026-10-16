@@ -4,6 +4,7 @@ import { api } from '@/lib/api';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { inviteUserFieldHints, inviteUserQuickInfo } from '@/lib/formModalQuickInfo';
+import { PAY_TYPE_OPTIONS } from '@/lib/payType';
 import { userProfileFieldHint } from '@/lib/userProfileFieldHints';
 import { formatContactPhone } from '@/lib/contactPhoto';
 import { getUserPickerLabel } from '@/lib/userDisplay';
@@ -60,12 +61,6 @@ const STEP_LABELS = [
   'Documents to sign',
   'Review & send',
 ] as const;
-
-const PAY_TYPE_OPTIONS = [
-  { value: 'hourly', label: 'Hourly' },
-  { value: 'salary', label: 'Salary' },
-  { value: 'contract', label: 'Contract' },
-];
 
 /** Digits + optional decimal (max 2 places). Strips $, commas, unit text. */
 function sanitizePayRateInput(raw: string): string {
@@ -844,7 +839,7 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
                   label="Pay Type *"
                   value={payType}
                   onChange={(e) => setPayType(e.target.value)}
-                  options={PAY_TYPE_OPTIONS}
+                  options={PAY_TYPE_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
                   placeholder="Select type..."
                   disabled={loading}
                   fieldHint={userProfileFieldHint('pay_type')}

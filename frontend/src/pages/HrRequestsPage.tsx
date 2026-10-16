@@ -149,6 +149,7 @@ export default function HrRequestsPage() {
     queryClient.invalidateQueries({ queryKey: ['hr-time-off-requests'] });
     queryClient.invalidateQueries({ queryKey: ['time-off-requests'] });
     queryClient.invalidateQueries({ queryKey: ['time-off-balance'] });
+    queryClient.invalidateQueries({ queryKey: ['time-off-history'] });
   };
 
   const review = async (row: HrTimeOffRequest, nextStatus: 'approved' | 'rejected') => {

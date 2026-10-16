@@ -1293,8 +1293,11 @@ def sync_user_time_off(
 
 
 def _is_manual_history_row(row: TimeOffHistory) -> bool:
-    """HR balance adjustments created in the Hub UI — keep unless --clean-all."""
-    if row.bamboohr_transaction_id:
+    """Hub-created ledger rows (adjustments / approved requests) — keep unless --clean-all."""
+    tid = str(row.bamboohr_transaction_id or "").strip()
+    if tid.startswith("hub-request:"):
+        return True
+    if tid:
         return False
     desc = (row.description or "").lower()
     return "adjusted by" in desc

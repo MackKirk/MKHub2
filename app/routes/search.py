@@ -24,7 +24,9 @@ from ..services.business_line import (
     BUSINESS_LINE_CONSTRUCTION,
     BUSINESS_LINE_REPAIRS_MAINTENANCE,
 )
+from ..services.project_geocoding_service import normalize_project_address
 from ..services.project_visibility import project_visibility_clause_for_user
+from ..services.user_display import employee_name_match, profile_search_label
 
 
 router = APIRouter(prefix="/search", tags=["search"])
@@ -75,6 +77,33 @@ def _project_search_href(p: Project, *, opportunity: bool) -> str:
     return f"/rm-projects/{p.id}" if is_rm else f"/projects/{p.id}"
 
 
+def _project_search_item(
+    p: Project,
+    c: Optional[Client],
+    site: Optional[ClientSite],
+    *,
+    opportunity: bool,
+) -> dict:
+    pid = str(p.id)
+    code = (p.code or "").strip()
+    name = (p.name or "").strip()
+    title = f"{code} — {name}".strip(" —") or name or pid
+    client_name = (
+        ((getattr(c, "display_name", None) or getattr(c, "name", None) or "") if c else "").strip()
+    )
+    address = (normalize_project_address(p, site) or "").strip() or None
+    return {
+        "type": "opportunity" if opportunity else "project",
+        "id": pid,
+        "title": title,
+        "subtitle": address or client_name or None,
+        "code": code or None,
+        "name": name or None,
+        "address": address,
+        "href": _project_search_href(p, opportunity=opportunity),
+    }
+
+
 @router.get("")
 def global_search(
     q: str = Query("", min_length=0),
@@ -101,7 +130,7 @@ def global_search(
     if project_scope is not None:
         try:
             rows = (
-                db.query(Project, Client)
+                db.query(Project, Client, ClientSite)
                 .outerjoin(
                     Client,
                     and_(Project.client_id == Client.id, Client.deleted_at.is_(None)),
@@ -114,22 +143,7 @@ def global_search(
                 .limit(limit)
                 .all()
             )
-            items = []
-            for p, c in rows:
-                pid = str(p.id)
-                code = (p.code or "").strip()
-                name = (p.name or "").strip()
-                title = f"{code} — {name}".strip(" —")
-                client_name = ((getattr(c, "display_name", None) or getattr(c, "name", None) or "") if c else "").strip()
-                items.append(
-                    {
-                        "type": "project",
-                        "id": pid,
-                        "title": title or name or pid,
-                        "subtitle": client_name or None,
-                        "href": _project_search_href(p, opportunity=False),
-                    }
-                )
+            items = [_project_search_item(p, c, site, opportunity=False) for p, c, site in rows]
             if items:
                 sections.append({"id": "projects", "label": "Projects", "items": items})
         except Exception:
@@ -139,7 +153,7 @@ def global_search(
     if project_scope is not None:
         try:
             rows = (
-                db.query(Project, Client)
+                db.query(Project, Client, ClientSite)
                 .outerjoin(
                     Client,
                     and_(Project.client_id == Client.id, Client.deleted_at.is_(None)),
@@ -152,22 +166,7 @@ def global_search(
                 .limit(limit)
                 .all()
             )
-            items = []
-            for p, c in rows:
-                pid = str(p.id)
-                code = (p.code or "").strip()
-                name = (p.name or "").strip()
-                title = f"{code} — {name}".strip(" —")
-                client_name = ((getattr(c, "display_name", None) or getattr(c, "name", None) or "") if c else "").strip()
-                items.append(
-                    {
-                        "type": "opportunity",
-                        "id": pid,
-                        "title": title or name or pid,
-                        "subtitle": client_name or None,
-                        "href": _project_search_href(p, opportunity=True),
-                    }
-                )
+            items = [_project_search_item(p, c, site, opportunity=True) for p, c, site in rows]
             if items:
                 sections.append({"id": "opportunities", "label": "Opportunities", "items": items})
         except Exception:
@@ -426,15 +425,7 @@ def global_search(
             rows = (
                 db.query(User, EmployeeProfile)
                 .outerjoin(EmployeeProfile, EmployeeProfile.user_id == User.id)
-                .filter(
-                    or_(
-                        User.username.ilike(like),
-                        User.email_personal.ilike(like),
-                        EmployeeProfile.first_name.ilike(like),
-                        EmployeeProfile.last_name.ilike(like),
-                        EmployeeProfile.preferred_name.ilike(like),
-                    )
-                )
+                .filter(employee_name_match(like))
                 .order_by(User.created_at.desc())
                 .limit(limit)
                 .all()
@@ -442,11 +433,7 @@ def global_search(
             items = []
             for u, ep in rows:
                 uid = str(u.id)
-                preferred = ((getattr(ep, "preferred_name", None) or "") if ep else "").strip()
-                first = ((getattr(ep, "first_name", None) or "") if ep else "").strip()
-                last = ((getattr(ep, "last_name", None) or "") if ep else "").strip()
-                name = preferred or " ".join([x for x in [first, last] if x]).strip()
-                title = name or (getattr(u, "username", None) or "").strip() or uid
+                title = profile_search_label(u, ep) or uid
                 subtitle = (getattr(u, "email_personal", None) or "").strip() or None
                 items.append({"type": "user", "id": uid, "title": title, "subtitle": subtitle, "href": f"/users/{uid}"})
             if items:

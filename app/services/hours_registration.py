@@ -4,8 +4,34 @@ from __future__ import annotations
 from typing import Any, Optional
 
 
+_HOURLY = frozenset({"hourly", "hour", "hours"})
+_SALARY = frozenset({"salary", "salaried", "annual", "yearly", "year", "exempt"})
+_CONTRACT = frozenset({"contract", "contractor", "commission"})
+CANONICAL_PAY_TYPES = frozenset({"hourly", "salary", "contract"})
+
+
+def canonical_pay_type(pay_type: Optional[str]) -> Optional[str]:
+    """Map free-text or Bamboo labels onto hourly | salary | contract."""
+    text = str(pay_type or "").strip().lower()
+    if not text:
+        return None
+    if text in _HOURLY:
+        return "hourly"
+    if text in _SALARY:
+        return "salary"
+    if text in _CONTRACT:
+        return "contract"
+    if "salary" in text or "annual" in text or "salaried" in text:
+        return "salary"
+    if "contract" in text:
+        return "contract"
+    if "hour" in text:
+        return "hourly"
+    return None
+
+
 def is_salary_pay_type(pay_type: Optional[str]) -> bool:
-    return "salary" in (pay_type or "").strip().lower()
+    return canonical_pay_type(pay_type) == "salary"
 
 
 def employee_should_register_hours(

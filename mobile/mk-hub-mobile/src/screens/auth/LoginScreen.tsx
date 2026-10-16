@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Image,
   ImageBackground,
+  Keyboard,
   KeyboardAvoidingView,
   Linking,
   Modal,
@@ -66,6 +67,8 @@ export const LoginScreen: React.FC = () => {
   const { width: windowWidth } = useWindowDimensions();
   const logoWidth = Math.round(Math.min(340, windowWidth * 0.82) * 0.7);
   const logoHeight = Math.round(logoWidth / LOGO_ASPECT);
+  const scrollRef = useRef<ScrollView>(null);
+  const heroHeightRef = useRef(0);
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -101,6 +104,23 @@ export const LoginScreen: React.FC = () => {
       }
     });
   }, []);
+
+  useEffect(() => {
+    const hideEvent =
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const hide = Keyboard.addListener(hideEvent, () => {
+      scrollRef.current?.scrollTo({ y: 0, animated: true });
+    });
+    return () => hide.remove();
+  }, []);
+
+  const scrollHeroUpForField = () => {
+    const targetY = Math.max(0, heroHeightRef.current - 12);
+    const delay = Platform.OS === "ios" ? 60 : 120;
+    setTimeout(() => {
+      scrollRef.current?.scrollTo({ y: targetY, animated: true });
+    }, delay);
+  };
 
   const persistIdentifier = async (value: string, remember: boolean) => {
     if (remember && value.trim()) {
@@ -152,70 +172,80 @@ export const LoginScreen: React.FC = () => {
   return (
     <View style={styles.root}>
       <StatusBar barStyle="light-content" />
-      <LinearGradient
-        colors={[BRAND_RED_DARK, BRAND_RED]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.hero}
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
-        {panelPhotoSource ? (
-          <Image
-            source={panelPhotoSource}
-            style={styles.panelPhoto}
-            resizeMode="cover"
-            onError={() => setPanelPhotoFailed(true)}
-          />
-        ) : null}
-        <LinearGradient
-          colors={["rgba(127,16,16,0.2)", "transparent", "rgba(92,12,12,0.7)"]}
-          start={{ x: 0.5, y: 0 }}
-          end={{ x: 0.5, y: 1 }}
-          style={StyleSheet.absoluteFill}
-          pointerEvents="none"
-        />
-        <LogoLight
-          width={logoWidth}
-          height={logoHeight}
-          viewBox={LOGO_VIEWBOX}
-          preserveAspectRatio="xMidYMid meet"
-          accessibilityLabel="Mack Kirk logo"
-          style={styles.logo}
-        />
-      </LinearGradient>
-
-      <View style={styles.formPane}>
-        {backgroundSource ? (
-          <ImageBackground
-            source={backgroundSource}
-            style={StyleSheet.absoluteFill}
-            imageStyle={styles.formBgImage}
-            onError={() => setBackgroundFailed(true)}
-          />
-        ) : null}
-        <LinearGradient
-          colors={[
-            "rgba(255,255,255,0.70)",
-            "rgba(255,255,255,0.45)",
-            "rgba(247,244,243,0.55)"
+        <ScrollView
+          ref={scrollRef}
+          contentContainerStyle={[
+            styles.pageContent,
+            { paddingBottom: insets.bottom + spacing.xl }
           ]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={StyleSheet.absoluteFill}
-          pointerEvents="none"
-        />
-
-        <KeyboardAvoidingView
-          style={styles.flex}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          showsVerticalScrollIndicator={false}
+          bounces
         >
-          <ScrollView
-            contentContainerStyle={[
-              styles.scrollContent,
-              { paddingBottom: insets.bottom + spacing.xl }
-            ]}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
+          <LinearGradient
+            colors={[BRAND_RED_DARK, BRAND_RED]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[styles.hero, { paddingTop: Math.max(8, insets.top) }]}
+            onLayout={(event) => {
+              heroHeightRef.current = event.nativeEvent.layout.height;
+            }}
           >
+            {panelPhotoSource ? (
+              <Image
+                source={panelPhotoSource}
+                style={styles.panelPhoto}
+                resizeMode="cover"
+                onError={() => setPanelPhotoFailed(true)}
+              />
+            ) : null}
+            <LinearGradient
+              colors={[
+                "rgba(127,16,16,0.2)",
+                "transparent",
+                "rgba(92,12,12,0.7)"
+              ]}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
+              style={StyleSheet.absoluteFill}
+              pointerEvents="none"
+            />
+            <LogoLight
+              width={logoWidth}
+              height={logoHeight}
+              viewBox={LOGO_VIEWBOX}
+              preserveAspectRatio="xMidYMid meet"
+              accessibilityLabel="Mack Kirk logo"
+              style={styles.logo}
+            />
+          </LinearGradient>
+
+          <View style={styles.formPane}>
+            {backgroundSource ? (
+              <ImageBackground
+                source={backgroundSource}
+                style={StyleSheet.absoluteFill}
+                imageStyle={styles.formBgImage}
+                onError={() => setBackgroundFailed(true)}
+              />
+            ) : null}
+            <LinearGradient
+              colors={[
+                "rgba(255,255,255,0.70)",
+                "rgba(255,255,255,0.45)",
+                "rgba(247,244,243,0.55)"
+              ]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={StyleSheet.absoluteFill}
+              pointerEvents="none"
+            />
+
             <View style={styles.formInner}>
               <Text style={styles.title}>MKHub Sign in</Text>
               <Text style={styles.subtitle}>
@@ -223,7 +253,9 @@ export const LoginScreen: React.FC = () => {
               </Text>
 
               <Text style={styles.label}>Email or username</Text>
-              <View style={[styles.inputWrap, error ? styles.inputWrapError : null]}>
+              <View
+                style={[styles.inputWrap, error ? styles.inputWrapError : null]}
+              >
                 <Ionicons
                   name="person-outline"
                   size={18}
@@ -243,6 +275,7 @@ export const LoginScreen: React.FC = () => {
                     setIdentifier(value);
                     if (error) setError(null);
                   }}
+                  onFocus={scrollHeroUpForField}
                   onBlur={() => {
                     if (rememberMe) void persistIdentifier(identifier, true);
                   }}
@@ -251,7 +284,9 @@ export const LoginScreen: React.FC = () => {
               </View>
 
               <Text style={styles.label}>Password</Text>
-              <View style={[styles.inputWrap, error ? styles.inputWrapError : null]}>
+              <View
+                style={[styles.inputWrap, error ? styles.inputWrapError : null]}
+              >
                 <Ionicons
                   name="lock-closed-outline"
                   size={18}
@@ -269,6 +304,7 @@ export const LoginScreen: React.FC = () => {
                     setPassword(value);
                     if (error) setError(null);
                   }}
+                  onFocus={scrollHeroUpForField}
                   returnKeyType="done"
                   onSubmitEditing={handleSubmit}
                 />
@@ -320,7 +356,10 @@ export const LoginScreen: React.FC = () => {
               ) : null}
 
               <TouchableOpacity
-                style={[styles.signInBtn, isLoading && styles.signInBtnDisabled]}
+                style={[
+                  styles.signInBtn,
+                  isLoading && styles.signInBtnDisabled
+                ]}
                 onPress={handleSubmit}
                 disabled={isLoading}
                 activeOpacity={0.85}
@@ -348,9 +387,9 @@ export const LoginScreen: React.FC = () => {
                 </TouchableOpacity>
               </View>
             </View>
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </View>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
 
       <Modal
         visible={forgotOpen}
@@ -431,9 +470,11 @@ const styles = StyleSheet.create({
   flex: {
     flex: 1
   },
+  pageContent: {
+    flexGrow: 1
+  },
   hero: {
     paddingHorizontal: 16,
-    paddingTop: 8,
     paddingBottom: 8,
     alignItems: "center",
     justifyContent: "center",
@@ -448,17 +489,13 @@ const styles = StyleSheet.create({
     zIndex: 1
   },
   formPane: {
-    flex: 1,
-    overflow: "hidden"
+    flexGrow: 1,
+    overflow: "hidden",
+    paddingHorizontal: 20,
+    paddingTop: spacing.lg
   },
   formBgImage: {
     resizeMode: "cover"
-  },
-  scrollContent: {
-    flexGrow: 1,
-    paddingHorizontal: 20,
-    paddingTop: spacing.lg,
-    justifyContent: "flex-start"
   },
   formInner: {
     width: "100%",

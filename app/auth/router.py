@@ -1639,25 +1639,9 @@ def update_my_profile(payload: EmployeeProfileInput, user: User = Depends(get_cu
 
 def _user_option_display_name(u: User, ep: Optional[EmployeeProfile]) -> str:
     """Label for pickers: preferred + (first last) when both help disambiguate; else legal or username."""
-    fn = (getattr(ep, "first_name", None) or "").strip() if ep else ""
-    ln = (getattr(ep, "last_name", None) or "").strip() if ep else ""
-    legal = " ".join(x for x in (fn, ln) if x).strip()
-    pref = (getattr(ep, "preferred_name", None) or "").strip() if ep else ""
-    if pref and legal:
-        if pref.casefold() == legal.casefold():
-            return pref
-        return f"{pref} ({legal})"
-    if pref:
-        return pref
-    if legal:
-        return legal
-    un = (getattr(u, "username", None) or "").strip()
-    if un:
-        return un
-    em = (getattr(u, "email_personal", None) or "").strip()
-    if em:
-        return em
-    return str(u.id)
+    from ..services.user_display import profile_search_label
+
+    return profile_search_label(u, ep)
 
 
 @router.get("/users/options")
@@ -1675,13 +1659,9 @@ def users_options(
     )
     if q:
         like = f"%{q}%"
-        query = query.filter(
-            (User.username.ilike(like))
-            | (User.email_personal.ilike(like))
-            | (EmployeeProfile.first_name.ilike(like))
-            | (EmployeeProfile.last_name.ilike(like))
-            | (EmployeeProfile.preferred_name.ilike(like))
-        )
+        from ..services.user_display import employee_name_match
+
+        query = query.filter(employee_name_match(like))
     query = query.order_by(
         nullslast(asc(func.lower(func.coalesce(EmployeeProfile.first_name, "")))),
         nullslast(asc(func.lower(func.coalesce(EmployeeProfile.last_name, "")))),
@@ -1898,6 +1878,18 @@ def update_user_profile(
                 data[k] = None
         elif k in data and data[k] is None:
             pass
+    if "pay_type" in data:
+        from ..services.hours_registration import canonical_pay_type
+
+        raw_pay_type = data.get("pay_type")
+        if raw_pay_type is None or not str(raw_pay_type).strip():
+            raise HTTPException(status_code=400, detail="pay_type must be hourly, salary, or contract")
+        normalized_pay_type = canonical_pay_type(str(raw_pay_type))
+        if normalized_pay_type is None:
+            raise HTTPException(status_code=400, detail="pay_type must be hourly, salary, or contract")
+        data["pay_type"] = normalized_pay_type
+        if normalized_pay_type != "salary":
+            data["needs_register_hours"] = False
     data.pop("drivers_license_updated_at", None)
     if "drivers_license_last_requested_at" in data:
         data["drivers_license_last_requested_at"] = _parse_optional_profile_ts(

@@ -9,6 +9,7 @@ import { api } from '@/lib/api';
 import { formatDateLocal } from '@/lib/dateUtils';
 import { homeWidgetScheduleRowClass } from '../HomeWidgetList';
 import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react';
+import { shiftAckMeta, shiftAckTracked } from '@/lib/shiftAck';
 
 type Shift = {
   id: string;
@@ -18,6 +19,8 @@ type Shift = {
   project_name?: string;
   project_id?: string;
   status?: string;
+  notes?: string | null;
+  ack_status?: string | null;
 };
 
 function formatTime12h(timeStr: string | null | undefined): string {
@@ -221,7 +224,20 @@ export function ScheduleWidget({ config: _config, embedded = false, fillHeight }
                       </div>
                       <div className={uiCx(uiTypography.helper, 'mt-0.5')}>
                         {formatTime12h(shift.start_time)} – {formatTime12h(shift.end_time)}
+                        {shiftAckTracked(shift.ack_status) ? (
+                          <>
+                            {' · '}
+                            <span className={uiCx('font-semibold', shiftAckMeta(shift.ack_status).tone)}>
+                              {shiftAckMeta(shift.ack_status).longLabel}
+                            </span>
+                          </>
+                        ) : null}
                       </div>
+                      {shift.notes?.trim() ? (
+                        <div className={uiCx(uiTypography.helper, 'mt-0.5 line-clamp-2 whitespace-pre-wrap text-gray-700')}>
+                          {shift.notes.trim()}
+                        </div>
+                      ) : null}
                     </Link>
                   </li>
                 ))}

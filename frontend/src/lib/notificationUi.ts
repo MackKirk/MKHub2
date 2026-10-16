@@ -28,6 +28,7 @@ export const NOTIFICATION_ICON: Record<string, { Icon: LucideIcon; className: st
   task: { Icon: CheckCircle2, className: 'bg-emerald-100 text-emerald-700' },
   message: { Icon: MessageSquare, className: 'bg-blue-100 text-blue-700' },
   attendance: { Icon: Clock, className: 'bg-amber-100 text-amber-700' },
+  hours_reminder: { Icon: Clock, className: 'bg-amber-100 text-amber-700' },
   community_post: { Icon: Megaphone, className: 'bg-indigo-100 text-indigo-700' },
   community_mention: { Icon: Megaphone, className: 'bg-indigo-100 text-indigo-700' },
   community_comment_reply: { Icon: Megaphone, className: 'bg-indigo-100 text-indigo-700' },

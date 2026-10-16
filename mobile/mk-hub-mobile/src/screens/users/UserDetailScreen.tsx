@@ -35,6 +35,7 @@ import {
   hubUserInitials,
   hubUserPhotoUrl
 } from "../../lib/userUi";
+import { isSalaryPayType, payTypeLabel } from "../../lib/hoursRegistration";
 import { getUserProfile } from "../../services/users";
 import { toApiError } from "../../services/api";
 import { MKUserPermissionsSection } from "../../components/users/MKUserPermissionsSection";
@@ -339,13 +340,20 @@ export const UserDetailScreen: React.FC = () => {
         {
           icon: "card-outline",
           label: "Pay type",
-          value: displayValue(p.pay_type) ?? ""
+          value: payTypeLabel(p.pay_type)
         },
         {
           icon: "cash-outline",
           label: "Pay rate",
           value: formatHubUserPayRate(p.pay_rate) ?? ""
-        }
+        },
+        isSalaryPayType(p.pay_type)
+          ? {
+              icon: "timer-outline",
+              label: "Register hours",
+              value: p.needs_register_hours ? "Yes" : "No"
+            }
+          : null
       );
     }
     return items.filter((item): item is InfoItem => Boolean(item && item.value));

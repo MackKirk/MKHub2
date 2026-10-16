@@ -16,6 +16,11 @@ export interface ShiftSummary {
   default_break_min?: number;
   geofences?: Geofence[];
   job_name?: string | null;
+  notes?: string | null;
+  ack_status?: "pending" | "viewed" | "accepted" | "declined" | string | null;
+  ack_note?: string | null;
+  ack_viewed_at?: string | null;
+  ack_responded_at?: string | null;
 }
 
 export interface ShiftAttendanceResponse {

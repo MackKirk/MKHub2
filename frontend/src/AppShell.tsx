@@ -18,6 +18,7 @@ import HubTodayCalendar from '@/components/HubTodayCalendar';
 import InstallPrompt from '@/components/InstallPrompt';
 import GlobalSearch, { GlobalSearchSection, GlobalSearchItem } from '@/components/GlobalSearch';
 import HubChatLauncher from '@/components/HubChatLauncher';
+import { shouldRegisterHours } from '@/lib/payType';
 import { canAccessProjectLineMenu, isAdminRole } from '@/lib/projectLinePermissionKeys';
 import { hasAnySettingsPermission } from '@/lib/settingsPermissions';
 import {
@@ -782,7 +783,9 @@ export default function AppShell({ children }: PropsWithChildren){
         { id: 'schedule', label: 'Schedule', path: '/schedule', icon: <IconCalendar /> },
         { id: 'time-off', label: 'Time Off', path: '/home?open=time-off', icon: <IconSun /> },
         { id: 'sick-leave', label: 'Sick Leave', path: '/home?open=sick', icon: <IconMedkit /> },
-        { id: 'clock-in-out', label: 'Clock In/Out', path: '/home?open=hours', icon: <IconClock /> },
+        ...(shouldRegisterHours(meProfile?.profile?.pay_type, meProfile?.profile?.needs_register_hours)
+          ? [{ id: 'clock-in-out', label: 'Clock In/Out', path: '/home?open=hours', icon: <IconClock /> }]
+          : []),
         { id: 'tasks', label: 'Tasks', path: '/tasks', icon: <IconClipboard /> },
         { id: 'my-reviews', label: 'My Reviews', path: '/reviews/my', icon: <IconStar /> },
         { id: 'my-training', label: 'My Training', path: '/training', icon: <IconAcademic /> },
@@ -985,7 +988,7 @@ export default function AppShell({ children }: PropsWithChildren){
       ]
     },
   ];
-  }, [me, isProfileComplete, signatureBadgeCount]);
+  }, [me, meProfile, isProfileComplete, signatureBadgeCount]);
 
   const effectiveMenuCategories: MenuCategory[] = useMemo(() => {
     if (!hubAccessBlocked) return menuCategories;

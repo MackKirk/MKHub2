@@ -2,6 +2,9 @@ export type OrgPerson = {
   id: string;
   username: string;
   name?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  preferred_name?: string | null;
   email?: string | null;
   job_title?: string | null;
   is_active?: boolean;
@@ -99,9 +102,16 @@ export function buildUserOrgForest(people: OrgPerson[]): OrgForest {
 export function personMatchesOrgQuery(person: OrgPerson, query: string): boolean {
   const needle = query.trim().toLowerCase();
   if (!needle) return true;
-  return [person.name, person.username, person.email, person.job_title].some((value) =>
-    (value || '').toLowerCase().includes(needle),
-  );
+  return [
+    person.name,
+    person.preferred_name,
+    person.first_name,
+    person.last_name,
+    [person.first_name, person.last_name].filter(Boolean).join(' '),
+    person.username,
+    person.email,
+    person.job_title,
+  ].some((value) => (value || '').toLowerCase().includes(needle));
 }
 
 export function filterOrgNodesByQuery(nodes: OrgTreeNode[], query: string): OrgTreeNode[] {

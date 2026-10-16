@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -8,6 +8,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View
 } from "react-native";
@@ -27,7 +28,8 @@ import {
   formatShortDate,
   formatTime12h,
   getShifts,
-  getWeekStartSunday
+  getWeekStartSunday,
+  respondToShift
 } from "../../services/shifts";
 import { toApiError } from "../../services/api";
 import type { ShiftSummary } from "../../types/shifts";
@@ -60,6 +62,24 @@ function shiftMinutes(shift: ShiftSummary): number {
   return mins;
 }
 
+function ackTracked(status?: string | null): boolean {
+  return status !== "not_required";
+}
+
+function ackLabel(status?: string | null): string {
+  if (status === "accepted") return "Accepted";
+  if (status === "declined") return "Declined";
+  if (status === "viewed") return "Seen, no answer yet";
+  return "Needs confirmation";
+}
+
+function ackColor(status?: string | null): string {
+  if (status === "accepted") return "#15803d";
+  if (status === "declined") return "#b91c1c";
+  if (status === "viewed") return "#1d4ed8";
+  return "#b45309";
+}
+
 function formatHoursMinutes(totalMinutes: number): string {
   const mins = Math.max(0, Math.floor(totalMinutes));
   const h = Math.floor(mins / 60);
@@ -80,6 +100,11 @@ export const ScheduleScreen: React.FC = () => {
   const [shifts, setShifts] = useState<ShiftSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [openShiftId, setOpenShiftId] = useState<string | null>(null);
+  const [declineShiftId, setDeclineShiftId] = useState<string | null>(null);
+  const [declineNote, setDeclineNote] = useState("");
+  const [respondingId, setRespondingId] = useState<string | null>(null);
+  const viewedSent = useRef(new Set<string>());
 
   const weekStartStr = useMemo(() => formatDateLocal(weekStart), [weekStart]);
   const weekEndStr = useMemo(() => addDays(weekStartStr, 6), [weekStartStr]);
@@ -110,6 +135,37 @@ export const ScheduleScreen: React.FC = () => {
       void load();
     }, [load])
   );
+
+  const applyUpdated = (updated: ShiftSummary) => {
+    setShifts((prev) => prev.map((row) => (row.id === updated.id ? { ...row, ...updated } : row)));
+  };
+
+  const markViewed = async (shift: ShiftSummary) => {
+    if ((shift.ack_status || "pending") !== "pending" || viewedSent.current.has(shift.id)) return;
+    viewedSent.current.add(shift.id);
+    try {
+      applyUpdated(await respondToShift(shift.id, "viewed"));
+    } catch {
+      viewedSent.current.delete(shift.id);
+    }
+  };
+
+  const submitResponse = async (
+    shift: ShiftSummary,
+    action: "accepted" | "declined",
+    note?: string
+  ) => {
+    setRespondingId(shift.id);
+    try {
+      applyUpdated(await respondToShift(shift.id, action, note));
+      setDeclineShiftId(null);
+      setDeclineNote("");
+    } catch (err) {
+      Alert.alert("Could not save", toApiError(err).message);
+    } finally {
+      setRespondingId(null);
+    }
+  };
 
   const goPrevWeek = () => {
     const prev = new Date(weekStart);
@@ -259,6 +315,16 @@ export const ScheduleScreen: React.FC = () => {
                     {"  "}
                     {formatTime12h(nextShift.start_time)} – {formatTime12h(nextShift.end_time)}
                   </Text>
+                  {ackTracked(nextShift.ack_status) ? (
+                    <Text style={[styles.nextNote, { color: ackColor(nextShift.ack_status) }]}>
+                      {ackLabel(nextShift.ack_status)}
+                    </Text>
+                  ) : null}
+                  {nextShift.notes?.trim() ? (
+                    <Text style={styles.nextNote} numberOfLines={3}>
+                      {nextShift.notes.trim()}
+                    </Text>
+                  ) : null}
                 </View>
               ) : (
                 <Text style={styles.noNext}>No upcoming shifts this week.</Text>
@@ -301,9 +367,20 @@ export const ScheduleScreen: React.FC = () => {
                 <Text style={styles.emptyText}>No shifts scheduled for this week.</Text>
               ) : (
                 dayGroups.map((group) =>
-                  group.shifts.map((shift, index) => (
+                  group.shifts.map((shift, index) => {
+                    const open = openShiftId === shift.id;
+                    const declining = declineShiftId === shift.id;
+                    const busy = respondingId === shift.id;
+                    return (
                     <View key={shift.id} style={styles.dayRow}>
                       <View style={{ flex: 1 }}>
+                        <Pressable
+                          onPress={() => {
+                            setOpenShiftId(open ? null : shift.id);
+                            if (!open) void markViewed(shift);
+                            if (open) setDeclineShiftId(null);
+                          }}
+                        >
                         {index === 0 ? (
                           <Text style={styles.dayName}>
                             {capitalizeWeekday(group.date)} · {formatShortDate(group.date)}
@@ -317,12 +394,78 @@ export const ScheduleScreen: React.FC = () => {
                             {shift.project_name || shift.job_name}
                           </Text>
                         ) : null}
+                        {shift.notes?.trim() ? (
+                          <Text style={styles.dayNote} numberOfLines={2}>
+                            {shift.notes.trim()}
+                          </Text>
+                        ) : null}
+                        {ackTracked(shift.ack_status) ? (
+                          <Text style={[styles.ackLabel, { color: ackColor(shift.ack_status) }]}>
+                            {ackLabel(shift.ack_status)}
+                          </Text>
+                        ) : null}
+                        </Pressable>
+                        {open && ackTracked(shift.ack_status) ? (
+                          <View style={styles.ackActions}>
+                            <Text style={styles.ackHelp}>
+                              Confirm that you will attend, or decline if you cannot.
+                            </Text>
+                            {shift.ack_status === "declined" && shift.ack_note?.trim() ? (
+                              <Text style={styles.dayNote}>{shift.ack_note.trim()}</Text>
+                            ) : null}
+                            <View style={styles.ackButtons}>
+                              <Pressable
+                                style={[styles.ackBtn, styles.ackBtnYes, busy && styles.ackBtnDisabled]}
+                                disabled={busy || shift.ack_status === "accepted"}
+                                onPress={() => {
+                                  void submitResponse(shift, "accepted");
+                                }}
+                              >
+                                <Text style={styles.ackBtnYesText}>I'll be there</Text>
+                              </Pressable>
+                              <Pressable
+                                style={[styles.ackBtn, styles.ackBtnNo, busy && styles.ackBtnDisabled]}
+                                disabled={busy}
+                                onPress={() => {
+                                  setDeclineShiftId(declining ? null : shift.id);
+                                }}
+                              >
+                                <Text style={styles.ackBtnNoText}>I can't go</Text>
+                              </Pressable>
+                            </View>
+                            {declining ? (
+                              <View>
+                                <TextInput
+                                  value={declineNote}
+                                  onChangeText={setDeclineNote}
+                                  placeholder="Optional — for example, can't work Fridays"
+                                  placeholderTextColor={colors.textMuted}
+                                  style={styles.declineInput}
+                                  multiline
+                                  maxLength={500}
+                                />
+                                <Pressable
+                                  style={[styles.ackBtn, styles.ackBtnNo, busy && styles.ackBtnDisabled]}
+                                  disabled={busy}
+                                  onPress={() => {
+                                    void submitResponse(shift, "declined", declineNote);
+                                  }}
+                                >
+                                  <Text style={styles.ackBtnNoText}>
+                                    {busy ? "Saving…" : "Confirm decline"}
+                                  </Text>
+                                </Pressable>
+                              </View>
+                            ) : null}
+                          </View>
+                        ) : null}
                       </View>
                       <Text style={styles.dayHours}>
                         {formatHoursMinutes(shiftMinutes(shift))}
                       </Text>
                     </View>
-                  ))
+                    );
+                  })
                 )
               )}
             </View>
@@ -504,6 +647,12 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     marginTop: 2
   },
+  nextNote: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: colors.textPrimary,
+    marginTop: 6
+  },
   noNext: {
     ...typography.bodySmall,
     color: colors.textMuted,
@@ -564,7 +713,7 @@ const styles = StyleSheet.create({
   },
   dayRow: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     gap: spacing.md,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.md,
@@ -588,6 +737,70 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     color: colors.textMuted,
     marginTop: 2
+  },
+  dayNote: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: colors.textPrimary,
+    marginTop: 2
+  },
+  ackLabel: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontFamily: typography.button.fontFamily,
+    marginTop: 4
+  },
+  ackActions: {
+    marginTop: 8,
+    gap: 8
+  },
+  ackHelp: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: colors.textMuted
+  },
+  ackButtons: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8
+  },
+  ackBtn: {
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8
+  },
+  ackBtnYes: {
+    backgroundColor: ACCENT
+  },
+  ackBtnYesText: {
+    color: "#fff",
+    fontSize: 13,
+    fontFamily: typography.button.fontFamily
+  },
+  ackBtnNo: {
+    backgroundColor: "#FEF2F2",
+    borderWidth: 1,
+    borderColor: "#FECACA"
+  },
+  ackBtnNoText: {
+    color: "#b91c1c",
+    fontSize: 13,
+    fontFamily: typography.button.fontFamily
+  },
+  ackBtnDisabled: {
+    opacity: 0.5
+  },
+  declineInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 13,
+    color: colors.textPrimary,
+    minHeight: 64,
+    textAlignVertical: "top",
+    marginBottom: 8
   },
   dayHours: {
     fontFamily: typography.button.fontFamily,

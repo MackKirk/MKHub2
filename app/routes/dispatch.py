@@ -4,7 +4,7 @@ Handles shifts, attendance, and approvals.
 """
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_, func
+from sqlalchemy import and_, or_, func, update
 from typing import List, Optional, Dict
 from datetime import date, time, datetime, timedelta, timezone
 import uuid
@@ -12,7 +12,7 @@ import pytz
 
 from ..db import get_db
 from ..models.models import (
-    Shift, Attendance, AuditLog, Project, User, 
+    Shift, ShiftResponse, Attendance, AuditLog, Project, User, 
     UserNotificationPreference, ProjectTimeEntry, ProjectTimeEntryLog,
     EmployeeProfile
 )
@@ -199,6 +199,68 @@ def _normalize_shift_notes(raw) -> Optional[str]:
     return text
 
 
+def _normalize_ack_note(raw) -> Optional[str]:
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    if not text:
+        return None
+    if len(text) > 500:
+        raise HTTPException(status_code=400, detail="Decline note must be 500 characters or fewer")
+    return text
+
+
+def _worker_display_name(db: Session, worker_id) -> str:
+    profile = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == worker_id).first()
+    if profile:
+        name = f"{profile.first_name or ''} {profile.last_name or ''}".strip()
+        if name:
+            return name
+    worker = db.query(User).filter(User.id == worker_id).first()
+    return worker.username if worker else "A worker"
+
+
+def _add_shift_response(db: Session, shift: Shift, action: str, note: Optional[str] = None) -> ShiftResponse:
+    row = ShiftResponse(
+        shift_id=shift.id,
+        worker_id=shift.worker_id,
+        project_id=shift.project_id,
+        action=action,
+        note=note,
+        shift_date=shift.date,
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(row)
+    return row
+
+
+def _shift_response_dict(row: ShiftResponse, project_name: Optional[str] = None) -> dict:
+    return {
+        "id": str(row.id),
+        "shift_id": str(row.shift_id),
+        "worker_id": str(row.worker_id),
+        "project_id": str(row.project_id) if row.project_id else None,
+        "project_name": project_name,
+        "action": row.action,
+        "note": row.note,
+        "shift_date": row.shift_date.isoformat() if row.shift_date else None,
+        "weekday": row.shift_date.strftime("%A") if row.shift_date else None,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+    }
+
+
+def _can_read_shift_ack(user: User, shift: Shift, project: Optional[Project], db: Session) -> bool:
+    if str(shift.worker_id) == str(user.id) or is_admin(user, db) or is_supervisor(user, db):
+        return True
+    if not project:
+        return False
+    try:
+        assert_project_workload_permission(user, project, "read", db)
+        return True
+    except HTTPException:
+        return False
+
+
 def _shift_to_dict(
     shift: Shift,
     *,
@@ -219,6 +281,10 @@ def _shift_to_dict(
         "job_id": str(shift.job_id) if shift.job_id else None,
         "job_name": shift.job_name,
         "notes": shift.notes,
+        "ack_status": shift.ack_status or "pending",
+        "ack_viewed_at": shift.ack_viewed_at.isoformat() if shift.ack_viewed_at else None,
+        "ack_responded_at": shift.ack_responded_at.isoformat() if shift.ack_responded_at else None,
+        "ack_note": shift.ack_note,
         "created_by": str(shift.created_by),
         "created_at": shift.created_at.isoformat() if shift.created_at else None,
         "conflicts": conflicts if conflicts is not None else [],
@@ -306,6 +372,7 @@ def create_shift(
     job_type = payload.get("job_type") or payload.get("job_name")
     job_id = payload.get("job_id")  # Keep for backward compatibility
     job_name = job_type or payload.get("job_name")  # Use job_type if available, otherwise job_name
+    notes = _normalize_shift_notes(payload.get("notes")) if "notes" in payload else None
     
     # Create shift
     shift = Shift(
@@ -319,6 +386,7 @@ def create_shift(
         geofences=geofences,
         job_id=job_id,  # Can be None if using job_type
         job_name=job_name,  # Store the job type name
+        notes=notes,
         created_by=user.id,
     )
     
@@ -349,6 +417,7 @@ def create_shift(
             "date": date_str,
             "start_time": start_time_str,
             "end_time": end_time_str,
+            "notes": notes,
         }},
         context={
             "project_id": project_id,
@@ -371,6 +440,7 @@ def create_shift(
             "date": date_str,
             "start_time": start_time_str,
             "end_time": end_time_str,
+            "notes": notes,
         },
         timezone_str=project_timezone
     )
@@ -733,6 +803,150 @@ def get_shift(
     return _shift_to_dict(shift, geofences=geofences, project_name=project_name)
 
 
+@router.get("/shifts/{shift_id}/responses")
+def list_shift_responses(
+    shift_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Confirmation history for one shift, plus this worker's recent declines."""
+    shift = db.query(Shift).filter(Shift.id == shift_id).first()
+    if not shift:
+        raise HTTPException(status_code=404, detail="Shift not found")
+    project = db.query(Project).filter(Project.id == shift.project_id).first()
+    if not _can_read_shift_ack(user, shift, project, db):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    events = (
+        db.query(ShiftResponse)
+        .filter(ShiftResponse.shift_id == shift.id)
+        .order_by(ShiftResponse.created_at.asc())
+        .all()
+    )
+    project_ids = {row.project_id for row in events if row.project_id}
+    declines = (
+        db.query(ShiftResponse)
+        .filter(
+            ShiftResponse.worker_id == shift.worker_id,
+            ShiftResponse.action == "declined",
+            ShiftResponse.shift_id != shift.id,
+        )
+        .order_by(ShiftResponse.created_at.desc())
+        .limit(15)
+        .all()
+    )
+    project_ids.update(row.project_id for row in declines if row.project_id)
+    names = {}
+    if project_ids:
+        for proj in db.query(Project).filter(Project.id.in_(list(project_ids))).all():
+            names[proj.id] = proj.name
+
+    return {
+        "ack_status": shift.ack_status or "pending",
+        "ack_viewed_at": shift.ack_viewed_at.isoformat() if shift.ack_viewed_at else None,
+        "ack_responded_at": shift.ack_responded_at.isoformat() if shift.ack_responded_at else None,
+        "ack_note": shift.ack_note,
+        "events": [_shift_response_dict(row, names.get(row.project_id)) for row in events],
+        "worker_declines": [_shift_response_dict(row, names.get(row.project_id)) for row in declines],
+    }
+
+
+@router.post("/shifts/{shift_id}/response")
+def respond_to_shift(
+    shift_id: str,
+    payload: dict,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Worker confirms a shift.
+    viewed = opened it without accepting or declining.
+    accepted / declined update the current answer and append history.
+    """
+    query = db.query(Shift).filter(Shift.id == shift_id)
+    if db.get_bind().dialect.name == "postgresql":
+        query = query.with_for_update()
+    shift = query.first()
+    if not shift:
+        raise HTTPException(status_code=404, detail="Shift not found")
+    if str(shift.worker_id) != str(user.id):
+        raise HTTPException(status_code=403, detail="Only the assigned worker can respond to this shift")
+    if shift.status != "scheduled":
+        raise HTTPException(status_code=400, detail="This shift is no longer scheduled")
+
+    action = str(payload.get("action") or "").strip().lower()
+    if action not in ("viewed", "accepted", "declined"):
+        raise HTTPException(status_code=400, detail="action must be viewed, accepted, or declined")
+
+    note = _normalize_ack_note(payload.get("note")) if action == "declined" else None
+    now = datetime.now(timezone.utc)
+    changed = False
+
+    if action == "viewed":
+        # Only pending rows, so a slower "seen" request cannot overwrite accept/decline.
+        result = db.execute(
+            update(Shift)
+            .where(and_(Shift.id == shift.id, Shift.ack_status == "pending"))
+            .values(ack_status="viewed", ack_viewed_at=now, updated_at=now)
+        )
+        if result.rowcount:
+            db.expire(shift)
+            _add_shift_response(db, shift, "viewed")
+            changed = True
+    elif action == "accepted":
+        if shift.ack_status != "accepted":
+            if shift.ack_viewed_at is None:
+                shift.ack_viewed_at = now
+            shift.ack_status = "accepted"
+            shift.ack_responded_at = now
+            shift.ack_note = None
+            _add_shift_response(db, shift, "accepted")
+            changed = True
+    else:
+        if shift.ack_status != "declined" or (note or None) != (shift.ack_note or None):
+            if shift.ack_viewed_at is None:
+                shift.ack_viewed_at = now
+            shift.ack_status = "declined"
+            shift.ack_responded_at = now
+            shift.ack_note = note
+            _add_shift_response(db, shift, "declined", note)
+            changed = True
+
+    project = db.query(Project).filter(Project.id == shift.project_id).first()
+    if changed:
+        shift.updated_at = now
+        db.commit()
+        db.refresh(shift)
+        if action in ("accepted", "declined") and shift.created_by and str(shift.created_by) != str(shift.worker_id):
+            try:
+                send_shift_notification(
+                    db=db,
+                    user_id=str(shift.created_by),
+                    notification_type=action,
+                    shift_data={
+                        "id": str(shift.id),
+                        "project_id": str(shift.project_id),
+                        "date": shift.date.isoformat(),
+                        "start_time": shift.start_time.isoformat(),
+                        "end_time": shift.end_time.isoformat(),
+                        "worker_name": _worker_display_name(db, shift.worker_id),
+                        "ack_note": note,
+                    },
+                    timezone_str=(project.timezone if project and project.timezone else settings.tz_default),
+                )
+            except Exception:
+                pass
+    else:
+        db.rollback()
+
+    db.refresh(shift)
+    return _shift_to_dict(
+        shift,
+        geofences=get_geofences_for_shift(shift, project, db) if project else (shift.geofences or []),
+        project_name=project.name if project else None,
+    )
+
+
 @router.patch("/shifts/{shift_id}")
 def update_shift(
     shift_id: str,
@@ -782,19 +996,26 @@ def update_shift(
         except Exception:
             raise HTTPException(status_code=400, detail="Invalid date format")
     
+    time_changed = False
     if "start_time" in payload:
         try:
-            shift.start_time = time.fromisoformat(payload["start_time"])
-            updated = True
+            new_start = time.fromisoformat(payload["start_time"])
         except Exception:
             raise HTTPException(status_code=400, detail="Invalid start_time format")
+        if new_start != shift.start_time:
+            shift.start_time = new_start
+            time_changed = True
+        updated = True
     
     if "end_time" in payload:
         try:
-            shift.end_time = time.fromisoformat(payload["end_time"])
-            updated = True
+            new_end = time.fromisoformat(payload["end_time"])
         except Exception:
             raise HTTPException(status_code=400, detail="Invalid end_time format")
+        if new_end != shift.end_time:
+            shift.end_time = new_end
+            time_changed = True
+        updated = True
     
     # WORKER IS LOCKED: Do not allow worker changes. If worker_id is in payload, reject it.
     if "worker_id" in payload:
@@ -837,6 +1058,21 @@ def update_shift(
         if new_notes != shift.notes:
             shift.notes = new_notes
             updated = True
+
+    ack_reset = False
+    if time_changed and (shift.ack_status or "pending") != "pending":
+        _add_shift_response(
+            db,
+            shift,
+            "reset",
+            "Shift time changed. Confirmation is required again.",
+        )
+        shift.ack_status = "pending"
+        shift.ack_viewed_at = None
+        shift.ack_responded_at = None
+        shift.ack_note = None
+        ack_reset = True
+        updated = True
 
     conflict_payload = serialize_conflicts(
         db,
@@ -909,6 +1145,8 @@ def update_shift(
                 "date": shift.date.isoformat(),
                 "start_time": shift.start_time.isoformat(),
                 "end_time": shift.end_time.isoformat(),
+                "notes": shift.notes,
+                "ack_reset": ack_reset,
             },
             timezone_str=project_timezone
         )

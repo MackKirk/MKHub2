@@ -1444,14 +1444,15 @@ export const createShiftQuickInfo = formModalQuickInfo({
     <>
       Choose {uiLabel('Workers')}, pick {uiLabel('Single Date')} or {uiLabel('Date Range')}, select a time of day (
       {uiLabel('All day')}, {uiLabel('Morning')}, {uiLabel('Afternoon')}, {uiLabel('Evening')}, or {uiLabel('Custom')}), and optionally assign
-      a {uiLabel('Job Type')}. If the project still has divisions without an on-site lead, turn on{' '}
+      a {uiLabel('Job Type')} or a {uiLabel('Note for the worker')}. If the project still has divisions without an on-site lead, turn on{' '}
       {uiLabel('Also assign as on-site lead')} when needed. The button label shows how many shifts will be created.
     </>
   ),
   behavior: (
     <>
       In range mode you can {uiLabel('Exclude weekends')} so Saturday and Sunday are skipped. Each worker × date
-      combination becomes its own shift. Overlapping times for the same worker show a warning but do not block saving.
+      combination becomes its own shift. A note is copied onto every shift in the batch and shown on the worker&apos;s
+      schedule. Overlapping times for the same worker show a warning but do not block saving.
       On-site lead is optional and collapsed by default; when used it only fills empty division slots.
     </>
   ),
@@ -1842,18 +1843,29 @@ export const userOrganizationQuickInfo = formModalQuickInfo({
   ),
 });
 
-/** User profile — Salary (Job tab). */
+/** User profile — Pay type (Job tab). Does not change the pay rate. */
 export const userSalaryQuickInfo = formModalQuickInfo({
-  purpose: <>Current pay rate and pay type on file for this employee.</>,
+  purpose: (
+    <>
+      Set how this employee is paid. {uiLabel('Pay type')} decides whether they must clock in and receive hours
+      reminders. The pay rate stays on salary history.
+    </>
+  ),
   howToUse: (
     <>
-      Enter {uiLabel('Pay rate')} and choose or type {uiLabel('Pay type')}. Salary history is managed separately on the
-      profile card.
+      Choose {uiLabel('Hourly')}, {uiLabel('Salary')}, or {uiLabel('Contract')}. For salary, turn on{' '}
+      {uiLabel('Register hours')} when that person must still clock in.
+    </>
+  ),
+  behavior: (
+    <>
+      With {uiLabel('Register hours')} on, a salary employee is treated as hourly for clock-in and hours reminders.
+      Pay type stays Salary. Hourly and contract always register hours.
     </>
   ),
   actions: (
     <>
-      {uiLabel('Save')} updates compensation fields. {uiLabel('Cancel')} closes without saving.
+      {uiLabel('Save')} updates pay type without changing the rate. {uiLabel('Cancel')} closes without saving.
     </>
   ),
 });
@@ -1898,8 +1910,9 @@ export const userSalaryEntryQuickInfo = formModalQuickInfo({
   ),
   howToUse: (
     <>
-      Set {uiLabel('Effective date')}, enter the new {uiLabel('Pay rate')}, and choose {uiLabel('Pay type')} if needed.
-      {uiLabel('Change reason')} is required; {uiLabel('Comment')} is optional.
+      Set {uiLabel('Effective date')}, enter the new {uiLabel('Pay rate')}, and choose {uiLabel('Pay type')}.{' '}
+      {uiLabel('Change reason')} is required; {uiLabel('Comment')} is optional. To change pay type without a new rate,
+      use the pencil on the pay type card.
     </>
   ),
   behavior: (

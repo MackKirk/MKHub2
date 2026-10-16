@@ -110,6 +110,13 @@ class TestBambooHRTimeOffRequests(unittest.TestCase):
         self.assertTrue(_is_manual_history_row(manual))
         self.assertFalse(_is_bamboo_sourced_history(manual))
 
+        hub_approved = _FakeHistory(
+            description="Time off used for 10/02/2026\nflu",
+            bamboohr_transaction_id="hub-request:abc",
+        )
+        self.assertTrue(_is_manual_history_row(hub_approved))
+        self.assertFalse(_is_bamboo_sourced_history(hub_approved))
+
         bamboo = _FakeHistory(
             description="Time off used for 01/15/2025",
             bamboohr_transaction_id="req:123",

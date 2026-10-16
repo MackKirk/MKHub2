@@ -21,6 +21,18 @@ export const getShifts = async (
   return response.data ?? [];
 };
 
+export const respondToShift = async (
+  shiftId: string,
+  action: "viewed" | "accepted" | "declined",
+  note?: string | null
+): Promise<ShiftSummary> => {
+  const response = await api.post<ShiftSummary>(`/dispatch/shifts/${shiftId}/response`, {
+    action,
+    note: note?.trim() || null
+  });
+  return response.data;
+};
+
 export const getShiftAttendance = async (
   shiftId: string
 ): Promise<ShiftAttendanceResponse[]> => {

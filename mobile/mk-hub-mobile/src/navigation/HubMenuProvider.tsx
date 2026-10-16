@@ -27,6 +27,7 @@ import {
 import { useAuth } from "../hooks/useAuth";
 import { useTasksBadge } from "../hooks/useTasksBadge";
 import { useCommunityBadge } from "../hooks/useCommunityBadge";
+import { shouldRegisterHours } from "../lib/hoursRegistration";
 import { hasPermission } from "../lib/permissions";
 import { LinearGradient } from "expo-linear-gradient";
 import { HUB_MENU_CATEGORIES, type HubMenuItem } from "./hubMenu";
@@ -152,7 +153,9 @@ export const HubMenuProvider: React.FC<{ children: React.ReactNode }> = ({
     });
   }, [slide]);
 
+  const showClock = shouldRegisterHours(user?.pay_type, user?.needs_register_hours);
   const canSeeItem = (item: HubMenuItem) =>
+    (item.id !== "clock" || showClock) &&
     hasPermission(permissionsSet, roles, item.requiredPermission);
 
   const navigateTarget = (item: HubMenuItem) => {

@@ -35,6 +35,7 @@ from ..models.models import (
     EmployeeDocument,
 )
 from ..services.audit_log_entries import audit_rows_to_entry_dicts
+from ..services.user_display import employee_name_match, profile_search_label
 from ..services.user_page_views import (
     PAGE_VIEW_CATEGORY,
     page_view_row_to_dict,
@@ -490,11 +491,7 @@ def hr_data_quality(
 
 
 def _user_to_dict(u: User, ep: Optional[EmployeeProfile], *, include_divisions: bool = True) -> dict:
-    name = (getattr(ep, 'preferred_name', None) or '').strip() if ep else ''
-    if not name:
-        first = (getattr(ep, 'first_name', None) or '').strip() if ep else ''
-        last = (getattr(ep, 'last_name', None) or '').strip() if ep else ''
-        name = ' '.join([x for x in [first, last] if x])
+    name = profile_search_label(u, ep)
     roles = [r.name for r in getattr(u, 'roles', [])]
     payload = {
         "id": str(u.id),
@@ -502,6 +499,9 @@ def _user_to_dict(u: User, ep: Optional[EmployeeProfile], *, include_divisions: 
         "email": u.email_personal,
         "is_active": u.is_active,
         "name": name or None,
+        "first_name": ((getattr(ep, "first_name", None) or "").strip() or None) if ep else None,
+        "last_name": ((getattr(ep, "last_name", None) or "").strip() or None) if ep else None,
+        "preferred_name": ((getattr(ep, "preferred_name", None) or "").strip() or None) if ep else None,
         "roles": roles,
         "profile_photo_file_id": str(getattr(ep, 'profile_photo_file_id')) if (ep and getattr(ep, 'profile_photo_file_id', None)) else None,
         "manager_user_id": str(ep.manager_user_id) if (ep and ep.manager_user_id) else None,
@@ -587,13 +587,7 @@ def _apply_user_list_filters(
 ):
     if q:
         like = f"%{q}%"
-        query = query.filter(
-            (User.username.ilike(like))
-            | (User.email_personal.ilike(like))
-            | (EmployeeProfile.first_name.ilike(like))
-            | (EmployeeProfile.last_name.ilike(like))
-            | (EmployeeProfile.preferred_name.ilike(like))
-        )
+        query = query.filter(employee_name_match(like))
 
     status_val = (status or "").strip().lower()
     status_not_val = (status_not or "").strip().lower()

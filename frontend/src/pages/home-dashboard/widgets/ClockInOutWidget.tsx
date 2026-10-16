@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Clock3 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { shouldRegisterHours } from '@/lib/payType';
 import { getTodayLocal } from '@/lib/dateUtils';
 import FadeInOnMount from '@/components/FadeInOnMount';
 import LoadingOverlay from '@/components/LoadingOverlay';
@@ -58,6 +59,14 @@ export function ClockInOutWidget({ config: _config }: ClockInOutWidgetProps) {
     queryKey: ['me'],
     queryFn: () => api<{ id?: string }>('GET', '/auth/me'),
   });
+  const { data: meProfile } = useQuery({
+    queryKey: ['me-profile'],
+    queryFn: () => api<any>('GET', '/auth/me/profile'),
+  });
+  const mustRegisterHours = shouldRegisterHours(
+    meProfile?.profile?.pay_type,
+    meProfile?.profile?.needs_register_hours,
+  );
 
   const { data: shiftsForDate = [] } = useQuery<Shift[]>({
     queryKey: ['clock-in-out-shifts', todayStr, currentUser?.id],
@@ -159,6 +168,14 @@ export function ClockInOutWidget({ config: _config }: ClockInOutWidgetProps) {
         <LoadingOverlay isLoading minHeight="min-h-[120px]" className="min-h-0 flex-1">
           <div className="min-h-[120px]" />
         </LoadingOverlay>
+      </div>
+    );
+  }
+
+  if (meProfile && !mustRegisterHours) {
+    return (
+      <div className="flex h-full min-h-0 items-center text-sm text-gray-600">
+        Hours logging is off for this salary role.
       </div>
     );
   }

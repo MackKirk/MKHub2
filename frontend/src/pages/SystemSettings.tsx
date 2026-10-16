@@ -25,6 +25,7 @@ import SettingsLookupListsPanel from '@/components/settings/SettingsLookupListsP
 import SettingsFilesAssetsPanel from '@/components/settings/SettingsFilesAssetsPanel';
 import SettingsAutoTasksPanel from '@/components/settings/SettingsAutoTasksPanel';
 import SettingsPropertyOwnersPanel from '@/components/settings/SettingsPropertyOwnersPanel';
+import SettingsShiftNotesPanel from '@/components/settings/SettingsShiftNotesPanel';
 import {
   IMPLEMENTED_PERMISSIONS,
   isHiddenPermissionKey,
@@ -108,7 +109,7 @@ import {
 
 type Item = { id:string, label:string, value?:string, sort_index?:number, meta?: any };
 
-type SettingsSection = 'files' | 'templates' | 'lists' | 'auto-tasks' | 'property-owners';
+type SettingsSection = 'files' | 'templates' | 'lists' | 'auto-tasks' | 'property-owners' | 'shift-notes';
 
 export default function SystemSettings() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -151,15 +152,23 @@ export default function SystemSettings() {
     if (canViewTemplates) sections.push('templates');
     if (canViewAutoTasks) sections.push('auto-tasks');
     if (canViewPropertyOwners) sections.push('property-owners');
+    if (canAccessSettings) sections.push('shift-notes');
     return sections;
-  }, [canViewLists, canViewFiles, canViewTemplates, canViewAutoTasks, canViewPropertyOwners]);
+  }, [canViewLists, canViewFiles, canViewTemplates, canViewAutoTasks, canViewPropertyOwners, canAccessSettings]);
 
   const [section, setSection] = useState<SettingsSection>('lists');
 
   useEffect(() => {
     const raw = (searchParams.get('section') || '').toLowerCase();
     let desired: SettingsSection | null = null;
-    if (raw === 'templates' || raw === 'files' || raw === 'lists' || raw === 'auto-tasks' || raw === 'property-owners') {
+    if (
+      raw === 'templates' ||
+      raw === 'files' ||
+      raw === 'lists' ||
+      raw === 'auto-tasks' ||
+      raw === 'property-owners' ||
+      raw === 'shift-notes'
+    ) {
       desired = raw as SettingsSection;
     } else if (!raw) {
       desired = 'lists';
@@ -192,6 +201,7 @@ export default function SystemSettings() {
     canViewTemplates ? { id: 'templates' as SettingsSection, label: 'Templates' } : null,
     canViewAutoTasks ? { id: 'auto-tasks' as SettingsSection, label: 'Auto tasks' } : null,
     canViewPropertyOwners ? { id: 'property-owners' as SettingsSection, label: 'Property owners' } : null,
+    canAccessSettings ? { id: 'shift-notes' as SettingsSection, label: 'Shift notes' } : null,
   ].filter(Boolean) as { id: SettingsSection; label: string }[];
 
   if (!settingsPermsFetched) {
@@ -254,6 +264,8 @@ export default function SystemSettings() {
       {section === 'property-owners' && canViewPropertyOwners && (
         <SettingsPropertyOwnersPanel canEdit={canEditPropertyOwners} />
       )}
+
+      {section === 'shift-notes' && canAccessSettings && <SettingsShiftNotesPanel canEdit />}
 
       {section === 'templates' && canViewTemplates && (
         <div className={uiSpacing.pageStack}>

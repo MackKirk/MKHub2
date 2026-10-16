@@ -1,7 +1,7 @@
 """6 PM reminder for workers who have not logged hours today."""
 from __future__ import annotations
 
-from datetime import datetime, time, timedelta
+from datetime import datetime, time, timedelta, timezone
 
 import pytz
 import structlog
@@ -9,7 +9,7 @@ from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from ..config import settings
-from ..models.models import Attendance, DevicePushToken, EmployeeProfile, HoursReminderEvent, User
+from ..models.models import Attendance, DevicePushToken, EmployeeProfile, HoursReminderEvent, Notification, User
 from ..services.expo_push import send_expo_push
 from ..services.hours_registration import employee_should_register_hours
 from ..services.notifications import should_send_notification
@@ -22,6 +22,7 @@ TITLE = "Log your hours"
 BODY = "It's 6 PM — don't forget to log today's hours in MK Hub."
 BLAIR_USERNAME = "bbennett"
 BLAIR_TITLE = "Blair, have you logged your hours today?"
+HOURS_LINK = "/home?open=hours"
 
 
 def hours_reminder_copy(username: str | None) -> tuple[str, str]:
@@ -72,24 +73,37 @@ def user_logged_hours_on(db: Session, user_id, local_date) -> bool:
     return row is not None
 
 
-def process_hours_reminders(db: Session, *, force: bool = False) -> int:
-    """Send a 6 PM hours reminder to mobile users who have not logged today."""
-    if not settings.enable_push:
-        return 0
+def hours_reminder_payload(username: str | None, reminder_date) -> dict:
+    title, body = hours_reminder_copy(username)
+    return {
+        "title": title,
+        "message": body,
+        "type": "hours_reminder",
+        "link": HOURS_LINK,
+        "read": False,
+        "metadata": {"reminder_date": reminder_date.isoformat()},
+    }
 
+
+def process_hours_reminders(db: Session, *, force: bool = False) -> int:
+    """6 PM reminder for people who must log hours and have not logged today.
+
+    Writes the web bell item for every eligible user. Phone push is extra, and
+    only when that user has a device token.
+    """
     now = _company_now()
     if not force and not is_reminder_window(now):
         return 0
 
     local_date = now.date()
-    tokens = (
-        db.query(DevicePushToken, User)
-        .join(User, User.id == DevicePushToken.user_id)
-        .filter(User.is_active.is_(True))
-        .all()
-    )
-    if not tokens:
+    users = db.query(User).filter(User.is_active.is_(True)).all()
+    if not users:
         return 0
+
+    user_ids = [user.id for user in users]
+    tokens_by_user: dict = {}
+    for device in db.query(DevicePushToken).filter(DevicePushToken.user_id.in_(user_ids)).all():
+        tokens_by_user.setdefault(device.user_id, []).append(device.token)
 
     already_sent = {
         row.user_id
@@ -101,41 +115,46 @@ def process_hours_reminders(db: Session, *, force: bool = False) -> int:
     profiles = {
         row.user_id: row
         for row in db.query(EmployeeProfile)
-        .filter(EmployeeProfile.user_id.in_([u.id for _, u in tokens]))
+        .filter(EmployeeProfile.user_id.in_(user_ids))
         .all()
     }
 
     sent = 0
     stale_tokens: list[str] = []
-    grouped: dict = {}
-    for device, user in tokens:
-        if user.status and str(user.status).lower() not in ("active", ""):
-            continue
-        grouped.setdefault(user.id, {"user": user, "tokens": []})
-        grouped[user.id]["tokens"].append(device.token)
-
-    for user_id, bundle in grouped.items():
+    for user in users:
         try:
-            if user_id in already_sent:
+            if user.status and str(user.status).lower() not in ("active", ""):
                 continue
-            if not employee_should_register_hours(profile=profiles.get(user_id)):
+            if user.id in already_sent:
                 continue
-            if not should_send_notification(db, user_id, "push", settings.tz_default):
+            if not employee_should_register_hours(profile=profiles.get(user.id)):
                 continue
-            if user_logged_hours_on(db, user_id, local_date):
+            if user_logged_hours_on(db, user.id, local_date):
                 continue
 
-            title, body = hours_reminder_copy(bundle["user"].username)
-            stale = send_expo_push(
-                bundle["tokens"],
-                title=title,
-                body=body,
-                data={"screen": "Clock", "type": "hours_reminder"},
+            title, body = hours_reminder_copy(user.username)
+            db.add(
+                Notification(
+                    user_id=user.id,
+                    channel="push",
+                    template_key="hours_reminder",
+                    payload_json=hours_reminder_payload(user.username, local_date),
+                    status="sent",
+                    created_at=datetime.now(timezone.utc),
+                )
             )
-            stale_tokens.extend(stale)
+            tokens = tokens_by_user.get(user.id) or []
+            if tokens and settings.enable_push and should_send_notification(db, user.id, "push", settings.tz_default):
+                stale = send_expo_push(
+                    tokens,
+                    title=title,
+                    body=body,
+                    data={"screen": "Clock", "type": "hours_reminder"},
+                )
+                stale_tokens.extend(stale)
             db.add(
                 HoursReminderEvent(
-                    user_id=user_id,
+                    user_id=user.id,
                     reminder_date=local_date,
                 )
             )
@@ -143,7 +162,7 @@ def process_hours_reminders(db: Session, *, force: bool = False) -> int:
         except Exception as exc:
             logger.warning(
                 "hours_reminder_user_failed",
-                user_id=str(user_id),
+                user_id=str(user.id),
                 error=str(exc),
             )
 
