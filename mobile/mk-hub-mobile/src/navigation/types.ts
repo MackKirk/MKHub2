@@ -50,7 +50,15 @@ export type RootStackParamList = {
   SafetyInspectionDetail: {
     projectId: string;
     inspectionId: string;
+    canWrite?: boolean;
+    /** Open this follow-up modal after follow-ups load */
+    initialFollowUpId?: string;
+    projectName?: string;
+    projectAddress?: string;
+    projectAddressCity?: string;
+    projectAddressProvince?: string;
   };
+  SafetyFollowUps: undefined;
   FleetAssetDetail: {
     targetType: "fleet" | "equipment";
     assetId: string;

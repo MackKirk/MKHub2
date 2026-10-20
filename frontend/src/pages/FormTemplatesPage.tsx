@@ -49,7 +49,9 @@ type FormTemplatesPageProps = {
   embedded?: boolean;
 };
 
-const LIST_GRID_COLS = 'grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto_auto]';
+const LIST_GRID_COLS_SAFETY =
+  'grid-cols-[minmax(0,2fr)_minmax(0,0.85fr)_minmax(0,0.9fr)_minmax(0,1fr)_minmax(0,1fr)_auto_auto]';
+const LIST_GRID_COLS_HR = 'grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto_auto]';
 const LIST_MIN_WIDTH = 'min-w-[720px]';
 
 function templateStatusBadge(status: string) {
@@ -57,6 +59,13 @@ function templateStatusBadge(status: string) {
     return <AppBadge variant="success">Active</AppBadge>;
   }
   return <AppBadge variant="neutral">{status}</AppBadge>;
+}
+
+function templateTypeLabel(category: string | null | undefined): string {
+  const cat = (category || '').trim().toLowerCase();
+  if (cat === 'follow_up') return 'Follow-up';
+  if (cat === 'employee_review') return 'Employee review';
+  return 'Inspection';
 }
 
 export default function FormTemplatesPage({ variant = 'safety', embedded = false }: FormTemplatesPageProps) {
@@ -173,6 +182,7 @@ export default function FormTemplatesPage({ variant = 'safety', embedded = false
 
   const showEmptyList = !isLoading && rows.length === 0;
   const showNoMatches = !isLoading && rows.length > 0 && filteredRows.length === 0;
+  const listGridCols = isHr ? LIST_GRID_COLS_HR : LIST_GRID_COLS_SAFETY;
 
   const listContent = (
     <AppCard className={uiShadows.card} bodyClassName="!p-0">
@@ -200,7 +210,7 @@ export default function FormTemplatesPage({ variant = 'safety', embedded = false
               onClick={() => createMut.mutate()}
             />
           </div>
-          <AppSortableEntityListHeader variant="flat" gridCols={LIST_GRID_COLS} minWidth={LIST_MIN_WIDTH}>
+          <AppSortableEntityListHeader variant="flat" gridCols={listGridCols} minWidth={LIST_MIN_WIDTH}>
             <AppSortableEntityListSortColumn
               label="Name"
               column="name"
@@ -208,6 +218,16 @@ export default function FormTemplatesPage({ variant = 'safety', embedded = false
               sortDir={sortDir}
               onSort={setListSort}
             />
+            {!isHr ? (
+              <AppSortableEntityListSortColumn
+                label="Type"
+                column="name"
+                sortBy={sortBy}
+                sortDir={sortDir}
+                onSort={setListSort}
+                sortable={false}
+              />
+            ) : null}
             <AppSortableEntityListSortColumn
               label="Version"
               column="name"
@@ -254,13 +274,13 @@ export default function FormTemplatesPage({ variant = 'safety', embedded = false
               No matching templates.
             </div>
           ) : (
-            <AppSortableEntityListFlatBody gridCols={LIST_GRID_COLS} minWidth={LIST_MIN_WIDTH}>
+            <AppSortableEntityListFlatBody gridCols={listGridCols} minWidth={LIST_MIN_WIDTH}>
               {filteredRows.map((r) => (
                 <AppSortableEntityListRow
                   key={r.id}
                   variant="flat"
                   as="div"
-                  gridCols={LIST_GRID_COLS}
+                  gridCols={listGridCols}
                   minWidth={LIST_MIN_WIDTH}
                 >
                   <Link
@@ -270,6 +290,11 @@ export default function FormTemplatesPage({ variant = 'safety', embedded = false
                   >
                     {r.name}
                   </Link>
+                  {!isHr ? (
+                    <span className={uiCx(uiTypography.body, 'truncate')} title={templateTypeLabel(r.category)}>
+                      {templateTypeLabel(r.category)}
+                    </span>
+                  ) : null}
                   <span className={uiCx(uiTypography.body, 'truncate')} title={r.version_label || ''}>
                     {(r.version_label || '').trim() || '—'}
                   </span>

@@ -684,6 +684,82 @@ def create_app() -> FastAPI:
                         db.rollback()
                         print(f"[startup] safety inspection sign requests migration (non-critical): {e}")
 
+                    # project_safety_follow_ups (SiteDocs-style flags)
+                    try:
+                        if db.execute(
+                            text(
+                                "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'project_safety_follow_ups' LIMIT 1"
+                            )
+                        ).fetchall():
+                            pass
+                        else:
+                            db.execute(
+                                text(
+                                    """
+                                    CREATE TABLE project_safety_follow_ups (
+                                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                                        project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                                        source_inspection_id UUID NOT NULL REFERENCES project_safety_inspections(id) ON DELETE CASCADE,
+                                        source_field_key VARCHAR(255) NOT NULL,
+                                        source_field_label_snapshot VARCHAR(500) NULL,
+                                        source_value_snapshot JSONB NULL,
+                                        source_inspection_date_snapshot TIMESTAMPTZ NULL,
+                                        source_template_name_snapshot VARCHAR(255) NULL,
+                                        form_template_id UUID NULL REFERENCES form_templates(id) ON DELETE SET NULL,
+                                        form_definition_snapshot JSONB NULL,
+                                        form_payload JSONB NULL,
+                                        label VARCHAR(255) NULL,
+                                        assigned_user_id UUID NULL REFERENCES users(id) ON DELETE SET NULL,
+                                        due_date DATE NULL,
+                                        status VARCHAR(20) NOT NULL DEFAULT 'pending',
+                                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                                        created_by UUID NULL REFERENCES users(id) ON DELETE SET NULL,
+                                        updated_at TIMESTAMPTZ NULL,
+                                        completed_at TIMESTAMPTZ NULL
+                                    )
+                                    """
+                                )
+                            )
+                            db.execute(
+                                text(
+                                    "CREATE INDEX IF NOT EXISTS idx_safety_follow_ups_inspection_field ON project_safety_follow_ups (source_inspection_id, source_field_key)"
+                                )
+                            )
+                            db.execute(
+                                text(
+                                    "CREATE INDEX IF NOT EXISTS idx_safety_follow_ups_assigned_status ON project_safety_follow_ups (assigned_user_id, status)"
+                                )
+                            )
+                            db.execute(
+                                text(
+                                    "CREATE INDEX IF NOT EXISTS idx_safety_follow_ups_project_status ON project_safety_follow_ups (project_id, status)"
+                                )
+                            )
+                            db.commit()
+                            print("[startup] Created project_safety_follow_ups")
+                        # Additive columns for SiteDocs-aligned follow-ups (safe if table already existed)
+                        if _add_column_if_missing(
+                            db, "project_safety_follow_ups", "label", "VARCHAR(255) NULL"
+                        ):
+                            db.commit()
+                        if _add_column_if_missing(
+                            db,
+                            "project_safety_follow_ups",
+                            "source_inspection_date_snapshot",
+                            "TIMESTAMPTZ NULL",
+                        ):
+                            db.commit()
+                        if _add_column_if_missing(
+                            db,
+                            "project_safety_follow_ups",
+                            "source_template_name_snapshot",
+                            "VARCHAR(255) NULL",
+                        ):
+                            db.commit()
+                    except Exception as e:
+                        db.rollback()
+                        print(f"[startup] project_safety_follow_ups migration (non-critical): {e}")
+
                     # Form templates — assignee column only. form_template_version_id is retired
                     # and must not be added again (each add/drop burns a Postgres column slot).
                     try:

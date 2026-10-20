@@ -817,8 +817,8 @@ function EstimateLabourStyleListRow({
   );
 }
 
-const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, estimateId?: number, statusLabel?: string, settings?: any, isBidding?: boolean, canEdit?: boolean, hideFooter?: boolean, designSystem?: boolean, onEstimateSaved?: (payload: { items: Item[], sectionNames: Record<string, string> }) => void }>(
-  function EstimateBuilder({ projectId, estimateId, statusLabel, settings, isBidding, canEdit: canEditProp, hideFooter, designSystem = false, onEstimateSaved }, ref) {
+const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, estimateId?: number, canEdit?: boolean, hideFooter?: boolean, designSystem?: boolean, onEstimateSaved?: (payload: { items: Item[], sectionNames: Record<string, string> }) => void }>(
+  function EstimateBuilder({ projectId, estimateId, canEdit: canEditProp, hideFooter, designSystem = false, onEstimateSaved }, ref) {
   const confirm = useConfirm();
   const queryClient = useQueryClient();
   const [items, setItems] = useState<Item[]>([]);
@@ -870,93 +870,8 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
     setSectionTaxRates((prev) => buildSectionTaxRatesMap(sectionOrder, prev));
   }, [sectionOrder]);
   
-  // Check if editing is allowed based on status and permissions
-  const canEdit = useMemo(()=>{
-    // If canEditProp is explicitly false (no permission), deny editing
-    if (canEditProp === false) return false;
-    
-    // If canEditProp is explicitly true, check status restrictions
-    if (canEditProp === true) {
-      // Always allow editing by default unless explicitly restricted
-      if (!statusLabel || !statusLabel.trim()) return true;
-      
-      const statusLabelStr = String(statusLabel).trim().toLowerCase();
-      
-      // For opportunities (isBidding = true), apply specific restrictions
-      if (isBidding) {
-        // Always allow "prospecting" status
-        if (statusLabelStr === 'prospecting') return true;
-        // Restrict "Sent to Customer", "Refused", and "Cancelled" statuses
-        if (statusLabelStr === 'sent to customer' || statusLabelStr === 'refused' || statusLabelStr === 'cancelled' || statusLabelStr === 'canceled') return false;
-        // Default to allow for other statuses (backward compatibility)
-        return true;
-      }
-      
-      // For projects (isBidding = false), use existing logic
-      // Always allow "estimating", "prospecting", and "In Progress" status
-      if (statusLabelStr === 'estimating' || statusLabelStr === 'prospecting' || statusLabelStr === 'in progress') return true;
-      
-      // Restrict "On Hold" and "Cancelled" (same as proposals)
-      if (statusLabelStr === 'on hold' || statusLabelStr === 'cancelled' || statusLabelStr === 'canceled') return false;
-      
-      // If no settings or project_statuses, allow editing
-      if (!settings || !settings.project_statuses || !Array.isArray(settings.project_statuses)) return true;
-      
-      const statusConfig = (settings.project_statuses as any[]).find((s:any)=> s.label?.toLowerCase() === statusLabelStr);
-      
-      // If status not found in config, allow editing by default
-      if (!statusConfig) return true;
-      
-      // Only restrict if explicitly set to false
-      const allowEdit = statusConfig?.meta?.allow_edit_proposal;
-      
-      // If allow_edit_proposal is explicitly false, deny editing
-      if (allowEdit === false || allowEdit === 'false' || allowEdit === 0) return false;
-      
-      // Otherwise allow editing (default behavior)
-      return true;
-    }
-    
-    // If canEditProp is undefined, use old behavior (backward compatibility)
-    // Always allow editing by default unless explicitly restricted
-    if (!statusLabel || !statusLabel.trim()) return true;
-    
-    const statusLabelStr = String(statusLabel).trim().toLowerCase();
-    
-    // For opportunities (isBidding = true), apply specific restrictions
-    if (isBidding) {
-      // Always allow "prospecting" status
-      if (statusLabelStr === 'prospecting') return true;
-      // Restrict "Sent to Customer", "Refused", and "Cancelled" statuses
-      if (statusLabelStr === 'sent to customer' || statusLabelStr === 'refused' || statusLabelStr === 'cancelled' || statusLabelStr === 'canceled') return false;
-      // Default to allow for other statuses (backward compatibility)
-      return true;
-    }
-    
-    // For projects (isBidding = false), use existing logic
-    // Always allow "estimating", "prospecting", and "In Progress" status
-    if (statusLabelStr === 'estimating' || statusLabelStr === 'prospecting' || statusLabelStr === 'in progress') return true;
-    
-    // Restrict "On Hold" and "Cancelled" (same as proposals)
-    if (statusLabelStr === 'on hold' || statusLabelStr === 'cancelled' || statusLabelStr === 'canceled') return false;
-    
-    // If no settings or project_statuses, allow editing
-    if (!settings || !settings.project_statuses || !Array.isArray(settings.project_statuses)) return true;
-    
-    const statusConfig = (settings.project_statuses as any[]).find((s:any)=> s.label?.toLowerCase() === statusLabelStr);
-    
-    // If status not found in config, allow editing by default
-    if (!statusConfig) return true;
-    
-    // Only restrict if explicitly set to false
-    const allowEdit = statusConfig?.meta?.allow_edit_proposal;
-    
-    // If allow_edit_proposal is explicitly false, deny editing
-    if (allowEdit === false || allowEdit === 'false' || allowEdit === 0) return false;
-    
-    // Otherwise allow editing (default behavior)
-    return true;
-  }, [statusLabel, settings, canEditProp, isBidding]);
+  // Costs stay editable in every project and opportunity status. Permission is the only lock.
+  const canEdit = canEditProp !== false;
 
   const location = useLocation();
   const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
@@ -1654,9 +1569,6 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
     setDragOverSection(null);
   };
 
-  // Show warning banner if editing is restricted
-  const showRestrictionWarning = !canEdit && statusLabel;
-  
   // Handle remove item with confirmation
   const handleRemoveItem = useCallback(async (index: number, itemName: string) => {
     if (!canEdit) {
@@ -1950,17 +1862,6 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
   return (
     <EstimateSectionInvoicePreviewHost>
     <div ref={builderRootRef} className="[overflow-anchor:none]">
-      {showRestrictionWarning && (
-        <div
-          className={
-            designSystem
-              ? uiCx('mb-4 border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900', uiRadius.card)
-              : 'mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800'
-          }
-        >
-          <strong>Editing Restricted:</strong> This project has status "{statusLabel}" which does not allow editing proposals or estimates.
-        </div>
-      )}
       {canEdit && (designSystem ? (
         <AppCard className="sticky top-0 z-30 mb-3" bodyClassName={uiSpacing.cardPadding}>{addSectionToolbar}</AppCard>
       ) : (

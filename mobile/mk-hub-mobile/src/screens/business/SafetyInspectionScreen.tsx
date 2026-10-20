@@ -13,10 +13,17 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ScreenLayout } from "../../components/ScreenLayout";
 import { MKPageHeader } from "../../components/MKPageHeader";
 import { MKButton } from "../../components/MKButton";
-import { MKDynamicSafetyForm } from "../../components/MKDynamicSafetyForm";
 import {
+  MKDynamicSafetyForm,
+  type SafetyFieldFlagState
+} from "../../components/MKDynamicSafetyForm";
+import { MKSafetyFlagFollowUpModal } from "../../components/MKSafetyFlagFollowUpModal";
+import {
+  duplicateSafetyInspection,
   getSafetyInspection,
-  updateSafetyInspection
+  listInspectionFollowUps,
+  updateSafetyInspection,
+  type SafetyFollowUp
 } from "../../services/safety";
 import { normalizeDefinition, validateRequiredFields } from "../../lib/safetyFormTemplate";
 import { toApiError } from "../../services/api";
@@ -33,7 +40,16 @@ export const SafetyInspectionScreen: React.FC = () => {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
   const insets = useSafeAreaInsets();
-  const { projectId, inspectionId } = route.params;
+  const {
+    projectId,
+    inspectionId,
+    canWrite = true,
+    initialFollowUpId,
+    projectName,
+    projectAddress,
+    projectAddressCity,
+    projectAddressProvince
+  } = route.params;
   const { token, user } = useAuth();
 
   const signerDisplayName = useMemo(() => {
@@ -45,11 +61,16 @@ export const SafetyInspectionScreen: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
+  const [duplicating, setDuplicating] = useState(false);
   const [inspection, setInspection] = useState<Awaited<
     ReturnType<typeof getSafetyInspection>
   > | null>(null);
   const [payload, setPayload] = useState<Record<string, unknown>>({});
   const [formOptionsLoading, setFormOptionsLoading] = useState(true);
+  const [followUps, setFollowUps] = useState<SafetyFollowUp[]>([]);
+  const [flagFieldKey, setFlagFieldKey] = useState<string | null>(null);
+  const [deepLinkFollowUpId, setDeepLinkFollowUpId] = useState<string | null>(null);
+  const followUpDeepLinkConsumed = React.useRef(false);
 
   const loadInspection = useCallback(async () => {
     try {
@@ -65,14 +86,63 @@ export const SafetyInspectionScreen: React.FC = () => {
     }
   }, [projectId, inspectionId, navigation]);
 
+  const loadFollowUps = useCallback(async () => {
+    try {
+      const rows = await listInspectionFollowUps(projectId, inspectionId);
+      setFollowUps(rows);
+    } catch {
+      setFollowUps([]);
+    }
+  }, [projectId, inspectionId]);
+
   useEffect(() => {
     loadInspection();
   }, [loadInspection]);
+
+  useEffect(() => {
+    void loadFollowUps();
+  }, [loadFollowUps]);
+
+  useEffect(() => {
+    const fuid = (initialFollowUpId || "").trim();
+    if (!fuid || followUpDeepLinkConsumed.current) return;
+    if (!followUps.length) return;
+    const match = followUps.find((f) => f.id === fuid);
+    if (!match) return;
+    followUpDeepLinkConsumed.current = true;
+    setDeepLinkFollowUpId(match.id);
+    setFlagFieldKey(match.source_field_key);
+  }, [initialFollowUpId, followUps]);
 
   const definition = useMemo(
     () => normalizeDefinition(inspection?.form_definition_snapshot),
     [inspection?.form_definition_snapshot]
   );
+
+  const fieldFlagStates = useMemo(() => {
+    const map: Record<string, SafetyFieldFlagState> = {};
+    for (const fu of followUps) {
+      const key = (fu.source_field_key || "").trim();
+      if (!key) continue;
+      const st = (fu.status || "").toLowerCase() === "completed" ? "completed" : "pending";
+      if (map[key] === "pending") continue;
+      if (st === "pending") map[key] = "pending";
+      else if (!map[key]) map[key] = "completed";
+    }
+    return map;
+  }, [followUps]);
+
+  const flagFieldMeta = useMemo(() => {
+    if (!flagFieldKey) return { label: undefined as string | undefined, required: undefined as boolean | undefined };
+    for (const s of definition.sections || []) {
+      for (const f of s.fields || []) {
+        if (f.key === flagFieldKey) {
+          return { label: f.label || flagFieldKey, required: Boolean(f.required) };
+        }
+      }
+    }
+    return { label: flagFieldKey, required: undefined };
+  }, [flagFieldKey, definition]);
 
   const readOnly =
     inspection?.status === "finalized" || inspection?.status === "pending_signatures";
@@ -131,6 +201,34 @@ export const SafetyInspectionScreen: React.FC = () => {
     );
   };
 
+  const handleDuplicate = () => {
+    Alert.alert(
+      "Duplicate inspection?",
+      "Creates a new draft with the same answers. Signatures are cleared and the date is set to now.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Duplicate",
+          onPress: async () => {
+            try {
+              setDuplicating(true);
+              const row = await duplicateSafetyInspection(projectId, inspectionId);
+              navigation.replace("SafetyInspectionDetail", {
+                projectId,
+                inspectionId: row.id,
+                canWrite
+              });
+            } catch (err) {
+              Alert.alert("Could not duplicate inspection", toApiError(err).message);
+            } finally {
+              setDuplicating(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
   if (loading || !inspection) {
     return (
       <ScreenLayout>
@@ -175,24 +273,67 @@ export const SafetyInspectionScreen: React.FC = () => {
           signerDisplayName={signerDisplayName}
           signerUserId={user?.id}
           onSupportLoadingChange={setFormOptionsLoading}
+          enableFieldFlags
+          fieldFlagStates={fieldFlagStates}
+          onFlagField={(key) => setFlagFieldKey(key)}
         />
       </View>
 
-      {!readOnly && !formOptionsLoading ? (
+      {flagFieldKey ? (
+        <MKSafetyFlagFollowUpModal
+          visible={!!flagFieldKey}
+          onClose={() => {
+            setFlagFieldKey(null);
+            setDeepLinkFollowUpId(null);
+          }}
+          projectId={projectId}
+          inspectionId={inspectionId}
+          fieldKey={flagFieldKey}
+          fieldLabel={flagFieldMeta.label}
+          fieldRequired={flagFieldMeta.required}
+          existingFollowUps={followUps}
+          canWrite={canWrite}
+          token={token}
+          projectInfo={{
+            name: projectName,
+            address: projectAddress,
+            address_city: projectAddressCity,
+            address_province: projectAddressProvince
+          }}
+          sourceInspectionDate={inspection?.inspection_date}
+          sourceTemplateName={inspection?.template_name}
+          initialFollowUpId={deepLinkFollowUpId}
+          onChanged={() => void loadFollowUps()}
+        />
+      ) : null}
+
+      {canWrite && !formOptionsLoading ? (
         <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.md }]}>
+          {!readOnly ? (
+            <>
+              <MKButton
+                title={saving ? "Saving..." : "Save Draft"}
+                variant="secondary"
+                onPress={handleSave}
+                loading={saving}
+                disabled={saving || finalizing || duplicating}
+                style={styles.footerButton}
+              />
+              <MKButton
+                title={finalizing ? "Submitting..." : "Finalize"}
+                onPress={handleFinalize}
+                loading={finalizing}
+                disabled={saving || finalizing || duplicating}
+                style={styles.footerButton}
+              />
+            </>
+          ) : null}
           <MKButton
-            title={saving ? "Saving..." : "Save Draft"}
+            title={duplicating ? "Duplicating..." : "Duplicate"}
             variant="secondary"
-            onPress={handleSave}
-            loading={saving}
-            disabled={saving || finalizing}
-            style={styles.footerButton}
-          />
-          <MKButton
-            title={finalizing ? "Submitting..." : "Finalize"}
-            onPress={handleFinalize}
-            loading={finalizing}
-            disabled={saving || finalizing}
+            onPress={handleDuplicate}
+            loading={duplicating}
+            disabled={saving || finalizing || duplicating}
             style={styles.footerButton}
           />
         </View>

@@ -18,6 +18,7 @@ from ..models.models import (
     ProjectReport,
     ProjectSafetyInspection,
     ProjectSafetyInspectionSignRequest,
+    ProjectSafetyFollowUp,
     ProjectEvent,
     ProjectTimeEntry,
     ProjectTimeEntryLog,
@@ -37,7 +38,7 @@ from ..models.models import (
     FormTemplate,
     ProjectMember,
 )
-from datetime import datetime, timezone, time, timedelta
+from datetime import date, datetime, timezone, time, timedelta
 from ..auth.security import (
     get_current_user,
     require_permissions,
@@ -93,7 +94,11 @@ from ..services.billing_snapshot import (
     normalize_purchase_order_number,
     project_billing_response_fields,
 )
-from ..routes.form_templates import _normalize_definition
+from ..routes.form_templates import (
+    FOLLOW_UP_CATEGORY,
+    _normalize_definition,
+    _normalized_template_category,
+)
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -3923,6 +3928,11 @@ def create_project_safety_inspection(
             raise HTTPException(status_code=400, detail="Form template not found")
         if (tpl.status or "").lower() != "active":
             raise HTTPException(status_code=400, detail="Form template must be active")
+        if _normalized_template_category(getattr(tpl, "category", None)) == FOLLOW_UP_CATEGORY:
+            raise HTTPException(
+                status_code=400,
+                detail="Form template is a follow-up form, not an inspection",
+            )
         form_definition_snapshot = _normalize_definition(getattr(tpl, "definition", None) or {})
         secs = form_definition_snapshot.get("sections")
         if not isinstance(secs, list) or len(secs) == 0:
@@ -3952,6 +3962,557 @@ def create_project_safety_inspection(
     db.commit()
     db.refresh(row)
     return _safety_inspection_to_dict(db, row)
+
+
+def _gps_field_keys_from_definition(definition: Optional[dict]) -> set:
+    keys: set = set()
+    if not isinstance(definition, dict):
+        return keys
+    sections = definition.get("sections")
+    if not isinstance(sections, list):
+        return keys
+    for sec in sections:
+        if not isinstance(sec, dict):
+            continue
+        fields = sec.get("fields")
+        if not isinstance(fields, list):
+            continue
+        for f in fields:
+            if not isinstance(f, dict):
+                continue
+            if str(f.get("type") or "").strip().lower() != "gps":
+                continue
+            k = str(f.get("key") or "").strip()
+            if k:
+                keys.add(k)
+    return keys
+
+
+def _duplicate_safety_form_payload(definition: Optional[dict], payload: Optional[dict]) -> dict:
+    """Copy answers for a duplicated inspection; strip signatures and GPS values."""
+    if not isinstance(payload, dict):
+        return {}
+    out = copy.deepcopy(payload)
+    for key in list(out.keys()):
+        if key == "_custom_signatures" or key.startswith("_worker_signature"):
+            del out[key]
+    for gk in _gps_field_keys_from_definition(definition):
+        out.pop(gk, None)
+    return out
+
+
+@router.post("/{project_id}/safety-inspections/{inspection_id}/duplicate")
+def duplicate_project_safety_inspection(
+    project_id: str,
+    inspection_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("business:projects:safety:write")),
+):
+    """SiteDocs-style Duplicate: new draft with answers copied; signatures/PDF cleared; today's date."""
+    p = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
+    if not p:
+        raise HTTPException(status_code=404, detail="Not found")
+    _assert_project_line_write(user, p)
+    _assert_awarded_project_for_safety(p)
+    src = (
+        db.query(ProjectSafetyInspection)
+        .filter(
+            ProjectSafetyInspection.id == inspection_id,
+            ProjectSafetyInspection.project_id == project_id,
+        )
+        .first()
+    )
+    if not src:
+        raise HTTPException(status_code=404, detail="Inspection not found")
+    src_status = (getattr(src, "status", None) or "draft").strip().lower()
+    if src_status not in ("draft", "finalized", "pending_signatures"):
+        raise HTTPException(status_code=400, detail="Inspection cannot be duplicated")
+
+    snap = getattr(src, "form_definition_snapshot", None)
+    definition_snapshot = copy.deepcopy(snap) if isinstance(snap, dict) else None
+    if definition_snapshot is not None:
+        definition_snapshot = _normalize_definition(definition_snapshot)
+
+    src_payload = src.form_payload if isinstance(src.form_payload, dict) else {}
+    new_payload = _duplicate_safety_form_payload(definition_snapshot, src_payload)
+
+    row = ProjectSafetyInspection(
+        project_id=uuid.UUID(str(project_id)),
+        inspection_date=datetime.now(timezone.utc),
+        template_version=(src.template_version or "mki_safety_v1")[:50],
+        status="draft",
+        form_payload=new_payload,
+        form_template_id=getattr(src, "form_template_id", None),
+        form_definition_snapshot=definition_snapshot,
+        assigned_user_id=getattr(src, "assigned_user_id", None),
+        created_by=user.id,
+        interim_pdf_client_file_id=None,
+        final_pdf_client_file_id=None,
+        first_finalized_at=None,
+        first_finalized_by_id=None,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return _safety_inspection_to_dict(db, row)
+
+
+def _field_meta_from_definition(definition: Optional[dict], field_key: str) -> dict:
+    """Return {label, required, field_type} for a field key from a form definition snapshot."""
+    key = (field_key or "").strip()
+    out = {"label": key or None, "required": False, "field_type": None}
+    if not key or not isinstance(definition, dict):
+        return out
+    sections = definition.get("sections")
+    if not isinstance(sections, list):
+        return out
+    for sec in sections:
+        if not isinstance(sec, dict):
+            continue
+        fields = sec.get("fields")
+        if not isinstance(fields, list):
+            continue
+        for f in fields:
+            if not isinstance(f, dict):
+                continue
+            if str(f.get("key") or "").strip() != key:
+                continue
+            label = str(f.get("label") or "").strip()
+            out["label"] = label or key
+            out["required"] = bool(f.get("required"))
+            ft = str(f.get("type") or "").strip().lower() or None
+            out["field_type"] = ft
+            return out
+    return out
+
+
+def _field_label_from_definition(definition: Optional[dict], field_key: str) -> Optional[str]:
+    return _field_meta_from_definition(definition, field_key).get("label")
+
+
+def _format_follow_up_field_display(raw: object, field_type: Optional[str]) -> str:
+    """Human-readable display string for a flagged field value."""
+    if raw is None:
+        return ""
+    ft = (field_type or "").strip().lower()
+    if isinstance(raw, dict):
+        if ft == "yes_no_na" or "status" in raw:
+            st = str(raw.get("status") or "").strip().lower()
+            if st in ("yes", "no", "na"):
+                return {"yes": "Yes", "no": "No", "na": "N/A"}.get(st, st)
+            comments = raw.get("comments")
+            if isinstance(comments, str) and comments.strip():
+                return comments.strip()
+        if ft == "pass_fail_total" or ("pass" in raw and "fail" in raw):
+            return f"P {raw.get('pass', 0)} / F {raw.get('fail', 0)} / NA {raw.get('na', 0)}"
+        if "lat" in raw or "lng" in raw:
+            lat, lng = raw.get("lat"), raw.get("lng")
+            if lat is not None and lng is not None:
+                return f"{lat}, {lng}"
+        if "text" in raw and isinstance(raw.get("text"), str):
+            return (raw.get("text") or "").strip()
+        try:
+            import json as _json
+
+            return _json.dumps(raw, ensure_ascii=False)[:500]
+        except Exception:
+            return str(raw)[:500]
+    if isinstance(raw, list):
+        parts = [str(x).strip() for x in raw if x is not None and str(x).strip()]
+        return ", ".join(parts)
+    if isinstance(raw, bool):
+        return "Yes" if raw else "No"
+    s = str(raw).strip()
+    if ft == "pass_fail_na":
+        return {"pass": "Pass", "fail": "Fail", "na": "N/A"}.get(s.lower(), s)
+    if ft == "yes_no_na":
+        return {"yes": "Yes", "no": "No", "na": "N/A"}.get(s.lower(), s)
+    return s
+
+
+def _build_source_value_snapshot(
+    definition: Optional[dict], field_key: str, insp_payload: dict
+) -> Optional[dict]:
+    meta = _field_meta_from_definition(definition, field_key)
+    has_val = field_key in insp_payload
+    raw = copy.deepcopy(insp_payload.get(field_key)) if has_val else None
+    display = _format_follow_up_field_display(raw, meta.get("field_type")) if has_val else ""
+    return {
+        "value": raw,
+        "display": display,
+        "required": bool(meta.get("required")),
+        "field_type": meta.get("field_type"),
+    }
+
+
+def _parse_follow_up_label(payload: dict) -> Optional[str]:
+    if "label" not in payload:
+        return None
+    raw = payload.get("label")
+    if raw is None:
+        return ""
+    if not isinstance(raw, str):
+        raise HTTPException(status_code=400, detail="label must be a string")
+    return raw.strip()[:255]
+
+
+def _assert_follow_up_worker_signature(definition: dict, form_payload: dict) -> None:
+    """Follow-ups always require a worker signature on create (SiteDocs parity)."""
+    policy = {}
+    if isinstance(definition, dict):
+        sp = definition.get("signature_policy")
+        if isinstance(sp, dict):
+            worker = sp.get("worker")
+            if isinstance(worker, dict):
+                policy = worker
+    mode = str(policy.get("mode") or "drawn").strip().lower()
+    if mode not in ("drawn", "typed", "any"):
+        mode = "drawn"
+    typed = isinstance(form_payload.get("_worker_signature"), str) and bool(
+        str(form_payload.get("_worker_signature") or "").strip()
+    )
+    drawn = isinstance(form_payload.get("_worker_signature_file_id"), str) and bool(
+        str(form_payload.get("_worker_signature_file_id") or "").strip()
+    )
+    ok = False
+    if mode == "typed":
+        ok = typed
+    elif mode == "any":
+        ok = typed or drawn
+    else:
+        ok = drawn
+    if not ok:
+        raise HTTPException(status_code=400, detail="Worker signature is required")
+
+
+def _safety_follow_up_to_dict(db: Session, row: ProjectSafetyFollowUp) -> dict:
+    st = (getattr(row, "status", None) or "pending").strip().lower()
+    if st not in ("pending", "completed"):
+        st = "pending"
+    tpl_name = None
+    ft_id = getattr(row, "form_template_id", None)
+    if ft_id:
+        tpl = db.query(FormTemplate).filter(FormTemplate.id == ft_id).first()
+        if tpl:
+            tpl_name = tpl.name or ""
+    asg_id = getattr(row, "assigned_user_id", None)
+    worker_name = None
+    if asg_id:
+        u = db.query(User).filter(User.id == asg_id).first()
+        if u:
+            worker_name = _safety_inspection_user_display_name(db, u)
+    snap = getattr(row, "form_definition_snapshot", None)
+    src_date = getattr(row, "source_inspection_date_snapshot", None)
+    proj = db.query(Project).filter(Project.id == row.project_id).first()
+    return {
+        "id": str(row.id),
+        "project_id": str(row.project_id),
+        "project_name": (proj.name or "") if proj else "",
+        "project_code": (proj.code or "") if proj else "",
+        "project_address": (getattr(proj, "address", None) or "") if proj else "",
+        "project_address_city": (getattr(proj, "address_city", None) or "") if proj else "",
+        "project_address_province": (getattr(proj, "address_province", None) or "") if proj else "",
+        "source_inspection_id": str(row.source_inspection_id),
+        "source_field_key": row.source_field_key or "",
+        "source_field_label_snapshot": row.source_field_label_snapshot,
+        "source_value_snapshot": row.source_value_snapshot if isinstance(row.source_value_snapshot, dict) else None,
+        "source_inspection_date": src_date.isoformat() if src_date else None,
+        "source_template_name": getattr(row, "source_template_name_snapshot", None) or None,
+        "form_template_id": str(ft_id) if ft_id else None,
+        "template_name": tpl_name,
+        "form_definition_snapshot": snap if isinstance(snap, dict) else None,
+        "form_payload": row.form_payload if isinstance(row.form_payload, dict) else {},
+        "label": (getattr(row, "label", None) or "") or None,
+        "assigned_user_id": str(asg_id) if asg_id else None,
+        "worker_name": worker_name,
+        "due_date": row.due_date.isoformat() if getattr(row, "due_date", None) else None,
+        "status": st,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "created_by": str(row.created_by) if row.created_by else None,
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+        "completed_at": row.completed_at.isoformat() if row.completed_at else None,
+    }
+
+
+@router.get("/{project_id}/safety-inspections/{inspection_id}/follow-ups")
+def list_inspection_safety_follow_ups(
+    project_id: str,
+    inspection_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("business:projects:safety:read")),
+):
+    p = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
+    if not p:
+        raise HTTPException(status_code=404, detail="Not found")
+    _assert_project_line_read(user, p)
+    _assert_awarded_project_for_safety(p)
+    insp = (
+        db.query(ProjectSafetyInspection)
+        .filter(
+            ProjectSafetyInspection.id == inspection_id,
+            ProjectSafetyInspection.project_id == project_id,
+        )
+        .first()
+    )
+    if not insp:
+        raise HTTPException(status_code=404, detail="Inspection not found")
+    rows = (
+        db.query(ProjectSafetyFollowUp)
+        .filter(ProjectSafetyFollowUp.source_inspection_id == insp.id)
+        .order_by(ProjectSafetyFollowUp.created_at.desc())
+        .all()
+    )
+    return [_safety_follow_up_to_dict(db, r) for r in rows]
+
+
+@router.post("/{project_id}/safety-inspections/{inspection_id}/follow-ups")
+def create_inspection_safety_follow_up(
+    project_id: str,
+    inspection_id: str,
+    payload: dict = Body(default={}),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("business:projects:safety:write")),
+):
+    p = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
+    if not p:
+        raise HTTPException(status_code=404, detail="Not found")
+    _assert_project_line_write(user, p)
+    _assert_awarded_project_for_safety(p)
+    insp = (
+        db.query(ProjectSafetyInspection)
+        .filter(
+            ProjectSafetyInspection.id == inspection_id,
+            ProjectSafetyInspection.project_id == project_id,
+        )
+        .first()
+    )
+    if not insp:
+        raise HTTPException(status_code=404, detail="Inspection not found")
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Invalid body")
+
+    field_key = str(payload.get("field_key") or "").strip()
+    if not field_key:
+        raise HTTPException(status_code=400, detail="field_key is required")
+
+    existing_fu = (
+        db.query(ProjectSafetyFollowUp)
+        .filter(
+            ProjectSafetyFollowUp.source_inspection_id == insp.id,
+            ProjectSafetyFollowUp.source_field_key == field_key[:255],
+        )
+        .first()
+    )
+    if existing_fu:
+        raise HTTPException(status_code=409, detail="Follow-up already exists for this field")
+
+    raw_ft = payload.get("form_template_id")
+    try:
+        form_template_id = uuid.UUID(str(raw_ft).strip())
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid form_template_id")
+    tpl = db.query(FormTemplate).filter(FormTemplate.id == form_template_id).first()
+    if not tpl:
+        raise HTTPException(status_code=400, detail="Form template not found")
+    if (tpl.status or "").lower() != "active":
+        raise HTTPException(status_code=400, detail="Form template must be active")
+    if _normalized_template_category(getattr(tpl, "category", None)) != FOLLOW_UP_CATEGORY:
+        raise HTTPException(status_code=400, detail="Form template must be a follow-up form")
+    form_definition_snapshot = _normalize_definition(getattr(tpl, "definition", None) or {})
+    secs = form_definition_snapshot.get("sections")
+    if not isinstance(secs, list) or len(secs) == 0:
+        raise HTTPException(status_code=400, detail="Form template has no sections")
+
+    raw_asg = payload.get("assigned_user_id")
+    if not raw_asg:
+        raise HTTPException(status_code=400, detail="assigned_user_id is required")
+    try:
+        assigned_user_id = uuid.UUID(str(raw_asg).strip())
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid assigned_user_id")
+    if not db.query(User).filter(User.id == assigned_user_id).first():
+        raise HTTPException(status_code=400, detail="assigned_user_id not found")
+
+    due_date_val: Optional[date] = None
+    raw_due = payload.get("due_date")
+    if raw_due:
+        try:
+            if isinstance(raw_due, str):
+                due_date_val = date.fromisoformat(raw_due.strip()[:10])
+            elif isinstance(raw_due, date):
+                due_date_val = raw_due
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid due_date")
+
+    # Follow-ups are finalized on create (SiteDocs parity); ignore client pending.
+    status = "completed"
+
+    form_payload = payload.get("form_payload")
+    if form_payload is not None and not isinstance(form_payload, dict):
+        raise HTTPException(status_code=400, detail="form_payload must be an object")
+    if not isinstance(form_payload, dict):
+        form_payload = {}
+    _assert_follow_up_worker_signature(form_definition_snapshot, form_payload)
+
+    insp_def = insp.form_definition_snapshot if isinstance(insp.form_definition_snapshot, dict) else None
+    insp_payload = insp.form_payload if isinstance(insp.form_payload, dict) else {}
+    field_meta = _field_meta_from_definition(insp_def, field_key)
+    field_label = field_meta.get("label") or field_key
+    value_snapshot = _build_source_value_snapshot(insp_def, field_key, insp_payload)
+
+    follow_up_label = None
+    if "label" in payload:
+        follow_up_label = _parse_follow_up_label(payload)
+        if follow_up_label == "":
+            follow_up_label = None
+
+    source_tpl_name = None
+    if getattr(insp, "form_template_id", None):
+        src_tpl = db.query(FormTemplate).filter(FormTemplate.id == insp.form_template_id).first()
+        if src_tpl:
+            source_tpl_name = (src_tpl.name or "").strip() or None
+    if not source_tpl_name and (insp.template_version or "").startswith("mki"):
+        source_tpl_name = "MKI Safety Inspection"
+
+    now = datetime.now(timezone.utc)
+    row = ProjectSafetyFollowUp(
+        project_id=uuid.UUID(str(project_id)),
+        source_inspection_id=insp.id,
+        source_field_key=field_key[:255],
+        source_field_label_snapshot=(field_label or field_key)[:500] if field_label or field_key else None,
+        source_value_snapshot=value_snapshot,
+        source_inspection_date_snapshot=getattr(insp, "inspection_date", None),
+        source_template_name_snapshot=(source_tpl_name or "")[:255] or None,
+        form_template_id=form_template_id,
+        form_definition_snapshot=form_definition_snapshot,
+        form_payload=form_payload,
+        label=follow_up_label,
+        assigned_user_id=assigned_user_id,
+        due_date=due_date_val,
+        status=status,
+        created_by=user.id,
+        completed_at=now,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+
+    return _safety_follow_up_to_dict(db, row)
+
+
+@router.get("/{project_id}/safety-follow-ups/{follow_up_id}")
+def get_project_safety_follow_up(
+    project_id: str,
+    follow_up_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("business:projects:safety:read")),
+):
+    p = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
+    if not p:
+        raise HTTPException(status_code=404, detail="Not found")
+    _assert_project_line_read(user, p)
+    _assert_awarded_project_for_safety(p)
+    row = (
+        db.query(ProjectSafetyFollowUp)
+        .filter(
+            ProjectSafetyFollowUp.id == follow_up_id,
+            ProjectSafetyFollowUp.project_id == project_id,
+        )
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Follow-up not found")
+    return _safety_follow_up_to_dict(db, row)
+
+
+@router.put("/{project_id}/safety-follow-ups/{follow_up_id}")
+def update_project_safety_follow_up(
+    project_id: str,
+    follow_up_id: str,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("business:projects:safety:write")),
+):
+    p = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
+    if not p:
+        raise HTTPException(status_code=404, detail="Not found")
+    _assert_project_line_write(user, p)
+    _assert_awarded_project_for_safety(p)
+    row = (
+        db.query(ProjectSafetyFollowUp)
+        .filter(
+            ProjectSafetyFollowUp.id == follow_up_id,
+            ProjectSafetyFollowUp.project_id == project_id,
+        )
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Follow-up not found")
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Invalid body")
+
+    if "form_payload" in payload:
+        fp = payload.get("form_payload")
+        if fp is not None and not isinstance(fp, dict):
+            raise HTTPException(status_code=400, detail="form_payload must be an object")
+        row.form_payload = fp if isinstance(fp, dict) else {}
+        try:
+            flag_modified(row, "form_payload")
+        except Exception:
+            pass
+
+    if "label" in payload:
+        parsed = _parse_follow_up_label(payload)
+        row.label = parsed if parsed else None
+
+    if "assigned_user_id" in payload:
+        raw_asg = payload.get("assigned_user_id")
+        if raw_asg is None or raw_asg == "":
+            row.assigned_user_id = None
+        else:
+            try:
+                aid = uuid.UUID(str(raw_asg).strip())
+            except Exception:
+                raise HTTPException(status_code=400, detail="Invalid assigned_user_id")
+            if not db.query(User).filter(User.id == aid).first():
+                raise HTTPException(status_code=400, detail="assigned_user_id not found")
+            row.assigned_user_id = aid
+
+    if "due_date" in payload:
+        raw_due = payload.get("due_date")
+        if raw_due is None or raw_due == "":
+            row.due_date = None
+        else:
+            try:
+                if isinstance(raw_due, str):
+                    row.due_date = date.fromisoformat(raw_due.strip()[:10])
+                elif isinstance(raw_due, date):
+                    row.due_date = raw_due
+                else:
+                    raise ValueError("bad due_date")
+            except Exception:
+                raise HTTPException(status_code=400, detail="Invalid due_date")
+
+    if "status" in payload and payload["status"] is not None:
+        st = str(payload["status"]).strip().lower()
+        if st not in ("pending", "completed"):
+            raise HTTPException(status_code=400, detail="status must be pending or completed")
+        prev = (row.status or "pending").strip().lower()
+        row.status = st
+        if st == "completed" and prev != "completed":
+            row.completed_at = datetime.now(timezone.utc)
+        elif st == "pending":
+            row.completed_at = None
+
+    row.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(row)
+    return _safety_follow_up_to_dict(db, row)
 
 
 @router.get("/{project_id}/safety-inspections/{inspection_id}")

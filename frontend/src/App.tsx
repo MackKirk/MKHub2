@@ -111,6 +111,7 @@ import InspectionNew from './pages/InspectionNew';
 import FleetInspectionsIdGate, { FleetInspectionScheduleLegacyRedirect } from './pages/FleetInspectionsIdGate';
 import FleetSchedulePage from './pages/FleetSchedulePage';
 import SafetyInspectionsPage from './pages/SafetyInspectionsPage';
+import SafetyFollowUpsPage from './pages/SafetyFollowUpsPage';
 import SafetyInspectionSignPage from './pages/SafetyInspectionSignPage';
 import SafetySchedulePage from './pages/SafetySchedulePage';
 import FormTemplatesPage from './pages/FormTemplatesPage';
@@ -282,6 +283,7 @@ export default function App(){
           <Route path="/reviews/my" element={<AppShell><MyReviews/></AppShell>} />
           <Route path="/reviews/director-meetings" element={<AppShell><DirectorMeetingsPage /></AppShell>} />
           <Route path="/safety/inspections" element={<AppShell><SafetyInspectionsPage /></AppShell>} />
+          <Route path="/safety/follow-ups" element={<AppShell><SafetyFollowUpsPage /></AppShell>} />
           <Route path="/safety/sign/:projectId/:inspectionId" element={<AppShell><SafetyInspectionSignPage /></AppShell>} />
           <Route path="/safety/calendar" element={<AppShell><SafetySchedulePage /></AppShell>} />
           <Route path="/safety/form-templates" element={<Navigate to="/documents/form-templates" replace />} />
