@@ -258,10 +258,10 @@ export default function SafetySignaturePad({
 
   return (
     <div className="space-y-2">
-      <div ref={wrapRef} className="border border-gray-300 rounded-lg overflow-hidden bg-white touch-none w-full max-w-3xl">
+      <div ref={wrapRef} className="mt-0.5 border border-gray-300 rounded-lg overflow-hidden bg-white touch-none w-full max-w-3xl isolate">
         <canvas
           ref={canvasRef}
-          className="w-full cursor-crosshair block"
+          className="w-full cursor-crosshair block align-top"
           onMouseDown={start}
           onMouseMove={move}
           onMouseUp={end}

@@ -54,6 +54,8 @@ import { spacing } from "../theme/spacing";
 import { radius } from "../theme/radius";
 import { typography } from "../theme/typography";
 
+export type SafetyFieldFlagState = "none" | "pending" | "completed";
+
 interface MKDynamicSafetyFormProps {
   definition: SafetyFormDefinition | Record<string, unknown> | null | undefined;
   payload: Record<string, unknown>;
@@ -65,6 +67,9 @@ interface MKDynamicSafetyFormProps {
   signerDisplayName?: string;
   signerUserId?: string;
   onSupportLoadingChange?: (loading: boolean) => void;
+  enableFieldFlags?: boolean;
+  fieldFlagStates?: Record<string, SafetyFieldFlagState>;
+  onFlagField?: (fieldKey: string) => void;
 }
 
 const PFNA = [
@@ -156,7 +161,10 @@ function SideCommentBlock({
   toggleComment,
   sideComment,
   onSideText,
-  onSideImages
+  onSideImages,
+  enableFieldFlags,
+  flagState,
+  onFlagField
 }: {
   fieldId: string;
   fieldKey: string;
@@ -171,9 +179,13 @@ function SideCommentBlock({
   sideComment: { text: string; imageIds: string[] };
   onSideText?: (text: string) => void;
   onSideImages?: (updater: (prev: string[]) => string[]) => void;
+  enableFieldFlags?: boolean;
+  flagState?: SafetyFieldFlagState;
+  onFlagField?: (fieldKey: string) => void;
 }) {
   const expanded = commentOpen[fieldId] === true;
   const filled = sideComment.text.trim().length > 0 || sideComment.imageIds.length > 0;
+  const st = flagState || "none";
 
   const updateSideText = (text: string) => {
     if (onSideText) {
@@ -198,13 +210,30 @@ function SideCommentBlock({
 
   return (
     <>
-      {!readOnly ? (
-        <CommentToggleButton
-          expanded={expanded}
-          hasComment={filled}
-          onToggle={() => toggleComment(fieldId)}
-        />
-      ) : null}
+      <View style={styles.sideActions}>
+        {enableFieldFlags && onFlagField ? (
+          <TouchableOpacity
+            style={[styles.flagToggle, st !== "none" && styles.flagToggleActive]}
+            onPress={() => onFlagField(fieldKey)}
+          >
+            {st !== "none" ? (
+              <View style={styles.flagWithCheck}>
+                <Ionicons name="flag" size={16} color="#FFFFFF" />
+                <Ionicons name="checkmark" size={11} color="#FFFFFF" style={styles.flagCheck} />
+              </View>
+            ) : (
+              <Ionicons name="flag" size={20} color={colors.textMuted} />
+            )}
+          </TouchableOpacity>
+        ) : null}
+        {!readOnly ? (
+          <CommentToggleButton
+            expanded={expanded}
+            hasComment={filled}
+            onToggle={() => toggleComment(fieldId)}
+          />
+        ) : null}
+      </View>
       <MKSafetyFieldCommentPanel
         expanded={readOnly ? filled : expanded}
         disabled={readOnly}
@@ -230,7 +259,10 @@ export const MKDynamicSafetyForm: React.FC<MKDynamicSafetyFormProps> = ({
   token,
   signerDisplayName,
   signerUserId,
-  onSupportLoadingChange
+  onSupportLoadingChange,
+  enableFieldFlags = false,
+  fieldFlagStates,
+  onFlagField
 }) => {
   const normalized = useMemo(() => normalizeDefinition(definition), [definition]);
   const pfKeys = useMemo(() => collectPassFailNaKeysOrdered(normalized), [normalized]);
@@ -490,6 +522,9 @@ export const MKDynamicSafetyForm: React.FC<MKDynamicSafetyFormProps> = ({
       sideComment={sideComment}
       onSideText={ynHandlers?.onSideText}
       onSideImages={ynHandlers?.onSideImages}
+      enableFieldFlags={enableFieldFlags}
+      flagState={fieldFlagStates?.[field.key] || "none"}
+      onFlagField={onFlagField}
     />
   );
 
@@ -923,6 +958,32 @@ const styles = StyleSheet.create({
   sectionCard: { gap: spacing.md },
   sectionTitle: { ...typography.subtitle, marginBottom: spacing.xs },
   field: { gap: spacing.sm, marginBottom: spacing.md },
+  sideActions: { flexDirection: "row", alignItems: "center", gap: spacing.sm, alignSelf: "flex-end" },
+  flagToggle: {
+    minWidth: 44,
+    minHeight: 44,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.card
+  },
+  flagToggleActive: {
+    borderColor: "transparent",
+    backgroundColor: "#74c476"
+  },
+  flagWithCheck: {
+    width: 22,
+    height: 22,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  flagCheck: {
+    position: "absolute",
+    right: -2,
+    bottom: -2
+  },
   label: { ...typography.bodySmall, color: colors.textMuted },
   infoText: { ...typography.body },
   input: {

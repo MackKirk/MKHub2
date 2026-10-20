@@ -186,6 +186,57 @@ class FileObject(Base):
     tags: Mapped[Optional[dict]] = mapped_column(JSON)
 
 
+class TutorialMediaSlot(Base):
+    """Admin-editable media override for a tutorial section."""
+
+    __tablename__ = "tutorial_media_slots"
+
+    tutorial_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    section_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    file_object_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("file_objects.id"), nullable=False
+    )
+    updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+
+class TutorialMediaItem(Base):
+    """Ordered image/clip belonging to a tutorial section (carousel)."""
+
+    __tablename__ = "tutorial_media_items"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    tutorial_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    section_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    file_object_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("file_objects.id"), nullable=False
+    )
+    caption: Mapped[Optional[str]] = mapped_column(String(120))
+    frame_x: Mapped[float] = mapped_column(Float, nullable=False, default=50)
+    frame_y: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    frame_zoom: Mapped[float] = mapped_column(Float, nullable=False, default=1)
+    updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+
+class TutorialSection(Base):
+    """Admin overrides and custom steps for a seeded tutorial (markdown body)."""
+
+    __tablename__ = "tutorial_sections"
+
+    tutorial_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    section_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    body_md: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    allows_media: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    origin: Mapped[str] = mapped_column(String(20), nullable=False, default="custom")  # seed | custom
+    hidden: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+
 class Project(Base):
     __tablename__ = "projects"
 
@@ -459,6 +510,11 @@ class ProjectSafetyInspection(Base):
         back_populates="inspection",
         cascade="all, delete-orphan",
     )
+    follow_ups = relationship(
+        "ProjectSafetyFollowUp",
+        back_populates="source_inspection",
+        cascade="all, delete-orphan",
+    )
 
 
 class ProjectSafetyInspectionSignRequest(Base):
@@ -489,6 +545,57 @@ class ProjectSafetyInspectionSignRequest(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
     inspection = relationship("ProjectSafetyInspection", back_populates="sign_requests")
+
+
+class ProjectSafetyFollowUp(Base):
+    """SiteDocs-style flag/follow-up form linked to a field on a safety inspection."""
+
+    __tablename__ = "project_safety_follow_ups"
+    __table_args__ = (
+        Index("idx_safety_follow_ups_inspection_field", "source_inspection_id", "source_field_key"),
+        Index("idx_safety_follow_ups_assigned_status", "assigned_user_id", "status"),
+        Index("idx_safety_follow_ups_project_status", "project_id", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    source_inspection_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("project_safety_inspections.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    source_field_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    source_field_label_snapshot: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    source_value_snapshot: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    # Frozen context for Flagged Form Item (stable if source inspection is later edited/duplicated)
+    source_inspection_date_snapshot: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    source_template_name_snapshot: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    form_template_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("form_templates.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    form_definition_snapshot: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    form_payload: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    # SiteDocs-style free-text label for lists / search
+    label: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    assigned_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    due_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)  # pending | completed
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    source_inspection = relationship("ProjectSafetyInspection", back_populates="follow_ups")
+    form_template = relationship("FormTemplate")
 
 
 # =====================

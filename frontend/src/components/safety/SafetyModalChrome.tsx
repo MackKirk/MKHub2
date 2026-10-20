@@ -9,15 +9,18 @@ export function SafetyModalOverlayBackdrop({
   children,
   onBackdropClick,
   overlayClassName,
+  /** Default allows tall dialogs to scroll into view. Use `overflow-hidden` when the dialog scrolls internally. */
+  overflowClassName = 'overflow-y-auto',
 }: {
   children: ReactNode;
   onBackdropClick?: () => void;
   /** e.g. `z-[200]` — defaults to `z-50` when omitted */
   overlayClassName?: string;
+  overflowClassName?: string;
 }) {
   return (
     <div
-      className={`fixed inset-0 overflow-y-auto bg-black/50 p-4 overscroll-contain ${overlayClassName ?? 'z-50'}`}
+      className={`fixed inset-0 ${overflowClassName} bg-black/50 p-4 overscroll-contain ${overlayClassName ?? 'z-50'}`}
       onClick={onBackdropClick}
       role="presentation"
     >
@@ -84,9 +87,15 @@ export function SafetyFormModalLayout({
   /** Middle scroll region; override when inner content must not clip (e.g. combobox). */
   bodyClassName?: string;
 }) {
+  // Avoid appending max-w-[95vw] when widthClass already sets max-w-* — arbitrary
+  // utilities can otherwise win in the stylesheet and stretch the dialog full-bleed.
+  const widthResolved = /\bmax-w-/.test(widthClass)
+    ? widthClass
+    : `${widthClass} max-w-[95vw]`;
+
   return (
     <div
-      className={`${widthClass} max-w-[95vw] max-h-[90vh] bg-gray-100 rounded-xl ${
+      className={`${widthResolved} max-h-[90vh] bg-gray-100 rounded-xl ${
         shellOverflow === 'visible' ? 'overflow-visible' : 'overflow-hidden'
       } flex flex-col border border-gray-200 shadow-xl`}
       onClick={(e) => e.stopPropagation()}

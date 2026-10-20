@@ -20,7 +20,6 @@ import { fileStartsWithPdfMagic, isPdfFileCandidate } from '@/lib/pdfGuards';
 import { uploadFormTemplateReferencePdf } from '@/lib/formTemplateReferencePdfUpload';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
-import { useNavigateBack } from '@/hooks/useNavigateBack';
 import { FileStack } from 'lucide-react';
 import { SafetyFormPdfPreviewShell } from '@/components/safety/SafetyModalChrome';
 import SafetyFieldTypeIcon from '@/components/SafetyFieldTypeIcon';
@@ -267,7 +266,6 @@ export default function FormTemplateEditorPage() {
   const location = useLocation();
   const isEmployeeReviewEditor = location.pathname.startsWith('/reviews/form-templates');
   const listPath = isEmployeeReviewEditor ? '/reviews/form-templates' : '/documents/form-templates';
-  const navigateBackToTemplateList = useNavigateBack(listPath);
   const qc = useQueryClient();
   const confirm = useConfirm();
   const [localName, setLocalName] = useState('');
@@ -545,6 +543,33 @@ export default function FormTemplateEditorPage() {
   }, [tmpl]);
 
   useUnsavedChangesGuard(hasUnsavedChanges, flushSaveAll, handleGuardDiscard);
+
+  /** Go to the templates list (not history.back) — unsaved guard pushState entries would require multiple -1 clicks. */
+  const navigateBackToTemplateList = useCallback(async () => {
+    if (!hasUnsavedChanges) {
+      navigate(listPath);
+      return;
+    }
+    const result = await confirm({
+      title: 'Unsaved Changes',
+      message: 'You have unsaved changes. What would you like to do?',
+      confirmText: 'Save and Leave',
+      cancelText: 'Cancel',
+      showDiscard: true,
+      discardText: 'Discard Changes',
+    });
+    if (result === 'cancel') return;
+    if (result === 'confirm') {
+      try {
+        await flushSaveAll();
+      } catch {
+        return;
+      }
+    } else if (result === 'discard') {
+      handleGuardDiscard();
+    }
+    navigate(listPath);
+  }, [hasUnsavedChanges, navigate, listPath, confirm, flushSaveAll, handleGuardDiscard]);
 
   const handleTabChange = useCallback(
     async (next: 'build' | 'preview') => {
@@ -997,7 +1022,7 @@ export default function FormTemplateEditorPage() {
                       )}
                     </div>
                   </div>
-                  {/* Row 2: required hint (left) | Active (right) */}
+                  {/* Row 2: required hint (left) | Type + Active (right) */}
                   <div className="flex flex-row items-center justify-between gap-4 min-w-0">
                     <div className="flex items-center gap-2 text-sm text-gray-800 min-w-0 flex-1">
                       <span className="text-red-600 shrink-0 inline-flex" aria-hidden>
@@ -1006,6 +1031,26 @@ export default function FormTemplateEditorPage() {
                       <span>Indicate Required Fields</span>
                     </div>
                     <div className="flex shrink-0 items-center gap-2.5">
+                      {!isEmployeeReviewEditor ? (
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-gray-700 whitespace-nowrap">Type</span>
+                          <AppSelect
+                            value={(category || 'inspection').toLowerCase() === 'follow_up' ? 'follow_up' : 'inspection'}
+                            onChange={(e) => {
+                              const next = e.target.value === 'follow_up' ? 'follow_up' : 'inspection';
+                              setCategory(next);
+                              saveMetaMut.mutate({ category: next });
+                            }}
+                            disabled={saveMetaMut.isPending}
+                            aria-label="Template type"
+                            className="min-w-[9rem]"
+                            options={[
+                              { value: 'inspection', label: 'Inspection' },
+                              { value: 'follow_up', label: 'Follow-up' },
+                            ]}
+                          />
+                        </div>
+                      ) : null}
                       <label
                         className="flex items-center gap-2.5 cursor-pointer select-none"
                         onClick={(e) => {

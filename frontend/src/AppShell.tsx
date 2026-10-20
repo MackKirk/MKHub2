@@ -164,6 +164,12 @@ const IconClipboardCheck = () => (
   </svg>
 );
 
+const IconFlag = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21V5a1 1 0 011-1h9l1 2h6a1 1 0 011 1v7a1 1 0 01-1 1h-6l-1-2H5v8" />
+  </svg>
+);
+
 const IconRequest = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -856,6 +862,7 @@ export default function AppShell({ children }: PropsWithChildren){
       icon: <IconHardHat />,
       items: [
         { id: 'safety-inspections', label: 'Inspections', path: '/safety/inspections', icon: <IconClipboardCheck />, requiredPermission: 'business:projects:safety:read' },
+        { id: 'safety-follow-ups', label: 'Follow-ups', path: '/safety/follow-ups', icon: <IconFlag />, requiredPermission: 'business:projects:safety:read' },
         { id: 'safety-calendar', label: 'Schedule', path: '/safety/calendar', icon: <IconCalendar />, requiredPermission: 'business:projects:safety:read' },
       ]
     },
@@ -1037,6 +1044,13 @@ export default function AppShell({ children }: PropsWithChildren){
         }
       }
     }
+    items.push({
+      type: 'page',
+      id: 'tutorials',
+      title: 'Tutorials',
+      subtitle: 'Help',
+      href: '/tutorials',
+    });
     if (isAdmin) {
       items.push({
         type: 'page',
@@ -1554,29 +1568,48 @@ export default function AppShell({ children }: PropsWithChildren){
                     );
                   })}
 
-                  {isAdmin ? (
-                    <>
+                  <>
                       <div className="my-1.5 border-t border-white/10" aria-hidden />
                       <NavLink
-                        to="/logs"
+                        to="/tutorials"
                         end
                         onClick={closeNav}
                         className={() =>
                           uiCx(
                             'mx-1.5 flex items-center gap-2.5 rounded-lg px-2.5 py-2 transition-colors',
-                            location.pathname === '/logs'
+                            location.pathname === '/tutorials' || location.pathname.startsWith('/tutorials/')
                               ? 'bg-brand-red text-white'
                               : 'text-gray-300 hover:bg-white/5 hover:text-white',
                           )
                         }
                       >
                         <span className="flex-shrink-0 opacity-80">
-                          <IconLogs />
+                          <IconAcademic />
                         </span>
-                        <span className="text-sm">Audit log</span>
+                        <span className="text-sm">Tutorials</span>
                       </NavLink>
+                      {isAdmin ? (
+                        <NavLink
+                          to="/logs"
+                          end
+                          onClick={closeNav}
+                          className={() =>
+                            uiCx(
+                              'mx-1.5 flex items-center gap-2.5 rounded-lg px-2.5 py-2 transition-colors',
+                              location.pathname === '/logs'
+                                ? 'bg-brand-red text-white'
+                                : 'text-gray-300 hover:bg-white/5 hover:text-white',
+                            )
+                          }
+                        >
+                          <span className="flex-shrink-0 opacity-80">
+                            <IconLogs />
+                          </span>
+                          <span className="text-sm">Audit log</span>
+                        </NavLink>
+                      ) : null}
                     </>
-                  ) : null}
+
                 </div>
 
                 {/* Right: sub-items for selected category */}

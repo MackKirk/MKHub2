@@ -23,7 +23,7 @@ from ..storage.provider import StorageProvider
 from ..models import models
 from ..schemas import files as file_schemas
 
-from ..services.project_utils import sanitize_division_onsite_leads
+from ..services.project_utils import reconcile_project_division_ids, sanitize_division_onsite_leads
 from ..services.optional_service_status import is_optional_service_not_approved
 from ..proposals.pdf_merge import generate_pdf
 from ..proposals.pdf_image_optimizer import optimize_image_bytes
@@ -573,27 +573,16 @@ def save_proposal(payload: dict = Body(...), db: Session = Depends(get_db), user
                     if cover_file_object_id:
                         project.image_file_object_id = cover_file_object_id
 
-                # For original proposal only: recalc project_division_ids from approved items
-                # - Add new divisions when user adds pricing items (opportunities)
-                # - Remove divisions with no approved items when marking not approved (projects)
+                # For original proposal only: sync project_division_ids from pricing items.
+                # Unpriced divisions stay. A division is removed only when every one of
+                # its pricing rows is marked not approved. New approved divisions are added.
                 if not p.is_change_order:
                     additional_costs = (p.data or {}).get("additional_costs") or []
                     if isinstance(additional_costs, list):
-                        # Build list from approved items: unique division_ids in order of first appearance
-                        seen = set()
-                        new_division_ids = []
-                        for item in additional_costs:
-                            if isinstance(item, dict) and item.get("approved", True) is True:
-                                did = item.get("division_id")
-                                if did is not None:
-                                    did_str = str(did)
-                                    if did_str not in seen:
-                                        seen.add(did_str)
-                                        new_division_ids.append(did)
                         current_division_ids = list(getattr(project, "project_division_ids", None) or [])
-                        # Compare as sets to detect any change (order may differ)
+                        new_division_ids = reconcile_project_division_ids(current_division_ids, additional_costs)
                         if set(str(d) for d in new_division_ids) != set(str(d) for d in current_division_ids):
-                            project.project_division_ids = new_division_ids if new_division_ids else current_division_ids
+                            project.project_division_ids = new_division_ids
                             # Clear orphaned project_division_percentages for removed divisions
                             pct = getattr(project, "project_division_percentages", None) or {}
                             if isinstance(pct, dict) and pct:

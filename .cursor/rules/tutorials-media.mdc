@@ -1,0 +1,35 @@
+---
+description: Tutorial content + media — workflow-first playbooks; admin markdown edits; media only when allows_media
+globs: frontend/src/features/tutorials/**/*,app/services/tutorial_*.py,app/routes/tutorials.py
+alwaysApply: false
+---
+
+# Tutorials — how to use the system
+
+## Content first (workflow playbook)
+
+Tutorials teach **how to use the system**, not obvious chrome.
+
+- Sections = important actions (create, fill required fields, work the record, convert, etc.)
+- Do **not** devote chapters to view toggles, search boxes, paging, or other controls users already understand
+- Mention list helpers only as a short “also useful” footnote when needed
+
+## Where content lives
+
+- **Seed markdown** (defaults): [`app/services/tutorial_seeds.py`](app/services/tutorial_seeds.py)
+- **Admin overrides / custom steps**: `tutorial_sections` table via `/tutorials/{id}/content` and section CRUD APIs
+- **Frontend registry**: metadata only (id, title, summary, category, access) — no JSX section bodies
+- Admins edit **inline** on the tutorial detail page (markdown textarea + preview)
+
+## Media
+
+- Gate with `allows_media` on the merged section (seed or admin toggle)
+- Upload category `tutorial-media`; Replace/Clear only when `allows_media` is true
+- Never reuse one screenshot across unrelated sections
+- Text-only chapters must not reserve an empty media column
+
+## Layout
+
+- Media section: two-column when asset or admin empty slot
+- Text-only: single-column copy
+- Guide TOC + chapter headings

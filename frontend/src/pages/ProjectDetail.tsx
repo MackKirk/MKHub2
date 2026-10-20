@@ -1221,6 +1221,7 @@ export default function ProjectDetail(){
   const { id } = useParams();
   const searchParams = new URLSearchParams(location.search);
   const safetyInspectionFromUrl = searchParams.get('safety_inspection');
+  const safetyFollowUpFromUrl = searchParams.get('safety_follow_up');
   const signOnlySafetySession =
     searchParams.get('sign_only') === '1' && Boolean((safetyInspectionFromUrl || '').trim());
 
@@ -3487,9 +3488,6 @@ export default function ProjectDetail(){
                       <EstimateBuilder
                         ref={estimateBuilderRef}
                         projectId={String(id)}
-                        statusLabel={proj?.status_label||''}
-                        settings={settings||{}}
-                        isBidding={isOpportunityStyleTabs}
                         canEdit={canEditEstimate}
                         designSystem
                         onEstimateSaved={syncMaterialListFromEstimate}
@@ -3501,9 +3499,6 @@ export default function ProjectDetail(){
                     <EstimateBuilder
                       ref={estimateBuilderRef}
                       projectId={String(id)}
-                      statusLabel={proj?.status_label||''}
-                      settings={settings||{}}
-                      isBidding={isOpportunityStyleTabs}
                       canEdit={canEditEstimate}
                       onEstimateSaved={syncMaterialListFromEstimate}
                     />
@@ -3581,6 +3576,7 @@ export default function ProjectDetail(){
                     )
                   }
                   initialSafetyInspectionId={safetyInspectionFromUrl}
+                  initialSafetyFollowUpId={safetyFollowUpFromUrl}
                   flushSaveRef={safetyTabSaveRef}
                   signOnlySession={signOnlySafetySession}
                 />

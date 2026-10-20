@@ -109,7 +109,8 @@ export const MKProjectSafetySection: React.FC<MKProjectSafetySectionProps> = ({
       await loadInspections();
       navigation.navigate("SafetyInspectionDetail", {
         projectId,
-        inspectionId: row.id
+        inspectionId: row.id,
+        canWrite
       });
     } catch (err) {
       Alert.alert("Could not create inspection", toApiError(err).message);
@@ -127,14 +128,23 @@ export const MKProjectSafetySection: React.FC<MKProjectSafetySectionProps> = ({
             Site safety inspections for this awarded project.
           </Text>
         </View>
-        {canWrite ? (
+        <View style={styles.headerActions}>
           <MKButton
-            title="New Inspection"
-            onPress={openCreateModal}
+            title="My follow-ups"
+            variant="secondary"
+            onPress={() => navigation.navigate("SafetyFollowUps")}
             size="compact"
             style={styles.addButton}
           />
-        ) : null}
+          {canWrite ? (
+            <MKButton
+              title="New Inspection"
+              onPress={openCreateModal}
+              size="compact"
+              style={styles.addButton}
+            />
+          ) : null}
+        </View>
       </View>
 
       <MKCard style={styles.card} elevated>
@@ -158,7 +168,8 @@ export const MKProjectSafetySection: React.FC<MKProjectSafetySectionProps> = ({
                 onPress={() =>
                   navigation.navigate("SafetyInspectionDetail", {
                     projectId,
-                    inspectionId: row.id
+                    inspectionId: row.id,
+                    canWrite
                   })
                 }
               >
@@ -246,6 +257,7 @@ const styles = StyleSheet.create({
     gap: spacing.md
   },
   headerText: { flex: 1, gap: spacing.xs },
+  headerActions: { gap: spacing.sm, alignItems: "flex-end" },
   title: { ...typography.subtitle },
   subtitle: { ...typography.bodySmall, color: colors.textMuted },
   addButton: { minWidth: 128 },

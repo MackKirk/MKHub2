@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api, withFileAccessToken } from '@/lib/api';
@@ -18,8 +19,10 @@ import {
   type SafetyTemplateItem,
   type YesNoNa,
 } from '@/data/projectSafetyInspectionTemplate';
-import DynamicSafetyForm from '@/components/DynamicSafetyForm';
+import DynamicSafetyForm, { type SafetyFieldFlagState } from '@/components/DynamicSafetyForm';
 import CustomSafetySignatureSlots from '@/components/safety/CustomSafetySignatureSlots';
+import SafetyFlagFollowUpModal from '@/components/safety/SafetyFlagFollowUpModal';
+import SafetyFormSignaturesGallery from '@/components/safety/SafetyFormSignaturesGallery';
 import SafetySignaturePad from '@/components/SafetySignaturePad';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
@@ -28,7 +31,7 @@ import {
   validateDynamicFormMissing,
   type SafetyFormDefinition,
 } from '@/types/safetyFormTemplate';
-import { appendCustomSignatureSlot, getCustomSignaturesFromPayload, hasIncompleteCustomSignature } from '@/lib/customSafetySignatures';
+import { appendCustomSignatureSlot, hasIncompleteCustomSignature } from '@/lib/customSafetySignatures';
 import { withSignSessionQuery, type SafetySignSession } from '@/lib/safetySignSessionQuery';
 import { imageFilesFromClipboardData, isLikelyImageFile } from '@/utils/imageUploadHelpers';
 
@@ -263,164 +266,6 @@ function AdditionalSignersSummaryModalBody({ signRequests }: { signRequests: Saf
 }
 
 /** Worker + co-signers who completed a drawn signature on this inspection. */
-function InspectionSignaturesGallery({
-  formPayload,
-  signRequests,
-}: {
-  formPayload: Record<string, unknown>;
-  signRequests: SafetyInspectionRow['sign_requests'];
-}) {
-  const workerFileId =
-    typeof formPayload._worker_signature_file_id === 'string' && formPayload._worker_signature_file_id.trim()
-      ? formPayload._worker_signature_file_id.trim()
-      : null;
-  const workerName =
-    typeof formPayload._worker_signature_signer_name === 'string' ? formPayload._worker_signature_signer_name.trim() : '';
-  const workerSignedAt =
-    typeof formPayload._worker_signature_signed_at === 'string' ? formPayload._worker_signature_signed_at : '';
-  const workerLoc =
-    typeof formPayload._worker_signature_location_label === 'string'
-      ? formPayload._worker_signature_location_label.trim()
-      : '';
-
-  const additionalSigned = (signRequests ?? [])
-    .filter((r) => (r.status || '').toLowerCase() === 'signed' && r.signature_file_object_id)
-    .sort((a, b) => {
-      const ta = Date.parse(a.signed_at || '') || 0;
-      const tb = Date.parse(b.signed_at || '') || 0;
-      return ta - tb;
-    });
-
-  const customSigned = getCustomSignaturesFromPayload(formPayload)
-    .filter((e) => (e.file_id || '').trim())
-    .sort((a, b) => {
-      const ta = Date.parse(a.signed_at || '') || 0;
-      const tb = Date.parse(b.signed_at || '') || 0;
-      return ta - tb;
-    });
-
-  if (!workerFileId && additionalSigned.length === 0 && customSigned.length === 0) return null;
-
-  return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
-      <div className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Signatures on this inspection</div>
-      <div className="space-y-4">
-        {workerFileId && (
-          <div className="rounded-lg border border-gray-100 bg-gray-50/80 p-3">
-            <div className="text-sm font-semibold text-gray-600 mb-2">Worker</div>
-            <div className="flex flex-wrap gap-4 items-start">
-              <a
-                href={withFileAccessToken(`/files/${encodeURIComponent(workerFileId)}/thumbnail?w=640`)}
-                target="_blank"
-                rel="noreferrer"
-                className="shrink-0 block rounded border border-gray-200 bg-white overflow-hidden"
-              >
-                <img
-                  src={withFileAccessToken(`/files/${encodeURIComponent(workerFileId)}/thumbnail?w=320`)}
-                  alt=""
-                  className="max-h-28 w-auto max-w-[200px] object-contain"
-                />
-              </a>
-              <div className="text-sm text-gray-800 space-y-1 min-w-0 flex-1">
-                <div>
-                  <span className="text-gray-600">Signed by: </span>
-                  <span className="font-semibold">{workerName || '—'}</span>
-                </div>
-                <div>
-                  <span className="text-gray-600">Time: </span>
-                  <span>{formatInspectionSignedAt(workerSignedAt)}</span>
-                </div>
-                <div>
-                  <span className="text-gray-600">Location: </span>
-                  <span>{workerLoc || 'Not captured'}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-        {customSigned.map((c) => (
-          <div key={c.id} className="rounded-lg border border-gray-100 bg-gray-50/80 p-3">
-            <div className="text-sm font-semibold text-gray-600 mb-2">Custom Signer</div>
-            <div className="flex flex-wrap gap-4 items-start">
-              <a
-                href={withFileAccessToken(`/files/${encodeURIComponent(c.file_id!)}/thumbnail?w=640`)}
-                target="_blank"
-                rel="noreferrer"
-                className="shrink-0 block rounded border border-gray-200 bg-white overflow-hidden"
-              >
-                <img
-                  src={withFileAccessToken(`/files/${encodeURIComponent(c.file_id!)}/thumbnail?w=320`)}
-                  alt=""
-                  className="max-h-28 w-auto max-w-[200px] object-contain"
-                />
-              </a>
-              <div className="text-sm text-gray-800 space-y-1 min-w-0 flex-1">
-                <div>
-                  <span className="text-gray-600">Signed by: </span>
-                  <span className="font-semibold">{(c.name || '').trim() || '—'}</span>
-                </div>
-                {(c.company || '').trim() ? (
-                  <div>
-                    <span className="text-gray-600">Company: </span>
-                    <span>{(c.company || '').trim()}</span>
-                  </div>
-                ) : null}
-                {(c.occupation || '').trim() ? (
-                  <div>
-                    <span className="text-gray-600">Occupation: </span>
-                    <span>{(c.occupation || '').trim()}</span>
-                  </div>
-                ) : null}
-                <div>
-                  <span className="text-gray-600">Time: </span>
-                  <span>{formatInspectionSignedAt(c.signed_at)}</span>
-                </div>
-                <div>
-                  <span className="text-gray-600">Location: </span>
-                  <span>{(c.location_label || '').trim() || 'Not captured'}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        ))}
-        {additionalSigned.map((r) => (
-          <div key={r.id} className="rounded-lg border border-gray-100 bg-gray-50/80 p-3">
-            <div className="text-sm font-semibold text-gray-600 mb-2">Additional signer</div>
-            <div className="flex flex-wrap gap-4 items-start">
-              <a
-                href={withFileAccessToken(`/files/${encodeURIComponent(r.signature_file_object_id!)}/thumbnail?w=640`)}
-                target="_blank"
-                rel="noreferrer"
-                className="shrink-0 block rounded border border-gray-200 bg-white overflow-hidden"
-              >
-                <img
-                  src={withFileAccessToken(`/files/${encodeURIComponent(r.signature_file_object_id!)}/thumbnail?w=320`)}
-                  alt=""
-                  className="max-h-28 w-auto max-w-[200px] object-contain"
-                />
-              </a>
-              <div className="text-sm text-gray-800 space-y-1 min-w-0 flex-1">
-                <div>
-                  <span className="text-gray-600">Signed by: </span>
-                  <span className="font-semibold">{(r.signer_display_name_snapshot || '').trim() || '—'}</span>
-                </div>
-                <div>
-                  <span className="text-gray-600">Time: </span>
-                  <span>{formatInspectionSignedAt(r.signed_at)}</span>
-                </div>
-                <div>
-                  <span className="text-gray-600">Location: </span>
-                  <span>{(r.signature_location_label || '').trim() || 'Not captured'}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 type Props = {
   projectId: string;
   proj: { name?: string; address?: string; address_city?: string; address_province?: string };
@@ -428,6 +273,8 @@ type Props = {
   canWrite: boolean;
   /** From URL ?safety_inspection= — open this inspection when the list loads */
   initialSafetyInspectionId?: string | null;
+  /** From URL ?safety_follow_up= — open that follow-up modal after the inspection is selected */
+  initialSafetyFollowUpId?: string | null;
   /** Parent (e.g. ProjectDetail) calls this before switching away from the Safety tab */
   flushSaveRef?: MutableRefObject<(() => Promise<void>) | undefined>;
   /** Pending signer without project/safety read: skip list, hide back to all inspections */
@@ -599,14 +446,17 @@ export default function ProjectSafetyTab({
   canRead,
   canWrite,
   initialSafetyInspectionId,
+  initialSafetyFollowUpId,
   flushSaveRef,
   signOnlySession = false,
 }: Props) {
   const qc = useQueryClient();
   const confirm = useConfirm();
+  const [, setSearchParams] = useSearchParams();
   const [selectedId, setSelectedId] = useState<string | null>(() =>
     signOnlySession && initialSafetyInspectionId?.trim() ? initialSafetyInspectionId.trim() : null
   );
+  const initialInspectionApplied = useRef(false);
   const [formPayload, setFormPayload] = useState<Record<string, unknown>>({});
   /** JSON snapshot of last committed form_payload (server or after save); null = no baseline yet */
   const [committedJson, setCommittedJson] = useState<string | null>(null);
@@ -635,6 +485,9 @@ export default function ProjectSafetyTab({
   const [extraSignerIds, setExtraSignerIds] = useState<string[]>([]);
   /** Field keys (or synthetic worker-signature key) to outline in red after finalize validation fails */
   const [requiredFieldHighlightKeys, setRequiredFieldHighlightKeys] = useState<string[]>([]);
+  const [flagFieldKey, setFlagFieldKey] = useState<string | null>(null);
+  const [deepLinkFollowUpId, setDeepLinkFollowUpId] = useState<string | null>(null);
+  const followUpDeepLinkConsumed = useRef(false);
 
   const listKey = ['projectSafetyInspections', projectId];
   const { data: list = [], isLoading: listLoading } = useQuery({
@@ -658,11 +511,47 @@ export default function ProjectSafetyTab({
       setSelectedId(sid);
       return;
     }
+    if (initialInspectionApplied.current) return;
     if (!list.length) return;
     if (list.some((r) => r.id === sid)) {
       setSelectedId(sid);
+      initialInspectionApplied.current = true;
     }
   }, [initialSafetyInspectionId, list, signOnlySession]);
+
+  /** Open an inspection and keep URL in sync (avoids deep-link resetting after duplicate/create). */
+  const openInspection = useCallback(
+    (id: string) => {
+      setSelectedId(id);
+      initialInspectionApplied.current = true;
+      if (signOnlySession) return;
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.set('tab', 'safety');
+          next.set('safety_inspection', id);
+          next.delete('safety_follow_up');
+          return next;
+        },
+        { replace: true }
+      );
+    },
+    [setSearchParams, signOnlySession]
+  );
+
+  const clearSelectedInspection = useCallback(() => {
+    setSelectedId(null);
+    if (signOnlySession) return;
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('safety_inspection');
+        next.delete('safety_follow_up');
+        return next;
+      },
+      { replace: true }
+    );
+  }, [setSearchParams, signOnlySession]);
 
   const { data: schedulableTemplates = [] } = useQuery({
     queryKey: ['formTemplatesSchedulable', showCreateModal],
@@ -715,6 +604,64 @@ export default function ProjectSafetyTab({
     enabled: safetyAccess && !!projectId && !!selectedId,
   });
 
+  type FollowUpListRow = {
+    id: string;
+    source_field_key: string;
+    source_field_label_snapshot?: string | null;
+    source_value_snapshot?: {
+      value?: unknown;
+      display?: string;
+      required?: boolean;
+      field_type?: string | null;
+    } | null;
+    source_inspection_date?: string | null;
+    source_template_name?: string | null;
+    form_template_id?: string | null;
+    template_name?: string | null;
+    form_definition_snapshot?: SafetyFormDefinition | null;
+    form_payload?: Record<string, unknown>;
+    label?: string | null;
+    assigned_user_id?: string | null;
+    worker_name?: string | null;
+    due_date?: string | null;
+    status: string;
+    created_at?: string | null;
+  };
+
+  const { data: inspectionFollowUps = [] } = useQuery({
+    queryKey: ['projectSafetyFollowUps', projectId, selectedId],
+    queryFn: () =>
+      api<FollowUpListRow[]>(
+        'GET',
+        `/projects/${encodeURIComponent(projectId)}/safety-inspections/${encodeURIComponent(selectedId!)}/follow-ups`
+      ),
+    enabled: safetyAccess && !!projectId && !!selectedId && !signOnlySession,
+  });
+
+  const fieldFlagStates = useMemo(() => {
+    const map: Record<string, SafetyFieldFlagState> = {};
+    for (const fu of inspectionFollowUps) {
+      const key = (fu.source_field_key || '').trim();
+      if (!key) continue;
+      const st = (fu.status || '').toLowerCase() === 'completed' ? 'completed' : 'pending';
+      if (map[key] === 'pending') continue;
+      if (st === 'pending') map[key] = 'pending';
+      else if (!map[key]) map[key] = 'completed';
+    }
+    return map;
+  }, [inspectionFollowUps]);
+
+  useEffect(() => {
+    const fuid = initialSafetyFollowUpId?.trim();
+    if (!fuid || followUpDeepLinkConsumed.current || signOnlySession) return;
+    if (!selectedId || !inspectionFollowUps.length) return;
+    const match = inspectionFollowUps.find((f) => f.id === fuid);
+    if (!match) return;
+    followUpDeepLinkConsumed.current = true;
+    setDeepLinkFollowUpId(match.id);
+    setFlagFieldKey(match.source_field_key);
+  }, [initialSafetyFollowUpId, selectedId, inspectionFollowUps, signOnlySession]);
+
   const isDynamicInspection = Boolean(detail?.form_template_id);
 
   const { data: templateFallback } = useQuery({
@@ -747,6 +694,19 @@ export default function ProjectSafetyTab({
     }
     return null;
   }, [detail?.form_definition_snapshot, templateFallback?.definition]);
+
+  const flagFieldMeta = useMemo(() => {
+    if (!flagFieldKey) return { label: undefined as string | undefined, required: undefined as boolean | undefined };
+    if (!dynamicDefinition) return { label: flagFieldKey, required: undefined };
+    for (const s of dynamicDefinition.sections || []) {
+      for (const f of s.fields || []) {
+        if (f.key === flagFieldKey) {
+          return { label: f.label || flagFieldKey, required: Boolean(f.required) };
+        }
+      }
+    }
+    return { label: flagFieldKey, required: undefined };
+  }, [flagFieldKey, dynamicDefinition]);
 
   const inspectionImmutable =
     detail?.status === 'finalized' || detail?.status === 'pending_signatures';
@@ -976,12 +936,44 @@ export default function ProjectSafetyTab({
       qc.invalidateQueries({ queryKey: listKey });
       qc.invalidateQueries({ queryKey: ['safetyInspections'] });
       qc.invalidateQueries({ queryKey: ['safetyInspectionsCalendar'] });
-      setSelectedId(row.id);
+      openInspection(row.id);
       closeCreateModal();
       toast.success('Inspection created');
     },
     onError: () => toast.error('Could not create inspection'),
   });
+
+  const duplicateMutation = useMutation({
+    mutationFn: async () => {
+      const sid = selectedId;
+      if (!sid) throw new Error('no id');
+      return api<SafetyInspectionRow>(
+        'POST',
+        `/projects/${encodeURIComponent(projectId)}/safety-inspections/${encodeURIComponent(sid)}/duplicate`
+      );
+    },
+    onSuccess: (row) => {
+      qc.invalidateQueries({ queryKey: listKey });
+      qc.invalidateQueries({ queryKey: ['safetyInspections'] });
+      qc.invalidateQueries({ queryKey: ['safetyInspectionsCalendar'] });
+      openInspection(row.id);
+      toast.success('Inspection duplicated as a new draft');
+    },
+    onError: () => toast.error('Could not duplicate inspection'),
+  });
+
+  const askDuplicateInspection = useCallback(async () => {
+    if (!selectedId || !canWrite) return;
+    const result = await confirm({
+      title: 'Duplicate inspection?',
+      message:
+        'Creates a new draft with the same answers. Signatures are cleared and the date is set to now. Continue?',
+      confirmText: 'Duplicate',
+      cancelText: 'Cancel',
+    });
+    if (result !== 'confirm') return;
+    duplicateMutation.mutate();
+  }, [selectedId, canWrite, confirm, duplicateMutation]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -1467,7 +1459,7 @@ export default function ProjectSafetyTab({
                   <li key={row.id}>
                     <button
                       type="button"
-                      onClick={() => setSelectedId(row.id)}
+                      onClick={() => openInspection(row.id)}
                       className="w-full text-left px-4 py-3 hover:bg-gray-50 flex items-center justify-between gap-3"
                     >
                       <div className="min-w-0 text-left">
@@ -1544,7 +1536,7 @@ export default function ProjectSafetyTab({
             onClick={() => {
               void (async () => {
                 if (!hasUnsavedChanges) {
-                  setSelectedId(null);
+                  clearSelectedInspection();
                   return;
                 }
                 const result = await confirm({
@@ -1563,7 +1555,7 @@ export default function ProjectSafetyTab({
                     return;
                   }
                 }
-                setSelectedId(null);
+                clearSelectedInspection();
               })();
             }}
             className="text-sm text-brand-red hover:underline font-semibold"
@@ -1605,6 +1597,17 @@ export default function ProjectSafetyTab({
                     {detail.status === 'finalized' ? 'Finalized' : 'Draft'}
                   </span>
                 )}
+                {canWrite && !signOnlySession ? (
+                  <button
+                    type="button"
+                    disabled={duplicateMutation.isPending}
+                    onClick={() => void askDuplicateInspection()}
+                    title="Copy answers into a new draft (signatures cleared, date set to now)"
+                    className="text-sm font-semibold px-2.5 py-1 rounded-lg border border-gray-300 text-gray-800 bg-white hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    {duplicateMutation.isPending ? 'Duplicating…' : 'Duplicate'}
+                  </button>
+                ) : null}
                 {showInspectionPdfAction && (inspectionPdfFileObjectId || canRegenerateInspectionPdf) ? (
                   <button
                     type="button"
@@ -1676,6 +1679,9 @@ export default function ProjectSafetyTab({
               signerUserId={signerUserId}
               signSession={signSession}
               highlightRequiredFieldKeys={requiredFieldHighlightKeys}
+              enableFieldFlags={!signOnlySession}
+              fieldFlagStates={fieldFlagStates}
+              onFlagField={(key) => setFlagFieldKey(key)}
             />
           ) : (
             formSections.map((section) => (
@@ -1692,7 +1698,11 @@ export default function ProjectSafetyTab({
           )}
 
           {detail ? (
-            <InspectionSignaturesGallery formPayload={formPayload} signRequests={detail.sign_requests} />
+            <SafetyFormSignaturesGallery
+              formPayload={formPayload}
+              signRequests={detail.sign_requests}
+              title="Signatures on this inspection"
+            />
           ) : null}
 
           {formEditable && isDynamicInspection && dynamicDefinition ? (
@@ -1825,6 +1835,31 @@ export default function ProjectSafetyTab({
               </SafetyModalOverlayBackdrop>
             </OverlayPortal>
           )}
+
+          {flagFieldKey && selectedId ? (
+            <SafetyFlagFollowUpModal
+              open={!!flagFieldKey}
+              onClose={() => {
+                setFlagFieldKey(null);
+                setDeepLinkFollowUpId(null);
+              }}
+              projectId={projectId}
+              inspectionId={selectedId}
+              fieldKey={flagFieldKey}
+              fieldLabel={flagFieldMeta.label}
+              fieldRequired={flagFieldMeta.required}
+              existingFollowUps={inspectionFollowUps}
+              canWrite={canWrite}
+              projectInfo={proj}
+              sourceInspectionDate={detail?.inspection_date}
+              sourceTemplateName={detail?.template_name}
+              initialFollowUpId={deepLinkFollowUpId}
+              onOpenSourceInspection={() => {
+                setFlagFieldKey(null);
+                setDeepLinkFollowUpId(null);
+              }}
+            />
+          ) : null}
         </>
       )}
     </div>

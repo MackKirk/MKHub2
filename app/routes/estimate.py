@@ -198,6 +198,56 @@ def search_products(
     return query.order_by(Material.name.asc()).limit(50).all()
 
 
+@router.post("/invoices/{file_object_id}/match-products")
+def match_invoice_products(
+    file_object_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permissions("inventory:products:read")),
+):
+    """Suggest catalog products for one invoice PDF. Nothing is saved."""
+    from ..models.models import FileObject
+    from ..services.file_access_control import assert_can_read_file_object
+    from ..services.file_object_read import read_file_object_bytes
+    from ..services.invoice_product_match import match_invoice_pdf
+
+    fo = db.query(FileObject).filter(FileObject.id == file_object_id).first()
+    if not fo:
+        raise HTTPException(status_code=404, detail="File not found")
+    assert_can_read_file_object(user, db, fo)
+
+    content_type = (fo.content_type or "").lower()
+    key = (fo.key or "").lower()
+    if content_type and "pdf" not in content_type and not key.endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF invoices can be matched")
+
+    data = read_file_object_bytes(fo)
+    if not data:
+        raise HTTPException(status_code=404, detail="File not available")
+
+    materials = db.query(Material).options(defer(Material.image_base64)).all()
+    result = match_invoice_pdf(data, materials)
+    products = result.get("products") or []
+    ids = []
+    for product in products:
+        if product.get("id") is not None:
+            ids.append(product.get("id"))
+        for similar in product.get("similar") or []:
+            if similar.get("id") is not None:
+                ids.append(similar.get("id"))
+    if ids:
+        images = (
+            db.query(Material.id, Material.image_base64)
+            .filter(Material.id.in_(ids))
+            .all()
+        )
+        by_id = {row.id: row.image_base64 for row in images}
+        for product in products:
+            product["image_base64"] = by_id.get(product.get("id"))
+            for similar in product.get("similar") or []:
+                similar["image_base64"] = by_id.get(similar.get("id"))
+    return result
+
+
 @router.post("/products")
 def create_product(body: MaterialIn, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:products:write"))):
     # Enforce required supplier and uniqueness (name + supplier), case-insensitive
@@ -583,7 +633,33 @@ class EstimateIn(BaseModel):
     section_order: Optional[List[str]] = None  # Section order
     section_names: Optional[dict] = None  # Section display names
     section_tax_rates: Optional[dict] = None  # Per-section { pstRate, gstRate }
+    section_invoices: Optional[dict] = None  # Per-section [{ file_object_id, name }]
     items: List[EstimateItemIn] = []
+
+
+def _normalize_section_invoices(raw) -> dict:
+    """Keep {section_id: [{file_object_id, name}]} and drop empty or invalid rows."""
+    if not isinstance(raw, dict):
+        return {}
+    out = {}
+    for section_id, items in raw.items():
+        key = str(section_id or "").strip()
+        if not key or not isinstance(items, list):
+            continue
+        cleaned = []
+        seen = set()
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            file_id = str(item.get("file_object_id") or "").strip()
+            if not file_id or file_id in seen:
+                continue
+            seen.add(file_id)
+            name = str(item.get("name") or "Invoice.pdf").strip() or "Invoice.pdf"
+            cleaned.append({"file_object_id": file_id, "name": name})
+        if cleaned:
+            out[key] = cleaned
+    return out
 
 
 @router.get("/estimates")
@@ -729,6 +805,11 @@ def _update_estimate_internal(estimate_id: int, body: EstimateIn, db: Session):
         ui_state['section_tax_rates'] = body.section_tax_rates
     elif 'section_tax_rates' in existing_ui_state:
         ui_state['section_tax_rates'] = existing_ui_state['section_tax_rates']
+
+    if body.section_invoices is not None:
+        ui_state['section_invoices'] = _normalize_section_invoices(body.section_invoices)
+    elif 'section_invoices' in existing_ui_state:
+        ui_state['section_invoices'] = existing_ui_state['section_invoices']
     
     # Delete existing items (but first get old extras to preserve if items match)
     old_items = db.query(EstimateItem).filter(EstimateItem.estimate_id == estimate_id).all()
@@ -917,6 +998,12 @@ def create_estimate(body: EstimateIn, db: Session = Depends(get_db), _=Depends(r
         ui_state['profit_rate'] = body.profit_rate
     if body.section_order:
         ui_state['section_order'] = body.section_order
+    if body.section_names:
+        ui_state['section_names'] = body.section_names
+    if body.section_tax_rates is not None:
+        ui_state['section_tax_rates'] = body.section_tax_rates
+    if body.section_invoices is not None:
+        ui_state['section_invoices'] = _normalize_section_invoices(body.section_invoices)
     notes_json = json.dumps(ui_state) if ui_state else None
     
     est = Estimate(project_id=body.project_id, markup=body.markup or 0.0, notes=notes_json, created_at=datetime.utcnow())
@@ -1015,6 +1102,8 @@ def create_estimate(body: EstimateIn, db: Session = Depends(get_db), _=Depends(r
             ui_state['profit_rate'] = body.profit_rate
         if body.section_order:
             ui_state['section_order'] = body.section_order
+        if body.section_invoices is not None:
+            ui_state['section_invoices'] = _normalize_section_invoices(body.section_invoices)
     if item_extras:
         ui_state['item_extras'] = item_extras
     notes_json = json.dumps(ui_state) if ui_state else None
@@ -1172,6 +1261,7 @@ def get_estimate(estimate_id: int, db: Session = Depends(get_db), _=Depends(requ
         "section_order": ui_state.get("section_order"),
         "section_names": ui_state.get("section_names"),
         "section_tax_rates": ui_state.get("section_tax_rates"),
+        "section_invoices": ui_state.get("section_invoices") or {},
     }
 
 

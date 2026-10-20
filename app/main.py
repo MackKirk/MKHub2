@@ -70,6 +70,7 @@ from .routes.safety import router as safety_router
 from .routes.form_templates import router as form_templates_router
 from .routes.form_custom_lists import router as form_custom_lists_router
 from .routes.training import router as training_router
+from .routes.tutorials import router as tutorials_router
 from .routes.bug_report import router as bug_report_router
 from .routes.search import router as search_router
 from .routes.admin_system import router as admin_system_router
@@ -251,6 +252,7 @@ def create_app() -> FastAPI:
                 "script-src 'self'; "
                 "worker-src 'self' blob:; "
                 "connect-src 'self'; "
+                "media-src 'self' blob: https://*.blob.core.windows.net; "
                 "frame-ancestors 'none'; "
                 "base-uri 'self'"
             )
@@ -301,6 +303,7 @@ def create_app() -> FastAPI:
     app.include_router(form_custom_lists_router, dependencies=_hub)
     app.include_router(form_templates_router, dependencies=_hub)
     app.include_router(training_router, dependencies=_hub)
+    app.include_router(tutorials_router, dependencies=_hub)
     app.include_router(bug_report_router, dependencies=_hub)
     app.include_router(search_router, dependencies=_hub)
     app.include_router(admin_system_router, dependencies=_hub)
@@ -687,6 +690,82 @@ def create_app() -> FastAPI:
                     except Exception as e:
                         db.rollback()
                         print(f"[startup] safety inspection sign requests migration (non-critical): {e}")
+
+                    # project_safety_follow_ups (SiteDocs-style flags)
+                    try:
+                        if db.execute(
+                            text(
+                                "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'project_safety_follow_ups' LIMIT 1"
+                            )
+                        ).fetchall():
+                            pass
+                        else:
+                            db.execute(
+                                text(
+                                    """
+                                    CREATE TABLE project_safety_follow_ups (
+                                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                                        project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                                        source_inspection_id UUID NOT NULL REFERENCES project_safety_inspections(id) ON DELETE CASCADE,
+                                        source_field_key VARCHAR(255) NOT NULL,
+                                        source_field_label_snapshot VARCHAR(500) NULL,
+                                        source_value_snapshot JSONB NULL,
+                                        source_inspection_date_snapshot TIMESTAMPTZ NULL,
+                                        source_template_name_snapshot VARCHAR(255) NULL,
+                                        form_template_id UUID NULL REFERENCES form_templates(id) ON DELETE SET NULL,
+                                        form_definition_snapshot JSONB NULL,
+                                        form_payload JSONB NULL,
+                                        label VARCHAR(255) NULL,
+                                        assigned_user_id UUID NULL REFERENCES users(id) ON DELETE SET NULL,
+                                        due_date DATE NULL,
+                                        status VARCHAR(20) NOT NULL DEFAULT 'pending',
+                                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                                        created_by UUID NULL REFERENCES users(id) ON DELETE SET NULL,
+                                        updated_at TIMESTAMPTZ NULL,
+                                        completed_at TIMESTAMPTZ NULL
+                                    )
+                                    """
+                                )
+                            )
+                            db.execute(
+                                text(
+                                    "CREATE INDEX IF NOT EXISTS idx_safety_follow_ups_inspection_field ON project_safety_follow_ups (source_inspection_id, source_field_key)"
+                                )
+                            )
+                            db.execute(
+                                text(
+                                    "CREATE INDEX IF NOT EXISTS idx_safety_follow_ups_assigned_status ON project_safety_follow_ups (assigned_user_id, status)"
+                                )
+                            )
+                            db.execute(
+                                text(
+                                    "CREATE INDEX IF NOT EXISTS idx_safety_follow_ups_project_status ON project_safety_follow_ups (project_id, status)"
+                                )
+                            )
+                            db.commit()
+                            print("[startup] Created project_safety_follow_ups")
+                        # Additive columns for SiteDocs-aligned follow-ups (safe if table already existed)
+                        if _add_column_if_missing(
+                            db, "project_safety_follow_ups", "label", "VARCHAR(255) NULL"
+                        ):
+                            db.commit()
+                        if _add_column_if_missing(
+                            db,
+                            "project_safety_follow_ups",
+                            "source_inspection_date_snapshot",
+                            "TIMESTAMPTZ NULL",
+                        ):
+                            db.commit()
+                        if _add_column_if_missing(
+                            db,
+                            "project_safety_follow_ups",
+                            "source_template_name_snapshot",
+                            "VARCHAR(255) NULL",
+                        ):
+                            db.commit()
+                    except Exception as e:
+                        db.rollback()
+                        print(f"[startup] project_safety_follow_ups migration (non-critical): {e}")
 
                     # Form templates — assignee column only. form_template_version_id is retired
                     # and must not be added again (each add/drop burns a Postgres column slot).
@@ -2864,6 +2943,38 @@ def create_app() -> FastAPI:
                     except Exception as e:
                         db.rollback()
                         print(f"[startup] training_quizzes max_attempts migration (non-critical): {e}")
+
+                    # Hub tutorial media + editable section content
+                    try:
+                        from .models.models import TutorialMediaItem, TutorialMediaSlot, TutorialSection
+                        from .services.tutorial_media_items import copy_legacy_slots
+
+                        Base.metadata.create_all(
+                            bind=engine,
+                            tables=[
+                                TutorialMediaSlot.__table__,
+                                TutorialMediaItem.__table__,
+                                TutorialSection.__table__,
+                            ],
+                        )
+                        copied = copy_legacy_slots(db)
+                        _add_column_if_missing(
+                            db, "tutorial_media_items", "frame_x", "DOUBLE PRECISION NOT NULL DEFAULT 50"
+                        )
+                        _add_column_if_missing(
+                            db, "tutorial_media_items", "frame_y", "DOUBLE PRECISION NOT NULL DEFAULT 0"
+                        )
+                        _add_column_if_missing(
+                            db, "tutorial_media_items", "frame_zoom", "DOUBLE PRECISION NOT NULL DEFAULT 1"
+                        )
+                        db.commit()
+                        print(
+                            "[startup] Ensured tutorial media tables"
+                            + (f" (copied {copied} legacy slots)" if copied else "")
+                        )
+                    except Exception as e:
+                        db.rollback()
+                        print(f"[startup] tutorial tables create_all (non-critical): {e}")
 
                     # Corporate credit card inventory (last four + expiry only; no full PAN)
                     rows = db.execute(

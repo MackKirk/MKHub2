@@ -14,8 +14,6 @@ export default function EstimateEdit(){
   });
   
   const projectId = String(estimateData?.estimate?.project_id || '');
-  const { data: project } = useQuery({ queryKey:['project', projectId], queryFn: ()=> projectId? api<any>('GET', `/projects/${projectId}`): Promise.resolve(null), enabled: !!projectId });
-  const { data: settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
   
   if (isLoading) {
     return (
@@ -53,7 +51,7 @@ export default function EstimateEdit(){
       </div>
       <div className="rounded-xl border bg-white p-4">
         {estimateId && projectId ? (
-          <EstimateBuilder estimateId={estimateId} projectId={projectId} statusLabel={project?.status_label||''} settings={settings||{}} isBidding={project?.is_bidding} />
+          <EstimateBuilder estimateId={estimateId} projectId={projectId} />
         ) : (
           <div className="p-4 text-gray-600">Invalid estimate or project ID</div>
         )}

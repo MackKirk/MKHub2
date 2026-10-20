@@ -15,6 +15,7 @@ from ..auth.security import (
     _forbidden,
     _has_permission,
     _has_project_feature_permission,
+    _user_is_admin,
     has_project_files_category_permission,
     has_customer_tab_permission,
     can_access_business_line,
@@ -239,6 +240,11 @@ def assert_can_initiate_upload(
         if _has_permission(user, "hr:community:write"):
             return
         raise _forbidden("missing hr:community:write")
+
+    if cat == "tutorial-media":
+        if _user_is_admin(user):
+            return
+        raise _forbidden("Admin role required to upload tutorial media")
 
     # Fleet misc uploads (no project/client/employee) — authorize by Fleet keys only
     # for these categories; if missing, fall through to the legacy misc allowlist
@@ -598,6 +604,12 @@ def _is_training_course_material_blob(fo: FileObject) -> bool:
     return "/misc/training-course-content/" in key
 
 
+def _is_tutorial_media_blob(fo: FileObject) -> bool:
+    """Hub tutorial media slots use canonical_key(..., 'misc', 'tutorial-media', ...)."""
+    key = (getattr(fo, "key", None) or "").replace("\\", "/").lower()
+    return "/misc/tutorial-media/" in key
+
+
 def _is_organization_logo_library_blob(fo: FileObject) -> bool:
     key = (getattr(fo, "key", None) or "").replace("\\", "/").lower()
     return "/misc/organization-logos/" in key
@@ -703,6 +715,9 @@ def assert_can_read_file_object(user: User, db: Session, fo: FileObject) -> None
         return
 
     if _is_training_course_material_blob(fo):
+        return
+
+    if _is_tutorial_media_blob(fo):
         return
 
     if _is_organization_logo_library_blob(fo):

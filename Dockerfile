@@ -4,9 +4,9 @@ ARG VITE_GOOGLE_MAPS_API_KEY
 ENV VITE_GOOGLE_MAPS_API_KEY=$VITE_GOOGLE_MAPS_API_KEY
 # Install deps first for better caching
 COPY frontend/package.json ./
-# If a lockfile is added later, COPY it too for repeatable builds
-# RUN npm ci
-RUN npm install --no-audit --no-fund
+# npm 10.8.2 (shipped with node:20) crashes on this graph:
+# "Cannot read properties of null (reading 'edgesOut')"
+RUN npm install -g npm@11 && npm install --no-audit --no-fund
 # Now copy the rest and build
 COPY frontend ./
 RUN npm run build

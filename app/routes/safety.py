@@ -9,7 +9,14 @@ from sqlalchemy.orm import Session
 
 from ..auth.security import get_current_user, require_permissions, can_access_business_line
 from ..db import get_db
-from ..models.models import Project, ProjectSafetyInspection, User, FormTemplate, EmployeeProfile
+from ..models.models import (
+    Project,
+    ProjectSafetyInspection,
+    ProjectSafetyFollowUp,
+    User,
+    FormTemplate,
+    EmployeeProfile,
+)
 
 router = APIRouter(prefix="/safety", tags=["safety"])
 
@@ -141,6 +148,87 @@ def list_safety_inspections(
                 "form_template_id": str(insp.form_template_id) if getattr(insp, "form_template_id", None) else None,
                 "created_at": insp.created_at.isoformat() if insp.created_at else None,
                 "updated_at": insp.updated_at.isoformat() if insp.updated_at else None,
+            }
+        )
+    return out
+
+
+@router.get("/follow-ups")
+def list_safety_follow_ups(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("business:projects:safety:read")),
+    status: Optional[str] = Query(None, description="pending or completed"),
+    search: Optional[str] = Query(None, description="Filter by project name, code, or follow-up label"),
+    assigned_to_me: bool = Query(False, description="Only follow-ups assigned to the current user"),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+):
+    """Aggregated safety follow-ups across awarded projects the user can access."""
+    st = None
+    if status and str(status).strip():
+        v = str(status).strip().lower()
+        if v in ("pending", "completed"):
+            st = v
+    allowed_ids = _allowed_project_ids(db, user)
+    if not allowed_ids:
+        return []
+    q = (
+        db.query(ProjectSafetyFollowUp, Project, FormTemplate, User, EmployeeProfile)
+        .join(Project, Project.id == ProjectSafetyFollowUp.project_id)
+        .outerjoin(FormTemplate, FormTemplate.id == ProjectSafetyFollowUp.form_template_id)
+        .outerjoin(User, User.id == ProjectSafetyFollowUp.assigned_user_id)
+        .outerjoin(EmployeeProfile, EmployeeProfile.user_id == User.id)
+        .filter(ProjectSafetyFollowUp.project_id.in_(allowed_ids))
+    )
+    if st:
+        q = q.filter(ProjectSafetyFollowUp.status == st)
+    if assigned_to_me:
+        q = q.filter(ProjectSafetyFollowUp.assigned_user_id == user.id)
+    if search and search.strip():
+        term = f"%{search.strip().lower()}%"
+        q = q.filter(
+            or_(
+                Project.name.ilike(term),
+                Project.code.ilike(term),
+                ProjectSafetyFollowUp.label.ilike(term),
+            )
+        )
+    q = q.order_by(ProjectSafetyFollowUp.created_at.desc())
+    rows = q.offset(offset).limit(limit).all()
+    out: List[dict] = []
+    for fu, proj, ft, asg_u, asg_ep in rows:
+        st_val = (getattr(fu, "status", None) or "pending").strip().lower()
+        if st_val not in ("pending", "completed"):
+            st_val = "pending"
+        src_date = getattr(fu, "source_inspection_date_snapshot", None)
+        out.append(
+            {
+                "id": str(fu.id),
+                "project_id": str(proj.id),
+                "project_name": proj.name or "",
+                "project_code": proj.code or "",
+                "project_address": getattr(proj, "address", None) or "",
+                "project_address_city": getattr(proj, "address_city", None) or "",
+                "project_address_province": getattr(proj, "address_province", None) or "",
+                "business_line": getattr(proj, "business_line", None) or "construction",
+                "source_inspection_id": str(fu.source_inspection_id),
+                "source_field_key": fu.source_field_key or "",
+                "source_field_label_snapshot": fu.source_field_label_snapshot,
+                "source_value_snapshot": fu.source_value_snapshot
+                if isinstance(getattr(fu, "source_value_snapshot", None), dict)
+                else None,
+                "source_inspection_date": src_date.isoformat() if src_date else None,
+                "source_template_name": getattr(fu, "source_template_name_snapshot", None) or None,
+                "label": (getattr(fu, "label", None) or "") or None,
+                "template_name": (ft.name or "") if ft else None,
+                "form_template_id": str(fu.form_template_id) if fu.form_template_id else None,
+                "assigned_user_id": str(fu.assigned_user_id) if fu.assigned_user_id else None,
+                "worker_name": _worker_label(asg_u, asg_ep),
+                "due_date": fu.due_date.isoformat() if fu.due_date else None,
+                "status": st_val,
+                "created_at": fu.created_at.isoformat() if fu.created_at else None,
+                "completed_at": fu.completed_at.isoformat() if fu.completed_at else None,
             }
         )
     return out

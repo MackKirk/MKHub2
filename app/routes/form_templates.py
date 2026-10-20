@@ -22,8 +22,25 @@ from ..models.models import FormCustomList, FormTemplate, FleetAsset, User
 
 router = APIRouter(prefix="/form-templates", tags=["form-templates"])
 
+# Form template categories (same JSON definition; distinct usage)
+INSPECTION_CATEGORY = "inspection"
+FOLLOW_UP_CATEGORY = "follow_up"
 # Employee review templates (same JSON definition as safety; distinct category)
 EMPLOYEE_REVIEW_CATEGORY = "employee_review"
+
+_SAFETY_TEMPLATE_CATEGORIES = frozenset({INSPECTION_CATEGORY, FOLLOW_UP_CATEGORY})
+
+
+def _normalized_template_category(raw: Optional[str]) -> str:
+    """Null/empty category is treated as inspection."""
+    cat = (raw or "").strip().lower()
+    if not cat:
+        return INSPECTION_CATEGORY
+    return cat
+
+
+def _is_inspection_like_category(raw: Optional[str]) -> bool:
+    return _normalized_template_category(raw) == INSPECTION_CATEGORY
 
 
 def _hr_can_manage_employee_review_templates(user: User) -> bool:
@@ -249,7 +266,7 @@ def _template_to_dict(db: Session, t: FormTemplate, *, include_definition: bool 
         "id": str(t.id),
         "name": t.name or "",
         "description": t.description or "",
-        "category": t.category or "inspection",
+        "category": _normalized_template_category(t.category),
         "status": t.status or "active",
         "version_label": (t.version_label or "").strip() if getattr(t, "version_label", None) is not None else "",
         "created_at": t.created_at.isoformat() if t.created_at else None,
@@ -302,8 +319,19 @@ def list_form_templates(
             raise HTTPException(status_code=403, detail="Forbidden")
         category = EMPLOYEE_REVIEW_CATEGORY
     q = db.query(FormTemplate)
-    if category and category.strip():
-        q = q.filter(FormTemplate.category == category.strip())
+    explicit_category = (category or "").strip().lower() if category else ""
+    if explicit_category:
+        if explicit_category == INSPECTION_CATEGORY:
+            # Null/empty category is treated as inspection
+            q = q.filter(
+                or_(
+                    FormTemplate.category.is_(None),
+                    FormTemplate.category == "",
+                    func.lower(FormTemplate.category) == INSPECTION_CATEGORY,
+                )
+            )
+        else:
+            q = q.filter(func.lower(FormTemplate.category) == explicit_category)
     elif user_has_any_project_safety_permission(user, "read"):
         # General safety lists (e.g. /safety/form-templates, schedulable picker) must not include
         # HR employee-review templates — same URL stores both; only explicit ?category=employee_review shows them.
@@ -318,7 +346,16 @@ def list_form_templates(
     rows: List[FormTemplate] = q.all()
 
     if schedulable:
-        rows = [t for t in rows if (t.status or "").lower() == "active" and _definition_has_sections(_normalize_definition(t.definition or {}))]
+        rows = [
+            t
+            for t in rows
+            if (t.status or "").lower() == "active"
+            and _definition_has_sections(_normalize_definition(t.definition or {}))
+        ]
+        # Default New Inspection / schedule picker: inspections only (exclude follow_up).
+        # Explicit ?category=follow_up&schedulable=true keeps follow-up templates for Flag modal.
+        if not explicit_category:
+            rows = [t for t in rows if _is_inspection_like_category(t.category)]
 
     sort_key = (sort or "name").strip().lower()
     asc_dir = (sort_dir or "asc").lower() != "desc"
@@ -465,7 +502,19 @@ def update_form_template(
     if body.description is not None:
         t.description = body.description.strip() or None
     if body.category is not None:
-        t.category = body.category.strip() or "inspection"
+        next_cat = _normalized_template_category(body.category)
+        current_cat = _normalized_template_category(t.category)
+        if current_cat == EMPLOYEE_REVIEW_CATEGORY or next_cat == EMPLOYEE_REVIEW_CATEGORY:
+            if next_cat != EMPLOYEE_REVIEW_CATEGORY:
+                raise HTTPException(status_code=400, detail="HR templates must remain category employee_review")
+            t.category = EMPLOYEE_REVIEW_CATEGORY
+        elif next_cat not in _SAFETY_TEMPLATE_CATEGORIES:
+            raise HTTPException(
+                status_code=400,
+                detail="category must be inspection or follow_up",
+            )
+        else:
+            t.category = next_cat
     if body.status is not None:
         st = body.status.strip().lower()
         if st not in ("active", "inactive"):
