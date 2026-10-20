@@ -23,7 +23,7 @@ import {
   isMultiPageTemplate,
   pageLabel,
 } from '@/lib/documentTemplateUtils';
-import { AppButton, uiCx, uiLayout, uiTypography } from '@/components/ui';
+import { AppButton, AppChoiceCards, uiCx, uiLayout, uiTypography } from '@/components/ui';
 
 export type DocumentTemplateSelectionPhase = 'grid' | 'options' | 'pages';
 
@@ -323,44 +323,27 @@ export function DocumentTemplateSelectionPanel({
 
   const optionsView = selectedType ? (
     <div className="flex flex-col gap-3">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <button
-          type="button"
-          disabled={disabled || busy}
-          onClick={() => void handleUseAllPages()}
-          className={uiCx(
-            'p-4 border-2 rounded-lg text-left transition-all flex flex-col gap-2',
-            'border-gray-200 hover:border-brand-red hover:bg-red-50/60',
-            (disabled || busy) && 'opacity-60 cursor-not-allowed',
-          )}
-        >
-          <Layers className="h-5 w-5 text-brand-red shrink-0" />
-          <div>
-            <div className="font-semibold text-gray-900 mb-0.5">
-              Use all {getTemplatePageCount(selectedType)} pages
-            </div>
-            <div className="text-sm text-gray-600">
-              Include every page from this template in order.
-            </div>
-          </div>
-        </button>
-        <button
-          type="button"
-          disabled={disabled || busy}
-          onClick={openPagePicker}
-          className={uiCx(
-            'p-4 border-2 rounded-lg text-left transition-all flex flex-col gap-2',
-            'border-gray-200 hover:border-brand-red hover:bg-red-50/60',
-            (disabled || busy) && 'opacity-60 cursor-not-allowed',
-          )}
-        >
-          <ListChecks className="h-5 w-5 text-brand-red shrink-0" />
-          <div>
-            <div className="font-semibold text-gray-900 mb-0.5">Choose pages</div>
-            <div className="text-sm text-gray-600">Pick which pages to include.</div>
-          </div>
-        </button>
-      </div>
+      <AppChoiceCards
+        disabled={disabled || busy}
+        onChange={(value) => {
+          if (value === 'all') void handleUseAllPages();
+          else openPagePicker();
+        }}
+        options={[
+          {
+            value: 'all',
+            title: `Use all ${getTemplatePageCount(selectedType)} pages`,
+            description: 'Include every page from this template in order.',
+            icon: Layers,
+          },
+          {
+            value: 'subset',
+            title: 'Choose pages',
+            description: 'Pick which pages to include.',
+            icon: ListChecks,
+          },
+        ]}
+      />
     </div>
   ) : null;
 

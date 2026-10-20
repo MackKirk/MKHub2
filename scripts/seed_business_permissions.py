@@ -138,6 +138,18 @@ def seed_business_permissions():
                 "sort_index": 39,
             },
             {
+                "key": "business:customers:notes:read",
+                "label": "Notes / History",
+                "description": "Allows viewing the customer Notes/History communication log",
+                "sort_index": 391,
+            },
+            {
+                "key": "business:customers:notes:write",
+                "label": "Notes / History",
+                "description": "Allows creating, updating, and deleting customer communication notes",
+                "sort_index": 392,
+            },
+            {
                 "key": "business:customers:opportunities:read",
                 "label": "Opportunities",
                 "description": "Allows viewing opportunities linked to the customer",

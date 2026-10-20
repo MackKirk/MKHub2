@@ -16,6 +16,7 @@ export const CUSTOMER_TABS = [
   'contacts',
   'files',
   'sites',
+  'notes',
   'opportunities',
   'projects',
 ] as const;
@@ -59,7 +60,12 @@ export function canViewCustomerTab(
   if (isAdmin) return true;
   const readKey = `business:customers:${tab}:read`;
   const writeKey = `business:customers:${tab}:write`;
-  return has(permissions, readKey) || has(permissions, writeKey);
+  if (has(permissions, readKey) || has(permissions, writeKey)) return true;
+  // Communication log: anyone with customer list access
+  if (tab === 'notes') {
+    return has(permissions, CUSTOMER_MAIN_READ) || has(permissions, CUSTOMER_MAIN_WRITE);
+  }
+  return false;
 }
 
 export function canReadCustomerTab(
@@ -70,7 +76,7 @@ export function canReadCustomerTab(
   if (isAdmin) return true;
   if (canViewCustomerTab(isAdmin, permissions, tab)) return true;
 
-  if (tab === 'general' || tab === 'contacts') {
+  if (tab === 'general' || tab === 'contacts' || tab === 'notes') {
     if (has(permissions, CUSTOMER_MAIN_READ) || has(permissions, CUSTOMER_MAIN_WRITE)) return true;
   }
   if (tab === 'files') {
@@ -98,7 +104,9 @@ export function canEditCustomerTab(
   tab: CustomerTab
 ): boolean {
   if (isAdmin) return true;
-  return has(permissions, `business:customers:${tab}:write`);
+  if (has(permissions, `business:customers:${tab}:write`)) return true;
+  if (tab === 'notes' && has(permissions, CUSTOMER_MAIN_WRITE)) return true;
+  return false;
 }
 
 export function canWriteCustomerTab(
@@ -109,7 +117,7 @@ export function canWriteCustomerTab(
   if (isAdmin) return true;
   if (canEditCustomerTab(isAdmin, permissions, tab)) return true;
 
-  if (tab === 'general' || tab === 'contacts' || tab === 'sites') {
+  if (tab === 'general' || tab === 'contacts' || tab === 'sites' || tab === 'notes') {
     if (has(permissions, CUSTOMER_MAIN_WRITE)) return true;
   }
   if (tab === 'files' && has(permissions, 'business:projects:files:write')) return true;

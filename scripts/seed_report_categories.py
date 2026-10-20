@@ -39,11 +39,13 @@ def seed_report_categories():
         # Commercial categories
         categories = [
             {"label": "General", "value": "general", "sort_index": 0, "meta": {"group": "commercial"}},
-            {"label": "Legal Action", "value": "legal-action", "sort_index": 1, "meta": {"group": "commercial"}},
-            {"label": "Client Request", "value": "client-request", "sort_index": 2, "meta": {"group": "commercial"}},
-            {"label": "Prospecting", "value": "prospecting", "sort_index": 3, "meta": {"group": "commercial"}},
-            {"label": "Client Communication Log", "value": "client-communication-log", "sort_index": 4, "meta": {"group": "commercial"}},
-            {"label": "Client Contact Update", "value": "client-contact-update", "sort_index": 5, "meta": {"group": "commercial"}},
+            {"label": "Legal Action", "value": "legal-action", "sort_index": 1, "meta": {"group": "commercial", "client_log": True}},
+            {"label": "Client Request", "value": "client-request", "sort_index": 2, "meta": {"group": "commercial", "client_log": True}},
+            {"label": "Prospecting", "value": "prospecting", "sort_index": 3, "meta": {"group": "commercial", "client_log": True}},
+            {"label": "Client Communication Log", "value": "client-communication-log", "sort_index": 4, "meta": {"group": "commercial", "client_log": True}},
+            {"label": "Client Contact Update", "value": "client-contact-update", "sort_index": 5, "meta": {"group": "commercial", "client_log": True}},
+            {"label": "Warranty Contact", "value": "warranty-contact", "sort_index": 6, "meta": {"group": "commercial", "client_log": True}},
+            {"label": "Preventive Maintenance", "value": "preventive-maintenance", "sort_index": 7, "meta": {"group": "commercial", "client_log": True}},
             # Production / Execution categories
             {"label": "Daily Update / Work Completed", "value": "daily-update", "sort_index": 10, "meta": {"group": "production"}},
             {"label": "Site Report", "value": "site-report", "sort_index": 11, "meta": {"group": "production"}},

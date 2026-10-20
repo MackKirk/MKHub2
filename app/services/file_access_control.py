@@ -211,9 +211,15 @@ def assert_can_initiate_upload(
         cl = db.query(Client).filter(Client.id == cid).first()
         if not cl:
             raise HTTPException(status_code=404, detail="Client not found")
-        if not has_customer_tab_permission(user, "files", "write"):
-            raise _forbidden("missing business:customers:files:write")
-        return
+        if has_customer_tab_permission(user, "files", "write"):
+            return
+        # Customer Notes / History attachments
+        cat_norm = (category_id or "").strip().lower()
+        if cat_norm in ("client-note", "project-report") and has_customer_tab_permission(
+            user, "notes", "write"
+        ):
+            return
+        raise _forbidden("missing business:customers:files:write")
 
     if eid:
         ep = db.query(EmployeeProfile).filter(EmployeeProfile.id == eid).first()

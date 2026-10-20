@@ -31,6 +31,9 @@ import {
 
 type ProjectReport = {
   id: string;
+  source?: 'project_report' | 'client_note';
+  client_id?: string | null;
+  project_id?: string | null;
   title?: string;
   category_id?: string;
   description?: string;
@@ -346,6 +349,9 @@ function ReportDetailPanel({
               {selectedReport.category_id && (
                 <AppBadge variant="info">{categoryLabel}</AppBadge>
               )}
+              {selectedReport.source === 'client_note' && (
+                <AppBadge variant="neutral">Client contact</AppBadge>
+              )}
             </div>
           </div>
           <div className={uiCx(uiLayout.actionsRow, 'shrink-0')}>
@@ -540,7 +546,7 @@ export function ProjectReportsTabDs(props: ProjectReportsTabDsProps) {
       <AppCard className="!rounded-2xl" bodyClassName={uiSpacing.cardPadding}>
         <AppSectionHeader
           title="Notes/History"
-          description="Commercial updates, site activity, and shared timeline for this opportunity. Filter by category or create a new note."
+          description="Project notes and client contacts linked to this job. Communication categories are saved on the customer log."
           {...appSectionPresetProps('notesHistory')}
         />
         <div
@@ -637,6 +643,9 @@ export function ProjectReportsTabDs(props: ProjectReportsTabDsProps) {
                                 uiTypography.helper,
                               )}
                             >
+                              {r.source === 'client_note' && (
+                                <AppBadge variant="neutral">Client contact</AppBadge>
+                              )}
                               {hasStatusBadges && (
                                 <ReportStatusChangeBadges
                                   report={r as ReportNoteLike}

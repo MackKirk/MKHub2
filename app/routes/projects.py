@@ -16,6 +16,7 @@ from ..models.models import (
     Proposal,
     ProjectUpdate,
     ProjectReport,
+    ClientNote,
     ProjectSafetyInspection,
     ProjectSafetyInspectionSignRequest,
     ProjectEvent,
@@ -3577,8 +3578,17 @@ def list_project_reports(project_id: str, db: Session = Depends(get_db), user: U
     if not p:
         raise HTTPException(status_code=404, detail="Not found")
     _assert_project_reports_read(user, p)
+    from ..services.client_notes import serialize_client_note
+
     rows = db.query(ProjectReport).filter(ProjectReport.project_id == project_id).order_by(ProjectReport.created_at.desc() if hasattr(ProjectReport, 'created_at') else ProjectReport.id.desc()).all()
+    client_notes = (
+        db.query(ClientNote)
+        .filter(ClientNote.project_id == project_id)
+        .order_by(ClientNote.created_at.desc())
+        .all()
+    )
     creator_ids = [getattr(r, "created_by", None) for r in rows if getattr(r, "created_by", None)]
+    creator_ids.extend([getattr(r, "created_by", None) for r in client_notes if getattr(r, "created_by", None)])
     names_by_id = _resolve_user_display_names(db, creator_ids)
     out = []
     for r in rows:
@@ -3588,6 +3598,9 @@ def list_project_reports(project_id: str, db: Session = Depends(get_db), user: U
         created_by = getattr(r, "created_by", None)
         out.append({
             "id": str(r.id),
+            "source": "project_report",
+            "client_id": str(p.client_id) if getattr(p, "client_id", None) else None,
+            "project_id": str(project_id),
             "title": getattr(r, 'title', None),
             "category_id": getattr(r, 'category_id', None),
             "division_id": getattr(r, 'division_id', None),
@@ -3604,6 +3617,19 @@ def list_project_reports(project_id: str, db: Session = Depends(get_db), user: U
             "approved_by": str(getattr(r, 'approved_by', None)) if getattr(r, 'approved_by', None) else None,
             "approved_at": getattr(r, 'approved_at', None).isoformat() if getattr(r, 'approved_at', None) else None,
         })
+    for cn in client_notes:
+        cat_id = getattr(cn, "category_id", None)
+        if not has_project_reports_category_permission(user, cat_id, action="read", project=p):
+            continue
+        out.append(
+            serialize_client_note(
+                cn,
+                names_by_id=names_by_id,
+                project_code=getattr(p, "code", None),
+                project_name=getattr(p, "name", None),
+            )
+        )
+    out.sort(key=lambda item: item.get("created_at") or "", reverse=True)
     return out
 
 
@@ -3616,6 +3642,52 @@ def create_project_report(project_id: str, payload: dict, db: Session = Depends(
     category_id = payload.get("category_id")
     if not has_project_reports_category_permission(user, category_id, action="write", project=p):
         raise HTTPException(status_code=403, detail="Forbidden")
+
+    from ..services.client_notes import is_client_communication_category
+
+    # Communication categories are stored on the customer log and linked to this project
+    if is_client_communication_category(category_id):
+        client_id = getattr(p, "client_id", None)
+        if not client_id:
+            raise HTTPException(status_code=400, detail="Project has no customer to attach this note to")
+        row = ClientNote(
+            client_id=client_id,
+            project_id=p.id,
+            title=payload.get("title"),
+            category_id=category_id,
+            description=payload.get("description"),
+            images=payload.get("images"),
+            status=payload.get("status"),
+            created_by=user.id,
+        )
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+        try:
+            from ..services.audit import create_audit_log
+            create_audit_log(
+                db=db,
+                entity_type="client_note",
+                entity_id=str(row.id),
+                action="CREATE",
+                actor_id=str(user.id) if user else None,
+                actor_role="user",
+                source="api",
+                changes_json={
+                    "title": payload.get("title"),
+                    "category_id": category_id,
+                    "project_id": project_id,
+                },
+                context={
+                    "project_id": project_id,
+                    "client_id": str(client_id),
+                    "report_title": payload.get("title"),
+                },
+            )
+        except Exception:
+            pass
+        return {"id": str(row.id), "source": "client_note", "client_id": str(client_id)}
+
     financial_type = payload.get("financial_type")
     approval_status = None
     if financial_type == "estimate-changes":
@@ -3666,7 +3738,7 @@ def create_project_report(project_id: str, payload: dict, db: Session = Depends(
     except Exception:
         pass
     
-    return {"id": str(row.id)}
+    return {"id": str(row.id), "source": "project_report"}
 
 
 @router.patch("/{project_id}/reports/{report_id}")
@@ -3681,6 +3753,77 @@ def update_project_report(
     if not p:
         raise HTTPException(status_code=404, detail="Not found")
     _assert_project_reports_write(user, p)
+
+    from ..services.client_notes import is_client_communication_category
+
+    client_note = (
+        db.query(ClientNote)
+        .filter(ClientNote.id == report_id, ClientNote.project_id == project_id)
+        .first()
+    )
+    if client_note:
+        old_category_id = getattr(client_note, "category_id", None)
+        if not has_project_reports_category_permission(user, old_category_id, action="write", project=p):
+            raise HTTPException(status_code=403, detail="Forbidden")
+        new_category_id = payload.get("category_id", old_category_id)
+        if new_category_id != old_category_id and not has_project_reports_category_permission(
+            user, new_category_id, action="write", project=p
+        ):
+            raise HTTPException(status_code=403, detail="Forbidden")
+        if new_category_id and not is_client_communication_category(new_category_id):
+            raise HTTPException(
+                status_code=400,
+                detail="Client contact notes must stay in a communication category",
+            )
+        before = {
+            "title": client_note.title,
+            "category_id": old_category_id,
+            "description": client_note.description,
+        }
+        if "title" in payload:
+            client_note.title = payload.get("title")
+        if "category_id" in payload:
+            client_note.category_id = payload.get("category_id")
+        if "description" in payload:
+            client_note.description = payload.get("description")
+        if "status" in payload:
+            client_note.status = payload.get("status")
+        if "images" in payload:
+            incoming_images = payload.get("images")
+            if isinstance(incoming_images, dict):
+                existing_images = client_note.images if isinstance(client_note.images, dict) else {}
+                client_note.images = {**(existing_images or {}), **incoming_images}
+            else:
+                client_note.images = incoming_images
+        client_note.updated_at = datetime.now(timezone.utc)
+        client_note.updated_by = user.id
+        db.commit()
+        db.refresh(client_note)
+        try:
+            from ..services.audit import create_audit_log
+
+            create_audit_log(
+                db=db,
+                entity_type="client_note",
+                entity_id=str(client_note.id),
+                action="UPDATE",
+                actor_id=str(user.id) if user else None,
+                actor_role="user",
+                source="api",
+                changes_json={
+                    "before": before,
+                    "after": {
+                        "title": client_note.title,
+                        "category_id": client_note.category_id,
+                        "description": client_note.description,
+                    },
+                },
+                context={"project_id": project_id, "client_id": str(client_note.client_id)},
+            )
+        except Exception:
+            pass
+        return {"id": str(client_note.id), "source": "client_note"}
+
     row = db.query(ProjectReport).filter(
         ProjectReport.id == report_id,
         ProjectReport.project_id == project_id,
@@ -3697,6 +3840,29 @@ def update_project_report(
         user, new_category_id, action="write", project=p
     ):
         raise HTTPException(status_code=403, detail="Forbidden")
+
+    if is_client_communication_category(new_category_id) and not is_client_communication_category(old_category_id):
+        client_id = getattr(p, "client_id", None)
+        if not client_id:
+            raise HTTPException(status_code=400, detail="Project has no customer to attach this note to")
+        moved = ClientNote(
+            client_id=client_id,
+            project_id=p.id,
+            title=payload.get("title", getattr(row, "title", None)),
+            category_id=new_category_id,
+            description=payload.get("description", getattr(row, "description", None)),
+            images=payload.get("images", getattr(row, "images", None)),
+            status=payload.get("status", getattr(row, "status", None)),
+            created_by=getattr(row, "created_by", None) or user.id,
+            created_at=getattr(row, "created_at", None) or datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            updated_by=user.id,
+        )
+        db.add(moved)
+        db.delete(row)
+        db.commit()
+        db.refresh(moved)
+        return {"id": str(moved.id), "source": "client_note", "client_id": str(client_id)}
 
     before = {
         "title": getattr(row, "title", None),
@@ -3764,7 +3930,7 @@ def update_project_report(
     except Exception:
         pass
 
-    return {"id": str(row.id)}
+    return {"id": str(row.id), "source": "project_report"}
 
 
 @router.delete("/{project_id}/reports/{report_id}")
@@ -3773,6 +3939,42 @@ def delete_project_report(project_id: str, report_id: str, db: Session = Depends
     if not p:
         raise HTTPException(status_code=404, detail="Not found")
     _assert_project_reports_write(user, p)
+
+    client_note = (
+        db.query(ClientNote)
+        .filter(ClientNote.id == report_id, ClientNote.project_id == project_id)
+        .first()
+    )
+    if client_note:
+        if not has_project_reports_category_permission(
+            user, getattr(client_note, "category_id", None), action="write", project=p
+        ):
+            raise HTTPException(status_code=403, detail="Forbidden")
+        note_info = {
+            "title": client_note.title,
+            "category_id": client_note.category_id,
+            "source": "client_note",
+        }
+        db.delete(client_note)
+        db.commit()
+        try:
+            from ..services.audit import create_audit_log
+
+            create_audit_log(
+                db=db,
+                entity_type="client_note",
+                entity_id=report_id,
+                action="DELETE",
+                actor_id=str(user.id) if user else None,
+                actor_role="user",
+                source="api",
+                changes_json=note_info,
+                context={"project_id": project_id},
+            )
+        except Exception:
+            pass
+        return {"status": "ok"}
+
     row = db.query(ProjectReport).filter(ProjectReport.id == report_id, ProjectReport.project_id == project_id).first()
     if not row:
         return {"status": "ok"}
