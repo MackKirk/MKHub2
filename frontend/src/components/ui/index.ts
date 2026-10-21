@@ -9,6 +9,7 @@ export * from './AppTabs';
 export * from './AppQuickFilterRow';
 export * from './AppModal';
 export * from './AppFormModal';
+export * from './AppChoiceCards';
 export * from './AppFieldHint';
 export * from './AppTooltip';
 export * from './AppControlLabel';

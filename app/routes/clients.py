@@ -7,7 +7,24 @@ from typing import Optional, List
 from datetime import datetime, timezone
 
 from ..db import get_db
-from ..models.models import Client, ClientContact, ClientSite, ClientFile, FileObject, ClientFolder, ClientDocument, Project, Proposal, User
+from ..models.models import (
+    Client,
+    ClientContact,
+    ClientSite,
+    ClientFile,
+    FileObject,
+    ClientFolder,
+    ClientDocument,
+    ClientNote,
+    Project,
+    Proposal,
+    User,
+)
+from ..services.client_notes import (
+    is_client_communication_category,
+    resolve_user_display_names,
+    serialize_client_note,
+)
 import mimetypes
 from ..schemas.clients import (
     ClientCreate, ClientResponse,
@@ -1605,4 +1622,227 @@ def delete_client_document(client_id: str, doc_id: str, db: Session = Depends(ge
     db.query(ClientDocument).filter(ClientDocument.client_id == client_id, ClientDocument.id == doc_id).delete()
     db.commit()
     return {"status":"ok"}
+
+
+def _get_client_or_404(db: Session, client_id: str) -> Client:
+    c = db.query(Client).filter(Client.id == client_id, Client.deleted_at.is_(None)).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Not found")
+    return c
+
+
+def _validate_optional_project_for_client(db: Session, client_id: str, project_id: Optional[str]) -> Optional[uuid.UUID]:
+    if not project_id:
+        return None
+    try:
+        pid = uuid.UUID(str(project_id))
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid project_id")
+    proj = (
+        db.query(Project)
+        .filter(Project.id == pid, Project.deleted_at.is_(None), Project.client_id == client_id)
+        .first()
+    )
+    if not proj:
+        raise HTTPException(status_code=400, detail="Project not found for this customer")
+    return pid
+
+
+# ---- Client Notes / Communication Log ----
+@router.get("/{client_id}/notes")
+def list_client_notes(client_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    assert_customer_tab(user, "notes", "read")
+    _get_client_or_404(db, client_id)
+    rows = (
+        db.query(ClientNote)
+        .filter(ClientNote.client_id == client_id)
+        .order_by(ClientNote.created_at.desc())
+        .all()
+    )
+    project_ids = [r.project_id for r in rows if r.project_id]
+    projects_by_id: dict[str, Project] = {}
+    if project_ids:
+        for p in db.query(Project).filter(Project.id.in_(project_ids)).all():
+            projects_by_id[str(p.id)] = p
+    names_by_id = resolve_user_display_names(db, [getattr(r, "created_by", None) for r in rows])
+    out = []
+    for r in rows:
+        proj = projects_by_id.get(str(r.project_id)) if r.project_id else None
+        out.append(
+            serialize_client_note(
+                r,
+                names_by_id=names_by_id,
+                project_code=getattr(proj, "code", None) if proj else None,
+                project_name=getattr(proj, "name", None) if proj else None,
+            )
+        )
+    return out
+
+
+@router.post("/{client_id}/notes")
+def create_client_note(
+    client_id: str,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    assert_customer_tab(user, "notes", "write")
+    _get_client_or_404(db, client_id)
+    category_id = payload.get("category_id")
+    if category_id and not is_client_communication_category(category_id):
+        # Allow any category on the client tab, but steer toward communication categories
+        pass
+    project_uuid = _validate_optional_project_for_client(db, client_id, payload.get("project_id"))
+    row = ClientNote(
+        client_id=client_id,
+        project_id=project_uuid,
+        title=payload.get("title"),
+        category_id=category_id,
+        description=payload.get("description"),
+        images=payload.get("images"),
+        status=payload.get("status"),
+        created_by=user.id,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    try:
+        from ..services.audit import create_audit_log
+
+        create_audit_log(
+            db=db,
+            entity_type="client_note",
+            entity_id=str(row.id),
+            action="CREATE",
+            actor_id=str(user.id) if user else None,
+            actor_role="user",
+            source="api",
+            changes_json={
+                "title": payload.get("title"),
+                "category_id": category_id,
+                "project_id": str(project_uuid) if project_uuid else None,
+            },
+            context={"client_id": client_id},
+        )
+    except Exception:
+        pass
+    return {"id": str(row.id), "source": "client_note"}
+
+
+@router.patch("/{client_id}/notes/{note_id}")
+def update_client_note(
+    client_id: str,
+    note_id: str,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    assert_customer_tab(user, "notes", "write")
+    _get_client_or_404(db, client_id)
+    row = (
+        db.query(ClientNote)
+        .filter(ClientNote.id == note_id, ClientNote.client_id == client_id)
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    before = {
+        "title": row.title,
+        "category_id": row.category_id,
+        "description": row.description,
+        "project_id": str(row.project_id) if row.project_id else None,
+    }
+
+    if "title" in payload:
+        row.title = payload.get("title")
+    if "category_id" in payload:
+        row.category_id = payload.get("category_id")
+    if "description" in payload:
+        row.description = payload.get("description")
+    if "status" in payload:
+        row.status = payload.get("status")
+    if "project_id" in payload:
+        row.project_id = _validate_optional_project_for_client(db, client_id, payload.get("project_id"))
+    if "images" in payload:
+        incoming_images = payload.get("images")
+        if isinstance(incoming_images, dict):
+            existing_images = row.images if isinstance(row.images, dict) else {}
+            row.images = {**(existing_images or {}), **incoming_images}
+        else:
+            row.images = incoming_images
+
+    row.updated_at = datetime.now(timezone.utc)
+    row.updated_by = user.id
+    db.commit()
+    db.refresh(row)
+
+    try:
+        from ..services.audit import create_audit_log
+
+        create_audit_log(
+            db=db,
+            entity_type="client_note",
+            entity_id=str(row.id),
+            action="UPDATE",
+            actor_id=str(user.id) if user else None,
+            actor_role="user",
+            source="api",
+            changes_json={
+                "before": before,
+                "after": {
+                    "title": row.title,
+                    "category_id": row.category_id,
+                    "description": row.description,
+                    "project_id": str(row.project_id) if row.project_id else None,
+                },
+            },
+            context={"client_id": client_id},
+        )
+    except Exception:
+        pass
+
+    return {"id": str(row.id), "source": "client_note"}
+
+
+@router.delete("/{client_id}/notes/{note_id}")
+def delete_client_note(
+    client_id: str,
+    note_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    assert_customer_tab(user, "notes", "write")
+    _get_client_or_404(db, client_id)
+    row = (
+        db.query(ClientNote)
+        .filter(ClientNote.id == note_id, ClientNote.client_id == client_id)
+        .first()
+    )
+    if not row:
+        return {"status": "ok"}
+    note_info = {
+        "title": row.title,
+        "category_id": row.category_id,
+        "project_id": str(row.project_id) if row.project_id else None,
+    }
+    db.delete(row)
+    db.commit()
+    try:
+        from ..services.audit import create_audit_log
+
+        create_audit_log(
+            db=db,
+            entity_type="client_note",
+            entity_id=note_id,
+            action="DELETE",
+            actor_id=str(user.id) if user else None,
+            actor_role="user",
+            source="api",
+            changes_json=note_info,
+            context={"client_id": client_id},
+        )
+    except Exception:
+        pass
+    return {"status": "ok"}
 

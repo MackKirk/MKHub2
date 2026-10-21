@@ -380,6 +380,33 @@ class ProjectReport(Base):
     approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
 
+class ClientNote(Base):
+    """Customer-owned communication / contact log. Optionally linked to a project for reference."""
+
+    __tablename__ = "client_notes"
+    __table_args__ = (
+        Index("ix_client_notes_client_created", "client_id", "created_at"),
+        Index("ix_client_notes_project_id", "project_id"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    client_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    project_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="SET NULL"), nullable=True
+    )
+    title: Mapped[Optional[str]] = mapped_column(String(255))
+    category_id: Mapped[Optional[str]] = mapped_column(String(100))
+    description: Mapped[Optional[str]] = mapped_column(Text())
+    images: Mapped[Optional[dict]] = mapped_column(JSON)
+    status: Mapped[Optional[str]] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+
+
 class FormTemplate(Base):
     """Configurable safety (or other) form; single editable definition (last save wins)."""
     __tablename__ = "form_templates"

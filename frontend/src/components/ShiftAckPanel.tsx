@@ -2,7 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api } from '@/lib/api';
-import { shiftAckMeta, shiftAckTracked, shiftResponseActionLabel } from '@/lib/shiftAck';
+import {
+  SCHEDULE_PENDING_ACK_QUERY_KEY,
+  shiftAckMeta,
+  shiftAckTracked,
+  shiftResponseActionLabel,
+} from '@/lib/shiftAck';
 import {
   AppBadge,
   AppButton,
@@ -108,7 +113,11 @@ export default function ShiftAckPanel({
       setDeclineOpen(false);
       setDeclineNote('');
       onUpdated?.(updated);
-      await queryClient.invalidateQueries({ queryKey: ['shift-responses', shift.id] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['shift-responses', shift.id] }),
+        queryClient.invalidateQueries({ queryKey: ['schedule-shifts'] }),
+        queryClient.invalidateQueries({ queryKey: [...SCHEDULE_PENDING_ACK_QUERY_KEY] }),
+      ]);
       toast.success(action === 'accepted' ? 'Shift accepted' : 'Shift declined');
     } catch (e: any) {
       toast.error(e?.response?.data?.detail || e?.message || 'Could not save your response');
@@ -135,9 +144,7 @@ export default function ShiftAckPanel({
               ? 'You confirmed you will attend this shift.'
               : status === 'declined'
                 ? 'You declined this shift. You can still accept it if that changes.'
-                : status === 'viewed'
-                  ? 'This shift is marked as seen. Confirm that you will attend, or decline if you cannot.'
-                  : 'Opening this shift records that you saw it. Confirm that you will attend, or decline if you cannot.'}
+                : 'Pending confirmation — accept if you can attend, or decline if you cannot.'}
           </p>
           <div className="flex flex-wrap gap-2">
             <AppButton

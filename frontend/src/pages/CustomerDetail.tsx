@@ -60,6 +60,7 @@ import {
   canEditCustomerRecord as canEditCustomerRecordFn,
 } from '@/lib/customerPermissions';
 import { CustomerOverviewTab } from '@/components/customer/overview/CustomerOverviewTab';
+import { CustomerNotesTab } from '@/components/customer/CustomerNotesTab';
 
 type Client = { id:string, name?:string, display_name?:string, code?:string, city?:string, province?:string, postal_code?:string, country?:string, address_line1?:string, address_line2?:string, created_at?:string };
 type Site = { id:string, site_name?:string, site_address_line1?:string, site_city?:string, site_province?:string, site_country?:string };
@@ -78,7 +79,7 @@ type ClientParticipationsResponse = {
   }>;
 };
 
-type CustomerTab = 'overview' | 'general' | 'files' | 'contacts' | 'sites' | 'projects' | 'opportunities' | null;
+type CustomerTab = 'overview' | 'general' | 'files' | 'contacts' | 'sites' | 'notes' | 'projects' | 'opportunities' | null;
 
 /** Empty field placeholder (Unicode em dash). */
 const EM_DASH = '\u2014';
@@ -99,7 +100,7 @@ export default function CustomerDetail(){
   const { id } = useParams();
   const searchParams = new URLSearchParams(location.search);
   const initialTabParam = searchParams.get('tab') as CustomerTab | null;
-  const initialTab: CustomerTab = (initialTabParam && initialTabParam !== 'overview' && ['general','files','contacts','sites','projects','opportunities'].includes(initialTabParam))
+  const initialTab: CustomerTab = (initialTabParam && initialTabParam !== 'overview' && ['general','files','contacts','sites','notes','projects','opportunities'].includes(initialTabParam))
     ? initialTabParam
     : null;
   const [tab, setTab] = useState<CustomerTab>(initialTab);
@@ -129,6 +130,8 @@ export default function CustomerDetail(){
   const hasGeneralView = canViewCustomerTab('general');
   const hasContactsView = canViewCustomerTab('contacts');
   const hasSitesView = canViewCustomerTab('sites');
+  const hasNotesView = canViewCustomerTab('notes');
+  const hasNotesEdit = canEditCustomerTab('notes');
   const { data:sites } = useQuery({ queryKey:['clientSites', id], queryFn: ()=>api<Site[]>('GET', `/clients/${id}/sites`) });
   const { data:files, refetch: refetchFiles } = useQuery({ queryKey:['clientFiles', id], queryFn: ()=>api<ClientFile[]>('GET', `/clients/${id}/files`) });
   const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
@@ -181,7 +184,7 @@ export default function CustomerDetail(){
         'GET',
         `/clients/${encodeURIComponent(String(id || ''))}/project-participations`
       ),
-    enabled: (hasProjectsTabView || hasOpportunitiesTabView || hasOverviewView) && !!id,
+    enabled: (hasProjectsTabView || hasOpportunitiesTabView || hasOverviewView || hasNotesView) && !!id,
     staleTime: 60_000,
   });
   const projects = useMemo(
@@ -192,12 +195,16 @@ export default function CustomerDetail(){
     () => (participationData?.rollup ?? []).filter((p) => p.is_bidding === true),
     [participationData]
   );
+  const notesProjectOptions = useMemo(
+    () => participationData?.rollup ?? [],
+    [participationData]
+  );
   const { data:contacts } = useQuery({ queryKey:['clientContacts', id], queryFn: ()=>api<Contact[]>('GET', `/clients/${id}/contacts`) });
   // Determine available tabs based on permissions
-  // Order: Overview â†’ General â†’ Contacts â†’ Files â†’ Sites â†’ Opportunities â†’ Projects
+  // Order: Overview → General → Contacts → Files → Sites → Notes → Opportunities → Projects
   const availableTabs = useMemo(
     () =>
-      (['overview', 'general', 'contacts', 'files', 'sites', 'opportunities', 'projects'] as const).filter(
+      (['overview', 'general', 'contacts', 'files', 'sites', 'notes', 'opportunities', 'projects'] as const).filter(
         (t) => canViewCustomerTab(t)
       ),
     [isAdmin, permissions]
@@ -207,7 +214,7 @@ export default function CustomerDetail(){
   useEffect(() => {
     const sp = new URLSearchParams(location.search);
     const tabParam = sp.get('tab') as string | null;
-    if (tabParam && tabParam !== 'overview' && ['general','files','contacts','sites','projects','opportunities'].includes(tabParam)) {
+    if (tabParam && tabParam !== 'overview' && ['general','files','contacts','sites','notes','projects','opportunities'].includes(tabParam)) {
       setTab(tabParam as CustomerTab);
     } else {
       setTab(null);
@@ -285,6 +292,7 @@ export default function CustomerDetail(){
       contacts: 'Contacts',
       files: 'Files',
       sites: 'Sites',
+      notes: 'Notes / History',
       opportunities: 'Opportunities',
       projects: 'Projects',
     };
@@ -298,6 +306,7 @@ export default function CustomerDetail(){
       contacts: 'Contacts and primary contact',
       files: 'Documents and files',
       sites: 'Construction sites',
+      notes: 'Communication log and contact history',
       opportunities: 'Open opportunities',
       projects: 'Active projects',
     };
@@ -324,6 +333,7 @@ export default function CustomerDetail(){
           contacts: 'Contacts',
           files: 'Files',
           sites: 'Sites',
+          notes: 'Notes / History',
           opportunities: 'Opportunities',
           projects: 'Projects',
         };
@@ -671,6 +681,14 @@ export default function CustomerDetail(){
                     queryClient.invalidateQueries({ queryKey: ['clientSites', id] });
                   }}
                   onFilesRefresh={refetchFiles}
+                />
+              )}
+              {tab === 'notes' && hasNotesView && id && (
+                <CustomerNotesTab
+                  clientId={String(id)}
+                  canWrite={hasNotesEdit}
+                  reportCategories={reportCategories}
+                  projects={notesProjectOptions}
                 />
               )}
               {tab==='opportunities' && hasOpportunitiesTabView && (

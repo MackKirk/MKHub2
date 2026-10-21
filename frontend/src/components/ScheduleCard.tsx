@@ -1,6 +1,6 @@
 ﻿import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { formatDateLocal } from '@/lib/dateUtils';
 import { ClockActionTile } from '@/components/ClockActionTile';
@@ -27,7 +27,12 @@ import {
   MapPin,
 } from 'lucide-react';
 import ShiftAckPanel from '@/components/ShiftAckPanel';
-import { shiftAckMeta, shiftAckTracked } from '@/lib/shiftAck';
+import { ShiftAckQuickActions } from '@/components/ShiftAckQuickActions';
+import {
+  SCHEDULE_PENDING_ACK_QUERY_KEY,
+  shiftAckMeta,
+  shiftAckTracked,
+} from '@/lib/shiftAck';
 
 function attendanceBadgeVariant(status: string): 'success' | 'warning' | 'danger' {
   if (status === 'approved') return 'success';
@@ -84,6 +89,7 @@ type Attendance = {
 };
 
 export default function ScheduleCard() {
+  const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const dateParam = searchParams.get('date');
   const shiftParam = searchParams.get('shift');
@@ -496,8 +502,23 @@ export default function ScheduleCard() {
                               </p>
                             ) : null}
                             {shiftAckTracked(shift.ack_status) ? (
-                              <div className={uiCx('text-sm font-semibold mb-1', shiftAckMeta(shift.ack_status).tone)}>
-                                {shiftAckMeta(shift.ack_status).shortLabel}
+                              <div className="mt-1">
+                                <div className={uiCx('text-sm font-semibold', shiftAckMeta(shift.ack_status).tone)}>
+                                  {shiftAckMeta(shift.ack_status).longLabel}
+                                </div>
+                                <ShiftAckQuickActions
+                                  shiftId={shift.id}
+                                  ackStatus={shift.ack_status}
+                                  onUpdated={(updated) => {
+                                    setSelectedShift((prev) =>
+                                      prev && prev.id === updated.id ? { ...prev, ...updated } : prev,
+                                    );
+                                    void refetchShifts();
+                                    void queryClient.invalidateQueries({
+                                      queryKey: [...SCHEDULE_PENDING_ACK_QUERY_KEY],
+                                    });
+                                  }}
+                                />
                               </div>
                             ) : null}
                             

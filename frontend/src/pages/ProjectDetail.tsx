@@ -1184,6 +1184,9 @@ type ProjectFile = { id:string, file_object_id:string, is_image?:boolean, conten
 type Update = { id:string, timestamp?:string, text?:string, images?:any };
 type Report = {
   id: string;
+  source?: 'project_report' | 'client_note';
+  client_id?: string | null;
+  project_id?: string | null;
   title?: string;
   category_id?: string;
   division_id?: string;

@@ -1,7 +1,17 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { Fragment, useState, useMemo, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { AlertTriangle } from 'lucide-react';
+import {
+  AlertTriangle,
+  CalendarDays,
+  CalendarRange,
+  CloudSun,
+  Moon,
+  SlidersHorizontal,
+  Sun,
+  Sunrise,
+  type LucideIcon,
+} from 'lucide-react';
 import { api, withFileAccessToken } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
@@ -20,13 +30,17 @@ import { getProjectDivisionLabel } from '@/lib/projectListRowUtils';
 import { getUserDisplayName } from '@/lib/userDisplay';
 import {
   SHIFT_TIME_PRESET_OPTIONS,
+  detectPreset,
   resolvePresetTimes,
   type ShiftTimePreset,
 } from '@/lib/shiftTimePresets';
 import {
   AppButton,
+  AppCalendarBase,
+  type AppCalendarDay,
   AppCard,
   AppCheckbox,
+  AppChoiceCards,
   AppControlLabelRow,
   AppDatePicker,
   AppEmptyState,
@@ -52,6 +66,7 @@ import {
 import { JOB_TYPES } from '@/constants/jobTypes';
 import { shiftAckMeta, shiftAckTracked } from '@/lib/shiftAck';
 import ShiftNoteField from '@/components/ShiftNoteField';
+import { ShiftWorkerDivisionPicker } from '@/components/ShiftWorkerDivisionPicker';
 import { persistShiftNoteLibrary } from '@/lib/shiftNoteLibrary';
 
 // Helper function to convert 24h time (HH:MM:SS or HH:MM) to 12h format (h:mm AM/PM)
@@ -76,6 +91,21 @@ function shiftNotesPreview(notes: string, maxLen = 120): string {
   if (trimmed.length <= maxLen) return trimmed;
   return `${trimmed.slice(0, maxLen)}…`;
 }
+
+const SHIFT_TIME_PRESET_ICONS: Record<ShiftTimePreset, LucideIcon> = {
+  all_day: Sun,
+  morning: Sunrise,
+  afternoon: CloudSun,
+  evening: Moon,
+  custom: SlidersHorizontal,
+};
+
+const CREATE_SHIFT_STEPS = [
+  'Choose people',
+  'Choose dates & time',
+  'Notes & details',
+  'Review',
+] as const;
 
 
 export default function DispatchTab({
@@ -1211,8 +1241,9 @@ export function CreateShiftModal({
   onSave: () => Promise<void>;
 }) {
   const queryClient = useQueryClient();
+  const [step, setStep] = useState(1);
   const [selectedWorkers, setSelectedWorkers] = useState<string[]>([]);
-  const [dateMode, setDateMode] = useState<'single' | 'range'>('range');
+  const [dateMode, setDateMode] = useState<'single' | 'range'>('single');
   const [date, setDate] = useState(formatDateLocal(new Date()));
   const [dateFrom, setDateFrom] = useState(formatDateLocal(new Date()));
   const [dateTo, setDateTo] = useState(() => {
@@ -1221,6 +1252,10 @@ export function CreateShiftModal({
     return formatDateLocal(nextWeek);
   });
   const [excludeWeekends, setExcludeWeekends] = useState(false);
+  const [calMonth, setCalMonth] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  });
   const [timePreset, setTimePreset] = useState<ShiftTimePreset>('all_day');
   const [startTime, setStartTime] = useState(() => resolvePresetTimes('all_day').start);
   const [endTime, setEndTime] = useState(() => resolvePresetTimes('all_day').end);
@@ -1243,7 +1278,6 @@ export function CreateShiftModal({
     queryKey: PROJECT_DIVISIONS_QUERY_KEY,
     queryFn: () => api<any[]>('GET', '/settings/project-divisions'),
     staleTime: 300_000,
-    enabled: canEditOnsiteLeads,
   });
 
   const availableDivisions = useMemo(() => {
@@ -1361,6 +1395,200 @@ export function CreateShiftModal({
     );
     return `${countLabel} · ${first}–${last}`;
   }, [selectedDates, excludeWeekends, dateMode]);
+
+  const calMonthRange = useMemo(() => {
+    const start = formatDateLocal(new Date(calMonth.getFullYear(), calMonth.getMonth(), 1));
+    const end = formatDateLocal(new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 0));
+    return `${start},${end}`;
+  }, [calMonth]);
+
+  const workerIdsKey = useMemo(
+    () =>
+      (Array.isArray(selectedWorkers) ? selectedWorkers : [])
+        .map(String)
+        .sort()
+        .join(','),
+    [selectedWorkers],
+  );
+
+  type ExistingShiftRow = {
+    id?: string;
+    date?: string;
+    worker_id?: string;
+    project_name?: string;
+    start_time?: string;
+    end_time?: string;
+  };
+
+  const { data: existingWorkerShifts = [] } = useQuery({
+    queryKey: ['create-shift-existing', calMonthRange, workerIdsKey],
+    queryFn: async () => {
+      const workers = (Array.isArray(selectedWorkers) ? selectedWorkers : []).map(String);
+      if (workers.length === 0) return [] as ExistingShiftRow[];
+      const results = await Promise.all(
+        workers.map((wid) =>
+          api<ExistingShiftRow[]>(
+            'GET',
+            `/dispatch/shifts?date_range=${encodeURIComponent(calMonthRange)}&worker_id=${encodeURIComponent(wid)}`,
+          ).catch(() => [] as ExistingShiftRow[]),
+        ),
+      );
+      return results.flat();
+    },
+    enabled: workerIdsKey.length > 0,
+    staleTime: 15_000,
+  });
+
+  const existingShiftInfoByDate = useMemo(() => {
+    const map = new Map<string, { count: number; projects: string[] }>();
+    for (const s of existingWorkerShifts) {
+      const key = String(s.date || '').slice(0, 10);
+      if (!key) continue;
+      const prev = map.get(key) || { count: 0, projects: [] };
+      prev.count += 1;
+      const pname = (s.project_name || '').trim();
+      if (pname && !prev.projects.includes(pname)) prev.projects.push(pname);
+      map.set(key, prev);
+    }
+    return map;
+  }, [existingWorkerShifts]);
+
+  const todayStr = getTodayLocal();
+
+  const createShiftCalendarDays: AppCalendarDay[] = useMemo(() => {
+    const year = calMonth.getFullYear();
+    const month = calMonth.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const startingDayOfWeek = firstDay.getDay();
+    const days: AppCalendarDay[] = [];
+
+    for (let i = 0; i < startingDayOfWeek; i++) {
+      days.push({ dateLabel: '', isMuted: true });
+    }
+
+    const rangeStart = dateMode === 'range' ? dateFrom : date;
+    const rangeEnd = dateMode === 'range' ? dateTo : date;
+
+    // Inclusive range edges that are weekdays when weekends are excluded (for start/end styling)
+    const weekdayEdge = (from: string, to: string, which: 'start' | 'end') => {
+      if (!excludeWeekends || dateMode !== 'range') return which === 'start' ? from : to;
+      const step = which === 'start' ? 1 : -1;
+      const cursor = new Date(`${(which === 'start' ? from : to)}T12:00:00`);
+      const limit = new Date(`${(which === 'start' ? to : from)}T12:00:00`);
+      while (
+        which === 'start' ? cursor <= limit : cursor >= limit
+      ) {
+        const dow = cursor.getDay();
+        if (dow !== 0 && dow !== 6) return formatDateLocal(cursor);
+        cursor.setDate(cursor.getDate() + step);
+      }
+      return which === 'start' ? from : to;
+    };
+    const visualStart =
+      dateMode === 'range' && rangeStart && rangeEnd
+        ? weekdayEdge(rangeStart, rangeEnd, 'start')
+        : rangeStart;
+    const visualEnd =
+      dateMode === 'range' && rangeStart && rangeEnd
+        ? weekdayEdge(rangeStart, rangeEnd, 'end')
+        : rangeEnd;
+
+    for (let day = 1; day <= lastDay.getDate(); day++) {
+      const cell = new Date(year, month, day);
+      const dateStr = formatDateLocal(cell);
+      const isPast = dateStr < todayStr;
+      const dow = cell.getDay();
+      const isWeekend = dow === 0 || dow === 6;
+      const info = existingShiftInfoByDate.get(dateStr);
+      const shiftCount = info?.count ?? 0;
+      const inSpan =
+        !isPast &&
+        (dateMode === 'single'
+          ? dateStr === date
+          : Boolean(rangeStart && rangeEnd && dateStr >= rangeStart && dateStr <= rangeEnd));
+      const excludedWeekend =
+        dateMode === 'range' && excludeWeekends && isWeekend && inSpan;
+      const inSelection = inSpan && !excludedWeekend;
+
+      let rangeRole: AppCalendarDay['rangeRole'];
+      if (inSelection) {
+        if (dateMode === 'single' || visualStart === visualEnd) {
+          rangeRole = 'alone';
+        } else if (dateStr === visualStart) {
+          rangeRole = 'start';
+        } else if (dateStr === visualEnd) {
+          rangeRole = 'end';
+        } else {
+          rangeRole = 'middle';
+        }
+      }
+
+      const projectHint =
+        info?.projects?.length
+          ? info.projects.slice(0, 2).join(', ') + (info.projects.length > 2 ? '…' : '')
+          : '';
+
+      days.push({
+        dateLabel: String(day),
+        isToday: dateStr === todayStr,
+        isSelected: inSelection,
+        isDisabled: isPast,
+        isMuted: isPast || excludedWeekend,
+        rangeRole: excludedWeekend ? undefined : rangeRole,
+        hasMarker: shiftCount > 0,
+        badge: shiftCount > 0 ? shiftCount : undefined,
+        badgeTone: shiftCount > 0 ? 'accent' : undefined,
+        title: isPast
+          ? 'Past date'
+          : excludedWeekend
+            ? 'Weekend excluded'
+            : shiftCount > 0
+              ? `${shiftCount} existing shift${shiftCount > 1 ? 's' : ''}${projectHint ? ` · ${projectHint}` : ''}`
+              : dateStr === todayStr
+                ? 'Today'
+                : undefined,
+        onClick: isPast
+          ? undefined
+          : () => {
+              if (dateMode === 'single') {
+                setDate(dateStr);
+                return;
+              }
+              // Range: first click / reset → from=to; second click extends end
+              if (!dateFrom || (dateFrom && dateTo && dateFrom !== dateTo)) {
+                setDateFrom(dateStr);
+                setDateTo(dateStr);
+                return;
+              }
+              if (dateStr < dateFrom) {
+                setDateFrom(dateStr);
+                return;
+              }
+              setDateTo(dateStr);
+            },
+      });
+    }
+    return days;
+  }, [
+    calMonth,
+    dateMode,
+    date,
+    dateFrom,
+    dateTo,
+    excludeWeekends,
+    existingShiftInfoByDate,
+    todayStr,
+  ]);
+
+  const calMonthLabel = useMemo(
+    () =>
+      calMonth.toLocaleDateString('en-US', {
+        month: 'long',
+        year: 'numeric',
+      }),
+    [calMonth],
+  );
 
   const filteredEmployees = useMemo(() => {
     if (!employees || !Array.isArray(employees)) return [];
@@ -1724,32 +1952,153 @@ export function CreateShiftModal({
     ) : null;
 
   if (designSystem) {
+    const totalSteps = CREATE_SHIFT_STEPS.length;
+    const canProceedStep1 =
+      Array.isArray(selectedWorkers) &&
+      selectedWorkers.length > 0 &&
+      !(
+        showOnsiteLeadSection &&
+        assignAsOnsiteLead &&
+        (!leadWorkerId ||
+          !selectedWorkers.map(String).includes(String(leadWorkerId)) ||
+          leadDivisionIds.length === 0)
+      );
+    const canProceedStep2 =
+      Array.isArray(selectedDates) && selectedDates.length > 0 && !!startTime && !!endTime;
+
+    const stepPillClass = (n: number) =>
+      uiCx(
+        'rounded-full px-2 py-1 text-xs font-semibold',
+        step === n ? 'bg-gray-900 text-white' : 'bg-gray-200 text-gray-600',
+      );
+
+    const stepIndicators = (
+      <div className={uiCx(uiLayout.actionsRow, uiTypography.helper, 'text-xs font-semibold')}>
+        {CREATE_SHIFT_STEPS.map((_, index) => (
+          <Fragment key={index}>
+            {index > 0 ? <span className="text-gray-600">→</span> : null}
+            <span className={stepPillClass(index + 1)}>{index + 1}</span>
+          </Fragment>
+        ))}
+      </div>
+    );
+
+    const goNext = () => {
+      setError('');
+      if (step === 1 && !canProceedStep1) {
+        setError(
+          assignAsOnsiteLead
+            ? 'Select workers and finish on-site lead settings before continuing.'
+            : 'Select at least one worker to continue.',
+        );
+        return;
+      }
+      if (step === 2 && !canProceedStep2) {
+        setError('Choose at least one date and a time range to continue.');
+        return;
+      }
+      setStep((s) => Math.min(totalSteps, s + 1));
+    };
+
+    const overlapBlock =
+      overlapWarnings.length > 0 ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          <div className="font-semibold">Schedule conflicts detected</div>
+          <p className="mt-1 text-sm text-amber-800">
+            These shifts can still be created, but this worker already has overlapping time on
+            another shift.
+          </p>
+          <ul className="mt-2 list-disc space-y-1 pl-4 text-sm">
+            {overlapWarnings.slice(0, 8).map((w) => {
+              const projectLabel =
+                w.conflicts
+                  .map((c) => c.project_name)
+                  .filter(Boolean)
+                  .slice(0, 2)
+                  .join(', ') || 'another project';
+              return (
+                <li key={`${w.workerId}-${w.date}`}>
+                  {w.workerName} on{' '}
+                  {new Date(w.date + 'T12:00:00').toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                  })}{' '}
+                  overlaps {projectLabel}
+                </li>
+              );
+            })}
+            {overlapWarnings.length > 8 ? (
+              <li>…and {overlapWarnings.length - 8} more</li>
+            ) : null}
+          </ul>
+        </div>
+      ) : null;
+
     return (
       <AppFormModal
         open
         onClose={onClose}
         title="Create Shift"
-        description="Add shifts for workers on the project"
+        description={CREATE_SHIFT_STEPS[step - 1]}
         formWidth="wide"
         quickInfo={createShiftQuickInfo}
+        headerExtra={stepIndicators}
         footer={
-          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
-            <AppButton variant="secondary" size="sm" type="button" onClick={onClose} disabled={saving}>
-              Cancel
-            </AppButton>
-            <AppButton
-              size="sm"
-              type="submit"
-              form="create-shift-form-ds"
-              disabled={!canSubmit || saving}
-              loading={saving}
-            >
-              {saving
-                ? 'Creating...'
-                : canSubmit
-                  ? `Create ${shiftCount} Shift${shiftCount > 1 ? 's' : ''}`
-                  : 'Create Shift'}
-            </AppButton>
+          <div className={uiCx(uiLayout.actionsRow, 'w-full flex-wrap justify-between gap-3')}>
+            <span className={uiTypography.helper}>
+              Step {step} of {totalSteps}
+            </span>
+            <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+              <AppButton variant="secondary" size="sm" type="button" onClick={onClose} disabled={saving}>
+                Cancel
+              </AppButton>
+              {step > 1 ? (
+                <AppButton
+                  variant="secondary"
+                  size="sm"
+                  type="button"
+                  disabled={saving}
+                  onClick={() => {
+                    setError('');
+                    setStep((s) => Math.max(1, s - 1));
+                  }}
+                >
+                  Back
+                </AppButton>
+              ) : null}
+              {step < totalSteps ? (
+                <AppButton
+                  key="create-shift-next"
+                  size="sm"
+                  type="button"
+                  disabled={
+                    saving ||
+                    (step === 1 && !canProceedStep1) ||
+                    (step === 2 && !canProceedStep2)
+                  }
+                  onClick={goNext}
+                >
+                  Next
+                </AppButton>
+              ) : (
+                <AppButton
+                  key="create-shift-submit"
+                  size="sm"
+                  type="button"
+                  disabled={!canSubmit || saving}
+                  loading={saving}
+                  onClick={() => {
+                    void handleSave();
+                  }}
+                >
+                  {saving
+                    ? 'Creating...'
+                    : canSubmit
+                      ? `Create ${shiftCount} Shift${shiftCount > 1 ? 's' : ''}`
+                      : 'Create Shift'}
+                </AppButton>
+              )}
+            </div>
           </div>
         }
       >
@@ -1757,7 +2106,9 @@ export function CreateShiftModal({
           id="create-shift-form-ds"
           onSubmit={(e) => {
             e.preventDefault();
-            handleSave();
+            // Enter advances the wizard. Create is an explicit button click so the
+            // Next → Create swap cannot submit in the same click.
+            if (step < totalSteps) goNext();
           }}
           className={uiCx(uiSpacing.sectionStack, 'space-y-4')}
         >
@@ -1767,149 +2118,238 @@ export function CreateShiftModal({
             </div>
           )}
 
-          <AppUserSelect
-            mode="multiple"
-            label="Workers *"
-            value={Array.isArray(selectedWorkers) ? selectedWorkers : []}
-            onChange={setSelectedWorkers}
-            fieldHint="Workers\n\nSelect one or more employees who will be scheduled for the chosen dates. Search by name or username — all active users are available."
-          />
-
-          {onsiteLeadSection}
-
-          <AppSelect
-            label="Date Selection"
-            value={dateMode}
-            onChange={(e) => setDateMode(e.target.value as 'single' | 'range')}
-            options={[
-              { value: 'single', label: 'Single Date' },
-              { value: 'range', label: 'Date Range' },
-            ]}
-          />
-
-          {dateMode === 'single' ? (
-            <AppDatePicker
-              label="Date *"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-            />
-          ) : (
-            <>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <AppDatePicker
-                  label="From *"
-                  value={dateFrom}
-                  onChange={(e) => setDateFrom(e.target.value)}
-                />
-                <AppDatePicker
-                  label="To *"
-                  value={dateTo}
-                  onChange={(e) => setDateTo(e.target.value)}
-                />
-              </div>
-              <AppCheckbox
-                label="Exclude weekends"
-                checked={excludeWeekends}
-                onChange={setExcludeWeekends}
-              />
-              {dateRangeSummary ? (
-                <p className={uiCx(uiTypography.helper, 'text-gray-600')}>{dateRangeSummary}</p>
-              ) : null}
-            </>
-          )}
-
-          {overlapWarnings.length > 0 && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-              <div className="font-semibold">Schedule conflicts detected</div>
-              <p className="mt-1 text-sm text-amber-800">
-                These shifts can still be created, but this worker already has overlapping time on
-                another shift.
+          {step === 1 ? (
+            <div className={uiSpacing.sectionStack}>
+              <p className={uiCx(uiTypography.helper, 'text-gray-600')}>
+                Who should be scheduled? Filter by division, then tap people to select.
               </p>
-              <ul className="mt-2 list-disc space-y-1 pl-4 text-sm">
-                {overlapWarnings.slice(0, 8).map((w) => {
-                  const projectLabel =
-                    w.conflicts
-                      .map((c) => c.project_name)
-                      .filter(Boolean)
-                      .slice(0, 2)
-                      .join(', ') || 'another project';
-                  return (
-                    <li key={`${w.workerId}-${w.date}`}>
-                      {w.workerName} on{' '}
-                      {new Date(w.date + 'T12:00:00').toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                      })}{' '}
-                      overlaps {projectLabel}
-                    </li>
-                  );
-                })}
-                {overlapWarnings.length > 8 ? (
-                  <li>…and {overlapWarnings.length - 8} more</li>
-                ) : null}
-              </ul>
+              <ShiftWorkerDivisionPicker
+                employees={Array.isArray(employees) ? employees : []}
+                projectDivisions={projectDivisions}
+                value={Array.isArray(selectedWorkers) ? selectedWorkers : []}
+                onChange={setSelectedWorkers}
+                disabled={saving}
+              />
+              {onsiteLeadSection}
             </div>
-          )}
+          ) : null}
 
-          <div className="space-y-2">
-            <AppControlLabelRow label="Time of day" />
-            <div className="flex flex-wrap gap-2">
-              {SHIFT_TIME_PRESET_OPTIONS.map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  disabled={saving}
-                  onClick={() => applyTimePreset(opt.value)}
-                  className={uiCx(
-                    'rounded-lg border px-3 py-1.5 text-sm font-semibold transition-colors',
-                    timePreset === opt.value
-                      ? 'border-[#7f1010] bg-red-50 text-[#7f1010]'
-                      : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50',
-                    saving && 'opacity-50',
-                  )}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-            {timePreset === 'custom' ? (
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <AppTimePicker
-                  label="Start Time"
-                  value={startTime}
-                  onChange={(e) => {
-                    setStartTime(e.target.value);
-                    setTimePreset('custom');
-                  }}
-                />
-                <AppTimePicker
-                  label="End Time"
-                  value={endTime}
-                  onChange={(e) => {
-                    setEndTime(e.target.value);
-                    setTimePreset('custom');
-                  }}
-                />
+          {step === 2 ? (
+            <div className={uiSpacing.sectionStack}>
+              <p className={uiCx(uiTypography.helper, 'text-gray-600')}>
+                How do you want to pick the dates?
+              </p>
+              <AppChoiceCards
+                value={dateMode}
+                onChange={(mode) => {
+                  setDateMode(mode);
+                  const anchor = mode === 'single' ? date : dateFrom || date;
+                  const d = new Date(`${anchor}T12:00:00`);
+                  if (!Number.isNaN(d.getTime())) {
+                    setCalMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+                  }
+                }}
+                disabled={saving}
+                options={[
+                  {
+                    value: 'single',
+                    title: 'Single date',
+                    description: 'Schedule one day for the selected workers.',
+                    icon: CalendarDays,
+                  },
+                  {
+                    value: 'range',
+                    title: 'Date range',
+                    description: 'Click start and end days — optionally skip weekends.',
+                    icon: CalendarRange,
+                  },
+                ]}
+              />
+
+              <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-[16.5rem_minmax(0,1fr)]">
+                <div className="min-w-0 space-y-3">
+                  <div
+                    className={uiCx(
+                      uiRadius.card,
+                      uiBorders.subtle,
+                      uiColors.surface,
+                      'w-full max-w-[16.5rem] overflow-hidden',
+                    )}
+                  >
+                    <AppCalendarBase
+                      bare
+                      density="picker"
+                      monthLabel={calMonthLabel}
+                      days={createShiftCalendarDays}
+                      onPrevious={() =>
+                        setCalMonth(new Date(calMonth.getFullYear(), calMonth.getMonth() - 1, 1))
+                      }
+                      onNext={() =>
+                        setCalMonth(new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 1))
+                      }
+                      headerExtra={
+                        <AppButton
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 min-h-0 px-1.5 text-xs"
+                          onClick={() => {
+                            const now = new Date();
+                            setCalMonth(new Date(now.getFullYear(), now.getMonth(), 1));
+                            if (dateMode === 'single') {
+                              setDate(todayStr);
+                            } else {
+                              setDateFrom(todayStr);
+                              setDateTo(todayStr);
+                            }
+                          }}
+                        >
+                          Today
+                        </AppButton>
+                      }
+                      footer={
+                        <div
+                          className={uiCx(
+                            uiLayout.actionsRow,
+                            'justify-between gap-2 text-xs text-gray-600',
+                          )}
+                        >
+                          <span className="min-w-0 truncate">
+                            {workerIdsKey
+                              ? 'Numbers in the corner = existing shifts'
+                              : 'Select workers in step 1 to see their existing shifts'}
+                          </span>
+                          {dateRangeSummary ? (
+                            <span className="shrink-0 font-semibold text-gray-800">
+                              {dateRangeSummary}
+                            </span>
+                          ) : null}
+                        </div>
+                      }
+                    />
+                  </div>
+
+                  {dateMode === 'range' ? (
+                    <AppCheckbox
+                      label="Exclude weekends"
+                      checked={excludeWeekends}
+                      onChange={setExcludeWeekends}
+                    />
+                  ) : null}
+                </div>
+
+                <div className="min-w-0 space-y-3">
+                  <AppControlLabelRow label="Time of day" />
+                  <AppChoiceCards
+                    size="compact"
+                    columns={2}
+                    value={timePreset}
+                    onChange={(preset) => applyTimePreset(preset)}
+                    disabled={saving}
+                    options={SHIFT_TIME_PRESET_OPTIONS.map((opt) => ({
+                      value: opt.value,
+                      title: opt.label,
+                      icon: SHIFT_TIME_PRESET_ICONS[opt.value],
+                    }))}
+                  />
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <AppTimePicker
+                      label="Start Time"
+                      value={startTime}
+                      onChange={(e) => {
+                        const next = e.target.value;
+                        setStartTime(next);
+                        setTimePreset(detectPreset(next, endTime));
+                      }}
+                    />
+                    <AppTimePicker
+                      label="End Time"
+                      value={endTime}
+                      onChange={(e) => {
+                        const next = e.target.value;
+                        setEndTime(next);
+                        setTimePreset(detectPreset(startTime, next));
+                      }}
+                    />
+                  </div>
+                </div>
               </div>
-            ) : null}
-          </div>
 
-          <AppSelect
-            label="Job Type"
-            value={jobType}
-            onChange={(e) => setJobType(e.target.value)}
-            options={jobOpts}
-            fieldHint="Job Type\n\nOptional label for the type of work during this shift."
-          />
+              {overlapBlock}
+            </div>
+          ) : null}
 
-          <ShiftNoteField
-            projectId={projectId}
-            value={notes}
-            onChange={setNotes}
-            disabled={saving}
-            flags={noteFlags}
-            onFlagsChange={setNoteFlags}
-          />
+          {step === 3 ? (
+            <div className={uiSpacing.sectionStack}>
+              <p className={uiCx(uiTypography.helper, 'text-gray-600')}>
+                Optional. Add a job type or a note the worker will see.
+              </p>
+              <AppSelect
+                label="Job Type"
+                value={jobType}
+                onChange={(e) => setJobType(e.target.value)}
+                options={jobOpts}
+                fieldHint="Job Type\n\nOptional label for the type of work during this shift."
+              />
+              <ShiftNoteField
+                projectId={projectId}
+                value={notes}
+                onChange={setNotes}
+                disabled={saving}
+                flags={noteFlags}
+                onFlagsChange={setNoteFlags}
+              />
+            </div>
+          ) : null}
+
+          {step === 4 ? (
+            <div className={uiSpacing.sectionStack}>
+              <p className={uiCx(uiTypography.helper, 'text-gray-600')}>
+                Check the details, then create {shiftCount} shift{shiftCount === 1 ? '' : 's'}.
+              </p>
+              <dl className="divide-y divide-gray-100 rounded-lg border border-gray-200 bg-white">
+                {(
+                  [
+                    [
+                      'People',
+                      (Array.isArray(selectedWorkers) ? selectedWorkers : [])
+                        .map((id) => employeeNameById.get(String(id)) || 'Worker')
+                        .join(', ') || 'None',
+                    ],
+                    ['Dates', dateRangeSummary || 'None'],
+                    [
+                      'Time',
+                      startTime && endTime
+                        ? `${formatTime12h(startTime)} – ${formatTime12h(endTime)}`
+                        : 'None',
+                    ],
+                    [
+                      'Job type',
+                      jobOpts.find((opt) => opt.value === jobType)?.label || 'No job type',
+                    ],
+                    ['Note', notes.trim() || 'None'],
+                  ] as const
+                ).map(([label, valueText]) => (
+                  <div key={label} className="grid gap-1 px-3 py-2.5 sm:grid-cols-[7rem_minmax(0,1fr)] sm:gap-3">
+                    <dt className="text-sm font-semibold text-gray-500">{label}</dt>
+                    <dd className="text-sm text-gray-900 whitespace-pre-wrap">{valueText}</dd>
+                  </div>
+                ))}
+              </dl>
+              {notes.trim() && (noteFlags.saveOnProject || noteFlags.saveGlobal) ? (
+                <p className={uiCx(uiTypography.helper, 'text-gray-600')}>
+                  This note will also be saved
+                  {noteFlags.saveOnProject && noteFlags.saveGlobal
+                    ? ' on this project and for all projects'
+                    : noteFlags.saveOnProject
+                      ? ' on this project'
+                      : ' for all projects'}
+                  .
+                </p>
+              ) : null}
+              {overlapBlock}
+            </div>
+          ) : null}
         </form>
       </AppFormModal>
     );

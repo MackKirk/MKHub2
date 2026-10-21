@@ -799,6 +799,7 @@ CUSTOMER_TAB_KEYS: tuple[str, ...] = (
     "contacts",
     "files",
     "sites",
+    "notes",
     "opportunities",
     "projects",
 )
@@ -853,12 +854,23 @@ def has_customer_tab_permission(
     write_key = f"business:customers:{t}:write"
 
     if action == "write":
-        return _has_permission(user, write_key)
+        if _has_permission(user, write_key):
+            return True
+        # Notes: main customer write also allows creating/editing the communication log
+        if t == "notes" and _has_permission(user, "business:customers:write"):
+            return True
+        return False
 
     if _has_permission(user, read_key) or _has_permission(user, write_key):
         return True
 
     if t == "general" or t == "contacts":
+        if _has_permission(user, "business:customers:read") or _has_permission(
+            user, "business:customers:write"
+        ):
+            return True
+    # Notes/History: anyone with customer list access can use the communication log
+    if t == "notes":
         if _has_permission(user, "business:customers:read") or _has_permission(
             user, "business:customers:write"
         ):

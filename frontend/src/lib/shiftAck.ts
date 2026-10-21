@@ -5,6 +5,13 @@ export function shiftAckTracked(status?: string | null): boolean {
   return status !== 'not_required';
 }
 
+/** Worker still needs to accept or decline (pending or seen but unanswered). */
+export function shiftAckNeedsResponse(status?: string | null): boolean {
+  if (!shiftAckTracked(status)) return false;
+  const s = (status || 'pending').toLowerCase();
+  return s === 'pending' || s === 'viewed' || s === '';
+}
+
 export function shiftAckMeta(status?: string | null) {
   switch (status) {
     case 'accepted':
@@ -23,20 +30,23 @@ export function shiftAckMeta(status?: string | null) {
       };
     case 'viewed':
       return {
-        shortLabel: 'Seen',
-        longLabel: 'Seen, no answer yet',
-        tone: 'text-blue-700',
-        variant: 'info' as const,
+        shortLabel: 'Pending',
+        longLabel: 'Pending confirmation',
+        tone: 'text-amber-700',
+        variant: 'warning' as const,
       };
     default:
       return {
-        shortLabel: 'Confirm',
-        longLabel: 'Not seen yet',
+        shortLabel: 'Pending',
+        longLabel: 'Pending confirmation',
         tone: 'text-amber-700',
         variant: 'warning' as const,
       };
   }
 }
+
+/** Shared React Query key for home/nav pending shift confirmation badge. */
+export const SCHEDULE_PENDING_ACK_QUERY_KEY = ['schedule-pending-acks'] as const;
 
 export function shiftResponseActionLabel(action?: string | null): string {
   switch (action) {

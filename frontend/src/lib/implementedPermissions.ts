@@ -194,6 +194,8 @@ export const IMPLEMENTED_PERMISSIONS = new Set([
   'business:customers:files:write',
   'business:customers:sites:read',
   'business:customers:sites:write',
+  'business:customers:notes:read',
+  'business:customers:notes:write',
   'business:customers:opportunities:read',
   'business:customers:opportunities:write',
   'business:customers:projects:read',

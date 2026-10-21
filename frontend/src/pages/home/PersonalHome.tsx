@@ -15,11 +15,15 @@ import {
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { shouldRegisterHours } from '@/lib/payType';
-import { getTodayLocal } from '@/lib/dateUtils';
+import { formatDateLocal, getTodayLocal } from '@/lib/dateUtils';
 import { ClockInOutModalLayer } from '@/components/ClockInOutModalLayer';
 import { TimeOffRequestModal } from '@/pages/clock/TimeOffRequestModal';
 import type { TaskBuckets } from '@/components/tasks/types';
 import type { TimeOffMode } from '@/lib/timeOff';
+import {
+  SCHEDULE_PENDING_ACK_QUERY_KEY,
+  shiftAckNeedsResponse,
+} from '@/lib/shiftAck';
 import { uiCx, uiRadius } from '@/components/ui';
 
 type Attendance = {
@@ -38,6 +42,7 @@ type Shift = {
   end_time?: string;
   project_name?: string;
   status?: string;
+  ack_status?: string | null;
 };
 
 function isHoursWorked(a: Attendance): boolean {
@@ -252,6 +257,26 @@ export function HomeQuickAccess() {
     staleTime: 30_000,
   });
 
+  const { data: schedulePendingAckCount = 0 } = useQuery({
+    queryKey: [...SCHEDULE_PENDING_ACK_QUERY_KEY, currentUser?.id],
+    queryFn: async () => {
+      const workerId = currentUser?.id;
+      if (!workerId) return 0;
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(start);
+      end.setDate(end.getDate() + 30);
+      const range = `${formatDateLocal(start)},${formatDateLocal(end)}`;
+      const shifts = await api<Shift[]>(
+        'GET',
+        `/dispatch/shifts?date_range=${encodeURIComponent(range)}&worker_id=${encodeURIComponent(workerId)}`,
+      ).catch(() => [] as Shift[]);
+      return shifts.filter((s) => shiftAckNeedsResponse(s.ack_status)).length;
+    },
+    enabled: !!currentUser?.id,
+    staleTime: 30_000,
+  });
+
   const { openClockIn, hasOpenClockIn } = useMemo(() => {
     const events = (allAttendancesData?.attendances ?? [])
       .filter((a) => !!(a.clock_in_time || a.clock_out_time))
@@ -333,6 +358,8 @@ export function HomeQuickAccess() {
             accent="#2563EB"
             tint="#DBEAFE"
             watermark="/assets/brand/calendar-watermark.png"
+            badge={schedulePendingAckCount}
+            badgeLabel={`${schedulePendingAckCount} shift${schedulePendingAckCount === 1 ? '' : 's'} pending confirmation`}
             onClick={() => navigate('/schedule')}
           />
           <QuickActionCard

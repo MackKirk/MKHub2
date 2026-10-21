@@ -4,16 +4,23 @@ import { uiBorders, uiColors, uiCx, uiRadius, uiTypography } from './tokens';
 
 export type AppCalendarDayBadgeTone = 'neutral' | 'accent' | 'emphasis';
 
+/** Booking-style range highlight (travel-site calendar). */
+export type AppCalendarRangeRole = 'start' | 'end' | 'middle' | 'alone';
+
 export type AppCalendarDay = {
   dateLabel: string;
   isMuted?: boolean;
   isToday?: boolean;
   isSelected?: boolean;
+  /** Non-interactive / past day */
+  isDisabled?: boolean;
   /** e.g. shift indicator dot */
   hasMarker?: boolean;
   /** Centered count badge (e.g. director meeting slots per day). */
   badge?: number | string;
   badgeTone?: AppCalendarDayBadgeTone;
+  /** Continuous range bar segment (picker density). */
+  rangeRole?: AppCalendarRangeRole;
   onClick?: () => void;
   title?: string;
 };
@@ -32,6 +39,11 @@ export type AppCalendarBaseProps = {
   compact?: boolean;
   /** With `compact`, `square` keeps equal cell height/width; `flat` uses a fixed short row height (wide calendars). */
   compactCellProfile?: 'square' | 'flat';
+  /**
+   * `picker` — compact booking calendar: smaller cells, day number top-right,
+   * today in blue, selection/range bar in brand red.
+   */
+  density?: 'default' | 'picker';
   className?: string;
   footer?: ReactNode;
 };
@@ -65,26 +77,59 @@ export function AppCalendarBase({
   bare = false,
   compact = false,
   compactCellProfile = 'square',
+  density = 'default',
   className,
   footer,
   weekDayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
 }: AppCalendarBaseProps) {
   const Shell = bare ? 'div' : 'section';
-  const flatCompact = compact && compactCellProfile === 'flat';
+  const isPicker = density === 'picker';
+  const flatCompact = compact && compactCellProfile === 'flat' && !isPicker;
+  const isCompact = compact || isPicker;
 
-  const headerPad = flatCompact ? 'px-2 py-1.5' : compact ? 'p-2' : 'p-3';
-  const navBtn = compact ? 'h-6 w-6' : 'h-8 w-8';
-  const navIcon = compact ? 'h-3.5 w-3.5' : 'h-4 w-4';
-  const weekdayClass = compact
-    ? 'bg-gray-50 px-1 py-0.5 text-center text-xs font-semibold uppercase tracking-wide text-gray-500'
+  const headerPad = flatCompact ? 'px-2 py-1.5' : isCompact ? 'p-2' : 'p-3';
+  const navBtn = isCompact ? 'h-6 w-6' : 'h-8 w-8';
+  const navIcon = isCompact ? 'h-3.5 w-3.5' : 'h-4 w-4';
+  const weekdayClass = isCompact
+    ? 'bg-gray-50 px-1 py-0.5 text-center text-[10px] font-semibold uppercase tracking-wide text-gray-500'
     : 'bg-gray-50 px-2 py-1.5 text-center text-xs font-semibold uppercase tracking-wide text-gray-600';
 
   const compactCellSize = flatCompact
     ? 'flex h-full min-h-10 min-w-0 px-0.5 py-0.5 text-sm font-semibold'
-    : 'flex aspect-square min-h-0 min-w-0 px-0.5 py-0.5 text-sm font-semibold';
+    : isPicker
+      ? 'flex h-7 min-h-7 min-w-0 px-0.5 py-0.5 text-xs font-semibold'
+      : 'flex aspect-square min-h-0 min-w-0 px-0.5 py-0.5 text-sm font-semibold';
 
   const dayCellClass = (day: AppCalendarDay) => {
     const hasBadge = shouldShowDayBadge(day);
+    if (isPicker) {
+      const disabled = Boolean(day.isDisabled);
+      const role = day.rangeRole;
+      // Only one background class at a time — Tailwind conflict would keep bg-white over brand-red.
+      // Muted + not disabled = weekend skipped inside range (Exclude weekends)
+      const excludedInRange = Boolean(day.isMuted && day.dateLabel && !disabled && !role);
+      return uiCx(
+        'relative min-w-0 transition-colors',
+        compactCellSize,
+        day.isMuted && !day.dateLabel && 'pointer-events-none bg-white',
+        disabled && 'pointer-events-none bg-white text-gray-300',
+        !disabled && day.onClick && 'cursor-pointer',
+        // Weekends skipped inside a range — soft gray, not red
+        excludedInRange && 'bg-gray-100 text-gray-400 hover:bg-gray-100',
+        // Default / today (not selected)
+        !disabled &&
+          !role &&
+          !excludedInRange &&
+          (day.isToday
+            ? 'bg-sky-50 text-gray-800 hover:bg-sky-100'
+            : 'bg-white text-gray-800 hover:bg-gray-50'),
+        // Selection / range — solid red, darker on hover
+        role === 'alone' && 'bg-[#c22033] text-white hover:bg-[#9a1212]',
+        role === 'start' && 'rounded-l-md bg-[#c22033] text-white hover:bg-[#9a1212]',
+        role === 'end' && 'rounded-r-md bg-[#c22033] text-white hover:bg-[#9a1212]',
+        role === 'middle' && 'bg-[#c22033]/20 text-[#9a1212] hover:bg-[#c22033]/30',
+      );
+    }
     return uiCx(
       'relative bg-white transition-colors',
       compact
@@ -99,28 +144,80 @@ export function AppCalendarBase({
         : day.isMuted
           ? 'text-gray-400'
           : 'text-gray-700 hover:bg-gray-50',
+      day.isDisabled && 'pointer-events-none text-gray-300',
       day.isToday &&
         (compact
           ? 'bg-brand-red/15 font-semibold text-brand-red ring-1 ring-brand-red/20'
           : 'font-semibold text-brand-red'),
       day.isSelected && !day.isToday && 'bg-red-50 ring-1 ring-brand-red/25',
       !day.isMuted && day.hasMarker && !day.isToday && (compact ? 'bg-blue-50/80 hover:bg-blue-100/80' : ''),
-      !day.isMuted && day.onClick && 'cursor-pointer active:scale-95',
+      !day.isMuted && !day.isDisabled && day.onClick && 'cursor-pointer active:scale-95',
     );
   };
 
-  const renderDayCell = (day: AppCalendarDay, index: number) => {
+  const renderPickerDayCell = (day: AppCalendarDay, index: number) => {
     const isEmptyPad = day.isMuted && !day.dateLabel;
     if (isEmptyPad) {
       return <div key={`empty-${index}`} className={dayCellClass(day)} aria-hidden />;
     }
-    const clickable = Boolean(day.onClick);
+    const disabled = Boolean(day.isDisabled);
+    const clickable = Boolean(day.onClick) && !disabled;
+    const role = day.rangeRole;
+    const isEdge = role === 'start' || role === 'end' || role === 'alone';
+    const Cell = clickable ? 'button' : 'div';
+
+    return (
+      <Cell
+        key={`${day.dateLabel}-${index}`}
+        type={clickable ? 'button' : undefined}
+        onClick={clickable ? day.onClick : undefined}
+        title={day.title}
+        aria-disabled={disabled || undefined}
+        className={dayCellClass(day)}
+      >
+        <span
+          className={uiCx(
+            'absolute right-1 top-1 z-10 tabular-nums text-xs leading-none font-bold',
+            disabled && 'text-gray-300',
+            isEdge && 'text-white',
+            role === 'middle' && 'text-[#9a1212]',
+            !role && day.isMuted && !disabled && 'text-gray-400',
+            !role && day.isToday && !disabled && !day.isMuted && 'text-sky-800',
+            !role && !day.isToday && !disabled && !day.isMuted && 'text-gray-800',
+          )}
+        >
+          {day.dateLabel}
+        </span>
+
+        {shouldShowDayBadge(day) ? (
+          <span
+            className={uiCx(
+              'absolute bottom-1 left-1 z-10 text-[10px] font-bold leading-none tabular-nums',
+              isEdge ? 'text-white/90' : 'text-brand-red',
+              disabled && 'text-gray-300',
+            )}
+          >
+            {day.badge}
+          </span>
+        ) : null}
+      </Cell>
+    );
+  };
+
+  const renderDayCell = (day: AppCalendarDay, index: number) => {
+    if (isPicker) return renderPickerDayCell(day, index);
+
+    const isEmptyPad = day.isMuted && !day.dateLabel;
+    if (isEmptyPad) {
+      return <div key={`empty-${index}`} className={dayCellClass(day)} aria-hidden />;
+    }
+    const clickable = Boolean(day.onClick) && !day.isDisabled;
     const Cell = clickable ? 'button' : 'div';
     return (
       <Cell
         key={`${day.dateLabel}-${index}`}
         type={clickable ? 'button' : undefined}
-        onClick={day.onClick}
+        onClick={clickable ? day.onClick : undefined}
         title={day.title}
         className={dayCellClass(day)}
       >

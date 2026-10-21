@@ -508,6 +508,13 @@ def create_app() -> FastAPI:
                 except Exception as _e:
                     print(f"[startup] opportunity alert tables create_all (non-critical): {_e}")
 
+                try:
+                    from .models.models import ClientNote
+
+                    Base.metadata.create_all(bind=engine, tables=[ClientNote.__table__])
+                except Exception as _e:
+                    print(f"[startup] client_notes create_all (non-critical): {_e}")
+
                 if dialect != "postgresql" and "postgresql" not in dialect:
                     print("[startup] Skipping schema migrations (non-PostgreSQL). Production requires PostgreSQL.")
                 else:
@@ -3435,6 +3442,22 @@ def create_app() -> FastAPI:
                             print("[startup] Created project warranty tables")
                     except Exception as _e:
                         print(f"[startup] project warranty tables (non-critical): {_e}")
+
+                    # Client Notes / Communication Log
+                    try:
+                        rows = db.execute(
+                            text(
+                                "SELECT 1 FROM information_schema.tables WHERE table_name = 'client_notes' LIMIT 1"
+                            )
+                        ).fetchall()
+                        if not rows:
+                            from .models.models import ClientNote
+
+                            Base.metadata.create_all(bind=engine, tables=[ClientNote.__table__])
+                            db.commit()
+                            print("[startup] Created client_notes table")
+                    except Exception as _e:
+                        print(f"[startup] client_notes table (non-critical): {_e}")
 
                     try:
                         rows = db.execute(
