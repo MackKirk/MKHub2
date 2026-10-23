@@ -616,11 +616,13 @@ function ProjectRecentActivity({
   isOpportunity,
   isLeakInvestigation,
   useDesignSystem,
+  fillHeight,
 }: {
   projectId: string;
   isOpportunity?: boolean;
   isLeakInvestigation?: boolean;
   useDesignSystem?: boolean;
+  fillHeight?: boolean;
 }) {
   const { data: logs = [], isFetching } = useQuery({
     queryKey: ['projectRecentActivity', projectId],
@@ -644,7 +646,12 @@ function ProjectRecentActivity({
   };
 
   const activityList = (
-    <div className="h-[200px] overflow-y-auto flex-shrink-0 space-y-1.5 pr-1">
+    <div
+      className={uiCx(
+        'min-h-0 space-y-1.5 overflow-y-auto overscroll-contain pr-1',
+        fillHeight ? 'flex-1' : 'h-[200px] flex-shrink-0',
+      )}
+    >
       {isFetching ? (
         <div className={uiCx(uiTypography.helper, 'py-4')}>Loading...</div>
       ) : logs.length > 0 ? (
@@ -673,13 +680,16 @@ function ProjectRecentActivity({
 
   if (useDesignSystem) {
     return (
-      <AppCard className="flex h-full min-h-0 flex-col">
+      <AppCard
+        className={uiCx(fillHeight && 'flex h-full min-h-0 flex-col')}
+        bodyClassName={uiCx(fillHeight && 'flex min-h-0 flex-1 flex-col overflow-hidden')}
+      >
         <AppSectionHeader
           title="Recent Activity"
           description="Latest updates and changes on this record."
           {...appSectionPresetProps('notesHistory')}
         />
-        <div className="mt-3 min-h-0 flex-1">{activityList}</div>
+        <div className={uiCx('mt-3', fillHeight && 'flex min-h-0 flex-1 flex-col')}>{activityList}</div>
       </AppCard>
     );
   }
@@ -8427,12 +8437,15 @@ function ProjectOverviewBody({
           designSystem
           onSaved={onBillingSaved}
         />
-        <div className="h-full min-h-0">
-          <ProjectRecentActivity
-            projectId={projectId}
-            isLeakInvestigation={isLeakInvestigation}
-            useDesignSystem
-          />
+        <div className="relative min-h-0 min-w-0 overflow-hidden">
+          <div className="absolute inset-0 flex min-h-0 flex-col">
+            <ProjectRecentActivity
+              projectId={projectId}
+              isLeakInvestigation={isLeakInvestigation}
+              useDesignSystem
+              fillHeight
+            />
+          </div>
         </div>
       </div>
     ) : null;
@@ -10581,7 +10594,7 @@ function ProjectDivisionsHeroSection({
 
   const projectDivIds = Array.isArray(proj?.project_division_ids) ? proj.project_division_ids : [];
 
-  // Calculate percentages from pricing items
+  // Calculate percentages from approved pricing items + approved optionals
   const calculatedPercentages = useMemo(() => {
     if (projectDivIds.length === 0) return {};
     
@@ -10595,11 +10608,9 @@ function ProjectDivisionsHeroSection({
     // Prefer live pricing items (from ProposalForm via ProjectDetail state) if provided.
     const savedPricingItems = proposalData?.data?.additional_costs || [];
     const pricingItems = Array.isArray(livePricingItems) ? livePricingItems : savedPricingItems;
-    
-    // If no pricing items, return 0% for all divisions
-    if (pricingItems.length === 0) {
-      return result;
-    }
+    const optionalServices = Array.isArray(proposalData?.data?.optional_services)
+      ? proposalData.data.optional_services
+      : [];
     
     // Group by division_id and sum values (only approved items count)
     const divisionTotals: { [key: string]: number } = {};
@@ -10610,6 +10621,13 @@ function ProjectDivisionsHeroSection({
         const value = (item.value || 0) * (parseInt(item.quantity || '1', 10) || 1);
         divisionTotals[divId] = (divisionTotals[divId] || 0) + value;
       }
+    });
+    optionalServices.forEach((item: any) => {
+      if (item?.status !== 'approved') return;
+      if (!item.division_id) return;
+      const divId = String(item.division_id);
+      const price = Number(item.price || 0) || 0;
+      divisionTotals[divId] = (divisionTotals[divId] || 0) + price;
     });
     
     // Calculate total
@@ -10705,6 +10723,16 @@ function ProjectDivisionsHeroSection({
           currentPercentages={calculatedPercentages}
           projectDivisions={projectDivisionsForPicker || []}
           designSystem={designSystem}
+          pricingItems={
+            Array.isArray(livePricingItems)
+              ? livePricingItems
+              : proposalData?.data?.additional_costs || []
+          }
+          optionalServices={
+            Array.isArray(proposalData?.data?.optional_services)
+              ? proposalData.data.optional_services
+              : []
+          }
           onClose={() => setShowEditModal(false)}
           onSave={async () => {
             await queryClient.invalidateQueries({ queryKey: ['project', projectId] });
@@ -10722,15 +10750,28 @@ function ProjectDivisionsHeroSection({
 }
 
 // Edit Divisions Modal Component
-function EditDivisionsModal({ projectId, currentDivisions, currentPercentages, projectDivisions, designSystem, onClose, onSave }: {
+function EditDivisionsModal({
+  projectId,
+  currentDivisions,
+  currentPercentages: _currentPercentages,
+  projectDivisions,
+  designSystem,
+  pricingItems = [],
+  optionalServices = [],
+  onClose,
+  onSave,
+}: {
   projectId: string;
   currentDivisions: string[];
   currentPercentages: { [key: string]: number };
   projectDivisions: any[];
   designSystem?: boolean;
+  pricingItems?: any[];
+  optionalServices?: any[];
   onClose: () => void;
   onSave: () => Promise<void>;
 }) {
+  const confirm = useConfirm();
   const [projectDivs, setProjectDivs] = useState<string[]>(currentDivisions);
   const [saving, setSaving] = useState(false);
   const [expandedDivisions, setExpandedDivisions] = useState<Set<string>>(new Set());
@@ -10789,6 +10830,49 @@ function EditDivisionsModal({ projectId, currentDivisions, currentPercentages, p
   }, [currentDivisions, projectDivisions, validDivisionIdSet]);
 
   const handleSave = async () => {
+    const previousIds = Array.from(new Set((currentDivisions || []).map((x) => String(x))));
+    const nextIds = new Set(selectedDivIds.map(String));
+    const removedIds = previousIds.filter((id) => !nextIds.has(id));
+
+    if (removedIds.length > 0) {
+      const removedSet = new Set(removedIds);
+      let pricingCount = 0;
+      for (const item of pricingItems || []) {
+        const did = item?.division_id != null ? String(item.division_id) : '';
+        if (!did || !removedSet.has(did)) continue;
+        if (item?.approved === false) continue;
+        pricingCount += 1;
+      }
+      let optionalCount = 0;
+      for (const item of optionalServices || []) {
+        const did = item?.division_id != null ? String(item.division_id) : '';
+        if (!did || !removedSet.has(did)) continue;
+        if (item?.status === 'not_approved') continue;
+        optionalCount += 1;
+      }
+      if (pricingCount > 0 || optionalCount > 0) {
+        const parts: string[] = [];
+        if (pricingCount > 0) {
+          parts.push(`${pricingCount} pricing item${pricingCount === 1 ? '' : 's'}`);
+        }
+        if (optionalCount > 0) {
+          parts.push(`${optionalCount} optional service${optionalCount === 1 ? '' : 's'}`);
+        }
+        const ok = await confirm({
+          title: 'Remove division with related lines?',
+          message:
+            `This change removes ${removedIds.length === 1 ? 'a division that has' : 'divisions that have'} ` +
+            `${parts.join(' and ')}. Those lines will be marked not approved and will drop out of totals. Continue?`,
+          confirmText: 'Remove and unapprove',
+          cancelText: 'Cancel',
+        });
+        if (ok !== 'confirm') {
+          setProjectDivs(Array.from(new Set(previousIds)));
+          return;
+        }
+      }
+    }
+
     try {
       setSaving(true);
       // Percentages are now calculated automatically from pricing items, so send null
