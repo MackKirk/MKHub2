@@ -19,6 +19,8 @@ COPY portal ./
 # Portal Vite aliases resolve hub design-system from ../frontend/src/...
 COPY frontend/src/components/ui /work/frontend/src/components/ui
 COPY frontend/src/lib/overlayRoot.ts /work/frontend/src/lib/overlayRoot.ts
+# Hub UI files live outside /work/portal; symlink so Rollup finds portal deps (lucide-react, react).
+RUN ln -s /work/portal/node_modules /work/frontend/node_modules
 RUN npm run build
 
 FROM python:3.11-slim
