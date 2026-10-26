@@ -1,9 +1,12 @@
-# Script para modo integrado (build frontend + backend - simula Render)
+# Script para modo integrado (build frontend + portal + backend - simula Render)
 # Uso:
-#   .\scripts\dev-full.ps1           → npm run build + uvicorn (igual produção local)
-#   .\scripts\dev-full.ps1 -Dev      → Vite dev server (HMR) + uvicorn --reload (sem build)
+#   .\scripts\dev-full.ps1           → npm run build (frontend + portal) + uvicorn
+#   .\scripts\dev-full.ps1 -Dev      → Vite hub (:5173) + Vite portal (:5174) + uvicorn --reload
 #
-# Em -Dev abra o app em http://localhost:5173 (proxy para API em :8000). Ctrl+C encerra o backend e o Vite.
+# Em -Dev:
+#   Hub staff:      http://localhost:5173
+#   Customer portal: http://localhost:5174/portal/
+# Ctrl+C encerra o backend e os processos Vite.
 
 [CmdletBinding()]
 param(
@@ -86,40 +89,61 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "Dependências Python instaladas!" -ForegroundColor Green
 Write-Host ""
 
-# Verificar se node_modules existe no frontend
-Write-Host "Verificando dependências do frontend..." -ForegroundColor Yellow
-if (-not (Test-Path "frontend\node_modules")) {
-    Write-Host "Instalando dependências do frontend (isso pode levar alguns minutos)..." -ForegroundColor Yellow
-    Set-Location frontend
-    npm install
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "Erro ao instalar dependências do frontend" -ForegroundColor Red
-        Write-Host "Verifique se Node.js está instalado: https://nodejs.org/" -ForegroundColor Yellow
-        Set-Location ..
+function Ensure-NpmDeps {
+    param(
+        [Parameter(Mandatory = $true)][string]$DirName,
+        [Parameter(Mandatory = $true)][string]$Label
+    )
+    Write-Host "Verificando dependências do $Label..." -ForegroundColor Yellow
+    if (-not (Test-Path $DirName)) {
+        Write-Host "Erro: pasta '$DirName' não encontrada." -ForegroundColor Red
         exit 1
     }
-    Set-Location ..
-    Write-Host "Dependências do frontend instaladas!" -ForegroundColor Green
-} else {
-    Write-Host "Dependências do frontend já instaladas" -ForegroundColor Green
+    if (-not (Test-Path "$DirName\node_modules")) {
+        Write-Host "Instalando dependências do $Label (isso pode levar alguns minutos)..." -ForegroundColor Yellow
+        Set-Location $DirName
+        npm install
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "Erro ao instalar dependências do $Label" -ForegroundColor Red
+            Write-Host "Verifique se Node.js está instalado: https://nodejs.org/" -ForegroundColor Yellow
+            Set-Location ..
+            exit 1
+        }
+        Set-Location ..
+        Write-Host "Dependências do $Label instaladas!" -ForegroundColor Green
+    } else {
+        Write-Host "Dependências do $Label já instaladas" -ForegroundColor Green
+    }
+    Write-Host ""
 }
-Write-Host ""
+
+Ensure-NpmDeps -DirName "frontend" -Label "frontend (hub)"
+Ensure-NpmDeps -DirName "portal" -Label "portal (customer)"
 
 $viteRootProcess = $null
+$portalViteProcess = $null
 
 if ($Dev) {
-    Write-Host "Modo -Dev: sem npm run build; iniciando Vite (HMR)..." -ForegroundColor Yellow
+    Write-Host "Modo -Dev: sem npm run build; iniciando Vite hub + portal (HMR)..." -ForegroundColor Yellow
     $frontendPath = (Resolve-Path "frontend").Path
-    # Janela separada para logs do Vite; encerrada com taskkill /T ao sair do uvicorn
+    $portalPath = (Resolve-Path "portal").Path
+    # Janelas separadas para logs; encerradas com taskkill /T ao sair do uvicorn
     $viteCmd = "Set-Location -LiteralPath '$frontendPath'; npm run dev"
     $viteRootProcess = Start-Process -FilePath "powershell.exe" `
         -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", $viteCmd) `
         -PassThru
-    Write-Host "Vite iniciado (PID $($viteRootProcess.Id)). Aguarde alguns segundos antes de abrir o browser." -ForegroundColor Green
+    Write-Host "Vite hub iniciado (PID $($viteRootProcess.Id))." -ForegroundColor Green
+
+    $portalCmd = "Set-Location -LiteralPath '$portalPath'; npm run dev"
+    $portalViteProcess = Start-Process -FilePath "powershell.exe" `
+        -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", $portalCmd) `
+        -PassThru
+    Write-Host "Vite portal iniciado (PID $($portalViteProcess.Id))." -ForegroundColor Green
+    Write-Host "Aguarde alguns segundos antes de abrir o browser." -ForegroundColor Green
     Write-Host ""
 } else {
-    # Build do frontend
-    Write-Host "Construindo frontend (isso pode levar alguns minutos)..." -ForegroundColor Yellow
+    # Build do frontend (hub)
+    Write-Host "Construindo frontend / hub (isso pode levar alguns minutos)..." -ForegroundColor Yellow
     Set-Location frontend
     npm run build
     if ($LASTEXITCODE -ne 0) {
@@ -129,8 +153,21 @@ if ($Dev) {
         exit 1
     }
     Set-Location ..
-    Write-Host ""
     Write-Host "Frontend construído com sucesso!" -ForegroundColor Green
+    Write-Host ""
+
+    # Build do portal (customer)
+    Write-Host "Construindo portal (customer)..." -ForegroundColor Yellow
+    Set-Location portal
+    npm run build
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Erro ao construir portal" -ForegroundColor Red
+        Write-Host "Verifique os erros acima" -ForegroundColor Yellow
+        Set-Location ..
+        exit 1
+    }
+    Set-Location ..
+    Write-Host "Portal construído com sucesso!" -ForegroundColor Green
     Write-Host ""
 }
 
@@ -139,21 +176,26 @@ Write-Host "Iniciando backend..." -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Green
 Write-Host ""
 if ($Dev) {
-    Write-Host "SPA (dev):   http://localhost:5173" -ForegroundColor Cyan
-    Write-Host "API/docs:    http://localhost:8000  e  /docs" -ForegroundColor Cyan
+    Write-Host "Hub (staff):      http://localhost:5173" -ForegroundColor Cyan
+    Write-Host "Portal (cliente): http://localhost:5174/portal/" -ForegroundColor Cyan
+    Write-Host "API/docs:         http://localhost:8000  e  /docs" -ForegroundColor Cyan
 } else {
-    Write-Host "App:         http://localhost:8000" -ForegroundColor Cyan
-    Write-Host "Documentação: http://localhost:8000/docs" -ForegroundColor Cyan
+    Write-Host "Hub (staff):      http://localhost:8000" -ForegroundColor Cyan
+    Write-Host "Portal (cliente): http://localhost:8000/portal/" -ForegroundColor Cyan
+    Write-Host "Documentação:     http://localhost:8000/docs" -ForegroundColor Cyan
 }
-Write-Host "Pressione Ctrl+C para parar o backend$(if ($Dev) { ' e o Vite' })." -ForegroundColor Yellow
+$stopHint = if ($Dev) { " e os Vite (hub + portal)" } else { "" }
+Write-Host "Pressione Ctrl+C para parar o backend$stopHint." -ForegroundColor Yellow
 Write-Host ""
 
 try {
     uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 } finally {
-    if ($null -ne $viteRootProcess -and -not $viteRootProcess.HasExited) {
-        Write-Host ""
-        Write-Host "Encerrando Vite (processo $($viteRootProcess.Id))..." -ForegroundColor Yellow
-        taskkill /PID $viteRootProcess.Id /T /F 2>$null | Out-Null
+    foreach ($proc in @($viteRootProcess, $portalViteProcess)) {
+        if ($null -ne $proc -and -not $proc.HasExited) {
+            Write-Host ""
+            Write-Host "Encerrando Vite (processo $($proc.Id))..." -ForegroundColor Yellow
+            taskkill /PID $proc.Id /T /F 2>$null | Out-Null
+        }
     }
 }

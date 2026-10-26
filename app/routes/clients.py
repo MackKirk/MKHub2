@@ -1114,6 +1114,7 @@ def list_files(
             "content_type": ct,
             "is_image": is_image,
             "sort_index": sort_index,
+            "customer_visible": bool(getattr(cf, "customer_visible", False)),
         })
     # Sort by explicit sort_index asc, then uploaded_at desc
     try:

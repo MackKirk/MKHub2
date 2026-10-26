@@ -110,6 +110,9 @@ def access_session_is_current(user: User, payload: dict) -> bool:
 
 
 def _user_from_access_payload(db: Session, payload: dict) -> User:
+    # Portal JWTs must never authenticate as staff.
+    if payload.get("principal") == "hub_portal":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
     user_id_raw = payload.get("sub")
     try:
         user_uuid = uuid.UUID(str(user_id_raw))

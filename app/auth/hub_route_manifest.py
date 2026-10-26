@@ -37,6 +37,10 @@ PUBLIC_PATH_PREFIXES: Tuple[str, ...] = (
     "/auth/reset-password",
     "/auth/refresh",
     "/auth/invite",
+    "/portal/hub/auth/login",
+    "/portal/hub/auth/refresh",
+    "/portal/hub/auth/accept-invite",
+    "/portal/hub/auth/invite",
     "/docs",
     "/openapi.json",
     "/redoc",
@@ -44,6 +48,7 @@ PUBLIC_PATH_PREFIXES: Tuple[str, ...] = (
     "/metrics",
     "/ui/",
     "/assets/",
+    "/portal/",
     "/static/",
 )
 
@@ -56,6 +61,11 @@ PUBLIC_PATH_PATTERNS: Tuple[re.Pattern, ...] = (
     re.compile(r"^/auth/refresh/?$"),
     re.compile(r"^/auth/invite/[^/]+/?$"),
     re.compile(r"^/auth/accept-invite/?$"),
+    re.compile(r"^/portal/hub/auth/login/?$"),
+    re.compile(r"^/portal/hub/auth/refresh/?$"),
+    re.compile(r"^/portal/hub/auth/accept-invite/?$"),
+    re.compile(r"^/portal/hub/auth/invite/[^/]+/?$"),
+    re.compile(r"^/portal/hub/auth/logout/?$"),
 )
 
 

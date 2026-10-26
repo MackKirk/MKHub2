@@ -13,6 +13,7 @@ import { useConfirm } from '@/components/ConfirmProvider';
 import { useNavigateBack } from '@/hooks/useNavigateBack';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import { CustomerFilesTabEnhanced } from './CustomerFilesTabEnhanced';
+import PortalAccessPanel from '@/components/customer/PortalAccessPanel';
 import { FilePdfPreviewModal } from '@/components/files';
 import { OpportunityListItem, CreateReportModal, OPPORTUNITY_LIST_GRID_CLASS, OPPORTUNITY_LIST_MIN_WIDTH, SHOW_OPPORTUNITY_LIST_SHORTCUTS } from './Opportunities';
 import { ProjectListItem, PROJECT_LIST_GRID_CLASS, PROJECT_LIST_MIN_WIDTH, SHOW_PROJECT_LIST_SHORTCUTS } from './Projects';
@@ -105,6 +106,7 @@ export default function CustomerDetail(){
     : null;
   const [tab, setTab] = useState<CustomerTab>(initialTab);
   const [isHeroCollapsed, setIsHeroCollapsed] = useState(false);
+  const [portalInviteOpen, setPortalInviteOpen] = useState(false);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [customerReportModalOpen, setCustomerReportModalOpen] = useState<{ open: boolean; projectId?: string } | null>(null);
@@ -132,6 +134,12 @@ export default function CustomerDetail(){
   const hasSitesView = canViewCustomerTab('sites');
   const hasNotesView = canViewCustomerTab('notes');
   const hasNotesEdit = canEditCustomerTab('notes');
+  const canInvitePortal =
+    isAdmin ||
+    (permissions.has('business:customers:write') &&
+      (permissions.has('business:projects:write') ||
+        permissions.has('business:construction:projects:write') ||
+        permissions.has('business:rm:projects:write')));
   const { data:sites } = useQuery({ queryKey:['clientSites', id], queryFn: ()=>api<Site[]>('GET', `/clients/${id}/sites`) });
   const { data:files, refetch: refetchFiles } = useQuery({ queryKey:['clientFiles', id], queryFn: ()=>api<ClientFile[]>('GET', `/clients/${id}/files`) });
   const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
@@ -540,7 +548,18 @@ export default function CustomerDetail(){
       {availableTabs.length > 0 && (
         <div className={!isHeroCollapsed ? '-mt-0.5' : undefined}>
           <AppCard bodyClassName={isHeroCollapsed ? 'p-2.5' : 'p-3'}>
-            <AppTabs tabs={appTabItems} value={activeTabKey} onChange={(key) => handleTabClick(key === 'overview' ? null : (key as CustomerTab))} />
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <AppTabs
+                tabs={appTabItems}
+                value={activeTabKey}
+                onChange={(key) => handleTabClick(key === 'overview' ? null : (key as CustomerTab))}
+              />
+              {canInvitePortal && id ? (
+                <AppButton type="button" size="sm" onClick={() => setPortalInviteOpen(true)}>
+                  Invite to portal
+                </AppButton>
+              ) : null}
+            </div>
           </AppCard>
         </div>
       )}
@@ -846,6 +865,15 @@ export default function CustomerDetail(){
           }}
         />
       )}
+      <AppModal
+        open={portalInviteOpen && !!id && canInvitePortal}
+        onClose={() => setPortalInviteOpen(false)}
+        title="Portal access"
+        description="Invite people to this company’s customer portal."
+        size="md"
+      >
+        {id ? <PortalAccessPanel clientId={String(id)} enabled={canInvitePortal} /> : null}
+      </AppModal>
     </div>
   );
 }

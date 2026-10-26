@@ -49,7 +49,17 @@ import { AppButton, AppSectionHeader, appSectionPresetProps, AppCard, AppCheckbo
 type FilesLibraryView = 'home' | 'browser';
 type UploadModalContext = 'current-location' | 'choose-location';
 
-export type ClientFileForFiles = { id: string; file_object_id: string; is_image?: boolean; content_type?: string; category?: string; original_name?: string; uploaded_at?: string; site_id?: string };
+export type ClientFileForFiles = {
+  id: string;
+  file_object_id: string;
+  is_image?: boolean;
+  content_type?: string;
+  category?: string;
+  original_name?: string;
+  uploaded_at?: string;
+  site_id?: string;
+  customer_visible?: boolean;
+};
 
 type ClientDeletedFile = ClientFileForFiles & { deleted_at?: string | null; deleted_by_id?: string | null };
 
@@ -1118,6 +1128,31 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
                                   )}
                                   {canEditFiles && (
                                     <>
+                                      <button
+                                        type="button"
+                                        title={f.customer_visible ? 'Hide from customer portal' : 'Share on customer portal'}
+                                        className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                          f.customer_visible
+                                            ? 'bg-emerald-50 text-emerald-700'
+                                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                        }`}
+                                        onClick={async (e) => {
+                                          e.stopPropagation();
+                                          try {
+                                            await api('PATCH', `/clients/${clientId}/files/${f.id}/portal-visibility`, {
+                                              customer_visible: !f.customer_visible,
+                                            });
+                                            toast.success(
+                                              f.customer_visible ? 'Hidden from portal' : 'Shared on portal',
+                                            );
+                                            onRefresh();
+                                          } catch {
+                                            toast.error('Could not update portal visibility');
+                                          }
+                                        }}
+                                      >
+                                        Portal
+                                      </button>
                                       <AppListRowIconButton
                                         preset="move"
                                         label="Move to…"

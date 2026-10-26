@@ -75,6 +75,7 @@ type Quote = {
   outcome_note?: string | null;
   lost_reason?: string | null;
   outcome_value?: number | null;
+  customer_visible?: boolean;
 };
 
 type ClientFile = {
@@ -508,6 +509,32 @@ export default function QuoteDetail() {
           onEditOutcome={() => setOutcomeModalOpen(true)}
           onDelete={handleDeleteQuote}
         />
+
+        {hasEditPermission ? (
+          <div className="flex justify-end">
+            <AppButton
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={async () => {
+                try {
+                  if (quote.customer_visible) {
+                    await api('POST', `/quotes/${quote.id}/unshare-with-customer`);
+                    toast.success('Unshared from customer portal');
+                  } else {
+                    await api('POST', `/quotes/${quote.id}/share-with-customer`);
+                    toast.success('Shared on customer portal');
+                  }
+                  await queryClient.invalidateQueries({ queryKey: ['quote', quote.id] });
+                } catch {
+                  toast.error('Could not update portal sharing');
+                }
+              }}
+            >
+              {quote.customer_visible ? 'Shared on portal — click to unshare' : 'Share on customer portal'}
+            </AppButton>
+          </div>
+        ) : null}
 
         {hasViewPermission ? (
           <AppCard className="!rounded-2xl" bodyClassName={uiSpacing.cardPadding}>

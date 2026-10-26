@@ -11,6 +11,13 @@ RUN npm install -g npm@11 && npm install --no-audit --no-fund
 COPY frontend ./
 RUN npm run build
 
+FROM node:20-slim as portal
+WORKDIR /work/portal
+COPY portal/package.json ./
+RUN npm install -g npm@11 && npm install --no-audit --no-fund
+COPY portal ./
+RUN npm run build
+
 FROM python:3.11-slim
 
 ENV PYTHONUNBUFFERED=1
@@ -37,6 +44,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 # Copy built frontend
 COPY --from=frontend /work/frontend/dist ./frontend/dist
+COPY --from=portal /work/portal/dist ./portal/dist
 
 # Render sets $PORT; default to 8000
 ENV PORT=8000

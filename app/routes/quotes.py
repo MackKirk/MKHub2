@@ -1108,6 +1108,10 @@ def get_quote(
         "updated_at": q.updated_at.isoformat() if q.updated_at else None,
         **_serialize_estimator_fields(q.estimator_id, users_map, profiles_map),
         **_serialize_outcome_fields(q),
+        "customer_visible": bool(getattr(q, "customer_visible", False)),
+        "shared_with_customer_at": q.shared_with_customer_at.isoformat()
+        if getattr(q, "shared_with_customer_at", None)
+        else None,
     }
 
 

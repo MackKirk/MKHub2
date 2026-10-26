@@ -892,6 +892,10 @@ def get_proposal(proposal_id: str, db: Session = Depends(get_db)):
         "parent_proposal_id": str(getattr(p, 'parent_proposal_id', None)) if getattr(p, 'parent_proposal_id', None) else None,
         "approved_report_id": str(getattr(p, 'approved_report_id', None)) if getattr(p, 'approved_report_id', None) else None,
         "approval_status": getattr(p, 'approval_status', None) or ('approved' if getattr(p, 'approved_report_id', None) else None),
+        "customer_visible": bool(getattr(p, "customer_visible", False)),
+        "shared_with_customer_at": p.shared_with_customer_at.isoformat()
+        if getattr(p, "shared_with_customer_at", None)
+        else None,
     }
 
 
