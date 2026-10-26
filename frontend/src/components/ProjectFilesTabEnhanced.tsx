@@ -162,7 +162,7 @@ export default function ProjectFilesTabEnhanced({
   const [showUpload, setShowUpload] = useState(false);
   const [uploadQueue, setUploadQueue] = useState<Array<{id:string, file:File, progress:number, status:'pending'|'uploading'|'success'|'error', error?:string}>>([]);
   const imageGallery = useFileImageGallery();
-  const [previewPdf, setPreviewPdf] = useState<{ url:string, name:string }|null>(null);
+  const [previewPdf, setPreviewPdf] = useState<{ url: string; name: string; fileObjectId?: string } | null>(null);
   const [previewExcel, setPreviewExcel] = useState<{ url:string, name:string }|null>(null);
   const [sortBy, setSortBy] = useState<'uploaded_at' | 'name' | 'type'>('uploaded_at');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
@@ -740,7 +740,7 @@ export default function ProjectFilesTabEnhanced({
         );
         return;
       } else if (fileType === 'pdf') {
-        setPreviewPdf({ url, name });
+        setPreviewPdf({ url, name, fileObjectId: f.file_object_id });
       } else if (fileType === 'excel') {
         // For Excel files, open in Office Online editor
         setPreviewExcel({ url, name });
@@ -2835,6 +2835,7 @@ export default function ProjectFilesTabEnhanced({
         open={!!previewPdf}
         url={previewPdf?.url}
         name={previewPdf?.name}
+        fileObjectId={previewPdf?.fileObjectId}
         onClose={() => setPreviewPdf(null)}
       />
 

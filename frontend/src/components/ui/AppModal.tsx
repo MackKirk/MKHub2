@@ -10,7 +10,7 @@ type AppModalProps = {
   children: ReactNode;
   footer?: ReactNode;
   onClose: () => void;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'sm' | 'md' | 'lg' | 'full';
   /** Rendered between the title block and the close button (e.g. quick-info toggle). */
   headerActions?: ReactNode;
   /** Replaces the default title/description block; close button remains on the right. */
@@ -33,6 +33,7 @@ const sizeClasses = {
   sm: 'max-w-md',
   md: 'max-w-2xl',
   lg: 'max-w-4xl',
+  full: '!max-w-[calc(100vw-1rem)] !w-full !h-[calc(100vh-1rem)] !max-h-[calc(100vh-1rem)]',
 } as const;
 
 export function AppModal({
@@ -63,11 +64,14 @@ export function AppModal({
 
   if (!open) return null;
 
+  const isFull = size === 'full';
+
   return (
     <OverlayPortal>
       <div
         className={uiCx(
-          'fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4 backdrop-blur-sm',
+          'fixed inset-0 z-50 flex items-center justify-center bg-black/35 backdrop-blur-sm',
+          isFull ? 'p-2' : 'p-4',
           overlayClassName,
         )}
         onMouseDown={onClose}
@@ -75,7 +79,8 @@ export function AppModal({
       >
         <div
           className={uiCx(
-            'flex max-h-[90vh] w-full flex-col overflow-hidden',
+            'flex w-full flex-col overflow-hidden',
+            isFull ? 'max-h-none' : 'max-h-[90vh]',
             uiRadius.modal,
             uiShadows.elevated,
             uiColors.surface,

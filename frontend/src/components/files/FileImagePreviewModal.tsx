@@ -1,9 +1,10 @@
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 import OverlayPortal from '@/components/OverlayPortal';
 import { AppButton, AppModal, uiCx, uiLayout } from '@/components/ui';
 import { downloadFromUrl, downloadStoredFile } from '@/lib/downloadFile';
+import { FilePreviewExpandButton } from './FilePreviewExpandButton';
 import type { FileImagePreviewItem } from './fileImagePreview';
 
 type Props = {
@@ -71,6 +72,7 @@ function ImageBody({
   onPrev,
   onNext,
   imageClassName,
+  expanded,
 }: {
   item: FileImagePreviewItem | null;
   loading?: boolean;
@@ -78,6 +80,7 @@ function ImageBody({
   onPrev: () => void;
   onNext: () => void;
   imageClassName?: string;
+  expanded?: boolean;
 }) {
   return (
     <div className="relative flex min-h-[200px] w-full flex-1 items-center justify-center">
@@ -88,7 +91,11 @@ function ImageBody({
         <img
           src={item.url}
           alt={item.name}
-          className={uiCx('max-h-[calc(90vh-120px)] w-full object-contain', imageClassName)}
+          className={uiCx(
+            'w-full object-contain',
+            expanded ? 'max-h-[calc(100vh-10rem)]' : 'max-h-[calc(90vh-120px)]',
+            imageClassName,
+          )}
         />
       )}
     </div>
@@ -108,6 +115,7 @@ export default function FileImagePreviewModal({
 }: Props) {
   const current = items[index] ?? null;
   const showNav = items.length > 1;
+  const [expanded, setExpanded] = useState(false);
   const counter = showNav ? (
     <span className="ml-2 text-sm font-normal tabular-nums text-gray-600">
       {index + 1} / {items.length}
@@ -126,6 +134,10 @@ export default function FileImagePreviewModal({
       toast.error('Download failed');
     }
   };
+
+  useEffect(() => {
+    if (!open) setExpanded(false);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -220,8 +232,12 @@ export default function FileImagePreviewModal({
           {counter}
         </>
       }
-      size="lg"
+      size={expanded ? 'full' : 'lg'}
       bodyClassName="flex min-h-0 flex-1 items-center justify-center p-3"
+      bodyFill
+      headerActions={
+        <FilePreviewExpandButton expanded={expanded} onToggle={() => setExpanded((v) => !v)} />
+      }
       footer={
         <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end gap-2')}>
           <AppButton variant="secondary" size="sm" type="button" onClick={onClose}>
@@ -244,6 +260,7 @@ export default function FileImagePreviewModal({
         showNav={showNav}
         onPrev={onPrev}
         onNext={onNext}
+        expanded={expanded}
       />
     </AppModal>
   );

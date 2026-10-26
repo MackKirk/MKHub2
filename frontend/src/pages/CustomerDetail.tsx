@@ -1011,7 +1011,7 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
   const [renameDoc, setRenameDoc] = useState<{id:string, title:string}|null>(null);
   const [moveDoc, setMoveDoc] = useState<{id:string}|null>(null);
   const [moveDocFolderId, setMoveDocFolderId] = useState('');
-  const [previewPdf, setPreviewPdf] = useState<{ url:string, name:string }|null>(null);
+  const [previewPdf, setPreviewPdf] = useState<{ url: string; name: string; fileObjectId?: string } | null>(null);
   const [selectMode, setSelectMode] = useState<boolean>(false);
   const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(new Set());
   const [editingImage, setEditingImage] = useState<{ fileObjectId: string; name: string } | null>(null);
@@ -1154,7 +1154,7 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
                       }} />
                     )}
                     <div className={`w-10 h-12 rounded-lg ${s.bg} ${s.txt} flex items-center justify-center text-xs font-extrabold select-none`}>{ext||'FILE'}</div>
-                    <div className="flex-1 min-w-0" onClick={async()=>{ if(selectMode) return; try{ const r:any = await api('GET', withFileAccessToken(`/files/${encodeURIComponent(d.file_id)}/download`)); const url=r.download_url||''; if(url) { if(ext==='PDF') setPreviewPdf({ url, name: d.title||'Preview' }); else window.open(url,'_blank'); } }catch(_e){ toast.error('Preview not available'); } }}>
+                    <div className="flex-1 min-w-0" onClick={async()=>{ if(selectMode) return; try{ const r:any = await api('GET', withFileAccessToken(`/files/${encodeURIComponent(d.file_id)}/download`)); const url=r.download_url||''; if(url) { if(ext==='PDF') setPreviewPdf({ url, name: d.title||'Preview', fileObjectId: d.file_id }); else window.open(url,'_blank'); } }catch(_e){ toast.error('Preview not available'); } }}>
                       <div className="font-semibold truncate cursor-pointer hover:underline">{d.title||'Document'}</div>
                       <div className="text-xs text-gray-600 truncate">Uploaded {String(d.created_at||'').slice(0,10)}</div>
                     </div>
@@ -1401,6 +1401,7 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
         open={!!previewPdf}
         url={previewPdf?.url}
         name={previewPdf?.name}
+        fileObjectId={previewPdf?.fileObjectId}
         onClose={() => setPreviewPdf(null)}
       />
       

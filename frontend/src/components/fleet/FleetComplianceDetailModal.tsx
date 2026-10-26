@@ -28,7 +28,7 @@ type Props = {
   onEdit: (record: FleetComplianceRecord) => void;
 };
 
-type PreviewDoc = { url: string; name: string };
+type PreviewDoc = { url: string; name: string; fileObjectId?: string };
 
 function formatComplianceDate(value?: string | null): string {
   if (!value?.trim()) return EM_DASH;
@@ -170,7 +170,7 @@ export default function FleetComplianceDetailModal({
         return;
       }
       // PDFs and unknown non-image docs (certs are usually PDF)
-      setPreviewPdf({ url, name });
+      setPreviewPdf({ url, name, fileObjectId: fileId });
     } catch {
       toast.error('Preview not available');
     } finally {
@@ -270,6 +270,7 @@ export default function FleetComplianceDetailModal({
         open={!!previewPdf}
         url={previewPdf?.url}
         name={previewPdf?.name}
+        fileObjectId={previewPdf?.fileObjectId}
         onClose={() => setPreviewPdf(null)}
       />
       <FileOfficePreviewModal

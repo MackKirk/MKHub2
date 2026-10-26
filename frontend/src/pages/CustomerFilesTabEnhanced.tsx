@@ -83,7 +83,7 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
   const [showUpload, setShowUpload] = useState(false);
   const [uploadQueue, setUploadQueue] = useState<Array<{ id: string; file: File; progress: number; status: 'pending' | 'uploading' | 'success' | 'error'; error?: string }>>([]);
   const imageGallery = useFileImageGallery();
-  const [previewPdf, setPreviewPdf] = useState<{ url: string; name: string } | null>(null);
+  const [previewPdf, setPreviewPdf] = useState<{ url: string; name: string; fileObjectId?: string } | null>(null);
   const [previewExcel, setPreviewExcel] = useState<{ url: string; name: string } | null>(null);
   const [editingImage, setEditingImage] = useState<{ fileObjectId: string; name: string } | null>(null);
   const [sortBy, setSortBy] = useState<'uploaded_at' | 'name' | 'type'>('uploaded_at');
@@ -439,7 +439,7 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
         );
         return;
       }
-      if (fileType === 'pdf') setPreviewPdf({ url, name });
+      if (fileType === 'pdf') setPreviewPdf({ url, name, fileObjectId: f.file_object_id });
       else if (fileType === 'excel') setPreviewExcel({ url, name });
       else window.open(url, '_blank');
     } catch {
@@ -1303,6 +1303,7 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
         open={!!previewPdf}
         url={previewPdf?.url}
         name={previewPdf?.name}
+        fileObjectId={previewPdf?.fileObjectId}
         onClose={() => setPreviewPdf(null)}
       />
       <FileOfficePreviewModal

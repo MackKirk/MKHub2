@@ -105,7 +105,7 @@ export default function UserDocumentsTabEnhanced({
   const [sortBy, setSortBy] = useState<'uploaded_at' | 'name' | 'type'>('uploaded_at');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const imageGallery = useFileImageGallery();
-  const [previewPdf, setPreviewPdf] = useState<{ url: string; name: string } | null>(null);
+  const [previewPdf, setPreviewPdf] = useState<{ url: string; name: string; fileObjectId?: string } | null>(null);
   const [previewExcel, setPreviewExcel] = useState<{ url: string; name: string } | null>(null);
   const [uploadQueue, setUploadQueue] = useState<UploadQueueItem[]>([]);
   const [editingFileNameId, setEditingFileNameId] = useState<string | null>(null);
@@ -390,7 +390,7 @@ export default function UserDocumentsTabEnhanced({
         );
         return;
       }
-      if (ft === 'pdf') setPreviewPdf({ url, name });
+      if (ft === 'pdf') setPreviewPdf({ url, name, fileObjectId: d.file_id || undefined });
       else if (ft === 'excel') setPreviewExcel({ url, name });
       else window.open(url, '_blank', 'noopener,noreferrer');
     } catch {
@@ -1139,6 +1139,7 @@ export default function UserDocumentsTabEnhanced({
         open={!!previewPdf}
         url={previewPdf?.url}
         name={previewPdf?.name}
+        fileObjectId={previewPdf?.fileObjectId}
         onClose={() => setPreviewPdf(null)}
       />
 
