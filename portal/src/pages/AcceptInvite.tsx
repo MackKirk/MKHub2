@@ -9,6 +9,7 @@ import { AppButton, AppEmptyState, AppInput, uiCx, uiTypography } from '@/lib/ui
 type InviteInfo = {
   email: string;
   client_name?: string | null;
+  account_exists?: boolean;
 };
 
 function scrollFocusedFieldIntoView(target: EventTarget | null) {
@@ -26,9 +27,13 @@ export default function AcceptInvite() {
   const [info, setInfo] = useState<InviteInfo | null>(null);
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+
+  const accountExists = !!info?.account_exists;
 
   useEffect(() => {
     if (!token) {
@@ -43,6 +48,18 @@ export default function AcceptInvite() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     if (!token || busy) return;
+
+    if (!accountExists) {
+      if (password.length < 8) {
+        toast.error('Password must be at least 8 characters');
+        return;
+      }
+      if (password !== confirmPassword) {
+        toast.error('Passwords do not match');
+        return;
+      }
+    }
+
     setBusy(true);
     try {
       const data = await portalApi<{ access_token: string; refresh_token: string }>(
@@ -51,7 +68,7 @@ export default function AcceptInvite() {
         { token, password, name: name || undefined },
       );
       persistPortalTokens(data.access_token, data.refresh_token);
-      toast.success('Account ready');
+      toast.success(accountExists ? 'Joined company' : 'Account ready');
       navigate('/');
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Could not accept invite');
@@ -83,7 +100,9 @@ export default function AcceptInvite() {
 
   return (
     <PortalAuthLayout>
-      <h2 className="text-xl font-semibold text-gray-900">Create your portal account</h2>
+      <h2 className="text-xl font-semibold text-gray-900">
+        {accountExists ? 'Join this company' : 'Create your portal account'}
+      </h2>
       <p className={uiCx(uiTypography.helper, 'mt-1 mb-5')}>
         Company: <span className="font-semibold text-gray-800">{info.client_name || '—'}</span>
       </p>
@@ -113,7 +132,7 @@ export default function AcceptInvite() {
           onChange={(e) => setPassword(e.target.value)}
           minLength={8}
           required
-          autoComplete="new-password"
+          autoComplete={accountExists ? 'current-password' : 'new-password'}
           onFocus={(e) => scrollFocusedFieldIntoView(e.target)}
           leftIcon={<Lock className="h-4 w-4" />}
           rightIcon={
@@ -126,10 +145,38 @@ export default function AcceptInvite() {
               {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
           }
-          helperText="At least 8 characters. If you already have an account, use your existing password."
+          helperText={
+            accountExists
+              ? 'Enter the password for your existing portal account.'
+              : 'At least 8 characters.'
+          }
         />
+        {!accountExists ? (
+          <AppInput
+            id="portal-invite-confirm-password"
+            label="Confirm password"
+            type={showConfirmPassword ? 'text' : 'password'}
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            minLength={8}
+            required
+            autoComplete="new-password"
+            onFocus={(e) => scrollFocusedFieldIntoView(e.target)}
+            leftIcon={<Lock className="h-4 w-4" />}
+            rightIcon={
+              <button
+                type="button"
+                className="flex h-7 w-7 items-center justify-center rounded-md text-gray-400 hover:text-gray-700"
+                onClick={() => setShowConfirmPassword((v) => !v)}
+                aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+              >
+                {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            }
+          />
+        ) : null}
         <AppButton type="submit" className="w-full" size="lg" disabled={busy} loading={busy}>
-          {busy ? 'Creating…' : 'Create account'}
+          {busy ? (accountExists ? 'Joining…' : 'Creating…') : accountExists ? 'Join company' : 'Create account'}
         </AppButton>
       </form>
       <p className="mt-4 text-center text-sm">

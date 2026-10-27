@@ -119,11 +119,16 @@ def _get_pending_invite(db: Session, token: str) -> PortalHubInvite:
 def validate_portal_invite(token: str, db: Session = Depends(get_db)):
     inv = _get_pending_invite(db, token)
     client = db.query(Client).filter(Client.id == inv.client_id, Client.deleted_at.is_(None)).first()
+    email = _normalize_email(inv.email)
+    account_exists = (
+        db.query(PortalHubUser.id).filter(func.lower(PortalHubUser.email) == email).first() is not None
+    )
     return {
         "email": inv.email,
         "client_id": str(inv.client_id),
         "client_name": (client.display_name or client.name) if client else None,
         "expires_at": inv.expires_at.isoformat() if inv.expires_at else None,
+        "account_exists": account_exists,
     }
 
 

@@ -1090,15 +1090,30 @@ export default function UserInfo(){
         email_sent?: boolean;
         email_error?: string | null;
         reset_expires_hours?: number;
+        set_password_link?: string;
+        username?: string;
       }>('POST', `/auth/users/${encodeURIComponent(String(userId))}/send-access-invite`, {});
       if (res?.email_sent) {
         toast.success(
           `Access invite sent${typeof res.reset_expires_hours === 'number' ? ` (password link valid ${res.reset_expires_hours}h)` : ''}`,
         );
-      } else if (res?.email_error) {
-        toast.error(String(res.email_error));
       } else {
-        toast.error('Email was not sent. Check SMTP, MAIL_FROM, and PUBLIC_BASE_URL.');
+        const link = res?.set_password_link;
+        if (link) {
+          try {
+            await navigator.clipboard.writeText(link);
+            toast.error(
+              `Email not sent (SMTP). Password link copied — send it manually to ${res.username || 'the user'} (valid ${res.reset_expires_hours ?? 72}h).`,
+              { duration: 12000 },
+            );
+          } catch {
+            window.prompt('Email not sent. Copy this password link and send it manually:', link);
+          }
+        } else if (res?.email_error) {
+          toast.error(String(res.email_error));
+        } else {
+          toast.error('Email was not sent. Check SMTP, MAIL_FROM, and PUBLIC_BASE_URL.');
+        }
       }
     } catch (e: any) {
       toast.error(e?.message || e?.detail || 'Failed to send access invite');
