@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Search } from 'lucide-react';
+import { Loader2, Search } from 'lucide-react';
 import {
   GRID_CARD_CLASS,
   GRID_CLASS,
@@ -109,12 +109,14 @@ export function ShiftWorkerDivisionPicker({
   value,
   onChange,
   disabled,
+  loading = false,
 }: {
   employees: ShiftWorkerCandidate[];
   projectDivisions?: ProjectDivisionNode[];
   value: string[];
   onChange: (ids: string[]) => void;
   disabled?: boolean;
+  loading?: boolean;
 }) {
   const [activeDivision, setActiveDivision] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -221,6 +223,20 @@ export function ShiftWorkerDivisionPicker({
     else next.add(id);
     onChange(Array.from(next));
   };
+
+  if (loading) {
+    return (
+      <div
+        className={uiCx(
+          PICKER_BODY_HEIGHT_CLASS,
+          'flex items-center justify-center gap-2 text-sm text-gray-500',
+        )}
+      >
+        <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+        Loading people…
+      </div>
+    );
+  }
 
   return (
     <div
