@@ -113,7 +113,9 @@ function useChartData(
       if (relatedToMe) params.set('related_to_me', 'true');
       params.set('mode', mode);
       const url = `/projects/business/divisions-stats${params.toString() ? '?' + params.toString() : ''}`;
-      return api('GET', url);
+      const raw = await api<DivisionStatsRow[] | { divisions?: DivisionStatsRow[] }>('GET', url);
+      if (Array.isArray(raw)) return raw;
+      return Array.isArray(raw?.divisions) ? raw.divisions : [];
     },
     staleTime: 60_000,
     enabled: isByDivision,

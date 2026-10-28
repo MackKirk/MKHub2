@@ -181,6 +181,9 @@ def create_client(
                     raise
             
             data["code"] = code
+        # Hub create: Hub-only product scope (Metals create uses /metals/clients)
+        data["serves_hub"] = True
+        data["serves_metals"] = False
         c = Client(**data)
         db.add(c)
         db.commit()
@@ -316,6 +319,13 @@ def list_clients(
             base_query = db.query(Client).options(defer(Client.is_system)).filter(Client.deleted_at.is_(None))
         else:
             raise
+
+    # Hub product list: only customers that serve Hub
+    try:
+        base_query = base_query.filter(Client.serves_hub.is_(True))
+    except Exception:
+        # Column missing on very old DBs before migration — leave unfiltered
+        pass
     
     # Apply filters
     if city:
@@ -641,8 +651,8 @@ def get_client_insights(
 
 @router.get("/{client_id}", response_model=ClientResponse)
 def get_client(client_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if not has_customer_detail_access(user):
-        raise HTTPException(status_code=403, detail="Forbidden")
+    from ..services.client_product_scope import assert_can_view_client
+
     try:
         c = db.query(Client).filter(Client.id == client_id, Client.deleted_at.is_(None)).first()
     except ProgrammingError as e:
@@ -654,6 +664,7 @@ def get_client(client_id: str, db: Session = Depends(get_db), user: User = Depen
             raise
     if not c:
         raise HTTPException(status_code=404, detail="Not found")
+    assert_can_view_client(user, c)
     return c
 
 

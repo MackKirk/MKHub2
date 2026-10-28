@@ -6,6 +6,7 @@ import {
   normalizeDocumentAssigneeId,
   type DocumentSignerRoleDef,
 } from '@/types/documentCreator';
+import { applyUniformTextAlign } from '@/lib/documentTextAlign';
 import {
   AlignBottomIcon,
   AlignCenterIcon,
@@ -209,13 +210,7 @@ function applyAlignToEntireTextElement(
   el: DocElement,
   align: 'left' | 'center' | 'right',
 ): DocElement {
-  return {
-    ...el,
-    textAlign: align,
-    lineTextAligns: el.lineTextAligns?.length
-      ? el.lineTextAligns.map(() => align)
-      : el.lineTextAligns,
-  };
+  return applyUniformTextAlign(el, align);
 }
 
 /** Uniform run format across the whole box, or null for a property when mixed / missing. */

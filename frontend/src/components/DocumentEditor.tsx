@@ -4,6 +4,10 @@ import { useNavigate } from 'react-router-dom';
 import { useNavigateBack } from '@/hooks/useNavigateBack';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, getToken, withFileAccessToken, ApiError, getApiErrorCode, isDocumentConcurrencyError } from '@/lib/api';
+import {
+  fetchDocumentExportPdfResult,
+  streamDocumentExportPdf,
+} from '@/lib/documentExportPdfStream';
 import { getOverlayRoot } from '@/lib/overlayRoot';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
@@ -34,9 +38,13 @@ import {
 import { readDocumentCreatorClipboard, writeDocumentCreatorClipboard } from '@/utils/documentCreatorClipboard';
 import OverlayPortal from '@/components/OverlayPortal';
 import DocumentEditorRibbon from '@/components/document-editor/DocumentEditorRibbon';
+import DocumentExportPdfOverlay, {
+  type DocumentExportPdfProgress,
+} from '@/components/document-editor/DocumentExportPdfOverlay';
 import SendForSignatureModal from '@/components/SendForSignatureModal';
 import { insertDocumentSignatureAtomAtCaret, insertDocumentDateAtomAtCaret } from '@/lib/documentAutoFillTokens';
-import { AppButton, AppFormModal, AppInput, uiSpacing } from '@/components/ui';
+import { AppButton, AppFormModal, AppInput, AppModal, uiCx, uiLayout, uiSpacing } from '@/components/ui';
+import { FilePreviewExpandButton } from '@/components/files';
 import {
   ribbonPortalDropdownPanelClass,
   editorSurfaceWorkspaceClass,
@@ -265,6 +273,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
   const [pagesPanelCollapsed, setPagesPanelCollapsed] = useState(false);
   const [layersPanelCollapsed, setLayersPanelCollapsed] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [exportPdfProgress, setExportPdfProgress] = useState<DocumentExportPdfProgress | null>(null);
   const [sendForSignatureOpen, setSendForSignatureOpen] = useState(false);
   const [otherSignerModalOpen, setOtherSignerModalOpen] = useState(false);
   const [otherSignerLabel, setOtherSignerLabel] = useState('');
@@ -276,6 +285,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
   /** Keep newly created signers in the catalog until their first field lands on the page. */
   const retainSignerIdsRef = useRef<Set<string>>(new Set());
   const [pdfPreview, setPdfPreview] = useState<{ url: string; filename: string } | null>(null);
+  const [pdfPreviewExpanded, setPdfPreviewExpanded] = useState(false);
   const [bgPickerOpen, setBgPickerOpen] = useState(false);
   const [imagePickerOpen, setImagePickerOpen] = useState(false);
   /** When set, ImagePicker is in "replace" mode for this element; when null, in "add" mode. */
@@ -2236,32 +2246,37 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
 
   const handleExportPdf = useCallback(async () => {
     if (!id) return;
+    const authToken = getToken();
     try {
       setIsExportingPdf(true);
-      const token = getToken();
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (token) headers.Authorization = `Bearer ${token}`;
-      const r = await fetch(`/document-creator/documents/${id}/export-pdf`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ canvas_width_px: 910 }),
+      setExportPdfProgress({ phase: 'working', current: 0, total: 0, pct: 0 });
+      const ready = await streamDocumentExportPdf(id, authToken, {
+        onProgress: (p) => setExportPdfProgress(p),
       });
-      if (!r.ok) throw new Error(r.statusText || 'Export failed');
-      const blob = await r.blob();
+      setExportPdfProgress((prev) => ({
+        phase: prev?.phase === 'building_pages' ? 'building_pages' : 'working',
+        current: prev?.current ?? 0,
+        total: prev?.total ?? 0,
+        pct: 100,
+      }));
+      const blob = await fetchDocumentExportPdfResult(id, ready.token, authToken);
       const url = URL.createObjectURL(blob);
       setPdfPreview((prev) => {
         if (prev?.url) URL.revokeObjectURL(prev.url);
-        return { url, filename: `${title || 'document'}.pdf` };
+        return { url, filename: ready.filename || `${title || 'document'}.pdf` };
       });
       toast.success('PDF ready for preview.');
     } catch (e: any) {
+      if (e?.name === 'AbortError') return;
       toast.error(e?.message || 'Failed to export PDF.');
     } finally {
       setIsExportingPdf(false);
+      setExportPdfProgress(null);
     }
-  }, [id, title, canvasWidthPxForExport]);
+  }, [id, title]);
 
   const closePdfPreview = useCallback(() => {
+    setPdfPreviewExpanded(false);
     setPdfPreview((prev) => {
       if (prev?.url) URL.revokeObjectURL(prev.url);
       return null;
@@ -2422,6 +2437,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
           </div>
         </OverlayPortal>
       ) : null}
+      <DocumentExportPdfOverlay open={isExportingPdf} progress={exportPdfProgress} />
       <div
         className={
           stickyToolbar
@@ -2639,52 +2655,62 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
         />
       )}
       {!readOnly && <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleAddImage} />}
-      {pdfPreview && (
-        <OverlayPortal><div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" role="dialog" aria-modal="true">
-          <div className="w-full max-w-5xl bg-white rounded-xl shadow-xl overflow-hidden border border-gray-200">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
-              <div className="min-w-0">
-                <div className="text-sm font-semibold text-gray-800 truncate">PDF Preview</div>
-                <div className="text-xs text-gray-500 truncate">{pdfPreview.filename}</div>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleExportPdf}
-                  disabled={isExportingPdf}
-                  className={`px-3 py-1.5 rounded border text-sm ${
-                    isExportingPdf ? 'text-gray-400 border-gray-200 cursor-not-allowed' : 'border-gray-300 hover:bg-gray-100 text-gray-700'
-                  }`}
-                  title="Regenerate preview"
-                >
-                  Refresh
-                </button>
-                <a
-                  href={pdfPreview.url}
-                  download={pdfPreview.filename}
-                  className="px-3 py-1.5 rounded border border-gray-300 text-sm text-gray-700 hover:bg-gray-100"
-                >
-                  Download
-                </a>
-                <button
-                  type="button"
-                  onClick={closePdfPreview}
-                  className="px-3 py-1.5 rounded bg-gray-800 text-white text-sm hover:bg-gray-900"
-                >
-                  Close
-                </button>
-              </div>
+      {pdfPreview ? (
+        <AppModal
+          open
+          onClose={closePdfPreview}
+          title="PDF Preview"
+          description={pdfPreview.filename}
+          size={pdfPreviewExpanded ? 'full' : 'lg'}
+          dialogClassName={pdfPreviewExpanded ? undefined : '!max-h-[95vh]'}
+          bodyClassName={
+            pdfPreviewExpanded ? '!p-0 flex min-h-0 flex-1 flex-col' : '!p-0 min-h-[70vh]'
+          }
+          bodyFill={pdfPreviewExpanded}
+          headerActions={
+            <FilePreviewExpandButton
+              expanded={pdfPreviewExpanded}
+              onToggle={() => setPdfPreviewExpanded((v) => !v)}
+            />
+          }
+          footer={
+            <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end gap-2')}>
+              <AppButton
+                variant="secondary"
+                size="sm"
+                type="button"
+                onClick={handleExportPdf}
+                disabled={isExportingPdf}
+                title="Regenerate preview"
+              >
+                Refresh
+              </AppButton>
+              <AppButton
+                size="sm"
+                type="button"
+                onClick={() => {
+                  const a = document.createElement('a');
+                  a.href = pdfPreview.url;
+                  a.download = pdfPreview.filename;
+                  a.click();
+                }}
+              >
+                Download
+              </AppButton>
             </div>
-            <div className="bg-gray-200">
-              <iframe
-                title="PDF Preview"
-                src={pdfPreview.url}
-                className="w-full h-[78vh] bg-white"
-              />
-            </div>
-          </div>
-        </div></OverlayPortal>
-      )}
+          }
+        >
+          <iframe
+            title="PDF Preview"
+            src={pdfPreview.url}
+            className={
+              pdfPreviewExpanded
+                ? 'h-full min-h-0 w-full flex-1 border-0 bg-white'
+                : 'h-[70vh] w-full border-0 bg-white'
+            }
+          />
+        </AppModal>
+      ) : null}
       <div className={`flex min-h-0 min-w-0 flex-1 overflow-hidden ${editorSurfaceWorkspaceClass}`}>
         <DocumentPagesStrip
           pages={frozenStripPages ?? pages}

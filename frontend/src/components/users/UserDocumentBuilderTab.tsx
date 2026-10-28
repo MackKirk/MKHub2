@@ -2,8 +2,9 @@ import { useState, useRef, useCallback, useLayoutEffect, useEffect } from 'react
 import { createPortal } from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, getToken } from '@/lib/api';
+import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
+import { useDocumentExportPdf } from '@/lib/useDocumentExportPdf';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { buildDocumentCreatePayload } from '@/lib/documentCreateScope';
 import { ChooseDocumentTypeModal, type DocumentCreationSelection } from '@/components/ChooseDocumentTypeModal';
@@ -110,7 +111,7 @@ export default function UserDocumentBuilderTab({ userId, canEdit = true }: UserD
   const [searchParams, setSearchParams] = useSearchParams();
   const documentEditorRef = useRef<DocumentEditorHandle>(null);
   const [isCreating, setIsCreating] = useState(false);
-  const [exportingId, setExportingId] = useState<string | null>(null);
+  const { exportingId, exportPdf, ExportOverlay } = useDocumentExportPdf();
   const [showModal, setShowModal] = useState(false);
   const [modalDocumentId, setModalDocumentId] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -190,27 +191,7 @@ export default function UserDocumentBuilderTab({ userId, canEdit = true }: UserD
   };
 
   const handleExportPdf = async (doc: BuilderDocument) => {
-    setExportingId(doc.id);
-    try {
-      const token = getToken();
-      const r = await fetch(`/document-creator/documents/${doc.id}/export-pdf`, {
-        method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!r.ok) throw new Error(r.statusText || 'Export failed');
-      const blob = await r.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${doc.title || 'document'}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
-      toast.success('PDF downloaded.');
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Failed to export PDF.');
-    } finally {
-      setExportingId(null);
-    }
+    await exportPdf(doc.id, { filename: `${doc.title || 'document'}.pdf`, mode: 'download' });
   };
 
   const prefetchDocument = useCallback(
@@ -412,6 +393,7 @@ export default function UserDocumentBuilderTab({ userId, canEdit = true }: UserD
 
   return (
     <>
+      {ExportOverlay}
       <AppCard className="!rounded-2xl" bodyClassName={uiSpacing.cardPadding}>
         <AppSectionHeader
           title="Document Builder"

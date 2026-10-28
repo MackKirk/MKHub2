@@ -1678,7 +1678,10 @@ def warranty_review_projects(
     user: User = Depends(get_current_user),
 ):
     """Finished Production projects for the R&M Warranty Review list. Ignores Construction ACL."""
-    if not can_access_business_line(user, BUSINESS_LINE_REPAIRS_MAINTENANCE):
+    from ..services.warranty_review import user_has_rm_projects_opportunities_permission
+
+    # Same gate as R&M "Projects & Opportunities" — not any residual section/line crumb.
+    if not user_has_rm_projects_opportunities_permission(user):
         raise HTTPException(status_code=403, detail="Forbidden")
     finished_id = None
     status_list = db.query(SettingList).filter(SettingList.name == "project_statuses").first()
@@ -9491,6 +9494,54 @@ def _apply_related_to_me_filter(opp_query, proj_query, user_id):
     return opp_query.filter(f), proj_query.filter(f)
 
 
+def _empty_divisions_stats_payload() -> dict:
+    return {"divisions": [], "unique_opportunities_count": 0, "unique_projects_count": 0}
+
+
+def _divisions_stats_payload(
+    db: Session,
+    user: User,
+    bl_clause,
+    stats: list,
+    customer_id: Optional[str],
+    date_from: Optional[str],
+    date_to: Optional[str],
+    related_to_me: bool,
+    division_conditions: Optional[list] = None,
+) -> dict:
+    """Wrap per-division rows with distinct project/opportunity totals (avoids multi-division double count)."""
+    from datetime import datetime
+
+    opp_q = db.query(Project).filter(Project.is_bidding == True, Project.deleted_at.is_(None)).filter(bl_clause)
+    proj_q = db.query(Project).filter(Project.is_bidding == False, Project.deleted_at.is_(None)).filter(bl_clause)
+    opp_q, proj_q = _apply_customer_filter(opp_q, proj_q, customer_id)
+    if related_to_me:
+        opp_q, proj_q = _apply_related_to_me_filter(opp_q, proj_q, user.id)
+    effective_start_dt = func.coalesce(Project.date_start, Project.created_at)
+    if date_from:
+        try:
+            start_d = datetime.strptime(date_from, "%Y-%m-%d").date()
+            opp_q = opp_q.filter(cast(effective_start_dt, Date) >= start_d)
+            proj_q = proj_q.filter(cast(effective_start_dt, Date) >= start_d)
+        except Exception:
+            pass
+    if date_to:
+        try:
+            end_d = datetime.strptime(date_to, "%Y-%m-%d").date()
+            opp_q = opp_q.filter(cast(effective_start_dt, Date) <= end_d)
+            proj_q = proj_q.filter(cast(effective_start_dt, Date) <= end_d)
+        except Exception:
+            pass
+    if division_conditions:
+        opp_q = opp_q.filter(or_(*division_conditions))
+        proj_q = proj_q.filter(or_(*division_conditions))
+    return {
+        "divisions": stats,
+        "unique_opportunities_count": opp_q.count(),
+        "unique_projects_count": proj_q.count(),
+    }
+
+
 @router.get("/business/divisions-stats")
 def business_divisions_stats(
     division_id: Optional[str] = None,
@@ -9508,10 +9559,10 @@ def business_divisions_stats(
 
     divisions_list = db.query(SettingList).filter(SettingList.name == "project_divisions").first()
     if not divisions_list:
-        return []
+        return _empty_divisions_stats_payload()
     bl_clause = _dashboard_business_line_clause(user, business_line)
     if bl_clause is None:
-        return []
+        return _empty_divisions_stats_payload()
     
     stats = []
     
@@ -9526,7 +9577,7 @@ def business_divisions_stats(
             ).first()
             
             if not selected_division:
-                return []
+                return _empty_divisions_stats_payload()
             
             # Get all subdivisions of this division
             subdivisions = db.query(SettingItem).filter(
@@ -9664,7 +9715,17 @@ def business_divisions_stats(
                     "subdivisions": []
                 })
                 
-                return stats
+                return _divisions_stats_payload(
+                    db,
+                    user,
+                    bl_clause,
+                    stats,
+                    customer_id,
+                    date_from,
+                    date_to,
+                    bool(related_to_me),
+                    conditions,
+                )
             
             # For each subdivision, calculate stats
             for subdiv in subdivisions:
@@ -9795,10 +9856,39 @@ def business_divisions_stats(
                     "projects_profit": projects_profit if mode == "value" else None,
                     "subdivisions": []  # Subdivisions of subdivisions are not shown
                 })
-            
-            return stats
+
+            parent_conditions = []
+            for subdiv in subdivisions:
+                subdiv_id_str = str(subdiv.id)
+                parent_conditions.extend(
+                    [
+                        cast(Project.project_division_ids, String).like(f"%{subdiv_id_str}%"),
+                        Project.division_id == subdiv.id,
+                        cast(Project.division_ids, String).like(f"%{subdiv_id_str}%"),
+                    ]
+                )
+            # Include the parent division id itself (projects tagged only at parent level).
+            parent_id_str = str(selected_division.id)
+            parent_conditions.extend(
+                [
+                    cast(Project.project_division_ids, String).like(f"%{parent_id_str}%"),
+                    Project.division_id == selected_division.id,
+                    cast(Project.division_ids, String).like(f"%{parent_id_str}%"),
+                ]
+            )
+            return _divisions_stats_payload(
+                db,
+                user,
+                bl_clause,
+                stats,
+                customer_id,
+                date_from,
+                date_to,
+                bool(related_to_me),
+                parent_conditions,
+            )
         except ValueError:
-            return []
+            return _empty_divisions_stats_payload()
     
     # Original behavior: Get all main divisions (no parent)
     main_divisions = db.query(SettingItem).filter(
@@ -9990,7 +10080,17 @@ def business_divisions_stats(
             } for sub in subdivisions]
         })
     
-    return stats
+    return _divisions_stats_payload(
+        db,
+        user,
+        bl_clause,
+        stats,
+        customer_id,
+        date_from,
+        date_to,
+        bool(related_to_me),
+        None,
+    )
 
 
 @router.get("/business/bid-types")

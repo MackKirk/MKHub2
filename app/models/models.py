@@ -989,6 +989,9 @@ class Client(Base):
     lead_source: Mapped[Optional[str]] = mapped_column(String(100))
     estimator_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     description: Mapped[Optional[str]] = mapped_column(String(4000))
+    # Product scope: Hub vs Mack Kirk Metals (a client may serve both later)
+    serves_hub: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, server_default="true")
+    serves_metals: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="false")
 
     # Primary address (supersedes legacy address fields)
     address_line1: Mapped[Optional[str]] = mapped_column(String(255))

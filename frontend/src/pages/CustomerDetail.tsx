@@ -111,7 +111,10 @@ export default function CustomerDetail(){
   const [newProjectName, setNewProjectName] = useState('');
   const [customerReportModalOpen, setCustomerReportModalOpen] = useState<{ open: boolean; projectId?: string } | null>(null);
   const confirm = useConfirm();
-  const navigateBackToCustomers = useNavigateBack('/customers');
+  const customersListPath = location.pathname.startsWith('/metals/customers')
+    ? '/metals/customers'
+    : '/customers';
+  const navigateBackToCustomers = useNavigateBack(customersListPath);
   const { data:client, isLoading } = useQuery({ queryKey:['client', id], queryFn: ()=>api<Client>('GET', `/clients/${id}`) });
   const { data: me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
   const isAdmin = (me?.roles||[]).includes('admin');
@@ -399,7 +402,7 @@ export default function CustomerDetail(){
                 await api('DELETE', `/clients/${encodeURIComponent(String(id || ''))}`);
                 toast.success('Customer deleted');
                 await queryClient.invalidateQueries({ queryKey: ['clients'] });
-                navigate('/customers');
+                navigate(customersListPath);
               } catch (_e) {
                 toast.error('Failed to delete customer');
               }

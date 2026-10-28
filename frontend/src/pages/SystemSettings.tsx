@@ -432,6 +432,13 @@ function PermissionTemplatesSection({ canEdit = true }: { canEdit?: boolean }) {
         });
       } else if (cat.name === 'work_orders' || cat.name === 'inspections') {
         // Legacy categories — superseded by fleet:* keys in UI
+      } else if (cat.name === 'product') {
+        processed.push({
+          ...cat,
+          label: 'Mack Kirk Metals access',
+          description: 'Switch between Hub and the Mack Kirk Metals product workspace.',
+          permissions: (cat.permissions || []).filter((p) => p.key === 'product:metals:access'),
+        });
       } else {
         processed.push(cat);
       }
@@ -663,9 +670,12 @@ function PermissionTemplatesSection({ canEdit = true }: { canEdit?: boolean }) {
                 </div>
               </div>
 
-              {isExpanded && subPermissions.length > 0 && (
+              {isExpanded &&
+              (subPermissions.length > 0 || (cat.name === 'product' && !!areaAccessPerm)) && (
                 <div className="px-4 pb-4 border-t border-gray-200 pt-3 mt-0">
-                  {cat.name === 'construction' ? (
+                  {cat.name === 'product' ? (
+                    areaAccessPerm ? permRow(areaAccessPerm) : null
+                  ) : cat.name === 'construction' ? (
                     (() => {
                       const areaPerms = subPermissions.filter((p) =>
                         p.key.startsWith('business:construction:projects')

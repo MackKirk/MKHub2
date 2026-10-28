@@ -642,6 +642,9 @@ export function applyPermissionUncheckCascade(
         newPerms[k] = false;
       }
     });
+    // Clear legacy unscoped keys so Production menu matches R&M (no residual grant).
+    newPerms['business:projects:read'] = false;
+    newPerms['business:projects:write'] = false;
     clearMembersWriteIfNoLineRead(newPerms);
   } else if (uncheckedKey === 'business:rm:projects:read') {
     newPerms['business:rm:projects:write'] = false;

@@ -1,12 +1,14 @@
 import { Routes, Route, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
-import { lazy, Suspense, useEffect } from 'react';
+import { lazy, Suspense, useEffect, type ReactNode } from 'react';
 import { resolvePostAuthDestination } from '@/lib/profileCompleteness';
 import { queryClient } from './lib/queryClient';
 import ConfirmProvider from './components/ConfirmProvider';
 import UnsavedChangesProvider from './components/UnsavedChangesProvider';
+import { ProductProvider } from './lib/ProductProvider';
 import AppShell from './AppShell';
+import RequirePermission from './components/RequirePermission';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import PasswordReset from './pages/PasswordReset';
@@ -134,6 +136,13 @@ import { BUSINESS_LINE_REPAIRS_MAINTENANCE } from './lib/businessLine';
 
 const RouteFallback = () => <div className="min-h-[40vh] flex items-center justify-center text-gray-600">Loading...</div>;
 
+/** AppShell + area permission gate (ungated paths pass through RequirePermission). */
+const shell = (page: ReactNode) => (
+  <AppShell>
+    <RequirePermission>{page}</RequirePermission>
+  </AppShell>
+);
+
 /** Legacy URLs under /fleet/equipment → /company-assets/equipment (avoid /assets/* — static files) */
 function LegacyFleetEquipmentDetailRedirect() {
   const { id } = useParams();
@@ -182,6 +191,7 @@ export default function App(){
     <QueryClientProvider client={queryClient}>
       <UnsavedChangesProvider>
       <ConfirmProvider>
+      <ProductProvider>
       <Suspense fallback={<RouteFallback />}>
       <Routes location={state?.backgroundLocation || location}>
         <Route path="/" element={<Home/>} />
@@ -196,148 +206,152 @@ export default function App(){
         <Route element={<Protected/>}>
           <Route path="/onboarding" element={<OnboardingWizard />} />
           <Route path="/onboarding/documents" element={<OnboardingDocuments />} />
-          <Route path="/onboarding/admin" element={<AppShell><OnboardingAdmin/></AppShell>} />
-          <Route path="/home" element={<AppShell><HomePage/></AppShell>} />
+          <Route path="/onboarding/admin" element={shell(<OnboardingAdmin/>)} />
+          <Route path="/home" element={shell(<HomePage/>)} />
           <Route path="/home/dashboard" element={<Navigate to="/home" replace />} />
           <Route path="/overview" element={<Navigate to="/announcements" replace />} />
-          <Route path="/announcements" element={<AppShell><Announcements/></AppShell>} />
-          <Route path="/profile" element={<AppShell><Profile/></AppShell>} />
-          <Route path="/schedule" element={<AppShell><Schedule/></AppShell>} />
-          <Route path="/clock-in-out" element={<AppShell><ClockInOut/></AppShell>} />
-          <Route path="/time-off" element={<AppShell><ClockInOut/></AppShell>} />
-          <Route path="/sick-leave" element={<AppShell><ClockInOut/></AppShell>} />
-          <Route path="/task-requests" element={<AppShell><TaskRequests/></AppShell>} />
-          <Route path="/tasks" element={<AppShell><Tasks/></AppShell>} />
-          <Route path="/print-shop" element={<AppShell><PrintShopList/></AppShell>} />
-          <Route path="/print-shop/new" element={<AppShell><PrintShopNewRequest/></AppShell>} />
-          <Route path="/print-shop/supplies" element={<AppShell><PrintShopSupplies/></AppShell>} />
-          <Route path="/print-shop/supplies/orders" element={<AppShell><PrintShopSupplyOrders/></AppShell>} />
-          <Route path="/print-shop/supplies/orders/new" element={<AppShell><PrintShopSupplyOrderNew/></AppShell>} />
-          <Route path="/print-shop/supplies/orders/:id" element={<AppShell><PrintShopSupplyOrderDetail/></AppShell>} />
-          <Route path="/print-shop/:id" element={<AppShell><PrintShopDetail/></AppShell>} />
-          <Route path="/customers" element={<AppShell><Customers/></AppShell>} />
-          <Route path="/customers/new" element={<AppShell><CustomerNew/></AppShell>} />
-          <Route path="/customers/:id" element={<AppShell><CustomerDetail/></AppShell>} />
-          <Route path="/customers/:customerId/sites/:siteId" element={<AppShell><SiteDetail/></AppShell>} />
-          <Route path="/inventory" element={<AppShell><Inventory/></AppShell>} />
-          <Route path="/inventory/suppliers" element={<AppShell><InventorySuppliers/></AppShell>} />
-          <Route path="/inventory/products" element={<AppShell><InventoryProducts/></AppShell>} />
-          <Route path="/proposals" element={<AppShell><Proposals/></AppShell>} />
-          <Route path="/proposals/new" element={<AppShell><ProposalNew/></AppShell>} />
-          <Route path="/proposals/:id" element={<AppShell><ProposalView/></AppShell>} />
-          <Route path="/proposals/:id/edit" element={<AppShell><ProposalEdit/></AppShell>} />
-          <Route path="/quotes" element={<AppShell><Quotes/></AppShell>} />
-          <Route path="/quotes/new" element={<AppShell><QuoteNew/></AppShell>} />
-          <Route path="/quotes/:id" element={<AppShell><QuoteDetail/></AppShell>} />
-          <Route path="/projects" element={<AppShell><Projects/></AppShell>} />
-          <Route path="/projects/new" element={<AppShell><ProjectNew/></AppShell>} />
-          <Route path="/projects/:id" element={<AppShell><ConstructionProjectDetail/></AppShell>} />
-          <Route path="/opportunities" element={<AppShell><Opportunities/></AppShell>} />
-          <Route path="/opportunities/:id" element={<AppShell><OpportunityDetail/></AppShell>} />
-          <Route path="/business" element={<AppShell><BusinessDashboard/></AppShell>} />
-          <Route path="/business/subcontractors" element={<AppShell><SubcontractorsListPage /></AppShell>} />
-          <Route path="/business/subcontractors/scan" element={<AppShell><SubcontractorScanPage /></AppShell>} />
-          <Route path="/business/subcontractors/companies/:id" element={<AppShell><SubcontractorCompanyPage /></AppShell>} />
-          <Route path="/business/subcontractors/workers/:id" element={<AppShell><SubcontractorWorkerPage /></AppShell>} />
-          <Route path="/rm-opportunities" element={<AppShell><BusinessLineProvider line={BUSINESS_LINE_REPAIRS_MAINTENANCE}><Opportunities /></BusinessLineProvider></AppShell>} />
-          <Route path="/rm-opportunities/:id" element={<AppShell><RmOpportunityDetail /></AppShell>} />
+          <Route path="/announcements" element={shell(<Announcements/>)} />
+          <Route path="/profile" element={shell(<Profile/>)} />
+          <Route path="/schedule" element={shell(<Schedule/>)} />
+          <Route path="/clock-in-out" element={shell(<ClockInOut/>)} />
+          <Route path="/time-off" element={shell(<ClockInOut/>)} />
+          <Route path="/sick-leave" element={shell(<ClockInOut/>)} />
+          <Route path="/task-requests" element={shell(<TaskRequests/>)} />
+          <Route path="/tasks" element={shell(<Tasks/>)} />
+          <Route path="/print-shop" element={shell(<PrintShopList/>)} />
+          <Route path="/print-shop/new" element={shell(<PrintShopNewRequest/>)} />
+          <Route path="/print-shop/supplies" element={shell(<PrintShopSupplies/>)} />
+          <Route path="/print-shop/supplies/orders" element={shell(<PrintShopSupplyOrders/>)} />
+          <Route path="/print-shop/supplies/orders/new" element={shell(<PrintShopSupplyOrderNew/>)} />
+          <Route path="/print-shop/supplies/orders/:id" element={shell(<PrintShopSupplyOrderDetail/>)} />
+          <Route path="/print-shop/:id" element={shell(<PrintShopDetail/>)} />
+          <Route path="/customers" element={shell(<Customers/>)} />
+          <Route path="/customers/new" element={shell(<CustomerNew/>)} />
+          <Route path="/customers/:id" element={shell(<CustomerDetail/>)} />
+          <Route path="/customers/:customerId/sites/:siteId" element={shell(<SiteDetail/>)} />
+          <Route path="/metals/customers" element={shell(<Customers/>)} />
+          <Route path="/metals/customers/new" element={shell(<CustomerNew/>)} />
+          <Route path="/metals/customers/:id" element={shell(<CustomerDetail/>)} />
+          <Route path="/metals/customers/:customerId/sites/:siteId" element={shell(<SiteDetail/>)} />
+          <Route path="/inventory" element={shell(<Inventory/>)} />
+          <Route path="/inventory/suppliers" element={shell(<InventorySuppliers/>)} />
+          <Route path="/inventory/products" element={shell(<InventoryProducts/>)} />
+          <Route path="/proposals" element={shell(<Proposals/>)} />
+          <Route path="/proposals/new" element={shell(<ProposalNew/>)} />
+          <Route path="/proposals/:id" element={shell(<ProposalView/>)} />
+          <Route path="/proposals/:id/edit" element={shell(<ProposalEdit/>)} />
+          <Route path="/quotes" element={shell(<Quotes/>)} />
+          <Route path="/quotes/new" element={shell(<QuoteNew/>)} />
+          <Route path="/quotes/:id" element={shell(<QuoteDetail/>)} />
+          <Route path="/projects" element={shell(<Projects/>)} />
+          <Route path="/projects/new" element={shell(<ProjectNew/>)} />
+          <Route path="/projects/:id" element={shell(<ConstructionProjectDetail/>)} />
+          <Route path="/opportunities" element={shell(<Opportunities/>)} />
+          <Route path="/opportunities/:id" element={shell(<OpportunityDetail/>)} />
+          <Route path="/business" element={shell(<BusinessDashboard/>)} />
+          <Route path="/business/subcontractors" element={shell(<SubcontractorsListPage />)} />
+          <Route path="/business/subcontractors/scan" element={shell(<SubcontractorScanPage />)} />
+          <Route path="/business/subcontractors/companies/:id" element={shell(<SubcontractorCompanyPage />)} />
+          <Route path="/business/subcontractors/workers/:id" element={shell(<SubcontractorWorkerPage />)} />
+          <Route path="/rm-opportunities" element={shell(<BusinessLineProvider line={BUSINESS_LINE_REPAIRS_MAINTENANCE}><Opportunities /></BusinessLineProvider>)} />
+          <Route path="/rm-opportunities/:id" element={shell(<RmOpportunityDetail />)} />
           <Route path="/rm-leak-investigations" element={<RmLeakInvestigationsListRedirect />} />
           <Route path="/rm-leak-investigations/:id" element={<RmLeakInvestigationDetailRedirect />} />
-          <Route path="/rm-projects" element={<AppShell><BusinessLineProvider line={BUSINESS_LINE_REPAIRS_MAINTENANCE}><Projects /></BusinessLineProvider></AppShell>} />
-          <Route path="/rm-warranty-review" element={<AppShell><WarrantyReview /></AppShell>} />
-          <Route path="/rm-projects/new" element={<AppShell><BusinessLineProvider line={BUSINESS_LINE_REPAIRS_MAINTENANCE}><ProjectNew /></BusinessLineProvider></AppShell>} />
-          <Route path="/rm-projects/:id" element={<AppShell><RmProjectDetail /></AppShell>} />
-          <Route path="/rm-business" element={<AppShell><BusinessLineProvider line={BUSINESS_LINE_REPAIRS_MAINTENANCE}><BusinessDashboard /></BusinessLineProvider></AppShell>} />
-          <Route path="/settings" element={<AppShell><SystemSettings/></AppShell>} />
-          <Route path="/company-files" element={<AppShell><CompanyFiles/></AppShell>} />
-          <Route path="/documents/templates" element={<AppShell><DocumentsTemplatesPage/></AppShell>} />
-          <Route path="/personal/signatures" element={<AppShell><PersonalSignaturesPage/></AppShell>} />
+          <Route path="/rm-projects" element={shell(<BusinessLineProvider line={BUSINESS_LINE_REPAIRS_MAINTENANCE}><Projects /></BusinessLineProvider>)} />
+          <Route path="/rm-warranty-review" element={shell(<WarrantyReview />)} />
+          <Route path="/rm-projects/new" element={shell(<BusinessLineProvider line={BUSINESS_LINE_REPAIRS_MAINTENANCE}><ProjectNew /></BusinessLineProvider>)} />
+          <Route path="/rm-projects/:id" element={shell(<RmProjectDetail />)} />
+          <Route path="/rm-business" element={shell(<BusinessLineProvider line={BUSINESS_LINE_REPAIRS_MAINTENANCE}><BusinessDashboard /></BusinessLineProvider>)} />
+          <Route path="/settings" element={shell(<SystemSettings/>)} />
+          <Route path="/company-files" element={shell(<CompanyFiles/>)} />
+          <Route path="/documents/templates" element={shell(<DocumentsTemplatesPage/>)} />
+          <Route path="/personal/signatures" element={shell(<PersonalSignaturesPage/>)} />
           <Route path="/documents/to-sign" element={<Navigate to="/personal/signatures" replace />} />
-          <Route path="/documents/signature-requests" element={<AppShell><SignatureRequestsAdminPage/></AppShell>} />
-          <Route path="/documents/create" element={<AppShell><DocumentCreator/></AppShell>} />
-          <Route path="/documents/create/:id" element={<AppShell><DocumentCreator/></AppShell>} />
-          <Route path="/documents/signature-editor" element={<AppShell><SignatureEditorPage/></AppShell>} />
-          <Route path="/documents/form-templates" element={<AppShell><FormTemplatesPage /></AppShell>} />
-          <Route path="/documents/form-templates/:id" element={<AppShell><FormTemplateEditorPage /></AppShell>} />
-          <Route path="/documents/form-custom-lists" element={<AppShell><FormCustomListsPage /></AppShell>} />
-          <Route path="/log-hours" element={<AppShell><LogHours/></AppShell>} />
-          <Route path="/users" element={<AppShell><Users/></AppShell>} />
-          <Route path="/human-resources/overview" element={<AppShell><HrDataQualityOverview /></AppShell>} />
-          <Route path="/human-resources/requests" element={<AppShell><HrRequestsPage /></AppShell>} />
-          <Route path="/human-resources/offboarding" element={<AppShell><Suspense fallback={null}><OffboardingListPage /></Suspense></AppShell>} />
-          <Route path="/human-resources/offboarding/:caseId" element={<AppShell><Suspense fallback={null}><OffboardingDetailPage /></Suspense></AppShell>} />
-          <Route path="/users/:userId" element={<AppShell><UserInfo/></AppShell>} />
-          <Route path="/settings/attendance" element={<AppShell><Attendance/></AppShell>} />
-          <Route path="/human-resources/vericlock-import" element={<AppShell><VeriClockImport /></AppShell>} />
-          <Route path="/community" element={<AppShell><Community/></AppShell>} />
-          <Route path="/community/groups" element={<AppShell><CommunityGroups/></AppShell>} />
-          <Route path="/community/insights" element={<AppShell><CommunityInsights/></AppShell>} />
-          <Route path="/community/new-post" element={<AppShell><CommunityNewPost/></AppShell>} />
-          <Route path="/community/posts/:postId/edit" element={<AppShell><CommunityNewPost/></AppShell>} />
-          <Route path="/reviews/admin" element={<AppShell><EmployeeReviews/></AppShell>} />
-          <Route path="/reviews/cycles" element={<AppShell><ReviewCyclesPage /></AppShell>} />
-          <Route path="/reviews/cycles/:cycleId" element={<AppShell><ReviewCycleDetailPage /></AppShell>} />
-          <Route path="/reviews/form-templates" element={<AppShell><FormTemplatesPage variant="employee_review" /></AppShell>} />
-          <Route path="/reviews/form-templates/:id" element={<AppShell><FormTemplateEditorPage /></AppShell>} />
-          <Route path="/reviews/compare" element={<AppShell><ReviewsCompare/></AppShell>} />
-          <Route path="/reviews/my" element={<AppShell><MyReviews/></AppShell>} />
-          <Route path="/reviews/director-meetings" element={<AppShell><DirectorMeetingsPage /></AppShell>} />
-          <Route path="/safety/inspections" element={<AppShell><SafetyInspectionsPage /></AppShell>} />
-          <Route path="/safety/follow-ups" element={<AppShell><SafetyFollowUpsPage /></AppShell>} />
-          <Route path="/safety/sign/:projectId/:inspectionId" element={<AppShell><SafetyInspectionSignPage /></AppShell>} />
-          <Route path="/safety/calendar" element={<AppShell><SafetySchedulePage /></AppShell>} />
+          <Route path="/documents/signature-requests" element={shell(<SignatureRequestsAdminPage/>)} />
+          <Route path="/documents/create" element={shell(<DocumentCreator/>)} />
+          <Route path="/documents/create/:id" element={shell(<DocumentCreator/>)} />
+          <Route path="/documents/signature-editor" element={shell(<SignatureEditorPage/>)} />
+          <Route path="/documents/form-templates" element={shell(<FormTemplatesPage />)} />
+          <Route path="/documents/form-templates/:id" element={shell(<FormTemplateEditorPage />)} />
+          <Route path="/documents/form-custom-lists" element={shell(<FormCustomListsPage />)} />
+          <Route path="/log-hours" element={shell(<LogHours/>)} />
+          <Route path="/users" element={shell(<Users/>)} />
+          <Route path="/human-resources/overview" element={shell(<HrDataQualityOverview />)} />
+          <Route path="/human-resources/requests" element={shell(<HrRequestsPage />)} />
+          <Route path="/human-resources/offboarding" element={shell(<Suspense fallback={null}><OffboardingListPage /></Suspense>)} />
+          <Route path="/human-resources/offboarding/:caseId" element={shell(<Suspense fallback={null}><OffboardingDetailPage /></Suspense>)} />
+          <Route path="/users/:userId" element={shell(<UserInfo/>)} />
+          <Route path="/settings/attendance" element={shell(<Attendance/>)} />
+          <Route path="/human-resources/vericlock-import" element={shell(<VeriClockImport />)} />
+          <Route path="/community" element={shell(<Community/>)} />
+          <Route path="/community/groups" element={shell(<CommunityGroups/>)} />
+          <Route path="/community/insights" element={shell(<CommunityInsights/>)} />
+          <Route path="/community/new-post" element={shell(<CommunityNewPost/>)} />
+          <Route path="/community/posts/:postId/edit" element={shell(<CommunityNewPost/>)} />
+          <Route path="/reviews/admin" element={shell(<EmployeeReviews/>)} />
+          <Route path="/reviews/cycles" element={shell(<ReviewCyclesPage />)} />
+          <Route path="/reviews/cycles/:cycleId" element={shell(<ReviewCycleDetailPage />)} />
+          <Route path="/reviews/form-templates" element={shell(<FormTemplatesPage variant="employee_review" />)} />
+          <Route path="/reviews/form-templates/:id" element={shell(<FormTemplateEditorPage />)} />
+          <Route path="/reviews/compare" element={shell(<ReviewsCompare/>)} />
+          <Route path="/reviews/my" element={shell(<MyReviews/>)} />
+          <Route path="/reviews/director-meetings" element={shell(<DirectorMeetingsPage />)} />
+          <Route path="/safety/inspections" element={shell(<SafetyInspectionsPage />)} />
+          <Route path="/safety/follow-ups" element={shell(<SafetyFollowUpsPage />)} />
+          <Route path="/safety/sign/:projectId/:inspectionId" element={shell(<SafetyInspectionSignPage />)} />
+          <Route path="/safety/calendar" element={shell(<SafetySchedulePage />)} />
           <Route path="/safety/form-templates" element={<Navigate to="/documents/form-templates" replace />} />
           <Route path="/safety/form-custom-lists" element={<Navigate to="/documents/form-custom-lists" replace />} />
           <Route path="/safety/form-templates/:id" element={<LegacySafetyFormTemplateRedirect />} />
-          <Route path="/fleet" element={<AppShell><FleetDashboard/></AppShell>} />
-          <Route path="/fleet/assets" element={<AppShell><FleetAssets/></AppShell>} />
-          <Route path="/fleet/vehicles" element={<AppShell><FleetAssets/></AppShell>} />
-          <Route path="/fleet/heavy-machinery" element={<AppShell><FleetAssets/></AppShell>} />
-          <Route path="/fleet/other-assets" element={<AppShell><FleetAssets/></AppShell>} />
-          <Route path="/fleet/assets/new" element={<AppShell><FleetAssetNew/></AppShell>} />
-          <Route path="/fleet/assets/:id" element={<AppShell><FleetAssetDetail/></AppShell>} />
-          <Route path="/company-assets/equipment" element={<AppShell><EquipmentList/></AppShell>} />
-          <Route path="/company-assets/equipment/new" element={<AppShell><EquipmentNew/></AppShell>} />
-          <Route path="/company-assets/equipment/:id" element={<AppShell><EquipmentDetail/></AppShell>} />
-          <Route path="/company-assets/work-orders" element={<AppShell><WorkOrders scope="equipment"/></AppShell>} />
-          <Route path="/company-assets/work-orders/:id" element={<AppShell><WorkOrderDetail/></AppShell>} />
-          <Route path="/company-assets/credit-cards" element={<AppShell><CompanyCreditCardsList/></AppShell>} />
-          <Route path="/company-assets/credit-cards/new" element={<AppShell><CompanyCreditCardNew/></AppShell>} />
-          <Route path="/company-assets/credit-cards/:id" element={<AppShell><CompanyCreditCardDetail/></AppShell>} />
-          <Route path="/company-assets/fuel-cards" element={<AppShell><FuelCardsList/></AppShell>} />
-          <Route path="/company-assets/fuel-cards/new" element={<AppShell><FuelCardNew/></AppShell>} />
-          <Route path="/company-assets/fuel-cards/:id" element={<AppShell><FuelCardDetail/></AppShell>} />
-          <Route path="/properties" element={<AppShell><PropertiesDashboard/></AppShell>} />
-          <Route path="/properties/list" element={<AppShell><PropertiesList/></AppShell>} />
-          <Route path="/properties/approvals" element={<AppShell><PropertyApprovalsBoard/></AppShell>} />
-          <Route path="/properties/calendar" element={<AppShell><PropertiesCalendar/></AppShell>} />
-          <Route path="/properties/:id" element={<AppShell><PropertyDetail/></AppShell>} />
+          <Route path="/fleet" element={shell(<FleetDashboard/>)} />
+          <Route path="/fleet/assets" element={shell(<FleetAssets/>)} />
+          <Route path="/fleet/vehicles" element={shell(<FleetAssets/>)} />
+          <Route path="/fleet/heavy-machinery" element={shell(<FleetAssets/>)} />
+          <Route path="/fleet/other-assets" element={shell(<FleetAssets/>)} />
+          <Route path="/fleet/assets/new" element={shell(<FleetAssetNew/>)} />
+          <Route path="/fleet/assets/:id" element={shell(<FleetAssetDetail/>)} />
+          <Route path="/company-assets/equipment" element={shell(<EquipmentList/>)} />
+          <Route path="/company-assets/equipment/new" element={shell(<EquipmentNew/>)} />
+          <Route path="/company-assets/equipment/:id" element={shell(<EquipmentDetail/>)} />
+          <Route path="/company-assets/work-orders" element={shell(<WorkOrders scope="equipment"/>)} />
+          <Route path="/company-assets/work-orders/:id" element={shell(<WorkOrderDetail/>)} />
+          <Route path="/company-assets/credit-cards" element={shell(<CompanyCreditCardsList/>)} />
+          <Route path="/company-assets/credit-cards/new" element={shell(<CompanyCreditCardNew/>)} />
+          <Route path="/company-assets/credit-cards/:id" element={shell(<CompanyCreditCardDetail/>)} />
+          <Route path="/company-assets/fuel-cards" element={shell(<FuelCardsList/>)} />
+          <Route path="/company-assets/fuel-cards/new" element={shell(<FuelCardNew/>)} />
+          <Route path="/company-assets/fuel-cards/:id" element={shell(<FuelCardDetail/>)} />
+          <Route path="/properties" element={shell(<PropertiesDashboard/>)} />
+          <Route path="/properties/list" element={shell(<PropertiesList/>)} />
+          <Route path="/properties/approvals" element={shell(<PropertyApprovalsBoard/>)} />
+          <Route path="/properties/calendar" element={shell(<PropertiesCalendar/>)} />
+          <Route path="/properties/:id" element={shell(<PropertyDetail/>)} />
           <Route path="/fleet/equipment" element={<Navigate to="/company-assets/equipment" replace />} />
           <Route path="/fleet/equipment/new" element={<Navigate to="/company-assets/equipment/new" replace />} />
           <Route path="/fleet/equipment/:id" element={<LegacyFleetEquipmentDetailRedirect />} />
-          <Route path="/fleet/calendar" element={<AppShell><FleetSchedulePage/></AppShell>} />
+          <Route path="/fleet/calendar" element={shell(<FleetSchedulePage/>)} />
           <Route path="/fleet/inspection-schedules" element={<Navigate to="/fleet/calendar" replace />} />
           <Route path="/fleet/inspection-schedules/:id" element={<FleetInspectionScheduleLegacyRedirect />} />
-          <Route path="/fleet/work-orders" element={<AppShell><WorkOrders scope="fleet"/></AppShell>} />
-          <Route path="/fleet/work-orders/new" element={<AppShell><WorkOrderNew/></AppShell>} />
-          <Route path="/fleet/work-orders/:id" element={<AppShell><WorkOrderDetail/></AppShell>} />
-          <Route path="/fleet/inspections" element={<AppShell><Inspections/></AppShell>} />
-          <Route path="/fleet/inspections/new" element={<AppShell><InspectionNew/></AppShell>} />
-          <Route path="/fleet/inspections/:id" element={<AppShell><FleetInspectionsIdGate /></AppShell>} />
-          <Route path="/training" element={<AppShell><Training/></AppShell>} />
+          <Route path="/fleet/work-orders" element={shell(<WorkOrders scope="fleet"/>)} />
+          <Route path="/fleet/work-orders/new" element={shell(<WorkOrderNew/>)} />
+          <Route path="/fleet/work-orders/:id" element={shell(<WorkOrderDetail/>)} />
+          <Route path="/fleet/inspections" element={shell(<Inspections/>)} />
+          <Route path="/fleet/inspections/new" element={shell(<InspectionNew/>)} />
+          <Route path="/fleet/inspections/:id" element={shell(<FleetInspectionsIdGate />)} />
+          <Route path="/training" element={shell(<Training/>)} />
           <Route path="/training/certificates" element={<Navigate to="/training?tab=certificates" replace />} />
-          <Route path="/training/dashboard" element={<AppShell><TrainingLearningDashboard /></AppShell>} />
+          <Route path="/training/dashboard" element={shell(<TrainingLearningDashboard />)} />
           <Route path="/training/hr-records" element={<Navigate to="/training/dashboard" replace />} />
-          <Route path="/training/admin" element={<AppShell><TrainingAdmin/></AppShell>} />
-          <Route path="/training/admin/new" element={<AppShell><TrainingCourseEdit/></AppShell>} />
-          <Route path="/training/admin/:courseId" element={<AppShell><TrainingCourseEdit/></AppShell>} />
-          <Route path="/training/:courseId" element={<AppShell><TrainingCourse/></AppShell>} />
-          <Route path="/tutorials" element={<AppShell><Tutorials /></AppShell>} />
-          <Route path="/tutorials/:tutorialId" element={<AppShell><TutorialDetail /></AppShell>} />
-          <Route path="/logs" element={<AppShell><SystemAdmin /></AppShell>} />
+          <Route path="/training/admin" element={shell(<TrainingAdmin/>)} />
+          <Route path="/training/admin/new" element={shell(<TrainingCourseEdit/>)} />
+          <Route path="/training/admin/:courseId" element={shell(<TrainingCourseEdit/>)} />
+          <Route path="/training/:courseId" element={shell(<TrainingCourse/>)} />
+          <Route path="/tutorials" element={shell(<Tutorials />)} />
+          <Route path="/tutorials/:tutorialId" element={shell(<TutorialDetail />)} />
+          <Route path="/logs" element={shell(<SystemAdmin />)} />
           <Route path="/admin/system" element={<Navigate to="/logs" replace />} />
-          <Route path="/notifications" element={<AppShell><Notifications/></AppShell>} />
-          <Route path="/dev/design-system" element={<AppShell><DesignSystemShowcase/></AppShell>} />
+          <Route path="/notifications" element={shell(<Notifications/>)} />
+          <Route path="/dev/design-system" element={shell(<DesignSystemShowcase/>)} />
         </Route>
         <Route path="*" element={<Navigate to={getToken()? '/home':'/login'} replace />} />
       </Routes>
@@ -345,14 +359,15 @@ export default function App(){
       {state?.backgroundLocation && (
         <Suspense fallback={<RouteFallback />}>
           <Routes>
-            <Route path="/customers/:customerId/sites/:siteId" element={<AppShell><SiteDetail/></AppShell>} />
-            <Route path="/projects/new" element={<AppShell><ProjectNew/></AppShell>} />
-            <Route path="/rm-projects/new" element={<AppShell><BusinessLineProvider line={BUSINESS_LINE_REPAIRS_MAINTENANCE}><ProjectNew /></BusinessLineProvider></AppShell>} />
-            <Route path="/quotes/new" element={<AppShell><QuoteNew/></AppShell>} />
+            <Route path="/customers/:customerId/sites/:siteId" element={shell(<SiteDetail/>)} />
+            <Route path="/projects/new" element={shell(<ProjectNew/>)} />
+            <Route path="/rm-projects/new" element={shell(<BusinessLineProvider line={BUSINESS_LINE_REPAIRS_MAINTENANCE}><ProjectNew /></BusinessLineProvider>)} />
+            <Route path="/quotes/new" element={shell(<QuoteNew/>)} />
           </Routes>
         </Suspense>
       )}
       <Toaster position="top-right" containerStyle={{ zIndex: 100002 }} />
+      </ProductProvider>
       </ConfirmProvider>
       </UnsavedChangesProvider>
     </QueryClientProvider>

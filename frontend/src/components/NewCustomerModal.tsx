@@ -48,7 +48,11 @@ function resolveLegalName(displayName: string, legalName: string): string {
 }
 
 /** Fetch clients via search and keep those sharing at least one significant word with display/legal names. */
-async function findSimilarExistingClients(displayName: string, legalName: string): Promise<
+async function findSimilarExistingClients(
+  displayName: string,
+  legalName: string,
+  listApiBase = '/clients',
+): Promise<
   { id: string; display_name?: string; name?: string; legal_name?: string; city?: string; client_status?: string }[]
 > {
   const displayT = String(displayName || '').trim();
@@ -64,7 +68,7 @@ async function findSimilarExistingClients(displayName: string, legalName: string
     params.set('q', q);
     params.set('limit', '100');
     params.set('page', '1');
-    const res = await api<any>('GET', `/clients?${params.toString()}`);
+    const res = await api<any>('GET', `${listApiBase}?${params.toString()}`);
     const items = Array.isArray(res?.items) ? res.items : Array.isArray(res) ? res : [];
     for (const c of items) {
       if (c?.id) merged.set(String(c.id), c);
@@ -92,6 +96,8 @@ async function findSimilarExistingClients(displayName: string, legalName: string
 type NewCustomerModalProps = {
   onClose: () => void;
   onSuccess: (customerId: string) => void;
+  /** Hub vs Metals create target (defaults to Hub). */
+  productScope?: 'hub' | 'metals';
   /** Higher z-index when opened on top of another full-screen flow (e.g. new opportunity). */
   stackOnTop?: boolean;
   /** Prefill display name from customer search (e.g. typed query with no matches). */
@@ -103,8 +109,11 @@ export default function NewCustomerModal({
   onSuccess,
   stackOnTop = false,
   initialDisplayName = '',
+  productScope = 'hub',
 }: NewCustomerModalProps) {
   const confirm = useConfirm();
+  const clientsApiBase = productScope === 'metals' ? '/metals/clients' : '/clients';
+  const customersUiBase = productScope === 'metals' ? '/metals/customers' : '/customers';
   const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: () => api<any>('GET', '/settings') });
   const types = (settings?.client_types || []) as any[];
   const { data: employees } = useQuery({
@@ -164,6 +173,7 @@ export default function NewCustomerModal({
       const matches = await findSimilarExistingClients(
         form.display_name,
         resolveLegalName(form.display_name, form.legal_name),
+        clientsApiBase,
       );
       if (matches.length > 0) {
         setDuplicateMatches(matches);
@@ -511,7 +521,7 @@ export default function NewCustomerModal({
                     }
                   }
                 });
-                const created: any = await api('POST', '/clients', payload);
+                const created: any = await api('POST', clientsApiBase, payload);
                 if (!created?.id) {
                   toast.error('Create failed');
                   setIsCreating(false);
@@ -658,7 +668,7 @@ export default function NewCustomerModal({
                             {c.client_status ? <span className="text-gray-600"> · {c.client_status}</span> : null}
                           </div>
                         </div>
-                        <Link to={`/customers/${encodeURIComponent(c.id)}`} target="_blank" rel="noreferrer" className="shrink-0 text-sm text-brand-red hover:underline">
+                        <Link to={`${customersUiBase}/${encodeURIComponent(c.id)}`} target="_blank" rel="noreferrer" className="shrink-0 text-sm text-brand-red hover:underline">
                           View customer
                         </Link>
                       </li>
@@ -858,6 +868,7 @@ export default function NewCustomerModal({
           setCPhotoBlob(null);
           setCPhotoPreview('');
         }}
+        overlayClassName={uiModalLayer.nestedPicker}
         title="New Contact"
         description="Add a contact to this customer draft"
         quickInfo={

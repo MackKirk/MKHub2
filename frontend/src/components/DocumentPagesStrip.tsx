@@ -1,7 +1,7 @@
 import { withFileAccessToken } from '@/lib/api';
-import { Fragment, memo, useEffect, useRef, useState } from 'react';
-import type { DocumentPage, DocElement, PageMargins } from '@/types/documentCreator';
-import { docElementRotationDeg, docElementRotateStyle } from '@/utils/documentElementGeometry';
+import { Fragment, memo, useState } from 'react';
+import type { DocumentPage, PageMargins } from '@/types/documentCreator';
+import { ScaledPagePreview } from '@/components/DocumentPagePreviewThumbnails';
 import {
   editorSidePanelBodyClass,
   editorSidePanelCollapsedRailButtonClass,
@@ -22,8 +22,6 @@ import {
 } from '@/components/document-editor/documentProtectedVisuals';
 
 const A4_ASPECT = 210 / 297;
-// Keep thumbnails visually consistent with the main editor scaling.
-const REFERENCE_CANVAS_WIDTH_PX = 910;
 
 type Template = { id: string; name: string; background_file_id?: string; margins?: PageMargins | null };
 
@@ -48,33 +46,6 @@ type DocumentPagesStripProps = {
 
 const defaultMargins: PageMargins = { left_pct: 0, right_pct: 0, top_pct: 0, bottom_pct: 0 };
 
-type LineListStyle = Exclude<NonNullable<DocElement['listStyle']>, 'none'>;
-
-function normalizeLineListStyle(style: DocElement['listStyle'] | null | undefined): LineListStyle | undefined {
-  return style && style !== 'none' ? style : undefined;
-}
-
-function effectiveLineListStyles(el: Pick<DocElement, 'content' | 'listStyle' | 'lineListStyles'>): Array<LineListStyle | undefined> {
-  const lines = (el.content ?? '').replace(/\r\n/g, '\n').split('\n');
-  const fallback = normalizeLineListStyle(el.listStyle);
-  return lines.map((_, idx) => normalizeLineListStyle(el.lineListStyles?.[idx] ?? fallback));
-}
-
-function listOrdinalAt(styles: Array<LineListStyle | undefined>, idx: number): number {
-  const style = styles[idx];
-  if (!style || style === 'bullet') return 0;
-  let n = 1;
-  for (let i = idx - 1; i >= 0 && styles[i] === style; i -= 1) n += 1;
-  return n;
-}
-
-function lineMarker(style: LineListStyle | undefined, ordinal: number): string {
-  if (style === 'bullet') return '•';
-  if (style === 'numbered') return `${ordinal}.`;
-  if (style === 'lettered') return `${ordinal <= 26 ? String.fromCharCode(96 + ordinal) : ordinal}.`;
-  return '';
-}
-
 const PageThumbnail = memo(function PageThumbnail({
   page,
   templates,
@@ -88,7 +59,6 @@ const PageThumbnail = memo(function PageThumbnail({
   isSelected: boolean;
   onClick: () => void;
 }) {
-  const elements = page.elements ?? [];
   const tmpl = templates.find((t) => t.id === (page.template_id ?? ''));
   /** Same merge as DocumentEditor `effectiveMargins` per page */
   const marginOverlay: PageMargins = {
@@ -101,166 +71,69 @@ const PageThumbnail = memo(function PageThumbnail({
     (marginOverlay.right_pct ?? 0) > 0 ||
     (marginOverlay.top_pct ?? 0) > 0 ||
     (marginOverlay.bottom_pct ?? 0) > 0;
-  const thumbRef = useRef<HTMLButtonElement>(null);
-  const [thumbWidthPx, setThumbWidthPx] = useState<number>(130);
-
-  useEffect(() => {
-    const el = thumbRef.current;
-    if (!el) return;
-    const update = () => setThumbWidthPx(el.getBoundingClientRect().width || 130);
-    update();
-    if (typeof ResizeObserver !== 'undefined') {
-      const ro = new ResizeObserver(() => update());
-      ro.observe(el);
-      return () => ro.disconnect();
-    }
-    window.addEventListener('resize', update);
-    return () => window.removeEventListener('resize', update);
-  }, []);
-
-  const scale = Math.max(0.08, Math.min(0.3, thumbWidthPx / REFERENCE_CANVAS_WIDTH_PX));
 
   return (
     <button
-      ref={thumbRef}
       type="button"
       onClick={onClick}
       className="relative w-full flex-shrink-0 overflow-hidden bg-white"
       style={{ aspectRatio: `${A4_ASPECT}` }}
       aria-pressed={isSelected}
     >
-      <div className="absolute inset-0">
-        {backgroundUrl ? (
-          <img
-            src={backgroundUrl}
-            alt=""
-            className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+      <ScaledPagePreview
+        page={page}
+        backgroundUrl={backgroundUrl}
+        fitParent
+        className="!absolute inset-0 border-0 shadow-none"
+        renderBlock={() => (
+          <div
+            className={`h-full w-full rounded-sm ${blockProtectedBorderClass}`}
+            style={{ background: BLOCK_PROTECTED_BG }}
           />
-        ) : (
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white to-slate-100" />
         )}
-        {showMarginBands ? (
-          <>
-            {(marginOverlay.left_pct ?? 0) > 0 && (
-              <div
-                className={`pointer-events-none absolute inset-y-0 left-0 rounded-l-lg ${marginBandRingClass}`}
-                style={{
-                  width: `${marginOverlay.left_pct}%`,
-                  background: MARGIN_PROTECTED_BG,
-                }}
-              />
-            )}
-            {(marginOverlay.right_pct ?? 0) > 0 && (
-              <div
-                className={`pointer-events-none absolute inset-y-0 right-0 rounded-r-lg ${marginBandRingClass}`}
-                style={{
-                  width: `${marginOverlay.right_pct}%`,
-                  background: MARGIN_PROTECTED_BG,
-                }}
-              />
-            )}
-            {(marginOverlay.top_pct ?? 0) > 0 && (
-              <div
-                className={`pointer-events-none absolute inset-x-0 top-0 rounded-t-lg ${marginBandRingClass}`}
-                style={{
-                  height: `${marginOverlay.top_pct}%`,
-                  background: MARGIN_PROTECTED_BG,
-                }}
-              />
-            )}
-            {(marginOverlay.bottom_pct ?? 0) > 0 && (
-              <div
-                className={`pointer-events-none absolute inset-x-0 bottom-0 rounded-b-lg ${marginBandRingClass}`}
-                style={{
-                  height: `${marginOverlay.bottom_pct}%`,
-                  background: MARGIN_PROTECTED_BG,
-                }}
-              />
-            )}
-          </>
-        ) : null}
-        {elements.map((el: DocElement) => {
-          const x = (el.x_pct ?? 10) / 100;
-          const y = (el.y_pct ?? 20) / 100;
-          const w = (el.width_pct ?? 80) / 100;
-          const h = (el.height_pct ?? 8) / 100;
-          return (
-            <div
-              key={el.id}
-              className="absolute pointer-events-none"
-              style={{
-                left: `${x * 100}%`,
-                top: `${y * 100}%`,
-                width: `${w * 100}%`,
-                height: `${h * 100}%`,
-                ...docElementRotateStyle(docElementRotationDeg(el.rotation)),
-              }}
-            >
-              {el.type === 'text' ? (
-                (() => {
-                  const va = el.verticalAlign ?? 'top';
-                  const justifyContent = va === 'top' ? 'flex-start' : va === 'bottom' ? 'flex-end' : 'center';
-                  const refFontSize = Math.max(8, Math.min(72, el.fontSize ?? 12));
-                  const fontSizePx = Math.max(2, Math.min(10, refFontSize * scale));
-                  const textStyle: React.CSSProperties = {
-                    fontSize: `${fontSizePx}px`,
-                    textAlign: el.textAlign ?? 'left',
-                    fontWeight: el.fontWeight ?? 'normal',
-                    fontStyle: el.fontStyle ?? 'normal',
-                    fontFamily: el.fontFamily === 'Open Sans' ? '"Open Sans", sans-serif' : '"Montserrat", sans-serif',
-                    color: el.color ?? '#000000',
-                    lineHeight: 1.15,
-                  };
-                  const miniLines = (el.content ?? '').split('\n');
-                  const lineStyles = effectiveLineListStyles(el);
-                  return (
-                    <div className="w-full h-full flex flex-col" style={{ justifyContent }}>
-                      {lineStyles.some(Boolean) ? (
-                        <div className="overflow-hidden whitespace-normal break-words p-0.5 min-h-[1em]" style={textStyle}>
-                          {miniLines.map((line, idx) => {
-                            const style = lineStyles[idx];
-                            return (
-                              <div key={idx} className={style ? 'flex min-h-[1.15em] items-baseline' : 'min-h-[1.15em]'}>
-                                {style && (
-                                  <span className="mr-[0.35em] inline-block min-w-[1em] shrink-0 select-none text-right">
-                                    {lineMarker(style, listOrdinalAt(lineStyles, idx))}
-                                  </span>
-                                )}
-                                <span className={style ? 'min-w-0 flex-1' : undefined}>{line || '\u00a0'}</span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <span className="block overflow-hidden whitespace-pre-wrap break-words p-0.5 min-h-[1em]" style={textStyle}>
-                          {el.content || ''}
-                        </span>
-                      )}
-                    </div>
-                  );
-                })()
-              ) : el.type === 'block' ? (
+        overlays={
+          showMarginBands ? (
+            <>
+              {(marginOverlay.left_pct ?? 0) > 0 && (
                 <div
-                  className={`h-full w-full rounded-sm ${blockProtectedBorderClass}`}
-                  style={{ background: BLOCK_PROTECTED_BG }}
+                  className={`pointer-events-none absolute inset-y-0 left-0 rounded-l-lg ${marginBandRingClass}`}
+                  style={{
+                    width: `${marginOverlay.left_pct}%`,
+                    background: MARGIN_PROTECTED_BG,
+                  }}
                 />
-              ) : (
-                el.content && (
-                  <img
-                    src={withFileAccessToken(`/files/${el.content}/thumbnail?w=80`)} loading="lazy"
-                    alt=""
-                    className="w-full h-full"
-                    style={{
-                      objectFit: el.imageFit ?? 'contain',
-                      objectPosition: el.imagePosition ?? '50% 50%',
-                    }}
-                  />
-                )
               )}
-            </div>
-          );
-        })}
-      </div>
+              {(marginOverlay.right_pct ?? 0) > 0 && (
+                <div
+                  className={`pointer-events-none absolute inset-y-0 right-0 rounded-r-lg ${marginBandRingClass}`}
+                  style={{
+                    width: `${marginOverlay.right_pct}%`,
+                    background: MARGIN_PROTECTED_BG,
+                  }}
+                />
+              )}
+              {(marginOverlay.top_pct ?? 0) > 0 && (
+                <div
+                  className={`pointer-events-none absolute inset-x-0 top-0 rounded-t-lg ${marginBandRingClass}`}
+                  style={{
+                    height: `${marginOverlay.top_pct}%`,
+                    background: MARGIN_PROTECTED_BG,
+                  }}
+                />
+              )}
+              {(marginOverlay.bottom_pct ?? 0) > 0 && (
+                <div
+                  className={`pointer-events-none absolute inset-x-0 bottom-0 rounded-b-lg ${marginBandRingClass}`}
+                  style={{
+                    height: `${marginOverlay.bottom_pct}%`,
+                    background: MARGIN_PROTECTED_BG,
+                  }}
+                />
+              )}
+            </>
+          ) : null
+        }
+      />
     </button>
   );
 });
@@ -365,7 +238,7 @@ export default function DocumentPagesStrip({
       {pages.map((page, i) => {
         const template = templates.find((t) => t.id === (page.template_id ?? ''));
         const backgroundUrl = template?.background_file_id
-          ? withFileAccessToken(`/files/${template.background_file_id}/thumbnail?w=200`)
+          ? withFileAccessToken(`/files/${template.background_file_id}/thumbnail?w=512`)
           : null;
         const isDragging = dragPageIndex === i;
         const isDropTarget = dragOverIndex === i;
