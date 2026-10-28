@@ -7,7 +7,7 @@ export default function Schedule() {
     <div className={uiCx(uiSpacing.pageStack, 'min-h-screen w-full')}>
       <AppPageHeader
         title="Schedule"
-        subtitle="View and manage your work schedule"
+        subtitle="Shifts and tasks for the day, and the day after"
         icon={<CalendarDays className="h-4 w-4" />}
       />
 

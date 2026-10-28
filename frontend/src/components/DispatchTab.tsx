@@ -243,7 +243,7 @@ export default function DispatchTab({
     refetchInterval: 5000, // Refetch every 5 seconds for real-time updates
   });
 
-  const { data: employees } = useQuery({
+  const { data: employees, isPending: employeesLoading } = useQuery({
     // Match ProjectDetail cache key so Dispatch does not re-fetch 5000 rows on tab open.
     queryKey: employeesDirectoryQueryKey({ limit: 5000 }),
     queryFn: () => fetchEmployeesDirectory({ limit: 5000 }),
@@ -1006,6 +1006,7 @@ export default function DispatchTab({
           projectId={projectId}
           project={project}
           employees={Array.isArray(employees) ? employees : []}
+          employeesLoading={employeesLoading}
           defaultBreakMin={defaultBreakMin}
           defaultGeofenceRadius={defaultGeofenceRadius}
           designSystem={designSystem}
@@ -1221,6 +1222,7 @@ export function CreateShiftModal({
   projectId,
   project,
   employees,
+  employeesLoading = false,
   defaultBreakMin,
   defaultGeofenceRadius,
   designSystem,
@@ -1232,6 +1234,7 @@ export function CreateShiftModal({
   projectId: string;
   project: any;
   employees: any[];
+  employeesLoading?: boolean;
   defaultBreakMin: number;
   defaultGeofenceRadius: number;
   designSystem?: boolean;
@@ -2125,6 +2128,7 @@ export function CreateShiftModal({
               </p>
               <ShiftWorkerDivisionPicker
                 employees={Array.isArray(employees) ? employees : []}
+                loading={employeesLoading}
                 projectDivisions={projectDivisions}
                 value={Array.isArray(selectedWorkers) ? selectedWorkers : []}
                 onChange={setSelectedWorkers}

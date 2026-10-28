@@ -18,6 +18,7 @@ import {
   AppListRowIconButton,
   AppModal,
   AppTextarea,
+  SelectDropdownCheckbox,
   uiBorders,
   uiColors,
   uiCx,
@@ -541,7 +542,7 @@ export default function ShiftNoteField({
                 aria-pressed={opt.checked}
                 onClick={() => opt.onToggle(!opt.checked)}
                 className={uiCx(
-                  'flex items-start gap-2 rounded-lg border-2 p-3 text-left transition-all',
+                  'relative flex items-start gap-2 rounded-lg border-2 p-3 text-left transition-all',
                   opt.checked
                     ? 'border-brand-red bg-red-50'
                     : 'border-gray-200 bg-white hover:border-brand-red hover:bg-red-50/60',
@@ -552,7 +553,10 @@ export default function ShiftNoteField({
                   className={uiCx('mt-0.5 h-4 w-4 shrink-0', opt.checked ? 'text-brand-red' : 'text-gray-500')}
                   aria-hidden
                 />
-                <span className="min-w-0">
+                <span className="pointer-events-none absolute right-2 top-2">
+                  <SelectDropdownCheckbox checked={opt.checked} />
+                </span>
+                <span className="min-w-0 pr-6">
                   <span className={uiCx('block text-sm font-semibold', opt.checked ? 'text-[#7f1010]' : 'text-gray-900')}>
                     {opt.title}
                   </span>

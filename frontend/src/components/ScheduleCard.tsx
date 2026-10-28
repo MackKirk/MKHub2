@@ -1,36 +1,30 @@
 ﻿import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link, useSearchParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { formatDateLocal } from '@/lib/dateUtils';
+import type { Task, TaskBuckets } from '@/components/tasks/types';
 import { ClockActionTile } from '@/components/ClockActionTile';
 import { ClockInOutModalLayer } from '@/components/ClockInOutModalLayer';
 import {
   AppBadge,
   AppButton,
   AppCard,
-  AppEmptyState,
   AppSectionHeader,
   uiBorders,
   uiColors,
   uiCx,
-  uiLayout,
   uiRadius,
   uiSpacing,
   uiTypography,
 } from '@/components/ui';
-import {
-  ChevronLeft,
-  ChevronRight,
-  ClipboardList,
-  Clock,
-  MapPin,
-} from 'lucide-react';
+import { AlertTriangle, ChevronLeft, ChevronRight, Clock, ListTodo, Loader2, MapPin } from 'lucide-react';
 import ShiftAckPanel from '@/components/ShiftAckPanel';
 import { ShiftAckQuickActions } from '@/components/ShiftAckQuickActions';
 import {
   SCHEDULE_PENDING_ACK_QUERY_KEY,
   shiftAckMeta,
+  shiftAckNeedsResponse,
   shiftAckTracked,
 } from '@/lib/shiftAck';
 
@@ -53,12 +47,27 @@ function formatTime12h(timeStr: string | null | undefined): string {
   return `${hours12}:${minutes} ${period}`;
 }
 
-function sundayOfWeekContaining(dateStr: string): Date {
-  const d = new Date(dateStr.includes('T') ? dateStr : `${dateStr}T12:00:00`);
-  const day = d.getDay();
-  d.setDate(d.getDate() - day);
-  d.setHours(0, 0, 0, 0);
-  return d;
+function addDays(dateStr: string, days: number): string {
+  const d = new Date(`${dateStr.slice(0, 10)}T12:00:00`);
+  d.setDate(d.getDate() + days);
+  return formatDateLocal(d);
+}
+
+function startOfWeek(dateStr: string): string {
+  const d = new Date(`${dateStr.slice(0, 10)}T12:00:00`);
+  d.setDate(d.getDate() - d.getDay());
+  return formatDateLocal(d);
+}
+
+function dayHeading(dateStr: string, todayStr: string): { kicker: string; label: string } {
+  const label = new Date(`${dateStr}T12:00:00`).toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
+  if (dateStr === todayStr) return { kicker: 'Today', label };
+  if (dateStr === addDays(todayStr, 1)) return { kicker: 'Tomorrow', label };
+  return { kicker: label, label: '' };
 }
 
 type Shift = {
@@ -89,39 +98,43 @@ type Attendance = {
 };
 
 export default function ScheduleCard() {
-  const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const dateParam = searchParams.get('date');
   const shiftParam = searchParams.get('shift');
+  const todayStr = formatDateLocal(new Date());
 
-  // anchorDate now represents the Sunday of the current week
-  const [anchorDate, setAnchorDate] = useState<Date>(() => {
-    const d = new Date();
-    // Get Sunday of current week
-    const day = d.getDay(); // 0 = Sunday, 6 = Saturday
-    d.setDate(d.getDate() - day); // Go back to Sunday
-    d.setHours(0, 0, 0, 0);
-    return d;
+  const [selectedDate, setSelectedDate] = useState(() =>
+    dateParam ? dateParam.slice(0, 10) : formatDateLocal(new Date()),
+  );
+  const [calMonth, setCalMonth] = useState(() => {
+    const src = dateParam ? dateParam.slice(0, 10) : formatDateLocal(new Date());
+    const d = new Date(`${src}T12:00:00`);
+    return new Date(d.getFullYear(), d.getMonth(), 1);
   });
 
   const [selectedShift, setSelectedShift] = useState<Shift | null>(null);
-
-  // Calculate week range for API query (Sunday to Saturday)
-  const weekStart = useMemo(() => {
-    // anchorDate is already Sunday
-    return new Date(anchorDate);
-  }, [anchorDate]);
-
-  const weekEnd = useMemo(() => {
-    // Saturday is 6 days after Sunday
-    const saturday = new Date(anchorDate);
-    saturday.setDate(saturday.getDate() + 6);
-    return saturday;
-  }, [anchorDate]);
+  const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('month');
 
   const dateRange = useMemo(() => {
-    return `${formatDateLocal(weekStart)},${formatDateLocal(weekEnd)}`;
-  }, [weekStart, weekEnd]);
+    const tomorrow = addDays(todayStr, 1);
+    let start = todayStr;
+    let end = tomorrow;
+    if (viewMode === 'day') {
+      start = selectedDate < start ? selectedDate : start;
+      end = selectedDate > end ? selectedDate : end;
+    } else if (viewMode === 'week') {
+      const weekStart = startOfWeek(selectedDate);
+      const weekEnd = addDays(weekStart, 6);
+      start = weekStart < start ? weekStart : start;
+      end = weekEnd > end ? weekEnd : end;
+    } else {
+      const monthStart = formatDateLocal(new Date(calMonth.getFullYear(), calMonth.getMonth(), 1));
+      const monthEnd = formatDateLocal(new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 0));
+      start = monthStart < start ? monthStart : start;
+      end = monthEnd > end ? monthEnd : end;
+    }
+    return `${start},${end}`;
+  }, [calMonth, selectedDate, todayStr, viewMode]);
 
   // Fetch current user first
   const { data: currentUser } = useQuery({
@@ -131,7 +144,7 @@ export default function ScheduleCard() {
 
   // Fetch shifts - always filter by current user's worker_id
   // This ensures only the logged-in user's shifts are shown in the schedule
-  const { data: shifts = [], refetch: refetchShifts } = useQuery({
+  const { data: shifts = [], isLoading: shiftsLoading, refetch: refetchShifts } = useQuery({
     queryKey: ['schedule-shifts', dateRange, currentUser?.id],
     queryFn: () => {
       // Always filter by current user's ID to show only their shifts
@@ -142,9 +155,41 @@ export default function ScheduleCard() {
     enabled: !!currentUser?.id,
   });
 
+  const { data: pendingAckShifts = [] } = useQuery({
+    queryKey: [...SCHEDULE_PENDING_ACK_QUERY_KEY, 'list', currentUser?.id],
+    queryFn: async () => {
+      const workerId = currentUser?.id;
+      if (!workerId) return [] as Shift[];
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(start);
+      end.setDate(end.getDate() + 30);
+      const range = `${formatDateLocal(start)},${formatDateLocal(end)}`;
+      const upcoming = await api<Shift[]>(
+        'GET',
+        `/dispatch/shifts?date_range=${encodeURIComponent(range)}&worker_id=${encodeURIComponent(workerId)}`,
+      ).catch(() => [] as Shift[]);
+      return upcoming
+        .filter((shift) => shiftAckNeedsResponse(shift.ack_status))
+        .sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.start_time).localeCompare(String(b.start_time)));
+    },
+    enabled: !!currentUser?.id,
+    staleTime: 30_000,
+  });
+
+  const { data: taskBuckets } = useQuery({
+    queryKey: ['schedule-tasks', currentUser?.id],
+    queryFn: () => api<TaskBuckets>('GET', '/tasks?limit=300'),
+    enabled: !!currentUser?.id,
+    retry: false,
+  });
+
   useEffect(() => {
     if (!dateParam) return;
-    setAnchorDate(sundayOfWeekContaining(dateParam));
+    const day = dateParam.slice(0, 10);
+    setSelectedDate(day);
+    const d = new Date(`${day}T12:00:00`);
+    setCalMonth(new Date(d.getFullYear(), d.getMonth(), 1));
   }, [dateParam]);
 
   useEffect(() => {
@@ -158,52 +203,6 @@ export default function ScheduleCard() {
     queryKey: ['employees'],
     queryFn: () => api<any[]>('GET', '/employees'),
   });
-
-  // Fetch projects list (basic info)
-  const { data: projectsList } = useQuery({
-    queryKey: ['projects'],
-    queryFn: () => api<any[]>('GET', '/projects?limit=100'),
-  });
-
-  // Get unique project IDs from shifts
-  const uniqueProjectIds = useMemo(() => {
-    const ids = new Set<string>();
-    shifts.forEach((shift) => {
-      if (shift.project_id) {
-        ids.add(shift.project_id);
-      }
-    });
-    return Array.from(ids);
-  }, [shifts]);
-
-  // Fetch detailed project info for projects that have shifts
-  const { data: projectsDetails } = useQuery({
-    queryKey: ['projects-details', uniqueProjectIds.join(',')],
-    queryFn: async () => {
-      if (uniqueProjectIds.length === 0) return [];
-      const promises = uniqueProjectIds.map((id) => 
-        api<any>('GET', `/projects/${id}`).catch(() => null)
-      );
-      const results = await Promise.all(promises);
-      return results.filter(Boolean);
-    },
-    enabled: uniqueProjectIds.length > 0,
-  });
-
-  // Combine projects list with details
-  const projects = useMemo(() => {
-    if (!projectsList) return null;
-    if (!projectsDetails || projectsDetails.length === 0) return projectsList;
-    
-    // Create a map of detailed projects
-    const detailsMap = new Map(projectsDetails.map((p: any) => [p.id, p]));
-    
-    // Merge list with details
-    return projectsList.map((p: any) => {
-      const details = detailsMap.get(p.id);
-      return details ? { ...p, ...details } : p;
-    });
-  }, [projectsList, projectsDetails]);
 
   // Fetch project details when a shift is selected
   const { data: project } = useQuery({
@@ -247,103 +246,92 @@ export default function ScheduleCard() {
     enabled: !!selectedShift?.id,
   });
 
-  // Get project address helper
-  const getProjectAddress = (projectId: string): string => {
-    const proj = projects?.find((p: any) => p.id === projectId);
-    if (!proj) return 'No address available';
-    
-    // First try to use project address fields
-    let addressParts = [
-      proj.address,
-      proj.address_city,
-      proj.address_province,
-      proj.address_country,
-    ].filter(Boolean);
-    
-    // If no project address, fallback to site address fields
-    if (addressParts.length === 0) {
-      addressParts = [
-        proj.site_address_line1,
-        proj.site_city,
-        proj.site_province,
-        proj.site_country,
-      ].filter(Boolean);
-    }
-    
-    return addressParts.length > 0 ? addressParts.join(', ') : 'No address available';
-  };
+  const openTasks = useMemo(() => {
+    const buckets = taskBuckets;
+    if (!buckets) return [] as Task[];
+    return [...(buckets.accepted || []), ...(buckets.in_progress || []), ...(buckets.blocked || [])].filter(
+      (task) => Boolean(task.due_date),
+    );
+  }, [taskBuckets]);
 
-  // Get attendance for a shift - NEW MODEL: Each record is a complete event
-  const getAttendanceForShift = (shiftId: string, type: 'in' | 'out'): Attendance | null => {
-    const att = attendances.find((a: Attendance) => a.shift_id === shiftId);
-    if (!att) return null;
-    
-    // Return the attendance if it has the requested time field
-    if (type === 'in' && att.clock_in_time) return att;
-    if (type === 'out' && att.clock_out_time) return att;
-    
-    // For backward compatibility, check type field
-    if (att.type === type) return att;
-    
-    return null;
-  };
-
-  // Generate week days (Sunday to Saturday)
-  const weekDays = useMemo(() => {
-    const days: { date: Date; key: string; dayName: string }[] = [];
-    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(anchorDate);
-      d.setDate(d.getDate() + i);
-      days.push({
-        date: d,
-        key: formatDateLocal(d),
-        dayName: dayNames[i]
-      });
-    }
-    return days;
-  }, [anchorDate]);
-
-  const weekLabel = useMemo(() => {
-    const start = weekStart.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
-    const end = weekEnd.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
-    return `${start} - ${end}`;
-  }, [weekStart, weekEnd]);
-
-  // Group shifts by date
   const shiftsByDate = useMemo(() => {
     const grouped: Record<string, Shift[]> = {};
     shifts.forEach((shift) => {
-      const dateKey = shift.date;
-      if (!grouped[dateKey]) {
-        grouped[dateKey] = [];
-      }
+      const dateKey = String(shift.date || '').slice(0, 10);
+      if (!dateKey) return;
+      if (!grouped[dateKey]) grouped[dateKey] = [];
       grouped[dateKey].push(shift);
     });
+    Object.values(grouped).forEach((list) =>
+      list.sort((a, b) => (a.start_time || '').localeCompare(b.start_time || '')),
+    );
     return grouped;
   }, [shifts]);
 
-  // Navigation functions
-  const goToPreviousWeek = () => {
-    const newDate = new Date(anchorDate);
-    newDate.setDate(newDate.getDate() - 7);
-    setAnchorDate(newDate);
+  const tasksByDate = useMemo(() => {
+    const grouped: Record<string, Task[]> = {};
+    openTasks.forEach((task) => {
+      const dateKey = String(task.due_date || '').slice(0, 10);
+      if (!dateKey) return;
+      if (!grouped[dateKey]) grouped[dateKey] = [];
+      grouped[dateKey].push(task);
+    });
+    return grouped;
+  }, [openTasks]);
+
+  const monthCells = useMemo(() => {
+    const year = calMonth.getFullYear();
+    const month = calMonth.getMonth();
+    const firstDow = new Date(year, month, 1).getDay();
+    const lastDay = new Date(year, month + 1, 0).getDate();
+    const cells: Array<string | null> = [];
+    for (let i = 0; i < firstDow; i++) cells.push(null);
+    for (let day = 1; day <= lastDay; day++) {
+      cells.push(formatDateLocal(new Date(year, month, day)));
+    }
+    return cells;
+  }, [calMonth]);
+
+  const weekDates = useMemo(() => {
+    const start = startOfWeek(selectedDate);
+    return Array.from({ length: 7 }, (_, index) => addDays(start, index));
+  }, [selectedDate]);
+
+  const periodLabel = useMemo(() => {
+    if (viewMode === 'day') {
+      return new Date(`${selectedDate}T12:00:00`).toLocaleDateString('en-US', {
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric',
+      });
+    }
+    if (viewMode === 'week') {
+      const start = new Date(`${weekDates[0]}T12:00:00`);
+      const end = new Date(`${weekDates[6]}T12:00:00`);
+      const sameMonth = start.getMonth() === end.getMonth();
+      const startLabel = start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const endLabel = end.toLocaleDateString('en-US', {
+        month: sameMonth ? undefined : 'short',
+        day: 'numeric',
+        year: 'numeric',
+      });
+      return `${startLabel} – ${endLabel}`;
+    }
+    return calMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  }, [calMonth, selectedDate, viewMode, weekDates]);
+
+  const goToPeriod = (direction: -1 | 1) => {
+    if (viewMode === 'month') {
+      setCalMonth(new Date(calMonth.getFullYear(), calMonth.getMonth() + direction, 1));
+      return;
+    }
+    const next = addDays(selectedDate, direction * (viewMode === 'week' ? 7 : 1));
+    setSelectedDate(next);
+    const d = new Date(`${next}T12:00:00`);
+    setCalMonth(new Date(d.getFullYear(), d.getMonth(), 1));
   };
 
-  const goToNextWeek = () => {
-    const newDate = new Date(anchorDate);
-    newDate.setDate(newDate.getDate() + 7);
-    setAnchorDate(newDate);
-  };
-
-  const goToToday = () => {
-    const d = new Date();
-    const day = d.getDay();
-    d.setDate(d.getDate() - day);
-    d.setHours(0, 0, 0, 0);
-    setAnchorDate(d);
-  };
+  const agendaDates = [todayStr, addDays(todayStr, 1)];
 
   const [clockType, setClockType] = useState<'in' | 'out' | null>(null);
   const [clockModalSubmitting, setClockModalSubmitting] = useState(false);
@@ -372,214 +360,371 @@ export default function ScheduleCard() {
     : false;
   const isOwnShift = currentUser && selectedShift && String(currentUser.id) === String(selectedShift.worker_id);
 
+  const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  const chipTime = (timeStr: string) => formatTime12h(timeStr).replace(':00', '').replace(' ', '').toLowerCase();
+
+  const chipsFor = (dateStr: string) => [
+    ...(shiftsByDate[dateStr] || []).map((shift) => ({
+      key: `s-${shift.id}`,
+      kind: 'shift' as const,
+      label: `${chipTime(shift.start_time)} ${shift.project_name || 'Shift'}`,
+      shift,
+    })),
+    ...(tasksByDate[dateStr] || []).map((task) => ({
+      key: `t-${task.id}`,
+      kind: 'task' as const,
+      label: task.title,
+      task,
+    })),
+  ];
+
+  const dayNumber = (dateStr: string) => (
+    <button
+      type="button"
+      onClick={() => setSelectedDate(dateStr)}
+      className={uiCx(
+        'inline-flex h-7 w-7 items-center justify-center rounded-full text-sm font-semibold',
+        dateStr === selectedDate
+          ? 'bg-[#c22033] text-white'
+          : dateStr === todayStr
+            ? 'bg-sky-100 text-sky-800'
+            : 'text-gray-800 hover:bg-gray-100',
+      )}
+    >
+      {Number(dateStr.slice(8, 10))}
+    </button>
+  );
+
   return (
-    <div className={uiLayout.pageTwoColumn}>
-      {/* LEFT COLUMN - Weekly Schedule */}
-      <AppCard title="Weekly Schedule" className="flex h-full min-h-0 min-w-0 flex-col">
-        {/* Week Controls */}
-        <div className={uiCx('mb-4 flex items-center justify-between border-b border-gray-100 pb-4')}>
-          <AppButton variant="secondary" size="sm" leftIcon={<ChevronLeft className="h-4 w-4" />} onClick={goToPreviousWeek}>
-            Previous
-          </AppButton>
-          <span className={uiCx(uiTypography.controlLabel, 'min-w-[200px] text-center font-semibold text-gray-700')}>
-            {weekLabel}
-          </span>
-            <div className="flex items-center gap-2">
-              <AppButton variant="secondary" size="sm" onClick={goToToday}>
-                Today
-              </AppButton>
-              <AppButton variant="secondary" size="sm" rightIcon={<ChevronRight className="h-4 w-4" />} onClick={goToNextWeek}>
-                Next
-              </AppButton>
+    <div className="space-y-4">
+      {pendingAckShifts.length > 0 ? (
+        <section className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" aria-hidden />
+            <div className="min-w-0 flex-1">
+              <h2 className="text-sm font-semibold text-amber-950">
+                {pendingAckShifts.length === 1
+                  ? '1 shift needs your confirmation'
+                  : `${pendingAckShifts.length} shifts need your confirmation`}
+              </h2>
+              <p className="mt-0.5 text-sm text-amber-800">
+                Say if you are going before the shift. Accept or decline each one below.
+              </p>
+              <ul className="mt-3 space-y-2">
+                {pendingAckShifts.map((shift) => {
+                  const dateLabel = new Date(`${String(shift.date).slice(0, 10)}T12:00:00`).toLocaleDateString(
+                    'en-US',
+                    { weekday: 'short', month: 'short', day: 'numeric' },
+                  );
+                  return (
+                    <li
+                      key={shift.id}
+                      className="rounded-lg border border-amber-200 bg-white px-3 py-2.5"
+                    >
+                      <button
+                        type="button"
+                        className="w-full text-left"
+                        onClick={() => {
+                          const day = String(shift.date).slice(0, 10);
+                          setSelectedDate(day);
+                          const d = new Date(`${day}T12:00:00`);
+                          setCalMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+                          setSelectedShift(shift);
+                        }}
+                      >
+                        <span className="block text-sm font-semibold text-gray-900">
+                          {dateLabel} · {formatTime12h(shift.start_time)} – {formatTime12h(shift.end_time)}
+                        </span>
+                        <span className="block text-sm text-gray-600">{shift.project_name || 'Shift'}</span>
+                      </button>
+                      <ShiftAckQuickActions
+                        shiftId={shift.id}
+                        ackStatus={shift.ack_status}
+                        onUpdated={(updated) => {
+                          setSelectedShift((prev) =>
+                            prev && prev.id === updated.id ? { ...prev, ...updated } : prev,
+                          );
+                        }}
+                      />
+                    </li>
+                  );
+                })}
+              </ul>
             </div>
-        </div>
+          </div>
+        </section>
+      ) : null}
+    <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_24rem]">
+      <section className={uiCx(uiRadius.card, uiBorders.subtle, uiColors.surface, 'min-w-0 overflow-hidden')}>
+        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-4 py-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <AppButton type="button" variant="secondary" size="sm" onClick={() => goToPeriod(-1)} aria-label="Previous">
+              <ChevronLeft className="h-4 w-4" />
+            </AppButton>
+            <AppButton type="button" variant="secondary" size="sm" onClick={() => goToPeriod(1)} aria-label="Next">
+              <ChevronRight className="h-4 w-4" />
+            </AppButton>
+            <h2 className="truncate text-lg font-semibold text-gray-900">{periodLabel}</h2>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <AppButton
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                const now = new Date();
+                setSelectedDate(formatDateLocal(now));
+                setCalMonth(new Date(now.getFullYear(), now.getMonth(), 1));
+              }}
+            >
+              Today
+            </AppButton>
+            <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5">
+              {(['day', 'week', 'month'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => {
+                    setViewMode(mode);
+                    if (mode === 'month') {
+                      const d = new Date(`${selectedDate}T12:00:00`);
+                      setCalMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+                    }
+                  }}
+                  className={uiCx(
+                    'rounded-md px-3 py-1 text-sm font-semibold capitalize',
+                    viewMode === mode ? 'bg-gray-900 text-white' : 'text-gray-600 hover:text-gray-900',
+                  )}
+                >
+                  {mode}
+                </button>
+              ))}
+            </div>
+          </div>
+        </header>
 
-        {/* Day Rows */}
-        <div className={uiSpacing.sectionStack}>
-          {weekDays.map(({ date, key, dayName }) => {
-            const dateStr = formatDateLocal(date);
-            const isToday = (() => {
-              const t = new Date();
-              return formatDateLocal(t) === dateStr;
-            })();
-
-            const dayShifts = shiftsByDate[dateStr] || [];
-            const dateFormatted = date.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
-
-            return (
-              <div
-                key={key}
-                className={uiCx(
-                  uiRadius.control,
-                  uiBorders.subtle,
-                  'transition-all duration-200',
-                  dayShifts.length > 0
-                    ? uiCx(uiColors.surface, uiSpacing.cardPadding, isToday && 'ring-2 ring-brand-red/30 border-brand-red/40')
-                    : uiCx(uiColors.surfaceSubtle, 'p-2.5', isToday && 'ring-1 ring-brand-red/20 border-brand-red/20'),
-                )}
-              >
-                {/* Day Header */}
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <div className={`text-sm font-semibold ${
-                      dayShifts.length > 0 ? 'text-gray-900' : 'text-gray-600'
-                    }`}>
-                      {dayName}
-                    </div>
-                    <div className={`text-sm ${
-                      dayShifts.length > 0 ? 'text-gray-600' : 'text-gray-600'
-                    }`}>
-                      {dateFormatted}
-                    </div>
-                    {isToday && (
-                      <AppBadge className="normal-case tracking-normal bg-brand-red/10 text-brand-red">
-                        Today
-                      </AppBadge>
-                    )}
-                  </div>
+        {viewMode === 'day' ? (
+          <div className="min-h-[28rem] p-4">
+            <div className="mb-4 flex items-center gap-3">
+              {dayNumber(selectedDate)}
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  {selectedDate === todayStr ? 'Today' : new Date(`${selectedDate}T12:00:00`).toLocaleDateString('en-US', { weekday: 'long' })}
                 </div>
-
-                {/* Shifts */}
-                {dayShifts.length > 0 ? (
-                  <div className="flex flex-wrap gap-3">
-                    {dayShifts.map((shift) => {
-                      const shiftClockIn = getAttendanceForShift(shift.id, 'in');
-                      const shiftClockOut = getAttendanceForShift(shift.id, 'out');
-                      const isSelected = selectedShift?.id === shift.id;
-                      const projectAddress = getProjectAddress(shift.project_id);
-
-                      return (
-                        <div
-                          key={shift.id}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (selectedShift?.id === shift.id) {
-                              setSelectedShift(null);
-                            } else {
-                              setSelectedShift(shift);
-                            }
-                          }}
-                          className={uiCx(
-                            'relative cursor-pointer transition-all duration-200 flex-1 min-w-[240px]',
-                            uiRadius.control,
-                            uiBorders.subtle,
-                            uiSpacing.compactCardPadding,
-                            isSelected
-                              ? 'border-brand-red bg-brand-red/5 shadow-md hover:shadow-lg'
-                              : uiCx(uiColors.surface, 'hover:border-gray-300 hover:bg-gray-50/50 hover:shadow-sm hover:-translate-y-0.5 active:scale-[0.98]'),
-                          )}
-                        >
-                          {/* Left Accent Bar */}
-                          <div className={`absolute left-0 top-0 bottom-0 w-0.5 rounded-l-lg ${
-                            isSelected ? 'bg-brand-red' : 'bg-gray-300'
-                          }`} />
-                          
-                          <div className="pl-2">
-                            {/* Time - Strongest */}
-                            <div className="flex items-center gap-1.5 mb-1.5">
-                              <Clock className="h-4 w-4 text-gray-400" />
-                              <div className="font-bold text-base text-gray-900">
-                                {formatTime12h(shift.start_time)} - {formatTime12h(shift.end_time)}
-                              </div>
-                            </div>
-                            
-                            {/* Project - Secondary */}
-                            {shift.project_name && (
-                              <div className="text-sm text-gray-700 mb-2 font-semibold">
-                                {shift.project_name}
-                              </div>
-                            )}
-                            
-                            {/* Address - Muted */}
-                            <div className="flex items-center gap-1.5 text-sm text-gray-600 mb-2">
-                              <MapPin className="h-3.5 w-3.5 flex-shrink-0" />
-                              <span className="line-clamp-1">{projectAddress}</span>
-                            </div>
-
-                            {shift.notes?.trim() ? (
-                              <p className="text-sm text-gray-700 mb-2 line-clamp-2 whitespace-pre-wrap">
-                                {shift.notes.trim()}
-                              </p>
-                            ) : null}
-                            {shiftAckTracked(shift.ack_status) ? (
-                              <div className="mt-1">
-                                <div className={uiCx('text-sm font-semibold', shiftAckMeta(shift.ack_status).tone)}>
-                                  {shiftAckMeta(shift.ack_status).longLabel}
-                                </div>
-                                <ShiftAckQuickActions
-                                  shiftId={shift.id}
-                                  ackStatus={shift.ack_status}
-                                  onUpdated={(updated) => {
-                                    setSelectedShift((prev) =>
-                                      prev && prev.id === updated.id ? { ...prev, ...updated } : prev,
-                                    );
-                                    void refetchShifts();
-                                    void queryClient.invalidateQueries({
-                                      queryKey: [...SCHEDULE_PENDING_ACK_QUERY_KEY],
-                                    });
-                                  }}
-                                />
-                              </div>
-                            ) : null}
-                            
-                            {/* Attendance Status */}
-                            {(shiftClockIn || shiftClockOut) && (
-                              <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-gray-200">
-                                {shiftClockIn && (
-                                  <AppBadge
-                                    variant={attendanceBadgeVariant(shiftClockIn.status)}
-                                    className="normal-case tracking-normal text-sm"
-                                  >
-                                    In: {shiftClockIn.clock_in_time ? new Date(shiftClockIn.clock_in_time).toLocaleTimeString('en-US', {
-                                      hour: 'numeric',
-                                      minute: '2-digit',
-                                      hour12: true,
-                                    }) : (shiftClockIn.time_selected_utc ? new Date(shiftClockIn.time_selected_utc).toLocaleTimeString('en-US', {
-                                      hour: 'numeric',
-                                      minute: '2-digit',
-                                      hour12: true,
-                                    }) : '--')}
-                                  </AppBadge>
-                                )}
-                                {shiftClockOut && (
-                                  <AppBadge
-                                    variant={attendanceBadgeVariant(shiftClockOut.status)}
-                                    className="normal-case tracking-normal text-sm"
-                                  >
-                                    Out: {shiftClockOut.clock_out_time ? new Date(shiftClockOut.clock_out_time).toLocaleTimeString('en-US', {
-                                      hour: 'numeric',
-                                      minute: '2-digit',
-                                      hour12: true,
-                                    }) : (shiftClockOut.time_selected_utc ? new Date(shiftClockOut.time_selected_utc).toLocaleTimeString('en-US', {
-                                      hour: 'numeric',
-                                      minute: '2-digit',
-                                      hour12: true,
-                                    }) : '--')}
-                                  </AppBadge>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className={uiCx(uiTypography.helper, 'italic')}>No shifts</p>
+                <div className="text-base font-semibold text-gray-900">
+                  {new Date(`${selectedDate}T12:00:00`).toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}
+                </div>
+              </div>
+            </div>
+            {chipsFor(selectedDate).length === 0 ? (
+              <p className={uiCx(uiTypography.helper, 'text-gray-500')}>Nothing scheduled</p>
+            ) : (
+              <div className="space-y-2">
+                {chipsFor(selectedDate).map((chip) =>
+                  chip.kind === 'shift' ? (
+                    <button
+                      key={chip.key}
+                      type="button"
+                      onClick={() => setSelectedShift((prev) => (prev?.id === chip.shift.id ? null : chip.shift))}
+                      className={uiCx(
+                        'flex w-full gap-3 rounded-lg border px-3 py-3 text-left',
+                        selectedShift?.id === chip.shift.id
+                          ? 'border-[#c22033] bg-red-50'
+                          : 'border-gray-200 bg-white hover:border-gray-300',
+                      )}
+                    >
+                      <Clock className="mt-0.5 h-4 w-4 shrink-0 text-[#7f1010]" aria-hidden />
+                      <span>
+                        <span className="block text-sm font-semibold text-gray-900">
+                          {formatTime12h(chip.shift.start_time)} – {formatTime12h(chip.shift.end_time)}
+                        </span>
+                        <span className="block text-sm text-gray-700">{chip.shift.project_name || 'Shift'}</span>
+                      </span>
+                    </button>
+                  ) : (
+                    <Link
+                      key={chip.key}
+                      to="/tasks"
+                      className="flex gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-3"
+                    >
+                      <ListTodo className="mt-0.5 h-4 w-4 shrink-0 text-gray-500" aria-hidden />
+                      <span>
+                        <span className="block text-xs font-semibold uppercase tracking-wide text-gray-500">Task</span>
+                        <span className="block text-sm font-semibold text-gray-900">{chip.label}</span>
+                      </span>
+                    </Link>
+                  ),
                 )}
               </div>
-            );
-          })}
-        </div>
-      </AppCard>
+            )}
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-7 border-b border-gray-200 bg-gray-50">
+              {weekdayLabels.map((label) => (
+                <div
+                  key={label}
+                  className="px-2 py-2 text-center text-xs font-semibold uppercase tracking-wide text-gray-500"
+                >
+                  {label}
+                </div>
+              ))}
+            </div>
+            <div className="grid grid-cols-7">
+              {(viewMode === 'week' ? weekDates : monthCells).map((dateStr, index) => {
+                if (!dateStr) {
+                  return (
+                    <div
+                      key={`pad-${index}`}
+                      className="min-h-[7.5rem] border-b border-r border-gray-100 bg-gray-50/70"
+                    />
+                  );
+                }
+                const chips = chipsFor(dateStr);
+                const limit = viewMode === 'week' ? 6 : 3;
+                const visible = chips.slice(0, limit);
+                const extra = chips.length - visible.length;
+                return (
+                  <div
+                    key={dateStr}
+                    className={uiCx(
+                      'flex flex-col border-b border-r border-gray-100 p-1.5',
+                      viewMode === 'week' ? 'min-h-[22rem]' : 'min-h-[7.5rem]',
+                      dateStr === selectedDate ? 'bg-red-50/70' : 'bg-white',
+                    )}
+                  >
+                    <div className="mb-1">{dayNumber(dateStr)}</div>
+                    <div className="flex min-h-0 flex-1 flex-col gap-0.5">
+                      {visible.map((chip) =>
+                        chip.kind === 'shift' ? (
+                          <button
+                            key={chip.key}
+                            type="button"
+                            title={chip.label}
+                            onClick={() => {
+                              setSelectedDate(dateStr);
+                              setSelectedShift(chip.shift);
+                            }}
+                            className={uiCx(
+                              'truncate rounded px-1.5 py-0.5 text-left text-[11px] font-semibold leading-4',
+                              selectedShift?.id === chip.shift.id
+                                ? 'bg-[#c22033] text-white'
+                                : 'bg-red-50 text-[#7f1010] hover:bg-red-100',
+                            )}
+                          >
+                            {chip.label}
+                          </button>
+                        ) : (
+                          <Link
+                            key={chip.key}
+                            to="/tasks"
+                            title={chip.label}
+                            onClick={() => setSelectedDate(dateStr)}
+                            className="truncate rounded bg-gray-100 px-1.5 py-0.5 text-left text-[11px] font-semibold leading-4 text-gray-700 hover:bg-gray-200"
+                          >
+                            {chip.label}
+                          </Link>
+                        ),
+                      )}
+                      {extra > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedDate(dateStr);
+                            setViewMode('day');
+                          }}
+                          className="px-1 text-left text-[11px] font-semibold text-gray-500 hover:text-gray-800"
+                        >
+                          +{extra} more
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </section>
 
-      {/* RIGHT COLUMN - Shift Details Panel */}
-      <AppCard
-        title="Shift Details"
-        className="flex h-full min-h-0 min-w-0 flex-col"
-        bodyClassName={selectedShift ? undefined : 'flex min-h-0 flex-1 flex-col justify-center'}
-      >
+      <aside className="min-w-0 space-y-3">
+        {agendaDates.map((dateStr) => {
+          const heading = dayHeading(dateStr, todayStr);
+          const dayShifts = shiftsByDate[dateStr] || [];
+          const dayTasks = tasksByDate[dateStr] || [];
+          const empty = dayShifts.length === 0 && dayTasks.length === 0;
+          return (
+            <section key={dateStr} className={uiCx(uiRadius.card, uiBorders.subtle, uiColors.surface, 'p-4')}>
+              <div className="mb-3 flex items-baseline justify-between gap-2">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">{heading.kicker}</div>
+                  {heading.label ? <div className="text-base font-semibold text-gray-900">{heading.label}</div> : null}
+                </div>
+                {dayShifts.length + dayTasks.length > 0 ? (
+                  <span className="text-sm text-gray-500">
+                    {dayShifts.length + dayTasks.length} item{dayShifts.length + dayTasks.length === 1 ? '' : 's'}
+                  </span>
+                ) : null}
+              </div>
+              {shiftsLoading && shifts.length === 0 ? (
+                <p className={uiCx(uiTypography.helper, 'flex items-center gap-2 text-gray-500')}>
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                  Loading schedule…
+                </p>
+              ) : empty ? (
+                <p className={uiCx(uiTypography.helper, 'text-gray-500')}>Nothing scheduled</p>
+              ) : (
+                <div className="space-y-2">
+                  {dayTasks.map((task) => (
+                    <Link
+                      key={task.id}
+                      to="/tasks"
+                      className="flex gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 transition-colors hover:border-gray-300"
+                    >
+                      <ListTodo className="mt-0.5 h-4 w-4 shrink-0 text-gray-500" aria-hidden />
+                      <span className="min-w-0">
+                        <span className="block text-xs font-semibold uppercase tracking-wide text-gray-500">Task</span>
+                        <span className="block text-sm font-semibold text-gray-900">{task.title}</span>
+                        {task.project?.name ? (
+                          <span className="block text-sm text-gray-600">{task.project.name}</span>
+                        ) : null}
+                      </span>
+                    </Link>
+                  ))}
+                  {dayShifts.map((shift) => {
+                    const isSelected = selectedShift?.id === shift.id;
+                    return (
+                      <button
+                        key={shift.id}
+                        type="button"
+                        onClick={() => setSelectedShift((prev) => (prev?.id === shift.id ? null : shift))}
+                        className={uiCx(
+                          'flex w-full gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors',
+                          isSelected
+                            ? 'border-[#c22033] bg-red-50'
+                            : 'border-gray-200 bg-white hover:border-gray-300',
+                        )}
+                      >
+                        <Clock className={uiCx('mt-0.5 h-4 w-4 shrink-0', isSelected ? 'text-[#c22033]' : 'text-gray-400')} aria-hidden />
+                        <span className="min-w-0">
+                          <span className="block text-sm font-semibold text-gray-900">
+                            {formatTime12h(shift.start_time)} – {formatTime12h(shift.end_time)}
+                          </span>
+                          <span className="block text-sm text-gray-700">{shift.project_name || 'Shift'}</span>
+                          {shift.job_name ? <span className="block text-sm text-gray-500">{shift.job_name}</span> : null}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          );
+        })}
+
         {selectedShift ? (
+      <AppCard title="Shift Details" className="min-w-0">
           <div className={uiSpacing.sectionStack}>
             {/* Core Info Section */}
             <div className={uiSpacing.sectionStack}>
@@ -795,10 +940,9 @@ export default function ScheduleCard() {
               </div>
             )}
           </div>
-        ) : (
-          <AppEmptyState title="Select a shift to view details" icon={<ClipboardList className="h-5 w-5" />} />
-        )}
       </AppCard>
+        ) : null}
+      </aside>
 
       {clockType && selectedShift && (
         <ClockInOutModalLayer
@@ -809,6 +953,7 @@ export default function ScheduleCard() {
           onBusyChange={setClockModalSubmitting}
         />
       )}
+    </div>
     </div>
   );
 }
