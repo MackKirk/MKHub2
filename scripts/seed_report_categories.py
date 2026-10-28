@@ -46,6 +46,7 @@ def seed_report_categories():
             {"label": "Client Contact Update", "value": "client-contact-update", "sort_index": 5, "meta": {"group": "commercial", "client_log": True}},
             {"label": "Warranty Contact", "value": "warranty-contact", "sort_index": 6, "meta": {"group": "commercial", "client_log": True}},
             {"label": "Preventive Maintenance", "value": "preventive-maintenance", "sort_index": 7, "meta": {"group": "commercial", "client_log": True}},
+            {"label": "Proposal", "value": "proposal", "sort_index": 8, "meta": {"group": "commercial"}},
             # Production / Execution categories
             {"label": "Daily Update / Work Completed", "value": "daily-update", "sort_index": 10, "meta": {"group": "production"}},
             {"label": "Site Report", "value": "site-report", "sort_index": 11, "meta": {"group": "production"}},

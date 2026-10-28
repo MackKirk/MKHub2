@@ -161,7 +161,7 @@ export default function CompanyFilesTabEnhanced() {
     Array<{ id: string; file: File; progress: number; status: 'pending' | 'uploading' | 'success' | 'error'; error?: string }>
   >([]);
   const imageGallery = useFileImageGallery();
-  const [previewPdf, setPreviewPdf] = useState<{ url: string; name: string } | null>(null);
+  const [previewPdf, setPreviewPdf] = useState<{ url: string; name: string; fileObjectId?: string } | null>(null);
   const [previewExcel, setPreviewExcel] = useState<{ url: string; name: string } | null>(null);
   const [editingFileNameId, setEditingFileNameId] = useState<string | null>(null);
   const [editingFileNameValue, setEditingFileNameValue] = useState('');
@@ -773,7 +773,7 @@ export default function CompanyFilesTabEnhanced() {
         );
         return;
       } else if (fileType === 'pdf') {
-        setPreviewPdf({ url, name });
+        setPreviewPdf({ url, name, fileObjectId: fileId });
       } else if (fileType === 'excel') {
         setPreviewExcel({ url, name });
       } else {
@@ -2322,6 +2322,7 @@ export default function CompanyFilesTabEnhanced() {
         open={!!previewPdf}
         url={previewPdf?.url}
         name={previewPdf?.name}
+        fileObjectId={previewPdf?.fileObjectId}
         onClose={() => setPreviewPdf(null)}
       />
 

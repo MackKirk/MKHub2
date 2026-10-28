@@ -655,6 +655,12 @@ function EstimateLabourStyleListRow({
     item.item_type === 'shop' ||
     item.item_type === 'miscellaneous';
   const richComposition = formatLabourRichComposition(item);
+  const hasLegacyMenDesc = !!(
+    item.description?.includes(' - ') && /\d+\s*men\s*$/i.test(item.description || '')
+  );
+  const displayName = hasLegacyMenDesc
+    ? (item.description || '').split(' - ')[0]
+    : (item.description || item.name || '');
 
   return (
     <div className={uiCx(isFromReport && 'rounded-lg bg-yellow-50 px-2')}>
@@ -666,6 +672,7 @@ function EstimateLabourStyleListRow({
                 'box-border flex h-8 w-full min-w-0 items-center gap-1.5 overflow-hidden rounded-lg border bg-white px-2',
                 uiBorders.input,
                 isFromReport && 'bg-yellow-50',
+                !canEdit && 'bg-gray-100',
               )}
             >
               {item.added_via_report_id && (
@@ -680,7 +687,28 @@ function EstimateLabourStyleListRow({
                   </div>
                 </div>
               )}
-              <span className="min-w-0 flex-1 truncate text-sm text-gray-900">{item.description || item.name}</span>
+              {canEdit ? (
+                <input
+                  type="text"
+                  className="min-w-0 flex-1 border-0 bg-transparent px-0 text-sm text-gray-900 outline-none placeholder:text-gray-400"
+                  value={displayName}
+                  placeholder="Name"
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    if (hasLegacyMenDesc) {
+                      const menCount = item.labour_men ?? 0;
+                      onUpdate({
+                        name: next,
+                        description: menCount > 0 ? `${next} - ${menCount} men` : next,
+                      });
+                    } else {
+                      onUpdate({ name: next, description: next });
+                    }
+                  }}
+                />
+              ) : (
+                <span className="min-w-0 flex-1 truncate text-sm text-gray-900">{displayName}</span>
+              )}
             </div>
           </EstimateProductListControlSpacer>
         </div>

@@ -33,6 +33,7 @@ describe('normalizeOptionalService', () => {
       status: 'pending',
       pst: false,
       gst: false,
+      division_id: null,
     });
   });
 
@@ -43,6 +44,25 @@ describe('normalizeOptionalService', () => {
       status: 'approved',
       pst: true,
       gst: true,
+      division_id: null,
+    });
+  });
+
+  it('preserves division_id', () => {
+    expect(
+      normalizeOptionalService({
+        service: 'A',
+        price: 1,
+        status: 'pending',
+        division_id: '  div-1  ',
+      }),
+    ).toEqual({
+      service: 'A',
+      price: 1,
+      status: 'pending',
+      pst: false,
+      gst: false,
+      division_id: 'div-1',
     });
   });
 });
@@ -77,6 +97,7 @@ describe('serializeOptionalService', () => {
         status: 'approved',
         pst: true,
         gst: false,
+        division_id: 'div-9',
       }),
     ).toEqual({
       service: 'S',
@@ -84,6 +105,7 @@ describe('serializeOptionalService', () => {
       status: 'approved',
       pst: true,
       gst: false,
+      division_id: 'div-9',
     });
   });
 });

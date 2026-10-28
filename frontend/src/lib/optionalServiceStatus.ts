@@ -13,7 +13,14 @@ export type NormalizedOptionalService = {
   status: OptionalServiceStatus;
   pst: boolean;
   gst: boolean;
+  division_id: string | null;
 };
+
+function normalizeDivisionId(value: unknown): string | null {
+  if (value == null || value === '') return null;
+  const text = String(value).trim();
+  return text || null;
+}
 
 function isOptionalServiceStatus(value: unknown): value is OptionalServiceStatus {
   return value === 'pending' || value === 'approved' || value === 'not_approved';
@@ -58,6 +65,7 @@ export function normalizeOptionalService(raw: unknown): NormalizedOptionalServic
     status: normalizeOptionalServiceStatus(obj),
     pst: asBool(obj.pst, false),
     gst: asBool(obj.gst, false),
+    division_id: normalizeDivisionId(obj.division_id),
   };
 }
 
@@ -80,6 +88,7 @@ export function serializeOptionalService(item: {
   status: OptionalServiceStatus;
   pst?: boolean;
   gst?: boolean;
+  division_id?: string | null;
 }): NormalizedOptionalService {
   return {
     service: item.service,
@@ -87,5 +96,6 @@ export function serializeOptionalService(item: {
     status: isOptionalServiceStatus(item.status) ? item.status : 'pending',
     pst: item.pst === true,
     gst: item.gst === true,
+    division_id: normalizeDivisionId(item.division_id),
   };
 }

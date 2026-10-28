@@ -2827,6 +2827,10 @@ def send_user_access_invite(
         "email_sent": email_sent,
         "email_error": email_error,
         "reset_expires_hours": ACCESS_INVITE_RESET_HOURS,
+        # Always returned so staff can copy/send manually when SMTP fails.
+        "login_link": login_link,
+        "set_password_link": set_password_link,
+        "username": target.username,
     }
 
 

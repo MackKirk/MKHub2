@@ -79,7 +79,11 @@ from ..services.project_change_owner import change_project_owner
 from sqlalchemy import or_, and_, cast, String, Date
 
 
-from ..services.project_utils import reconcile_project_division_ids, sanitize_division_onsite_leads
+from ..services.project_utils import (
+    equal_division_percentages,
+    reconcile_project_division_ids,
+    sanitize_division_onsite_leads,
+)
 from ..services.project_duplicate import generate_project_code, duplicate_project_deep
 from ..services.project_customer_participation import project_site_address_payload
 from ..services.optional_service_status import coerce_optional_service_approval
@@ -945,7 +949,7 @@ def _build_related_customers_activity_summary(db: Session, before_state: dict, a
 
 def _unapprove_pricing_items_for_divisions_removed_from_project(db: Session, project: Project) -> None:
     """
-    When project_division_ids is reduced, pricing rows (additional_costs) tied to a division
+    When project_division_ids is reduced, pricing rows and optional services tied to a division
     no longer on the project must be marked not approved so the Pricing tab stays consistent.
     """
     prop = (
@@ -964,26 +968,44 @@ def _unapprove_pricing_items_for_divisions_removed_from_project(db: Session, pro
     raw = prop.data
     if not isinstance(raw, dict):
         return
-    ac = raw.get("additional_costs")
-    if not isinstance(ac, list):
-        return
     changed = False
-    new_ac = []
-    for item in ac:
-        if not isinstance(item, dict):
-            new_ac.append(item)
-            continue
-        nid = copy.deepcopy(item)
-        did = nid.get("division_id")
-        if did is not None and str(did).strip() != "" and str(did) not in allowed:
-            if nid.get("approved", True) is not False:
-                nid["approved"] = False
-                changed = True
-        new_ac.append(nid)
+    new_data = copy.deepcopy(dict(raw))
+
+    ac = raw.get("additional_costs")
+    if isinstance(ac, list):
+        new_ac = []
+        for item in ac:
+            if not isinstance(item, dict):
+                new_ac.append(item)
+                continue
+            nid = copy.deepcopy(item)
+            did = nid.get("division_id")
+            if did is not None and str(did).strip() != "" and str(did) not in allowed:
+                if nid.get("approved", True) is not False:
+                    nid["approved"] = False
+                    changed = True
+            new_ac.append(nid)
+        new_data["additional_costs"] = new_ac
+
+    os_list = raw.get("optional_services")
+    if isinstance(os_list, list):
+        new_os = []
+        for item in os_list:
+            if not isinstance(item, dict):
+                new_os.append(item)
+                continue
+            nid = copy.deepcopy(item)
+            did = nid.get("division_id")
+            if did is not None and str(did).strip() != "" and str(did) not in allowed:
+                if nid.get("status") != "not_approved":
+                    nid["status"] = "not_approved"
+                    nid.pop("approved", None)
+                    changed = True
+            new_os.append(nid)
+        new_data["optional_services"] = new_os
+
     if not changed:
         return
-    new_data = copy.deepcopy(dict(raw))
-    new_data["additional_costs"] = new_ac
     prop.data = new_data
     flag_modified(prop, "data")
 
@@ -1108,37 +1130,51 @@ def _paginate_projects_by_display_value(
     return filtered[offset : offset + limit], len(filtered)
 
 
+def _approved_optional_line_total(item: dict) -> float:
+    if item.get("status") != "approved":
+        return 0.0
+    try:
+        return float(item.get("price") or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def calculate_proposal_grand_total(proposal_data: dict) -> float:
     """
     Project/list Value from proposal pricing: sum of (value * quantity) for approved
-    additional_costs only — base amount, without PST or GST.
+    additional_costs plus approved optional services — base amount, without PST or GST.
     """
     if not proposal_data:
         return 0.0
     
     additional_costs = proposal_data.get('additional_costs', [])
-    if not isinstance(additional_costs, list):
-        return 0.0
-    
     total_direct_costs = 0.0
-    
-    for item in additional_costs:
-        if not isinstance(item, dict):
-            continue
-        # Only include approved items (default True for backward compatibility)
-        if item.get('approved', True) is not True:
-            continue
 
-        value = float(item.get('value', 0) or 0)
-        quantity = float(item.get('quantity', 1) or 1)
-        total_direct_costs += value * quantity
+    if isinstance(additional_costs, list):
+        for item in additional_costs:
+            if not isinstance(item, dict):
+                continue
+            # Only include approved items (default True for backward compatibility)
+            if item.get('approved', True) is not True:
+                continue
+
+            value = float(item.get('value', 0) or 0)
+            quantity = float(item.get('quantity', 1) or 1)
+            total_direct_costs += value * quantity
+
+    optional_services = proposal_data.get("optional_services") or []
+    if isinstance(optional_services, list):
+        for item in optional_services:
+            if not isinstance(item, dict):
+                continue
+            total_direct_costs += _approved_optional_line_total(item)
     
     return total_direct_costs
 
 
 def calculate_proposal_values_for_division(proposal_data: dict, division_id: Optional[str] = None) -> tuple[float, float]:
     """
-    Base pricing value from proposal additional_costs (no PST/GST).
+    Base pricing value from proposal additional_costs and approved optionals (no PST/GST).
     If division_id is provided, division_value sums only items with that division_id.
     If division_id is None, returns (total_value, total_value).
     
@@ -1148,27 +1184,39 @@ def calculate_proposal_values_for_division(proposal_data: dict, division_id: Opt
         return (0.0, 0.0)
     
     additional_costs = proposal_data.get('additional_costs', [])
-    if not isinstance(additional_costs, list):
-        return (0.0, 0.0)
-    
     total_direct_costs = 0.0
     division_direct_costs = 0.0
-    
-    for item in additional_costs:
-        if not isinstance(item, dict):
-            continue
-        # Only include approved items (default True for backward compatibility)
-        if item.get('approved', True) is not True:
-            continue
 
-        value = float(item.get('value', 0) or 0)
-        quantity = float(item.get('quantity', 1) or 1)
-        line_total = value * quantity
+    if isinstance(additional_costs, list):
+        for item in additional_costs:
+            if not isinstance(item, dict):
+                continue
+            # Only include approved items (default True for backward compatibility)
+            if item.get('approved', True) is not True:
+                continue
 
-        total_direct_costs += line_total
+            value = float(item.get('value', 0) or 0)
+            quantity = float(item.get('quantity', 1) or 1)
+            line_total = value * quantity
 
-        if not division_id or str(item.get('division_id', '')) == str(division_id):
-            division_direct_costs += line_total
+            total_direct_costs += line_total
+
+            if not division_id or str(item.get('division_id', '')) == str(division_id):
+                division_direct_costs += line_total
+
+    optional_services = proposal_data.get("optional_services") or []
+    if isinstance(optional_services, list):
+        for item in optional_services:
+            if not isinstance(item, dict):
+                continue
+            line_total = _approved_optional_line_total(item)
+            if line_total <= 0 and item.get("status") != "approved":
+                continue
+            if item.get("status") != "approved":
+                continue
+            total_direct_costs += line_total
+            if not division_id or str(item.get("division_id") or "") == str(division_id):
+                division_direct_costs += line_total
     
     return (total_direct_costs, division_direct_costs)
 
@@ -7271,20 +7319,38 @@ def convert_to_project(
                     proposal_updated = True
                     proposal_id_for_audit = str(proposal.id)
 
-                if updated_costs is not None:
+                if updated_costs is not None or isinstance(optional_service_approvals, list):
                     current_division_ids = list(getattr(p, "project_division_ids", None) or [])
-                    new_division_ids = reconcile_project_division_ids(current_division_ids, updated_costs)
+                    costs_for_reconcile = (
+                        updated_costs
+                        if updated_costs is not None
+                        else list((data.get("additional_costs") or []) if isinstance(data.get("additional_costs"), list) else [])
+                    )
+                    optionals_for_reconcile = list(
+                        (data.get("optional_services") or [])
+                        if isinstance(data.get("optional_services"), list)
+                        else []
+                    )
+                    new_division_ids = reconcile_project_division_ids(
+                        current_division_ids,
+                        costs_for_reconcile,
+                        optionals_for_reconcile,
+                    )
                     if [str(d) for d in new_division_ids] != [str(d) for d in current_division_ids]:
                         p.project_division_ids = new_division_ids
-
-                    # Clear orphaned project_division_percentages for removed divisions
-                    pct = getattr(p, "project_division_percentages", None) or {}
-                    if isinstance(pct, dict) and pct:
-                        kept_ids = set(str(did) for did in (p.project_division_ids or []))
-                        filtered_pct = {k: v for k, v in pct.items() if str(k) in kept_ids}
-                        if filtered_pct != pct:
-                            p.project_division_percentages = filtered_pct
-                            flag_modified(p, "project_division_percentages")
+                        p.project_division_percentages = equal_division_percentages(
+                            p.project_division_ids or []
+                        )
+                        flag_modified(p, "project_division_percentages")
+                    else:
+                        # Still drop orphan percentage keys if any
+                        pct = getattr(p, "project_division_percentages", None) or {}
+                        if isinstance(pct, dict) and pct:
+                            kept_ids = set(str(did) for did in (p.project_division_ids or []))
+                            filtered_pct = {k: v for k, v in pct.items() if str(k) in kept_ids}
+                            if filtered_pct != pct:
+                                p.project_division_percentages = filtered_pct
+                                flag_modified(p, "project_division_percentages")
 
     # Enforce invariant: no on-site lead for a division that does not exist in the project
     dol = getattr(p, "division_onsite_leads", None) or {}
@@ -8262,21 +8328,31 @@ def _load_legacy_cover_images(db: Session, project_ids: list) -> dict[str, Clien
 
 def _proposal_division_pcts(proposal_data: dict) -> dict[str, float]:
     """Match the list cards: share of newest proposal pricing by division, including unapproved lines."""
-    items = (proposal_data or {}).get("additional_costs") or []
-    if not isinstance(items, list):
-        return {}
     totals: dict[str, float] = {}
-    for item in items:
-        if not isinstance(item, dict) or not item.get("division_id"):
-            continue
-        raw_qty = item.get("quantity", 1)
-        try:
-            qty = int(float(raw_qty if raw_qty not in (None, "") else 1))
-        except (TypeError, ValueError):
-            qty = 1
-        if qty == 0:
-            qty = 1
-        totals[str(item["division_id"])] = totals.get(str(item["division_id"]), 0.0) + float(item.get("value") or 0) * qty
+    items = (proposal_data or {}).get("additional_costs") or []
+    if isinstance(items, list):
+        for item in items:
+            if not isinstance(item, dict) or not item.get("division_id"):
+                continue
+            raw_qty = item.get("quantity", 1)
+            try:
+                qty = int(float(raw_qty if raw_qty not in (None, "") else 1))
+            except (TypeError, ValueError):
+                qty = 1
+            if qty == 0:
+                qty = 1
+            totals[str(item["division_id"])] = totals.get(str(item["division_id"]), 0.0) + float(item.get("value") or 0) * qty
+    optionals = (proposal_data or {}).get("optional_services") or []
+    if isinstance(optionals, list):
+        for item in optionals:
+            if not isinstance(item, dict) or not item.get("division_id"):
+                continue
+            try:
+                price = float(item.get("price") or 0)
+            except (TypeError, ValueError):
+                price = 0.0
+            did = str(item["division_id"])
+            totals[did] = totals.get(did, 0.0) + price
     grand = sum(totals.values())
     if grand <= 0:
         return {}

@@ -49,7 +49,17 @@ import { AppButton, AppSectionHeader, appSectionPresetProps, AppCard, AppCheckbo
 type FilesLibraryView = 'home' | 'browser';
 type UploadModalContext = 'current-location' | 'choose-location';
 
-export type ClientFileForFiles = { id: string; file_object_id: string; is_image?: boolean; content_type?: string; category?: string; original_name?: string; uploaded_at?: string; site_id?: string };
+export type ClientFileForFiles = {
+  id: string;
+  file_object_id: string;
+  is_image?: boolean;
+  content_type?: string;
+  category?: string;
+  original_name?: string;
+  uploaded_at?: string;
+  site_id?: string;
+  customer_visible?: boolean;
+};
 
 type ClientDeletedFile = ClientFileForFiles & { deleted_at?: string | null; deleted_by_id?: string | null };
 
@@ -73,7 +83,7 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
   const [showUpload, setShowUpload] = useState(false);
   const [uploadQueue, setUploadQueue] = useState<Array<{ id: string; file: File; progress: number; status: 'pending' | 'uploading' | 'success' | 'error'; error?: string }>>([]);
   const imageGallery = useFileImageGallery();
-  const [previewPdf, setPreviewPdf] = useState<{ url: string; name: string } | null>(null);
+  const [previewPdf, setPreviewPdf] = useState<{ url: string; name: string; fileObjectId?: string } | null>(null);
   const [previewExcel, setPreviewExcel] = useState<{ url: string; name: string } | null>(null);
   const [editingImage, setEditingImage] = useState<{ fileObjectId: string; name: string } | null>(null);
   const [sortBy, setSortBy] = useState<'uploaded_at' | 'name' | 'type'>('uploaded_at');
@@ -429,7 +439,7 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
         );
         return;
       }
-      if (fileType === 'pdf') setPreviewPdf({ url, name });
+      if (fileType === 'pdf') setPreviewPdf({ url, name, fileObjectId: f.file_object_id });
       else if (fileType === 'excel') setPreviewExcel({ url, name });
       else window.open(url, '_blank');
     } catch {
@@ -1118,6 +1128,31 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
                                   )}
                                   {canEditFiles && (
                                     <>
+                                      <button
+                                        type="button"
+                                        title={f.customer_visible ? 'Hide from customer portal' : 'Share on customer portal'}
+                                        className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                          f.customer_visible
+                                            ? 'bg-emerald-50 text-emerald-700'
+                                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                        }`}
+                                        onClick={async (e) => {
+                                          e.stopPropagation();
+                                          try {
+                                            await api('PATCH', `/clients/${clientId}/files/${f.id}/portal-visibility`, {
+                                              customer_visible: !f.customer_visible,
+                                            });
+                                            toast.success(
+                                              f.customer_visible ? 'Hidden from portal' : 'Shared on portal',
+                                            );
+                                            onRefresh();
+                                          } catch {
+                                            toast.error('Could not update portal visibility');
+                                          }
+                                        }}
+                                      >
+                                        Portal
+                                      </button>
                                       <AppListRowIconButton
                                         preset="move"
                                         label="Move to…"
@@ -1268,6 +1303,7 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
         open={!!previewPdf}
         url={previewPdf?.url}
         name={previewPdf?.name}
+        fileObjectId={previewPdf?.fileObjectId}
         onClose={() => setPreviewPdf(null)}
       />
       <FileOfficePreviewModal

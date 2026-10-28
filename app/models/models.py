@@ -162,6 +162,72 @@ class PasswordReset(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
+
+class PortalHubUser(Base):
+    """Customer-facing portal identity (never mixed with staff User)."""
+
+    __tablename__ = "portal_hub_users"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    name: Mapped[Optional[str]] = mapped_column(String(255))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    session_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+
+class PortalHubMembership(Base):
+    """Links a portal user to a CRM Client (company)."""
+
+    __tablename__ = "portal_hub_memberships"
+    __table_args__ = (UniqueConstraint("portal_user_id", "client_id", name="uq_portal_hub_membership_user_client"),)
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    portal_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("portal_hub_users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    client_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    role: Mapped[str] = mapped_column(String(50), nullable=False, default="member")
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="active")  # active|revoked
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+
+class PortalHubInvite(Base):
+    """Staff invite for a customer contact to join the Hub client portal."""
+
+    __tablename__ = "portal_hub_invites"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    token: Mapped[str] = mapped_column(String(128), unique=True, nullable=False, index=True)
+    email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    client_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    invited_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="pending")  # pending|accepted|revoked|expired
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    accepted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+
+class PortalHubRefreshToken(Base):
+    __tablename__ = "portal_hub_refresh_tokens"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    portal_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("portal_hub_users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    jti: Mapped[str] = mapped_column(String(128), unique=True, nullable=False, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class FileObject(Base):
     __tablename__ = "file_objects"
 
@@ -1039,6 +1105,8 @@ class ClientFile(Base):
     related_warranty_claim_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("warranty_claims.id", ondelete="SET NULL"), nullable=True
     )
+    # When true, Hub client portal members for this client may see the file (subject to project scope).
+    customer_visible: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="false")
 
 
 # Logical customer folders and documents (parallel to employee folders/docs)
@@ -1293,6 +1361,8 @@ class Proposal(Base):
     # Soft delete
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     deleted_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    customer_visible: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="false")
+    shared_with_customer_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class Quote(Base):
@@ -1309,6 +1379,8 @@ class Quote(Base):
     data: Mapped[Optional[dict]] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+    customer_visible: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="false")
+    shared_with_customer_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     # Commercial outcome (pending | successful | not_successful)
     outcome_status: Mapped[str] = mapped_column(String(30), default="pending", nullable=False, index=True)
     outcome_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, index=True)

@@ -1,7 +1,7 @@
 """Divisions without pricing stay; fully unapproved divisions are dropped."""
 import unittest
 
-from app.services.project_utils import reconcile_project_division_ids
+from app.services.project_utils import equal_division_percentages, reconcile_project_division_ids
 
 
 class ReconcileProjectDivisionIdsTests(unittest.TestCase):
@@ -61,6 +61,40 @@ class ReconcileProjectDivisionIdsTests(unittest.TestCase):
     def test_empty_pricing_leaves_existing_divisions(self):
         self.assertEqual(reconcile_project_division_ids(["roofing", "siding"], []), ["roofing", "siding"])
         self.assertEqual(reconcile_project_division_ids(["roofing"], None), ["roofing"])
+
+    def test_approved_optional_adds_division(self):
+        self.assertEqual(
+            reconcile_project_division_ids(
+                ["roofing"],
+                [],
+                [{"division_id": "siding", "status": "approved", "price": 100}],
+            ),
+            ["roofing", "siding"],
+        )
+
+    def test_pending_optional_does_not_add_or_drop(self):
+        self.assertEqual(
+            reconcile_project_division_ids(
+                ["roofing", "siding"],
+                [],
+                [{"division_id": "gutters", "status": "pending", "price": 50}],
+            ),
+            ["roofing", "siding"],
+        )
+
+    def test_not_approved_optional_drops_division_with_no_approved_rows(self):
+        self.assertEqual(
+            reconcile_project_division_ids(
+                ["roofing", "siding"],
+                [],
+                [{"division_id": "siding", "status": "not_approved", "price": 50}],
+            ),
+            ["roofing"],
+        )
+
+    def test_equal_division_percentages(self):
+        self.assertEqual(equal_division_percentages(["a", "b", "c"]), {"a": 33, "b": 33, "c": 34})
+        self.assertEqual(equal_division_percentages([]), {})
 
 
 if __name__ == "__main__":

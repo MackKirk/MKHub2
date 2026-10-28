@@ -13,7 +13,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessToken } from '@/lib/api';
 import { putFile } from '@/lib/fileUploadBatch';
 import { formatDateLocal, getTodayLocal } from '@/lib/dateUtils';
-import { PROJECT_DIVISIONS_QUERY_KEY } from '@/lib/businessLine';
+import { filterProjectDivisionsForBusinessLine, PROJECT_DIVISIONS_QUERY_KEY } from '@/lib/businessLine';
+import { resolveProjectBusinessLine } from '@/lib/projectLinePermissionKeys';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
 import { useConfirm } from '@/components/ConfirmProvider';
@@ -217,15 +218,23 @@ type OptionalServiceItem = {
   status: OptionalServiceStatus;
   pst?: boolean;
   gst?: boolean;
+  division_id?: string;
 };
 
-const EMPTY_OPTIONAL_SERVICE = (): OptionalServiceItem => ({
+const EMPTY_OPTIONAL_SERVICE = (divisionId?: string): OptionalServiceItem => ({
   service: '',
   price: '',
   status: 'pending',
   pst: false,
   gst: false,
+  ...(divisionId ? { division_id: divisionId } : {}),
 });
+
+type DivisionPickerTarget =
+  | { kind: 'pricing-add' }
+  | { kind: 'pricing-edit'; index: number }
+  | { kind: 'optional-add' }
+  | { kind: 'optional-edit'; index: number };
 
 // Area conversion: internal standard is sqft. 1 SQS = 100 sqft; 1 m² ≈ 10.7639 sqft
 const SQFT_PER_SQS = 100;
@@ -484,7 +493,7 @@ export default function ProposalForm({
   const [pricingItems, setPricingItems] = useState<PricingItem[]>([]);
   const [areaDisplayUnit, setAreaDisplayUnit] = useState<AreaUnit>('sqft');
   const [optionalServices, setOptionalServices] = useState<OptionalServiceItem[]>([]);
-  const [showDivisionModal, setShowDivisionModal] = useState(false);
+  const [divisionPicker, setDivisionPicker] = useState<DivisionPickerTarget | null>(null);
   const [showSectionTypeModal, setShowSectionTypeModal] = useState(false);
   const [areaPopoverIndex, setAreaPopoverIndex] = useState<number | null>(null);
   const [showTotalInPdf, setShowTotalInPdf] = useState<boolean>(true);
@@ -1016,6 +1025,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         status: n.status,
         pst: n.pst,
         gst: n.gst,
+        ...(n.division_id ? { division_id: n.division_id } : {}),
       };
     }));
     setShowTotalInPdf(d.show_total_in_pdf !== undefined ? Boolean(d.show_total_in_pdf) : true);
@@ -1483,6 +1493,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
             status: s.status,
             pst: s.pst === true,
             gst: s.gst === true,
+            division_id: s.division_id || null,
           }),
         ),
         pst_rate: pstRate,
@@ -1666,6 +1677,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
             status: s.status,
             pst: s.pst === true,
             gst: s.gst === true,
+            division_id: s.division_id || null,
           }),
         ),
         pst_rate: pstRate,
@@ -1689,6 +1701,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
       queryClient.invalidateQueries({ queryKey: ['proposals'] });
       if (projectId) {
         queryClient.invalidateQueries({ queryKey: ['projectProposals', projectId] });
+        queryClient.invalidateQueries({ queryKey: ['project', projectId] });
       }
       
       setLastSavedHash(computeFingerprint());
@@ -1825,7 +1838,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
       form.append('terms_text', terms||'');
       form.append('pst_rate', String(pstRate));
       form.append('gst_rate', String(gstRate));
-      form.append('additional_costs', JSON.stringify(pricingItems.map(c=> ({ label: c.name, value: Number(parseAccounting(c.price)||'0'), quantity: c.quantity || '1', pst: c.pst === true, gst: c.gst === true, show_unit_price_in_pdf: c.show_unit_price_in_pdf === true }))));
+      form.append('additional_costs', JSON.stringify(pricingItems.map(c=> ({ label: c.name, value: Number(parseAccounting(c.price)||'0'), quantity: c.quantity || '1', pst: c.pst === true, gst: c.gst === true, show_unit_price_in_pdf: c.show_unit_price_in_pdf === true, division_id: c.division_id || null }))));
       form.append(
         'optional_services',
         JSON.stringify(
@@ -1836,6 +1849,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
               status: s.status,
               pst: s.pst === true,
               gst: s.gst === true,
+              division_id: s.division_id || null,
             }),
           ),
         ),
@@ -2950,6 +2964,8 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
               const isNotApproved = isBidding === false && c.approved === false;
               const isApprovedOnProject = isBidding === false && !isNotApproved;
               const rowDisabled = disabled || isNotApproved;
+              // Not-approved rows stay read-only for name/price, but division can still be set/changed.
+              const divisionDisabled = disabled;
               return (
                 <div
                   key={i}
@@ -2969,7 +2985,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                     <div className="flex flex-shrink-0 flex-col items-start gap-1">
                       <span
                         className="inline-flex w-fit items-center rounded-md border border-amber-300 bg-amber-200 px-2 py-1 text-xs font-semibold text-amber-900"
-                        title="This item was not approved during conversion and is read-only."
+                        title="This item was not approved during conversion. Name and price are read-only; division can still be set."
                       >
                         Not approved
                       </span>
@@ -2984,34 +3000,57 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                       </span>
                     </div>
                   ) : null}
-                  {/* Division Icon */}
-                  {divisionInfo &&
-                    (designSystem ? (
-                      <ProposalInlineControlSpacer className="group/divicon relative">
-                        <div
-                          className={uiCx(
-                            'flex w-8 cursor-pointer items-center justify-center text-lg transition-transform hover:scale-110',
-                            PROPOSAL_INLINE_CONTROL_H,
-                          )}
-                        >
-                          {divisionInfo.icon}
-                        </div>
+                  {/* Division icon / set division */}
+                  {designSystem ? (
+                    <ProposalInlineControlSpacer className="group/divicon relative">
+                      <button
+                        type="button"
+                        title={divisionInfo ? divisionInfo.label : 'Set division'}
+                        disabled={divisionDisabled}
+                        className={uiCx(
+                          'flex w-8 items-center justify-center text-lg transition-transform',
+                          PROPOSAL_INLINE_CONTROL_H,
+                          divisionDisabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:scale-110',
+                        )}
+                        onClick={() => {
+                          if (divisionDisabled) return;
+                          setDivisionPicker({ kind: 'pricing-edit', index: i });
+                        }}
+                      >
+                        {divisionInfo ? divisionInfo.icon : <span className="text-xs font-semibold text-gray-500">Div</span>}
+                      </button>
+                      {divisionInfo ? (
                         <div className="pointer-events-none absolute bottom-full left-0 z-[9999] mb-1 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-sm text-white opacity-0 shadow-lg transition-opacity group-hover/divicon:opacity-100">
                           {divisionInfo.label}
                           <div className="absolute -bottom-1 left-2 h-2 w-2 rotate-45 bg-gray-900" />
                         </div>
-                      </ProposalInlineControlSpacer>
-                    ) : (
-                      <div className="group/divicon relative flex-shrink-0">
-                        <div className="flex h-8 w-8 cursor-pointer items-center justify-center text-lg transition-transform hover:scale-110">
-                          {divisionInfo.icon}
-                        </div>
+                      ) : null}
+                    </ProposalInlineControlSpacer>
+                  ) : (
+                    <div className="group/divicon relative flex-shrink-0">
+                      <button
+                        type="button"
+                        title={divisionInfo ? divisionInfo.label : 'Set division'}
+                        disabled={divisionDisabled}
+                        className={uiCx(
+                          'flex h-8 w-8 items-center justify-center text-lg transition-transform',
+                          divisionDisabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:scale-110',
+                        )}
+                        onClick={() => {
+                          if (divisionDisabled) return;
+                          setDivisionPicker({ kind: 'pricing-edit', index: i });
+                        }}
+                      >
+                        {divisionInfo ? divisionInfo.icon : <span className="text-xs font-semibold text-gray-500">Div</span>}
+                      </button>
+                      {divisionInfo ? (
                         <div className="pointer-events-none absolute bottom-full left-0 z-[9999] mb-1 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-sm text-white opacity-0 shadow-lg transition-opacity group-hover/divicon:opacity-100">
                           {divisionInfo.label}
                           <div className="absolute -bottom-1 left-2 h-2 w-2 rotate-45 bg-gray-900" />
                         </div>
-                      </div>
-                    ))}
+                      ) : null}
+                    </div>
+                  )}
                   {designSystem ? (
                     <ProposalInlineInput
                       className="min-w-0 flex-1"
@@ -3616,7 +3655,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                 label="Add Pricing Item"
                 onClick={() => {
                   if (projectId && project?.project_division_ids && project.project_division_ids.length > 0) {
-                    setShowDivisionModal(true);
+                    setDivisionPicker({ kind: 'pricing-add' });
                   } else {
                     setPricingItems((arr) => [...arr, { name: '', price: '', quantity: '1', pst: false, gst: false }]);
                   }
@@ -3628,7 +3667,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                 className="mt-3 flex w-full items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-white p-2.5 text-center transition-all hover:border-brand-red hover:bg-gray-50 disabled:opacity-60"
                 onClick={() => {
                   if (projectId && project?.project_division_ids && project.project_division_ids.length > 0) {
-                    setShowDivisionModal(true);
+                    setDivisionPicker({ kind: 'pricing-add' });
                   } else {
                     setPricingItems((arr) => [...arr, { name: '', price: '', quantity: '1', pst: false, gst: false }]);
                   }
@@ -3866,7 +3905,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
               return (
                 <span
                   className="inline-flex w-fit shrink-0 items-center rounded-md border border-amber-300 bg-amber-200 px-2 py-1 text-xs font-semibold text-amber-900"
-                  title="This service is not approved and is read-only. It does not count toward totals."
+                  title="This service is not approved. Name and price are read-only; division can still be set. It does not count toward totals."
                 >
                   Not approved
                 </span>
@@ -3897,6 +3936,8 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
             const isApproved = isProjectContext && s.status === 'approved';
             const isPending = isProjectContext && s.status === 'pending';
             const rowDisabled = disabled || isNotApproved;
+            const divisionDisabled = disabled;
+            const optionalDivisionInfo = getDivisionInfoById(s.division_id, projectDivisions);
             const showTrailingApprove = (isPending && !disabled) || (isNotApproved && canApprovePricing);
             const showTrailingPending = (isApproved || isNotApproved) && canApprovePricing;
             const showTrailingRemove = !isNotApproved && !disabled;
@@ -3997,6 +4038,50 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                   )}
                 >
                   {renderStatusChrome(s)}
+                  {designSystem ? (
+                    <ProposalInlineControlSpacer className="group/divicon relative">
+                      <button
+                        type="button"
+                        title={optionalDivisionInfo ? optionalDivisionInfo.label : 'Set division'}
+                        disabled={divisionDisabled}
+                        className={uiCx(
+                          'flex w-8 items-center justify-center text-lg transition-transform',
+                          PROPOSAL_INLINE_CONTROL_H,
+                          divisionDisabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:scale-110',
+                        )}
+                        onClick={() => {
+                          if (divisionDisabled) return;
+                          setDivisionPicker({ kind: 'optional-edit', index: i });
+                        }}
+                      >
+                        {optionalDivisionInfo ? optionalDivisionInfo.icon : <span className="text-xs font-semibold text-gray-500">Div</span>}
+                      </button>
+                      {optionalDivisionInfo ? (
+                        <div className="pointer-events-none absolute bottom-full left-0 z-[9999] mb-1 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-sm text-white opacity-0 shadow-lg transition-opacity group-hover/divicon:opacity-100">
+                          {optionalDivisionInfo.label}
+                          <div className="absolute -bottom-1 left-2 h-2 w-2 rotate-45 bg-gray-900" />
+                        </div>
+                      ) : null}
+                    </ProposalInlineControlSpacer>
+                  ) : (
+                    <div className="group/divicon relative flex-shrink-0">
+                      <button
+                        type="button"
+                        title={optionalDivisionInfo ? optionalDivisionInfo.label : 'Set division'}
+                        disabled={divisionDisabled}
+                        className={uiCx(
+                          'flex h-8 w-8 items-center justify-center text-lg transition-transform',
+                          divisionDisabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:scale-110',
+                        )}
+                        onClick={() => {
+                          if (divisionDisabled) return;
+                          setDivisionPicker({ kind: 'optional-edit', index: i });
+                        }}
+                      >
+                        {optionalDivisionInfo ? optionalDivisionInfo.icon : <span className="text-xs font-semibold text-gray-500">Div</span>}
+                      </button>
+                    </div>
+                  )}
                   {designSystem ? (
                     <>
                       <ProposalInlineInput
@@ -4131,13 +4216,27 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                       layout="row"
                       className="mt-3 !min-h-0 py-2.5"
                       label="Add Service"
-                      onClick={() => setOptionalServices((arr) => [...arr, EMPTY_OPTIONAL_SERVICE()])}
+                      onClick={() => {
+                        const catalog = filterProjectDivisionsForBusinessLine(
+                          projectDivisions || [],
+                          resolveProjectBusinessLine(project?.business_line, location.pathname),
+                        );
+                        if (catalog.length > 0) setDivisionPicker({ kind: 'optional-add' });
+                        else setOptionalServices((arr) => [...arr, EMPTY_OPTIONAL_SERVICE()]);
+                      }}
                     />
                   ) : (
                     <button
                       type="button"
                       className="mt-3 flex w-full items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-white p-2.5 text-center transition-all hover:border-brand-red hover:bg-gray-50 disabled:opacity-60"
-                      onClick={() => setOptionalServices((arr) => [...arr, EMPTY_OPTIONAL_SERVICE()])}
+                      onClick={() => {
+                        const catalog = filterProjectDivisionsForBusinessLine(
+                          projectDivisions || [],
+                          resolveProjectBusinessLine(project?.business_line, location.pathname),
+                        );
+                        if (catalog.length > 0) setDivisionPicker({ kind: 'optional-add' });
+                        else setOptionalServices((arr) => [...arr, EMPTY_OPTIONAL_SERVICE()]);
+                      }}
                     >
                       <div className="mr-2 text-lg text-gray-600">+</div>
                       <div className="text-sm font-semibold text-gray-700">Add Service</div>
@@ -4940,18 +5039,43 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
       )}
 
       {/* Division Selection Modal */}
-      {showDivisionModal && projectId && project?.project_division_ids && (
+      {divisionPicker ? (
         <DivisionSelectionModal
           designSystem={designSystem}
-          projectDivisions={projectDivisions || []}
-          projectDivisionIds={project.project_division_ids || []}
+          mode={divisionPicker.kind.startsWith('optional') ? 'catalog' : 'project'}
+          projectDivisions={
+            divisionPicker.kind.startsWith('optional')
+              ? filterProjectDivisionsForBusinessLine(
+                  projectDivisions || [],
+                  resolveProjectBusinessLine(project?.business_line, location.pathname),
+                )
+              : projectDivisions || []
+          }
+          projectDivisionIds={project?.project_division_ids || []}
           onSelect={(divisionId) => {
-            setPricingItems(arr => [...arr, { name: '', price: '', quantity: '1', pst: false, gst: false, division_id: divisionId }]);
-            setShowDivisionModal(false);
+            if (divisionPicker.kind === 'pricing-add') {
+              setPricingItems((arr) => [
+                ...arr,
+                { name: '', price: '', quantity: '1', pst: false, gst: false, division_id: divisionId },
+              ]);
+            } else if (divisionPicker.kind === 'pricing-edit') {
+              setPricingItems((arr) =>
+                arr.map((x, j) => (j === divisionPicker.index ? { ...x, division_id: divisionId } : x)),
+              );
+              saveTriggeredByApprovalChangeRef.current = true;
+            } else if (divisionPicker.kind === 'optional-add') {
+              setOptionalServices((arr) => [...arr, EMPTY_OPTIONAL_SERVICE(divisionId)]);
+            } else if (divisionPicker.kind === 'optional-edit') {
+              setOptionalServices((arr) =>
+                arr.map((x, j) => (j === divisionPicker.index ? { ...x, division_id: divisionId } : x)),
+              );
+              saveTriggeredByApprovalChangeRef.current = true;
+            }
+            setDivisionPicker(null);
           }}
-          onClose={() => setShowDivisionModal(false)}
+          onClose={() => setDivisionPicker(null)}
         />
-      )}
+      ) : null}
 
       {sectionImageLightbox && (
         <SectionImageLightbox
@@ -4980,81 +5104,165 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
   );
 }
 
-// Division Selection Modal Component
-function DivisionSelectionModal({ 
-  projectDivisions, 
-  projectDivisionIds, 
-  onSelect, 
+// Division Selection Modal Component — step 1 parent, step 2 subdivision when present
+function DivisionSelectionModal({
+  projectDivisions,
+  projectDivisionIds,
+  onSelect,
   onClose,
   designSystem = false,
-}: { 
-  projectDivisions: any[]; 
-  projectDivisionIds: string[]; 
-  onSelect: (divisionId: string) => void; 
+  mode = 'project',
+}: {
+  projectDivisions: any[];
+  projectDivisionIds: string[];
+  onSelect: (divisionId: string) => void;
   onClose: () => void;
   designSystem?: boolean;
+  mode?: 'project' | 'catalog';
 }) {
-  // Get all available divisions (all divisions assigned to the project, allowing repeats)
-  const availableDivisions = useMemo(() => {
-    const divisions: Array<{ id: string; label: string; icon: string }> = [];
-    
-    for (const div of projectDivisions) {
+  const [selectedParent, setSelectedParent] = useState<{
+    id: string;
+    label: string;
+    icon: ReactNode;
+    subdivisions: Array<{ id: string; label: string }>;
+  } | null>(null);
+
+  const allowAll = mode === 'catalog';
+  const allowed = useMemo(
+    () => new Set((projectDivisionIds || []).map(String)),
+    [projectDivisionIds],
+  );
+
+  const parentOptions = useMemo(() => {
+    const parents: Array<{
+      id: string;
+      label: string;
+      icon: ReactNode;
+      subdivisions: Array<{ id: string; label: string }>;
+    }> = [];
+
+    for (const div of projectDivisions || []) {
       const divId = String(div.id);
-      // Check main division
-      if (projectDivisionIds.includes(divId)) {
-        divisions.push({ id: divId, label: div.label, icon: getDivisionIcon(div.label) });
+      const allSubs = (div.subdivisions || []).map((sub: any) => ({
+        id: String(sub.id),
+        label: String(sub.label || ''),
+      }));
+      const selectableSubs = allowAll
+        ? allSubs
+        : allSubs.filter((sub: { id: string }) => allowed.has(sub.id));
+
+      if (selectableSubs.length > 0) {
+        parents.push({
+          id: divId,
+          label: div.label,
+          icon: getDivisionIcon(div.label),
+          subdivisions: selectableSubs,
+        });
+        continue;
       }
-      // Check subdivisions
-      for (const sub of (div.subdivisions || [])) {
-        const subId = String(sub.id);
-        if (projectDivisionIds.includes(subId)) {
-          divisions.push({ id: subId, label: `${div.label} - ${sub.label}`, icon: getDivisionIcon(div.label) });
-        }
+
+      // Leaf parent (no subdivisions): selectable only if allowed in this mode
+      if (allSubs.length === 0 && (allowAll || allowed.has(divId))) {
+        parents.push({
+          id: divId,
+          label: div.label,
+          icon: getDivisionIcon(div.label),
+          subdivisions: [],
+        });
       }
     }
-    
-    return divisions;
-  }, [projectDivisions, projectDivisionIds]);
+
+    return parents;
+  }, [projectDivisions, allowAll, allowed]);
+
+  const gridItems = selectedParent
+    ? selectedParent.subdivisions.map((sub) => ({
+        id: sub.id,
+        label: sub.label,
+        icon: selectedParent.icon,
+      }))
+    : parentOptions.map((p) => ({
+        id: p.id,
+        label: p.label,
+        icon: p.icon,
+      }));
+
+  const handlePick = (id: string) => {
+    if (selectedParent) {
+      onSelect(id);
+      return;
+    }
+    const parent = parentOptions.find((p) => p.id === id);
+    if (!parent) return;
+    if (parent.subdivisions.length === 0) {
+      onSelect(parent.id);
+      return;
+    }
+    setSelectedParent(parent);
+  };
+
+  const title = selectedParent
+    ? `${selectedParent.label} → Select subdivision`
+    : 'Select Division';
+
+  const emptyMessage =
+    mode === 'catalog' ? 'No divisions available.' : 'No project divisions to choose from.';
+
+  const cardClass = designSystem
+    ? uiCx(
+        'flex flex-col items-center gap-2 rounded-lg border p-3 transition-all',
+        uiBorders.subtle,
+        'hover:border-brand-red/50 hover:bg-gray-50',
+      )
+    : 'flex flex-col items-center gap-2 p-3 border border-gray-300 rounded-lg hover:border-gray-400 hover:bg-gray-50 transition-all';
 
   const body = (
     <div className="max-h-[60vh] overflow-y-auto">
-      {availableDivisions.length > 0 ? (
-        <div
-          className={`grid gap-3 ${availableDivisions.length === 1 ? 'grid-cols-1' : availableDivisions.length === 2 ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-3'}`}
+      {selectedParent ? (
+        <button
+          type="button"
+          className={uiCx(
+            'mb-3 text-sm font-semibold text-gray-600 hover:text-brand-red',
+            designSystem && uiTypography.helper,
+          )}
+          onClick={() => setSelectedParent(null)}
         >
-          {availableDivisions.map((div) => (
+          ← Back
+        </button>
+      ) : null}
+      {gridItems.length > 0 ? (
+        <div
+          className={`grid gap-3 ${gridItems.length === 1 ? 'grid-cols-1' : gridItems.length === 2 ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-3'}`}
+        >
+          {gridItems.map((item) => (
             <button
-              key={div.id}
+              key={item.id}
               type="button"
-              onClick={() => onSelect(div.id)}
-              className={
-                designSystem
-                  ? uiCx(
-                      'flex flex-col items-center gap-2 rounded-lg border p-3 transition-all',
-                      uiBorders.subtle,
-                      'hover:border-brand-red/50 hover:bg-gray-50',
-                    )
-                  : 'flex flex-col items-center gap-2 p-3 border border-gray-300 rounded-lg hover:border-gray-400 hover:bg-gray-50 transition-all'
-              }
+              onClick={() => handlePick(item.id)}
+              className={cardClass}
             >
-              <span className="text-2xl">{div.icon}</span>
-              <span className={designSystem ? uiCx(uiTypography.helper, 'text-center font-semibold') : 'text-sm font-semibold text-gray-900 text-center'}>
-                {div.label}
+              <span className="text-2xl">{item.icon}</span>
+              <span
+                className={
+                  designSystem
+                    ? uiCx(uiTypography.helper, 'text-center font-semibold')
+                    : 'text-sm font-semibold text-gray-900 text-center'
+                }
+              >
+                {item.label}
               </span>
             </button>
           ))}
         </div>
       ) : (
-        <p className={uiCx(uiTypography.helper, 'py-8 text-center')}>
-          All divisions have been assigned to pricing items.
-        </p>
+        <p className={uiCx(uiTypography.helper, 'py-8 text-center')}>{emptyMessage}</p>
       )}
     </div>
   );
 
   if (designSystem) {
     return (
-      <AppModal open onClose={onClose} title="Select Division" size="md">
+      <AppModal open onClose={onClose} title={title} size="md">
         {body}
       </AppModal>
     );
@@ -5068,8 +5276,8 @@ function DivisionSelectionModal({
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex items-center justify-between bg-slate-200 p-2.5 text-sm font-semibold text-gray-900">
-            <span>Select Division</span>
-            <button type="button" onClick={onClose} className="text-gray-600 hover:text-gray-900 transition-colors">
+            <span className="min-w-0 truncate pr-2">{title}</span>
+            <button type="button" onClick={onClose} className="shrink-0 text-gray-600 hover:text-gray-900 transition-colors">
               <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>

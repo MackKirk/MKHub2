@@ -130,7 +130,7 @@ export function WorkOrderFilesTab({ workOrderId, canEdit = true }: Props) {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [fileSearchQuery, setFileSearchQuery] = useState('');
   const imageGallery = useFileImageGallery();
-  const [previewPdf, setPreviewPdf] = useState<{ url: string; name: string } | null>(null);
+  const [previewPdf, setPreviewPdf] = useState<{ url: string; name: string; fileObjectId?: string } | null>(null);
   const [previewExcel, setPreviewExcel] = useState<{ url: string; name: string } | null>(null);
   const [moveLocationFileId, setMoveLocationFileId] = useState<string | null>(null);
   const [filesLibraryView, setFilesLibraryView] = useState<FilesLibraryView>('home');
@@ -451,7 +451,7 @@ export function WorkOrderFilesTab({ workOrderId, canEdit = true }: Props) {
         );
         return;
       }
-      if (fileType === 'pdf') setPreviewPdf({ url, name });
+      if (fileType === 'pdf') setPreviewPdf({ url, name, fileObjectId: f.file_object_id });
       else if (fileType === 'excel') setPreviewExcel({ url, name });
       else window.open(url, '_blank');
     } catch {
@@ -1118,6 +1118,7 @@ export function WorkOrderFilesTab({ workOrderId, canEdit = true }: Props) {
         open={!!previewPdf}
         url={previewPdf?.url}
         name={previewPdf?.name}
+        fileObjectId={previewPdf?.fileObjectId}
         onClose={() => setPreviewPdf(null)}
       />
 

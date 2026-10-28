@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessToken } from '@/lib/api';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
@@ -9,6 +9,7 @@ import ProposalForm from '@/components/ProposalForm';
 export default function ProposalEdit(){
   const { id } = useParams();
   const nav = useNavigate();
+  const qc = useQueryClient();
   const { data, isLoading } = useQuery({ queryKey:['proposal', id], queryFn: ()=> api<any>('GET', `/proposals/${id}`) });
   const p = data||{};
   const d = p?.data || {};
@@ -116,8 +117,39 @@ export default function ProposalEdit(){
     }catch(e){ toast.error('Save failed'); }
   };
 
+  const shareWithCustomer = async () => {
+    if (!id) return;
+    try {
+      if (p?.customer_visible) {
+        await api('POST', `/proposals/${id}/unshare-with-customer`);
+        toast.success('Unshared from customer portal');
+      } else {
+        await api('POST', `/proposals/${id}/share-with-customer`);
+        toast.success('Shared on customer portal');
+      }
+      await qc.invalidateQueries({ queryKey: ['proposal', id] });
+    } catch {
+      toast.error('Could not update portal sharing');
+    }
+  };
+
   return (
-    <div>
+    <div className="space-y-3">
+      {p?.id ? (
+        <div className="flex justify-end px-1">
+          <button
+            type="button"
+            onClick={shareWithCustomer}
+            className={`text-xs font-semibold px-3 py-1.5 rounded-lg border ${
+              p.customer_visible
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            {p.customer_visible ? 'Shared on portal — click to unshare' : 'Share on customer portal'}
+          </button>
+        </div>
+      ) : null}
       {isLoading? <div className="h-24 bg-gray-100 animate-pulse rounded"/> : (
         <ProposalForm 
           mode="edit" 

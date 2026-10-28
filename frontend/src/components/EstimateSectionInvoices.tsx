@@ -15,7 +15,7 @@ export type SectionInvoiceLink = {
 
 const PURCHASING_CATEGORY = 'purchasing';
 
-type InvoicePreview = { url: string; name: string };
+type InvoicePreview = { url: string; name: string; fileObjectId?: string };
 
 const SectionInvoicePreviewContext = createContext<((invoice: SectionInvoiceLink) => void) | null>(null);
 
@@ -33,7 +33,7 @@ export function EstimateSectionInvoicePreviewHost({ children }: { children: Reac
         toast.error('Preview not available');
         return;
       }
-      setPreview({ url, name: invoice.name });
+      setPreview({ url, name: invoice.name, fileObjectId: invoice.file_object_id });
     } catch {
       toast.error('Could not open invoice');
     }
@@ -46,6 +46,7 @@ export function EstimateSectionInvoicePreviewHost({ children }: { children: Reac
         open={!!preview}
         url={preview?.url}
         name={preview?.name}
+        fileObjectId={preview?.fileObjectId}
         onClose={() => setPreview(null)}
       />
     </SectionInvoicePreviewContext.Provider>

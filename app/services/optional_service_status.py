@@ -38,6 +38,13 @@ def _as_bool(value: Any, default: bool = False) -> bool:
     return default
 
 
+def _normalize_division_id(value: Any) -> str | None:
+    if value is None or value == "":
+        return None
+    text = str(value).strip()
+    return text or None
+
+
 def normalize_optional_service(raw: Any) -> dict:
     obj = raw if isinstance(raw, dict) else {}
     try:
@@ -50,6 +57,7 @@ def normalize_optional_service(raw: Any) -> dict:
         "status": normalize_optional_service_status(obj),
         "pst": _as_bool(obj.get("pst"), False),
         "gst": _as_bool(obj.get("gst"), False),
+        "division_id": _normalize_division_id(obj.get("division_id")),
     }
 
 

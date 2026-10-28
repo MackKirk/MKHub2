@@ -23,7 +23,11 @@ from ..storage.provider import StorageProvider
 from ..models import models
 from ..schemas import files as file_schemas
 
-from ..services.project_utils import reconcile_project_division_ids, sanitize_division_onsite_leads
+from ..services.project_utils import (
+    equal_division_percentages,
+    reconcile_project_division_ids,
+    sanitize_division_onsite_leads,
+)
 from ..services.optional_service_status import is_optional_service_not_approved
 from ..proposals.pdf_merge import generate_pdf
 from ..proposals.pdf_image_optimizer import optimize_image_bytes
@@ -573,24 +577,26 @@ def save_proposal(payload: dict = Body(...), db: Session = Depends(get_db), user
                     if cover_file_object_id:
                         project.image_file_object_id = cover_file_object_id
 
-                # For original proposal only: sync project_division_ids from pricing items.
-                # Unpriced divisions stay. A division is removed only when every one of
-                # its pricing rows is marked not approved. New approved divisions are added.
+                # For original proposal only: sync project_division_ids from pricing + approved optionals.
+                # Unpriced divisions stay. A division is removed only when every related row is
+                # not approved. New approved divisions are added; percentages equal-redistribute.
                 if not p.is_change_order:
-                    additional_costs = (p.data or {}).get("additional_costs") or []
-                    if isinstance(additional_costs, list):
+                    proposal_data = p.data or {}
+                    additional_costs = proposal_data.get("additional_costs") or []
+                    optional_services = proposal_data.get("optional_services") or []
+                    if isinstance(additional_costs, list) or isinstance(optional_services, list):
                         current_division_ids = list(getattr(project, "project_division_ids", None) or [])
-                        new_division_ids = reconcile_project_division_ids(current_division_ids, additional_costs)
-                        if set(str(d) for d in new_division_ids) != set(str(d) for d in current_division_ids):
+                        new_division_ids = reconcile_project_division_ids(
+                            current_division_ids,
+                            additional_costs if isinstance(additional_costs, list) else [],
+                            optional_services if isinstance(optional_services, list) else [],
+                        )
+                        if [str(d) for d in new_division_ids] != [str(d) for d in current_division_ids]:
                             project.project_division_ids = new_division_ids
-                            # Clear orphaned project_division_percentages for removed divisions
-                            pct = getattr(project, "project_division_percentages", None) or {}
-                            if isinstance(pct, dict) and pct:
-                                kept_ids = set(str(did) for did in (project.project_division_ids or []))
-                                filtered_pct = {k: v for k, v in pct.items() if str(k) in kept_ids}
-                                if filtered_pct != pct:
-                                    project.project_division_percentages = filtered_pct
-                                    flag_modified(project, "project_division_percentages")
+                            project.project_division_percentages = equal_division_percentages(
+                                project.project_division_ids or []
+                            )
+                            flag_modified(project, "project_division_percentages")
 
                         # Remove on-site leads for divisions no longer in the project
                         dol = getattr(project, "division_onsite_leads", None) or {}
@@ -886,6 +892,10 @@ def get_proposal(proposal_id: str, db: Session = Depends(get_db)):
         "parent_proposal_id": str(getattr(p, 'parent_proposal_id', None)) if getattr(p, 'parent_proposal_id', None) else None,
         "approved_report_id": str(getattr(p, 'approved_report_id', None)) if getattr(p, 'approved_report_id', None) else None,
         "approval_status": getattr(p, 'approval_status', None) or ('approved' if getattr(p, 'approved_report_id', None) else None),
+        "customer_visible": bool(getattr(p, "customer_visible", False)),
+        "shared_with_customer_at": p.shared_with_customer_at.isoformat()
+        if getattr(p, "shared_with_customer_at", None)
+        else None,
     }
 
 

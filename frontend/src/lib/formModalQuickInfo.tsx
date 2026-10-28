@@ -1223,8 +1223,9 @@ export const editProjectDivisionsQuickInfo = formModalQuickInfo({
   ),
   behavior: (
     <>
-      Percentages shown beside each icon are calculated from approved pricing items — you do not set them here. Removing a
-      division may affect pricing approval on linked proposal lines.
+      Percentages shown beside each icon are calculated from approved pricing items and approved optional services — you do
+      not set them here. Removing a division that still has related pricing or optional lines asks for confirmation; if you
+      continue, those lines are marked not approved and drop out of totals.
     </>
   ),
   actions: (

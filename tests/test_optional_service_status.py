@@ -32,6 +32,20 @@ def test_normalize_optional_service_defaults_pst_gst():
         "status": "pending",
         "pst": False,
         "gst": False,
+        "division_id": None,
+    }
+
+
+def test_normalize_optional_service_preserves_division_id():
+    assert normalize_optional_service(
+        {"service": "A", "price": 1, "status": "pending", "division_id": "  div-1  "}
+    ) == {
+        "service": "A",
+        "price": 1.0,
+        "status": "pending",
+        "pst": False,
+        "gst": False,
+        "division_id": "div-1",
     }
 
 
