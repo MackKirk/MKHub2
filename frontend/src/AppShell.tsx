@@ -19,7 +19,11 @@ import InstallPrompt from '@/components/InstallPrompt';
 import GlobalSearch, { GlobalSearchSection, GlobalSearchItem } from '@/components/GlobalSearch';
 import HubChatLauncher from '@/components/HubChatLauncher';
 import { shouldRegisterHours } from '@/lib/payType';
-import { canAccessProjectLineMenu, isAdminRole } from '@/lib/projectLinePermissionKeys';
+import {
+  hasConstructionProjectsOpportunitiesPermission,
+  hasRmProjectsOpportunitiesPermission,
+  isAdminRole,
+} from '@/lib/projectLinePermissionKeys';
 import { hasAnySettingsPermission } from '@/lib/settingsPermissions';
 import {
   canViewDocumentBuilder,
@@ -27,7 +31,16 @@ import {
   canViewSignatureEditor,
   canViewSignatureRequests,
 } from '@/lib/documentHubPermissions';
+import { evaluatePermission } from '@/lib/permissionAccess';
 import { usePageViewTracker } from '@/lib/usePageViewTracker';
+import { useProduct } from '@/lib/ProductProvider';
+import {
+  filterMenuCategoriesForProduct,
+  METALS_CUSTOMERS_READ,
+  productChrome,
+  productLogoSrc,
+  productSwitchLabel,
+} from '@/lib/productScope';
 import { AppUserAvatar, uiCx, uiDropdown } from '@/components/ui';
 
 type MenuItem = {
@@ -357,6 +370,8 @@ const IconQuotations = () => (
 );
 
 export default function AppShell({ children }: PropsWithChildren){
+  const { product, canAccessMetals, switchProduct } = useProduct();
+  const chrome = productChrome(product);
   const location = useLocation();
   usePageViewTracker();
   const navigate = useNavigate();
@@ -575,144 +590,10 @@ export default function AppShell({ children }: PropsWithChildren){
       ? !!settingsPerms.can_access_settings
       : hasAnySettingsPermission(permissionsSet, isAdmin);
 
-  const hasPermission = (requiredPermission?: string) => {
-    if (!requiredPermission) return true;
-    if (isAdmin) return true;
-    const has = permissionsSet.has(requiredPermission);
-    const legacyBizRead = permissionsSet.has('business:projects:read');
-    const legacyBizWrite = permissionsSet.has('business:projects:write');
-    if (requiredPermission === 'business:construction:projects:read') {
-      return canAccessProjectLineMenu(permissionsSet, 'construction', isAdmin);
-    }
-    if (requiredPermission === 'business:rm:projects:read') {
-      return canAccessProjectLineMenu(permissionsSet, 'repairs', isAdmin);
-    }
-    if (requiredPermission === 'business:projects:read') {
-      return has || legacyBizRead || canAccessProjectLineMenu(permissionsSet, 'construction', isAdmin);
-    }
-    if (requiredPermission === 'business:construction:projects:write' || requiredPermission === 'business:projects:write') {
-      return has || legacyBizWrite || permissionsSet.has('business:construction:projects:write');
-    }
-    if (requiredPermission === 'business:rm:projects:write') {
-      return has || legacyBizWrite || permissionsSet.has('business:rm:projects:write');
-    }
-    if (requiredPermission.startsWith('hr:')) {
-      const legacyPerm = requiredPermission.replace('hr:', '');
-      return has || permissionsSet.has(legacyPerm);
-    }
-    // Fleet & Equipment: accept legacy/alternate permission keys so tabs show correctly
-    if (requiredPermission === 'fleet:access') {
-      return (
-        has ||
-        permissionsSet.has('fleet:read') ||
-        permissionsSet.has('fleet:vehicles:read') ||
-        permissionsSet.has('fleet:vehicles:write') ||
-        permissionsSet.has('fleet:equipment:read') ||
-        permissionsSet.has('fleet:equipment:write')
-      );
-    }
-    if (requiredPermission === 'properties:access') {
-      return (
-        has ||
-        permissionsSet.has('properties:dashboard:read') ||
-        permissionsSet.has('properties:company:read') ||
-        permissionsSet.has('properties:family:read')
-      );
-    }
-    if (requiredPermission === 'fleet:vehicles:read') {
-      return has || permissionsSet.has('fleet:read');
-    }
-    if (requiredPermission === 'fleet:work_orders:read') {
-      return has || permissionsSet.has('work_orders:read');
-    }
-    if (requiredPermission === 'fleet:inspections:read') {
-      return (
-        has ||
-        permissionsSet.has('inspections:read') ||
-        permissionsSet.has('fleet:inspections:write')
-      );
-    }
-    if (requiredPermission === 'equipment:read') {
-      return (
-        has ||
-        permissionsSet.has('fleet:equipment:read') ||
-        permissionsSet.has('fleet:equipment:write')
-      );
-    }
-    if (requiredPermission === 'fleet:equipment:read') {
-      return (
-        has ||
-        permissionsSet.has('fleet:equipment:write') ||
-        permissionsSet.has('equipment:read') ||
-        permissionsSet.has('equipment:write')
-      );
-    }
-    if (requiredPermission === 'fleet:equipment:work_orders:read') {
-      return has || permissionsSet.has('fleet:equipment:work_orders:write');
-    }
-    if (requiredPermission === 'hr:onboarding:read') {
-      return has || permissionsSet.has('hr:onboarding:write');
-    }
-    if (requiredPermission === 'company_cards:read') {
-      return has || permissionsSet.has('company_cards:write');
-    }
-    if (requiredPermission === 'fuel_cards:read') {
-      return has || permissionsSet.has('fuel_cards:write');
-    }
-    if (requiredPermission === 'documents:read') {
-      return (
-        has ||
-        permissionsSet.has('documents:write') ||
-        permissionsSet.has('documents:delete') ||
-        permissionsSet.has('documents:move')
-      );
-    }
-    if (requiredPermission === 'document_hub:builder:read') {
-      return canViewDocumentBuilder(isAdmin, permissionsSet);
-    }
-    if (requiredPermission === 'document_hub:signature_editor:read') {
-      return canViewSignatureEditor(isAdmin, permissionsSet);
-    }
-    if (requiredPermission === 'document_hub:backgrounds:read') {
-      return has || canViewDocumentHubTemplates(isAdmin, permissionsSet);
-    }
-    if (requiredPermission === 'settings:document_backgrounds:read') {
-      return (
-        has ||
-        permissionsSet.has('settings:document_backgrounds:write') ||
-        permissionsSet.has('document_hub:backgrounds:read') ||
-        permissionsSet.has('document_hub:backgrounds:write')
-      );
-    }
-    if (requiredPermission === 'settings:document_templates:read') {
-      return (
-        has ||
-        permissionsSet.has('settings:document_templates:write') ||
-        permissionsSet.has('document_hub:templates:read') ||
-        permissionsSet.has('document_hub:templates:write')
-      );
-    }
-    if (requiredPermission === 'settings:access') {
-      return canAccessSettingsMenu;
-    }
-    if (requiredPermission === 'business:projects:safety:read') {
-      return (
-        has ||
-        permissionsSet.has('business:construction:projects:safety:read') ||
-        permissionsSet.has('business:construction:projects:safety:write') ||
-        permissionsSet.has('business:rm:projects:safety:read') ||
-        permissionsSet.has('business:rm:projects:safety:write')
-      );
-    }
-    if (requiredPermission === 'business:projects:safety:write') {
-      return (
-        has ||
-        permissionsSet.has('business:construction:projects:safety:write') ||
-        permissionsSet.has('business:rm:projects:safety:write')
-      );
-    }
-    return has;
-  };
+  const hasPermission = (requiredPermission?: string) =>
+    evaluatePermission(requiredPermission, permissionsSet, isAdmin, {
+      canAccessSettings: canAccessSettingsMenu,
+    });
 
   const canSeeMenuItem = (item: MenuItem): boolean => {
     if (item.id === 'system-settings') {
@@ -729,6 +610,10 @@ export default function AppShell({ children }: PropsWithChildren){
     }
     if (item.id === 'document-hub-signature-editor') {
       return canViewSignatureEditor(isAdmin, permissionsSet);
+    }
+    // Warranty Review: same gate as R&M "Projects & Opportunities" (not any section crumb).
+    if (item.id === 'rm-warranty-review') {
+      return hasRmProjectsOpportunitiesPermission(permissionsSet, isAdmin);
     }
     if (hasPermission(item.requiredPermission)) return true;
     return Array.isArray(item.children) && item.children.some(canSeeMenuItem);
@@ -1018,9 +903,10 @@ export default function AppShell({ children }: PropsWithChildren){
   }, [hubAccessBlocked, menuCategories, signatureBadgeCount]);
 
   const globalSearchLocalSections: GlobalSearchSection[] = useMemo(() => {
-    // Pages built from the same menu config (respecting permissions).
+    // Pages from product-scoped menu (respecting permissions).
     const items: GlobalSearchItem[] = [];
-    for (const cat of effectiveMenuCategories) {
+    const searchCats = filterMenuCategoriesForProduct(effectiveMenuCategories, product);
+    for (const cat of searchCats) {
       for (const it of cat.items || []) {
         if (hasPermission(it.requiredPermission)) {
           items.push({
@@ -1067,16 +953,34 @@ export default function AppShell({ children }: PropsWithChildren){
       return true;
     });
     return unique.length ? [{ id: 'pages', label: 'Pages', items: unique }] : [];
-  }, [effectiveMenuCategories, permissionsSet, isAdmin, canAccessSettingsMenu]);
+  }, [effectiveMenuCategories, permissionsSet, isAdmin, canAccessSettingsMenu, product]);
 
   const canSeeGlobalSearchItem = useMemo(() => {
     return (item: GlobalSearchItem) => {
       // Pages already filtered, but keep it safe.
       if (item.type === 'page') return true;
+      // Metals product: hide Hub-only operational search hits
+      if (product === 'metals') {
+        if (
+          item.type === 'project' ||
+          item.type === 'opportunity' ||
+          item.type === 'quote' ||
+          item.type === 'fleet_asset' ||
+          item.type === 'equipment' ||
+          item.type === 'work_order' ||
+          item.type === 'company_credit_card' ||
+          item.type === 'fuel_card'
+        ) {
+          return false;
+        }
+        if (item.type === 'customer') {
+          return hasPermission(METALS_CUSTOMERS_READ) || isAdmin;
+        }
+      }
       if (item.type === 'project' || item.type === 'opportunity') {
         return (
-          canAccessProjectLineMenu(permissionsSet, 'construction', isAdmin) ||
-          canAccessProjectLineMenu(permissionsSet, 'repairs', isAdmin)
+          hasConstructionProjectsOpportunitiesPermission(permissionsSet, isAdmin) ||
+          hasRmProjectsOpportunitiesPermission(permissionsSet, isAdmin)
         );
       }
       if (item.type === 'customer') return hasPermission('business:customers:read');
@@ -1091,7 +995,7 @@ export default function AppShell({ children }: PropsWithChildren){
       return true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [permissionsSet, isAdmin]);
+  }, [permissionsSet, isAdmin, product]);
 
   // Check if current route is a project or opportunity (construction or R&M)
   const projectIdMatch = location.pathname.match(/^\/projects\/([^\/]+)$/);
@@ -1265,17 +1169,24 @@ export default function AppShell({ children }: PropsWithChildren){
 
   const closeNav = () => setNavOpen(false);
 
+  const productScopedCategories = useMemo(
+    () => filterMenuCategoriesForProduct(effectiveMenuCategories, product),
+    [effectiveMenuCategories, product],
+  );
+
   const visibleMenuCategories = useMemo(() => {
-    return effectiveMenuCategories.filter((category) => {
+    return productScopedCategories.filter((category) => {
       if (category.id === 'services') {
-        if (!canAccessProjectLineMenu(permissionsSet, 'construction', isAdmin)) return false;
+        if (!hasConstructionProjectsOpportunitiesPermission(permissionsSet, isAdmin)) return false;
       }
       if (category.id === 'repairs_maintenance') {
-        if (!canAccessProjectLineMenu(permissionsSet, 'repairs', isAdmin)) return false;
+        if (!hasRmProjectsOpportunitiesPermission(permissionsSet, isAdmin)) return false;
       }
       if (category.id === 'business') {
         const hasBusinessAccess =
-          hasPermission('business:customers:read') ||
+          (product === 'metals'
+            ? hasPermission(METALS_CUSTOMERS_READ) || isAdmin
+            : hasPermission('business:customers:read')) ||
           hasPermission('inventory:suppliers:read') ||
           hasPermission('inventory:products:read');
         if (!hasBusinessAccess) return false;
@@ -1293,7 +1204,7 @@ export default function AppShell({ children }: PropsWithChildren){
       return visibleItems.length > 0;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [effectiveMenuCategories, permissionsSet, isAdmin, canAccessSettingsMenu]);
+  }, [productScopedCategories, permissionsSet, isAdmin, canAccessSettingsMenu, product]);
 
   const selectedNavCategory = useMemo(
     () => visibleMenuCategories.find((c) => c.id === activeNavCategoryId) ?? null,
@@ -1352,6 +1263,12 @@ export default function AppShell({ children }: PropsWithChildren){
     if (category.id === 'services') return '/business';
     if (category.id === 'repairs_maintenance') return '/rm-business';
     if (category.id === 'business') {
+      if (product === 'metals') {
+        if (hasPermission(METALS_CUSTOMERS_READ) || isAdmin) return '/metals/customers';
+        if (hasPermission('inventory:suppliers:read')) return '/inventory/suppliers';
+        if (hasPermission('inventory:products:read')) return '/inventory/products';
+        return category.items[0]?.path || '#';
+      }
       if (hasPermission('business:customers:read')) return '/customers';
       if (hasPermission('inventory:suppliers:read')) return '/inventory/suppliers';
       if (hasPermission('inventory:products:read')) return '/inventory/products';
@@ -1423,7 +1340,24 @@ export default function AppShell({ children }: PropsWithChildren){
 
   return (
     <div className="h-screen flex flex-col overflow-hidden">
-      <header className="relative z-[60] flex h-14 shrink-0 items-center gap-2 border-b border-gray-700/40 bg-gradient-to-r from-gray-700 via-gray-700 to-gray-800 px-3 text-white shadow-sm sm:gap-3 sm:px-5">
+      <header
+        className={uiCx(
+          'relative z-[60] flex h-14 shrink-0 items-center gap-2 px-3 text-white shadow-sm sm:gap-3 sm:px-5',
+          chrome.header,
+        )}
+      >
+        <Link
+          to="/home"
+          className="flex h-10 shrink-0 items-center rounded-lg px-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/40"
+          title={product === 'metals' ? 'Mack Kirk Metals' : 'Mack Kirk Hub'}
+          aria-label={product === 'metals' ? 'Mack Kirk Metals' : 'Mack Kirk Hub'}
+        >
+          <img
+            src={productLogoSrc(product)}
+            alt=""
+            className="h-8 w-auto max-w-[7.5rem] object-contain"
+          />
+        </Link>
         <div className="relative shrink-0" ref={navRootRef}>
           <button
             ref={menuButtonRef}
@@ -1458,7 +1392,10 @@ export default function AppShell({ children }: PropsWithChildren){
                 id="hub-nav-panel"
                 role="navigation"
                 aria-label="Main menu"
-                className="absolute left-0 top-full z-[56] mt-1.5 overflow-hidden rounded-xl border border-gray-700/50 text-white shadow-2xl shadow-black/40"
+                className={uiCx(
+                  'absolute left-0 top-full z-[56] mt-1.5 overflow-hidden rounded-xl text-white shadow-2xl shadow-black/40',
+                  chrome.menuBorder,
+                )}
                 style={{
                   width: navFit.width > 0 ? navFit.width * navFit.scale : undefined,
                   height: navFit.height > 0 ? navFit.height * navFit.scale : undefined,
@@ -1467,7 +1404,8 @@ export default function AppShell({ children }: PropsWithChildren){
                 <div
                   ref={navPanelInnerRef}
                   className={uiCx(
-                    'relative flex origin-top-left bg-gradient-to-b from-gray-800/95 via-gray-800 to-gray-900',
+                    'relative flex origin-top-left',
+                    chrome.menuPanel,
                     selectedNavCategory && categoryHasSubPanel(selectedNavCategory)
                       ? 'w-[min(36rem,calc(100vw-1.5rem))]'
                       : 'w-[min(17.5rem,calc(100vw-1.5rem))]',
@@ -1805,7 +1743,10 @@ export default function AppShell({ children }: PropsWithChildren){
           <div
             role="toolbar"
             aria-label="Hub shortcuts"
-            className="flex h-10 items-center gap-0.5 rounded-lg border border-white/10 bg-gradient-to-b from-gray-800/85 to-gray-900/90 p-0 shadow-inner"
+            className={uiCx(
+              'flex h-10 items-center gap-0.5 rounded-lg p-0 shadow-inner transition-colors duration-300',
+              chrome.shortcutsTray,
+            )}
           >
             <ChangelogNewsPanel />
             <span className="h-5 w-px shrink-0 self-center rounded-full bg-white/12" aria-hidden />
@@ -1852,6 +1793,41 @@ export default function AppShell({ children }: PropsWithChildren){
                   >
                     My reviews
                   </Link>
+                ) : null}
+                {canAccessMetals && !hubAccessBlocked ? (
+                  <>
+                    <div className="my-1 border-t border-gray-100" aria-hidden />
+                    <button
+                      type="button"
+                      role="menuitem"
+                      title={`Switch to ${productSwitchLabel(product)}`}
+                      aria-label={`Switch to ${productSwitchLabel(product)}`}
+                      onClick={() => {
+                        setOpen(false);
+                        switchProduct();
+                      }}
+                      className={uiCx(
+                        uiDropdown.option,
+                        'inline-flex w-full items-center justify-end gap-1.5 whitespace-nowrap !text-right',
+                      )}
+                    >
+                      <svg
+                        className="h-4 w-4 shrink-0 opacity-70"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                        aria-hidden
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"
+                        />
+                      </svg>
+                      <span>{productSwitchLabel(product)}</span>
+                    </button>
+                  </>
                 ) : null}
                 <div className="my-1 border-t border-gray-100" aria-hidden />
                 <button

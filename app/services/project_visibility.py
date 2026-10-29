@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from ..auth.security import (
     _has_permission,
     _has_project_feature_permission,
+    _project_line_perm_prefix,
     can_access_business_line,
 )
 from ..models.models import Project, ProjectMember, User
@@ -57,12 +58,16 @@ def user_has_any_project_section_permission(user: User, project: Project) -> boo
     True when the user may open the project detail UI.
 
     Membership / estimator / onsite lead / read:all only grant *candidate* visibility.
-    Listing and opening require at least one section/tab permission (files, reports, …).
-    Shift assignment never grants this.
+    Listing and opening require Projects & Opportunities main read/write, or at least one
+    section/tab permission (files, reports, …). Shift assignment never grants this.
     """
     if _is_admin(user):
         return True
     line = getattr(project, "business_line", None)
+    prefix = _project_line_perm_prefix(line)
+    # Main "Projects & Opportunities" View is enough to list/open (Overview).
+    if _has_permission(user, f"{prefix}:read") or _has_permission(user, f"{prefix}:write"):
+        return True
     for feature in PROJECT_SECTION_FEATURES:
         if _has_project_feature_permission(user, line, feature, "read"):
             return True

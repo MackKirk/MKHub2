@@ -2,13 +2,18 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessTokenIfNeeded } from '@/lib/api';
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { getClientStatusBadgeVariant } from '@/lib/clientUi';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, SlidersHorizontal, Users } from 'lucide-react';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import FilterBuilderModal from '@/components/FilterBuilder/FilterBuilderModal';
 import FilterChip from '@/components/FilterBuilder/FilterChip';
 import { FilterRule, FieldConfig } from '@/components/FilterBuilder/types';
 import NewCustomerModal from '@/components/NewCustomerModal';
+import {
+  customersListApi,
+  customersUiBase,
+  isMetalsCustomersPath,
+} from '@/lib/customerProductPaths';
 import {
   AppBadge,
   AppButton,
@@ -127,9 +132,13 @@ function convertParamsToRules(params: URLSearchParams): FilterRule[] {
 
 export default function Customers(){
   const nav = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [newCustomerModalOpen, setNewCustomerModalOpen] = useState(false);
+  const uiBase = customersUiBase(location.pathname);
+  const listApi = customersListApi(location.pathname);
+  const isMetals = isMetalsCustomersPath(location.pathname);
   
   // Get initial values from URL params
   const queryParam = searchParams.get('q') || '';
@@ -217,8 +226,8 @@ export default function Customers(){
   }, [searchParams, page, limit]);
   
   const { data, isLoading, refetch, isFetching } = useQuery({ 
-    queryKey:['clients', queryString], 
-    queryFn: ()=>api<ClientsResponse>('GET', `/clients?${queryString}`) 
+    queryKey:['clients', listApi, queryString], 
+    queryFn: ()=>api<ClientsResponse>('GET', `${listApi}?${queryString}`) 
   });
   
   const { data:settings, isLoading: settingsLoading } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
@@ -528,7 +537,7 @@ export default function Customers(){
                           <ClientRow
                             key={c.id}
                             c={c}
-                            onOpen={() => nav(`/customers/${encodeURIComponent(c.id)}`)}
+                            onOpen={() => nav(`${uiBase}/${encodeURIComponent(c.id)}`)}
                           />
                         ))}
                       </div>
@@ -551,13 +560,14 @@ export default function Customers(){
 
         {newCustomerModalOpen && (
           <NewCustomerModal
+            productScope={isMetals ? 'metals' : 'hub'}
             onClose={() => setNewCustomerModalOpen(false)}
             onSuccess={(customerId) => {
               setNewCustomerModalOpen(false);
               queryClient.invalidateQueries({ queryKey: ['clients'] });
               refetch();
               if (customerId) {
-                nav(`/customers/${encodeURIComponent(customerId)}`);
+                nav(`${uiBase}/${encodeURIComponent(customerId)}`);
               }
             }}
           />

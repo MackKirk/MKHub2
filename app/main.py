@@ -269,6 +269,9 @@ def create_app() -> FastAPI:
     app.include_router(files_router, dependencies=_hub)
     app.include_router(projects_router, dependencies=_hub)
     app.include_router(clients_router, dependencies=_hub)
+    from .routes.metals_clients import router as metals_clients_router
+
+    app.include_router(metals_clients_router, dependencies=_hub)
     # Hub customer portal (no staff hub lock / signature gate)
     app.include_router(portal_hub_auth_router)
     app.include_router(portal_hub_router)

@@ -37,13 +37,6 @@ export default function DocumentsTemplatesPage() {
         <AppCard>
           <AppEmptyState title="Loading…" description="Checking your permissions." />
         </AppCard>
-      ) : !canViewDocBg && !canViewDocTpl ? (
-        <AppCard>
-          <AppEmptyState
-            title="No access"
-            description="You do not have permission to view document templates. Ask an administrator to grant Document creator template permissions."
-          />
-        </AppCard>
       ) : (
         <div className={uiSpacing.pageStack}>
           {canViewDocBg ? (

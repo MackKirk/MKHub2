@@ -1,4 +1,5 @@
 import { withFileAccessToken } from '@/lib/api';
+import { effectiveLineTextAligns, lineAlignAt, type TextAlign } from '@/lib/documentTextAlign';
 import { useRef, useState, useCallback, useEffect, useLayoutEffect, Fragment, type RefObject, type DragEvent } from 'react';
 import type { DocElement, RichTextRun, DocumentSignerRoleDef } from '@/types/documentCreator';
 import {
@@ -598,11 +599,14 @@ function buildEditorHtml(
   elementFontSize: number,
   displayScale = 1,
   signerRoles: DocumentSignerRoleDef[] = [],
+  aligns: TextAlign[] = [],
+  defaultAlign: TextAlign = 'left',
 ): string {
   const scale = Number.isFinite(displayScale) && displayScale > 0 ? displayScale : 1;
   return lines
     .map((line, idx) => {
       const style = styles[idx];
+      const lineAlign = aligns[idx] ?? defaultAlign;
       const markerText = style ? escapeHtmlText(lineMarker(style, listOrdinalAt(styles, idx))) : '';
       const markerHtml = style
         ? `<span data-document-text-line-marker="true" contenteditable="false" style="margin-right:0.45em;min-width:1.35em;display:inline-block;text-align:right;user-select:none;-webkit-user-select:none">${markerText}</span>`
@@ -652,7 +656,9 @@ function buildEditorHtml(
             .join('') || '<br>';
         }
       }
-      const divStyle = style ? 'display:flex;align-items:flex-start' : '';
+      const divStyle = style
+        ? `display:flex;align-items:flex-start;text-align:${lineAlign}`
+        : `text-align:${lineAlign}`;
       return `<div ${TEXT_EDITOR_LINE_ATTR}="${idx}" ${TEXT_EDITOR_LINE_STYLE_ATTR}="${style ?? 'none'}" style="${divStyle}">${markerHtml}<span ${TEXT_EDITOR_LINE_TEXT_ATTR}="true" style="${style ? 'flex:1;min-width:0' : ''}">${textHtml}</span></div>`;
     })
     .join('');
@@ -927,6 +933,7 @@ function InlineTextEditor({
   const pendingFormatCaretRef = useRef<{ lineIndex: number; offset: number } | null>(null);
   const elementFontSizeRef = useRef(Math.max(8, Math.min(72, element.fontSize ?? 12)));
   const displayScaleRef = useRef(1);
+  const textAlignRef = useRef<TextAlign>(element.textAlign ?? 'left');
   const signerRolesRef = useRef(signerRoles);
   signerRolesRef.current = signerRoles;
   const activeLineRef = useRef(0);
@@ -969,7 +976,8 @@ function InlineTextEditor({
       fontFamily: element.fontFamily ?? 'Montserrat',
     };
     elementFontSizeRef.current = elementPropsRef.current.fontSize;
-  }, [element.fontWeight, element.fontStyle, element.fontSize, element.color, element.fontFamily]);
+    textAlignRef.current = element.textAlign ?? 'left';
+  }, [element.fontWeight, element.fontStyle, element.fontSize, element.color, element.fontFamily, element.textAlign]);
 
   // ── Undo stack ────────────────────────────────────────────────────────────
   type UndoEntry = {
@@ -1144,6 +1152,8 @@ function InlineTextEditor({
       elementFontSizeRef.current,
       displayScaleRef.current,
       signerRolesRef.current,
+      lineAlignsRef.current,
+      textAlignRef.current,
     );
     root.setAttribute(TEXT_EDITOR_ACTIVE_LINE_ATTR, String(activeLineRef.current));
     if (focusLineIdx != null) {
@@ -1171,9 +1181,11 @@ function InlineTextEditor({
     linesRef.current = contentLines(element.content);
     stylesRef.current = effectiveLineListStyles(element);
     runsRef.current = initRunsFromElement(element);
-    lineAlignsRef.current = element.lineTextAligns
-      ? [...element.lineTextAligns]
-      : linesRef.current.map(() => element.textAlign ?? 'left');
+    {
+      const resolved = effectiveLineTextAligns(element);
+      const fallback: TextAlign = element.textAlign ?? 'left';
+      lineAlignsRef.current = linesRef.current.map((_, i) => resolved?.[i] ?? fallback);
+    }
     elementFontSizeRef.current = Math.max(8, Math.min(72, element.fontSize ?? 12));
     activeLineRef.current = 0;
     pendingFormatRef.current = null;
@@ -3665,7 +3677,7 @@ export default function DocumentPreview({
                           >
                             {el.richLines.map((lineRuns, idx) => {
                               const listStyle = lineStyles[idx];
-                              const lineAlign = el.lineTextAligns?.[idx] ?? el.textAlign ?? 'left';
+                              const lineAlign = lineAlignAt(el, idx);
                               return (
                                 <div
                                   key={idx}
@@ -3717,14 +3729,16 @@ export default function DocumentPreview({
                         ) : lineStyles.some(Boolean) ? (
                           <div
                             className="block overflow-hidden whitespace-pre-wrap break-words p-1 min-h-[1em]"
-                            style={textStyle}
+                            style={{ ...textStyle, textAlign: undefined }}
                           >
                             {textLines.map((line, idx) => {
                               const style = lineStyles[idx];
+                              const lineAlign = lineAlignAt(el, idx);
                               return (
                                 <div
                                   key={idx}
                                   className={style ? 'flex min-h-[1.2em] items-start' : 'min-h-[1.2em]'}
+                                  style={{ textAlign: lineAlign }}
                                 >
                                   {style && (
                                     <span className="mr-[0.45em] inline-block min-w-[1.35em] shrink-0 select-none text-right">
@@ -3739,12 +3753,20 @@ export default function DocumentPreview({
                             })}
                           </div>
                         ) : (
-                          <span
+                          <div
                             className="block overflow-hidden whitespace-pre-wrap break-words p-1 min-h-[1em]"
-                            style={textStyle}
+                            style={{ ...textStyle, textAlign: undefined }}
                           >
-                            {el.content || 'Clique para editar'}
-                          </span>
+                            {textLines.length === 0 ? (
+                              <div style={{ textAlign: lineAlignAt(el, 0) }}>{'Clique para editar'}</div>
+                            ) : (
+                              textLines.map((line, idx) => (
+                                <div key={idx} className="min-h-[1.2em]" style={{ textAlign: lineAlignAt(el, idx) }}>
+                                  {line || '\u00a0'}
+                                </div>
+                              ))
+                            )}
+                          </div>
                         )}
                       </div>
                     );

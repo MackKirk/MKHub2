@@ -182,6 +182,35 @@ type DivisionStats = {
   subdivisions: Array<{ id: string; label: string; value: string }>;
 };
 
+type DivisionsStatsResponse = {
+  divisions: DivisionStats[];
+  unique_opportunities_count: number;
+  unique_projects_count: number;
+};
+
+function normalizeDivisionsStatsPayload(raw: unknown): DivisionsStatsResponse {
+  if (Array.isArray(raw)) {
+    return {
+      divisions: raw as DivisionStats[],
+      unique_opportunities_count: (raw as DivisionStats[]).reduce(
+        (sum, d) => sum + (d.opportunities_count || 0),
+        0,
+      ),
+      unique_projects_count: (raw as DivisionStats[]).reduce((sum, d) => sum + (d.projects_count || 0), 0),
+    };
+  }
+  if (raw && typeof raw === 'object') {
+    const o = raw as Partial<DivisionsStatsResponse>;
+    const divisions = Array.isArray(o.divisions) ? o.divisions : [];
+    return {
+      divisions,
+      unique_opportunities_count: Number(o.unique_opportunities_count) || 0,
+      unique_projects_count: Number(o.unique_projects_count) || 0,
+    };
+  }
+  return { divisions: [], unique_opportunities_count: 0, unique_projects_count: 0 };
+}
+
 type StatusValueData = {
   final_total_with_gst: number;
   profit: number;
@@ -620,7 +649,7 @@ export default function BusinessDashboard() {
   );
 
   // Get division statistics for Opportunities by Division
-  const { data: oppDivisionsStats, isLoading: oppDivisionsLoading } = useQuery<DivisionStats[]>({
+  const { data: oppDivisionsStats, isLoading: oppDivisionsLoading } = useQuery<DivisionsStatsResponse>({
     queryKey: ['business-divisions-stats-opp', businessLine, selectedDivisionId, relatedToMe, oppDivisionDateRange.date_from, oppDivisionDateRange.date_to, oppDivisionDisplayMode],
     queryFn: async () => {
       try {
@@ -632,17 +661,17 @@ export default function BusinessDashboard() {
         params.set('mode', oppDivisionDisplayMode);
         if (relatedToMe) params.set('related_to_me', 'true');
         const url = `/projects/business/divisions-stats${params.toString() ? '?' + params.toString() : ''}`;
-        return await api('GET', url);
+        return normalizeDivisionsStatsPayload(await api('GET', url));
       } catch (e) {
         console.warn('Failed to load division stats:', e);
-        return [];
+        return normalizeDivisionsStatsPayload(null);
       }
     },
     staleTime: 60_000,
   });
 
   // Get division statistics for Projects by Division
-  const { data: projDivisionsStats, isLoading: projDivisionsLoading } = useQuery<DivisionStats[]>({
+  const { data: projDivisionsStats, isLoading: projDivisionsLoading } = useQuery<DivisionsStatsResponse>({
     queryKey: ['business-divisions-stats-proj', businessLine, selectedDivisionId, relatedToMe, projDivisionDateRange.date_from, projDivisionDateRange.date_to, projDivisionDisplayMode],
     queryFn: async () => {
       try {
@@ -654,10 +683,10 @@ export default function BusinessDashboard() {
         params.set('mode', projDivisionDisplayMode);
         if (relatedToMe) params.set('related_to_me', 'true');
         const url = `/projects/business/divisions-stats${params.toString() ? '?' + params.toString() : ''}`;
-        return await api('GET', url);
+        return normalizeDivisionsStatsPayload(await api('GET', url));
       } catch (e) {
         console.warn('Failed to load division stats:', e);
-        return [];
+        return normalizeDivisionsStatsPayload(null);
       }
     },
     staleTime: 60_000,
@@ -701,8 +730,10 @@ export default function BusinessDashboard() {
       ) as ProjectDivision[],
     [divisionsData, businessLine]
   );
-  const oppStatsByDivision = Array.isArray(oppDivisionsStats) ? oppDivisionsStats : [];
-  const projStatsByDivision = Array.isArray(projDivisionsStats) ? projDivisionsStats : [];
+  const oppStatsByDivision = oppDivisionsStats?.divisions ?? [];
+  const projStatsByDivision = projDivisionsStats?.divisions ?? [];
+  const uniqueOppCount = oppDivisionsStats?.unique_opportunities_count ?? 0;
+  const uniqueProjCount = projDivisionsStats?.unique_projects_count ?? 0;
   
   // Get selected division name for breadcrumb and titles
   const selectedDivision = selectedDivisionId ? divisions.find(d => d.id === selectedDivisionId) : null;
@@ -933,9 +964,12 @@ export default function BusinessDashboard() {
                       ? divisionsForList.filter(d => (d.opportunities_value || 0) > 0)
                       : divisionsForList;
 
+                    // Slice angles use per-division sum; center label uses distinct opportunities.
                     const total = oppDivisionDisplayMode === 'value'
                       ? divisionsForChart.reduce((sum, d) => sum + (d.opportunities_value || 0), 0)
                       : divisionsForChart.reduce((sum, d) => sum + (d.opportunities_count || 0), 0);
+                    const centerTotal =
+                      oppDivisionDisplayMode === 'value' ? total : uniqueOppCount;
 
                     const hasChartData = total > 0 && divisionsForChart.length > 0;
 
@@ -1044,12 +1078,12 @@ export default function BusinessDashboard() {
                             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none px-2">
                               <div
                                 className="pointer-events-auto font-semibold text-gray-900 tabular-nums leading-tight whitespace-nowrap text-[clamp(0.75rem,2.4vw,1.125rem)]"
-                                title={oppDivisionDisplayMode === 'value' ? formatCurrency(total) : undefined}
+                                title={oppDivisionDisplayMode === 'value' ? formatCurrency(centerTotal) : undefined}
                               >
                                 {oppDivisionDisplayMode === 'value' ? (
-                                  formatCompactCurrency(total)
+                                  formatCompactCurrency(centerTotal)
                                 ) : (
-                                  <CountUp value={total} enabled={hasAnimated} />
+                                  <CountUp value={centerTotal} enabled={hasAnimated} />
                                 )}
                               </div>
                               <div className="text-sm font-semibold text-gray-600 mt-0.5 whitespace-nowrap">Opportunities</div>
@@ -1165,9 +1199,12 @@ export default function BusinessDashboard() {
                       ? divisionsForList.filter(d => (d.projects_value || 0) > 0)
                       : divisionsForList;
 
+                    // Slice angles use per-division sum; center label uses distinct projects.
                     const total = projDivisionDisplayMode === 'value'
                       ? divisionsForChart.reduce((sum, d) => sum + (d.projects_value || 0), 0)
                       : divisionsForChart.reduce((sum, d) => sum + (d.projects_count || 0), 0);
+                    const centerTotal =
+                      projDivisionDisplayMode === 'value' ? total : uniqueProjCount;
 
                     const hasChartData = total > 0 && divisionsForChart.length > 0;
 
@@ -1276,12 +1313,12 @@ export default function BusinessDashboard() {
                             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none px-2">
                               <div
                                 className="pointer-events-auto font-semibold text-gray-900 tabular-nums leading-tight whitespace-nowrap text-[clamp(0.75rem,2.4vw,1.125rem)]"
-                                title={projDivisionDisplayMode === 'value' ? formatCurrency(total) : undefined}
+                                title={projDivisionDisplayMode === 'value' ? formatCurrency(centerTotal) : undefined}
                               >
                                 {projDivisionDisplayMode === 'value' ? (
-                                  formatCompactCurrency(total)
+                                  formatCompactCurrency(centerTotal)
                                 ) : (
-                                  <CountUp value={total} enabled={hasAnimated} />
+                                  <CountUp value={centerTotal} enabled={hasAnimated} />
                                 )}
                               </div>
                               <div className="text-sm font-semibold text-gray-600 mt-0.5 whitespace-nowrap">Projects</div>

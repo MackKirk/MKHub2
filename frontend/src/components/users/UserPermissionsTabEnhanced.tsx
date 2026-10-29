@@ -435,6 +435,12 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
           return prev;
         }
       }
+      else if (key === 'metals:customers:write') {
+        if (newValue && !prev['metals:customers:read']) {
+          toast.error('This permission requires "View Metals customers" to be enabled first');
+          return prev;
+        }
+      }
       // Check dependencies for edit permissions
       else if (key === 'hr:users:edit:general') {
         if (newValue && (!prev['hr:users:read'] || !prev['hr:users:view:general'])) {
@@ -628,6 +634,9 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
         // If disabling View Quotations, disable Edit Quotations
         else if (key === 'sales:quotations:read') {
           newPerms['sales:quotations:write'] = false;
+        }
+        else if (key === 'metals:customers:read') {
+          newPerms['metals:customers:write'] = false;
         }
         // If disabling View Projects & Opportunities, disable Edit Projects & Opportunities and all view sub-permissions
         else if (key === 'business:projects:read') {
@@ -1302,6 +1311,18 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
                 });
               } else if (cat.category.name === 'work_orders' || cat.category.name === 'inspections') {
                 // Legacy categories — superseded by fleet:* keys in UI
+              } else if (cat.category.name === 'product') {
+                processedCategories.push({
+                  ...cat,
+                  category: {
+                    ...cat.category,
+                    label: 'Mack Kirk Metals access',
+                    description: 'Switch between Hub and the Mack Kirk Metals product workspace.',
+                  },
+                  permissions: (cat.permissions || []).filter(
+                    (p: any) => p.key === 'product:metals:access',
+                  ),
+                });
               } else {
                 processedCategories.push(cat);
               }
@@ -1396,10 +1417,22 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
                     </div>
                   </button>
                 
-                {isExpanded && subPermissions.length > 0 && (
+                {isExpanded &&
+                (subPermissions.length > 0 ||
+                  (cat.category.name === 'product' && !!areaAccessPerm)) && (
                   <div className={uiCx('border-t bg-gray-50/40 px-4 pb-4 pt-3', uiBorders.subtle)}>
                     {/* Special handling for HR category - group by area (users, attendance, community, etc.) */}
-                    {cat.category.name === 'human_resources' ? (
+                    {cat.category.name === 'product' ? (
+                      areaAccessPerm ? (
+                        <PermissionToggleLabel
+                          label={areaAccessPerm.label}
+                          description={areaAccessPerm.description}
+                          checked={!!permissions[areaAccessPerm.key]}
+                          disabled={!canEdit}
+                          onToggle={() => handleToggle(areaAccessPerm.key)}
+                        />
+                      ) : null
+                    ) : cat.category.name === 'human_resources' ? (
                       <HrPermissionsPanel
                         areaPerms={subPermissions}
                         permissions={permissions}

@@ -3,7 +3,8 @@ Build PDF from UserDocument: one page per entry in pages, each with template bac
 """
 import io
 import uuid
-from typing import Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Callable, Optional
 
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
@@ -244,6 +245,35 @@ def _text_align_to_reportlab(align: Optional[str]) -> int:
     if a == "right":
         return TA_RIGHT
     return TA_LEFT
+
+
+def _effective_line_text_aligns(
+    text_align: Optional[str],
+    line_text_aligns,
+    rich_lines,
+) -> list:
+    """
+    Resolve per-line aligns for PDF drawing.
+
+    Drops stale payloads where the element default is left but every line was
+    stored as right without richLines — the canvas UI historically ignored
+    lineTextAligns for plain text, so those captions looked left in the builder
+    and right in the PDF.
+    """
+    base = (text_align or "left").strip().lower() or "left"
+    if not isinstance(line_text_aligns, list) or not line_text_aligns:
+        return []
+    normalized = [
+        (str(a).strip().lower() if a is not None and str(a).strip() else base) or base
+        for a in line_text_aligns
+    ]
+    has_rich = isinstance(rich_lines, list) and len(rich_lines) > 0
+    if not has_rich and base == "left" and normalized and all(a == "right" for a in normalized):
+        return []
+    if normalized and all(a == base for a in normalized):
+        return []
+    return list(line_text_aligns)
+
 
 
 def _normalize_rich_lines_for_content(content: str, rich_lines: Optional[list]) -> list[list[dict]]:
@@ -680,6 +710,11 @@ def _wrap_segments_to_visual_rows(
         if current and current_w + tw > max_width + 0.5:
             flush()
         if not current:
+            # Soft-wrap continuation: drop leading whitespace so the next line starts
+            # on the word (CSS pre-wrap does this). Keep indent only at the start of
+            # this content line (no visual rows yet).
+            if rows and font_name != SIG_ATOM_FONT and (token or "").isspace():
+                continue
             current = [(font_name, size, color, token)]
             current_w = tw
         else:
@@ -1071,11 +1106,12 @@ def _get_storage_for_file(fo: FileObject) -> StorageProvider:
     return LocalStorageProvider()
 
 
-def _read_file_bytes(db: Session, file_id: uuid.UUID) -> Optional[bytes]:
-    """Read file content from storage. Returns None if not found or error."""
-    fo = db.query(FileObject).filter(FileObject.id == file_id).first()
-    if not fo:
-        return None
+ProgressCallback = Callable[[str, int, int], None]
+_PREFETCH_MAX_WORKERS = 6
+
+
+def _download_file_bytes_from_fo(fo: FileObject) -> Optional[bytes]:
+    """Download file bytes for a resolved FileObject (safe for worker threads)."""
     storage = _get_storage_for_file(fo)
     try:
         if isinstance(storage, LocalStorageProvider):
@@ -1094,7 +1130,139 @@ def _read_file_bytes(db: Session, file_id: uuid.UUID) -> Optional[bytes]:
         return None
 
 
-def build_pdf_bytes(db: Session, doc: UserDocument, canvas_width_px: Optional[float] = None) -> bytes:
+def _read_file_bytes(
+    db: Session,
+    file_id: uuid.UUID,
+    cache: Optional[dict[uuid.UUID, Optional[bytes]]] = None,
+) -> Optional[bytes]:
+    """Read file content from storage. Returns None if not found or error."""
+    if cache is not None and file_id in cache:
+        return cache[file_id]
+    fo = db.query(FileObject).filter(FileObject.id == file_id).first()
+    if not fo:
+        if cache is not None:
+            cache[file_id] = None
+        return None
+    data = _download_file_bytes_from_fo(fo)
+    if cache is not None:
+        cache[file_id] = data
+    return data
+
+
+def _collect_image_file_ids(db: Session, pages: list) -> list[uuid.UUID]:
+    """Unique image/background file ids referenced by the document pages."""
+    seen: set[uuid.UUID] = set()
+    ordered: list[uuid.UUID] = []
+
+    def _add(raw) -> None:
+        if not raw:
+            return
+        try:
+            fid = uuid.UUID(str(raw))
+        except (ValueError, TypeError):
+            return
+        if fid in seen:
+            return
+        seen.add(fid)
+        ordered.append(fid)
+
+    template_cache: dict[uuid.UUID, Optional[DocumentTemplate]] = {}
+
+    for page_data in pages:
+        if not isinstance(page_data, dict):
+            continue
+        template_id = page_data.get("template_id")
+        if template_id:
+            try:
+                tid = uuid.UUID(str(template_id))
+            except (ValueError, TypeError):
+                tid = None
+            if tid is not None:
+                if tid not in template_cache:
+                    template_cache[tid] = (
+                        db.query(DocumentTemplate).filter(DocumentTemplate.id == tid).first()
+                    )
+                tmpl = template_cache[tid]
+                if tmpl and tmpl.background_file_id:
+                    _add(tmpl.background_file_id)
+        elements = page_data.get("elements")
+        if not isinstance(elements, list):
+            continue
+        for el in elements:
+            if not isinstance(el, dict):
+                continue
+            if (el.get("type") or "text") != "image":
+                continue
+            _add(el.get("content"))
+    return ordered
+
+
+def _prefetch_image_bytes(
+    db: Session,
+    file_ids: list[uuid.UUID],
+    on_progress: Optional[ProgressCallback] = None,
+) -> dict[uuid.UUID, Optional[bytes]]:
+    """
+    Resolve FileObjects on the DB thread, then download blob/local bytes in parallel.
+    """
+    cache: dict[uuid.UUID, Optional[bytes]] = {}
+    total = len(file_ids)
+    if total == 0:
+        return cache
+
+    jobs: list[tuple[uuid.UUID, FileObject]] = []
+    for i, fid in enumerate(file_ids):
+        fo = db.query(FileObject).filter(FileObject.id == fid).first()
+        if not fo:
+            cache[fid] = None
+            if on_progress:
+                on_progress("loading_images", i + 1, total)
+            continue
+        jobs.append((fid, fo))
+
+    if not jobs:
+        return cache
+
+    done = total - len(jobs)
+    if on_progress and done:
+        on_progress("loading_images", done, total)
+
+    workers = min(_PREFETCH_MAX_WORKERS, len(jobs))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {
+            pool.submit(_download_file_bytes_from_fo, fo): fid for fid, fo in jobs
+        }
+        for fut in as_completed(futures):
+            fid = futures[fut]
+            try:
+                cache[fid] = fut.result()
+            except Exception:
+                cache[fid] = None
+            done += 1
+            if on_progress:
+                on_progress("loading_images", done, total)
+    return cache
+
+
+def _emit_progress(
+    on_progress: Optional[ProgressCallback],
+    phase: str,
+    current: int,
+    total: int,
+) -> None:
+    if on_progress:
+        try:
+            on_progress(phase, current, total)
+        except Exception:
+            pass
+
+
+def build_pdf_bytes(
+    db: Session,
+    doc: UserDocument,
+    canvas_width_px: Optional[float] = None,
+    on_progress: Optional[ProgressCallback] = None,
+) -> bytes:
     """Generate PDF bytes for the given UserDocument."""
     fonts_map = _get_fonts_map()
     buf = io.BytesIO()
@@ -1107,6 +1275,11 @@ def build_pdf_bytes(db: Session, doc: UserDocument, canvas_width_px: Optional[fl
 
     c = canvas.Canvas(buf, pagesize=A4)
     pages = doc.pages if isinstance(doc.pages, list) else []
+    image_cache: dict[uuid.UUID, Optional[bytes]] = {}
+    if pages:
+        file_ids = _collect_image_file_ids(db, pages)
+        image_cache = _prefetch_image_bytes(db, file_ids, on_progress=on_progress)
+
     if not pages:
         # Single empty page
         font_name, _ = fonts_map.get("Montserrat", ("Helvetica", "Helvetica-Bold"))
@@ -1115,7 +1288,9 @@ def build_pdf_bytes(db: Session, doc: UserDocument, canvas_width_px: Optional[fl
         c.drawString(72, page_height - 72, doc.title or "Document")
         c.showPage()
     else:
-        for page_data in pages:
+        page_total = len(pages)
+        for page_index, page_data in enumerate(pages):
+            _emit_progress(on_progress, "building_pages", page_index + 1, page_total)
             template_id = page_data.get("template_id") if isinstance(page_data, dict) else None
             areas_content = page_data.get("areas_content") if isinstance(page_data, dict) else {}
             if not isinstance(areas_content, dict):
@@ -1131,7 +1306,7 @@ def build_pdf_bytes(db: Session, doc: UserDocument, canvas_width_px: Optional[fl
 
             # Draw background
             if template and template.background_file_id:
-                img_bytes = _read_file_bytes(db, template.background_file_id)
+                img_bytes = _read_file_bytes(db, template.background_file_id, cache=image_cache)
                 if img_bytes:
                     try:
                         from PIL import Image as PILImage
@@ -1184,11 +1359,16 @@ def build_pdf_bytes(db: Session, doc: UserDocument, canvas_width_px: Optional[fl
                         vertical_align = el.get("verticalAlign") or el.get("vertical_align") or "top"
 
                         rich_lines = el.get("richLines") or el.get("rich_lines")
-                        line_text_aligns = el.get("lineTextAligns") or el.get("line_text_aligns") or []
+                        rich_lines_list = rich_lines if isinstance(rich_lines, list) else None
+                        line_text_aligns = _effective_line_text_aligns(
+                            text_align,
+                            el.get("lineTextAligns") or el.get("line_text_aligns") or [],
+                            rich_lines_list,
+                        )
                         _draw_text_in_box(
                             c,
                             content=str(content),
-                            rich_lines=rich_lines if isinstance(rich_lines, list) else None,
+                            rich_lines=rich_lines_list,
                             fonts_map=fonts_map,
                             box_x=x,
                             box_y=y,
@@ -1210,7 +1390,7 @@ def build_pdf_bytes(db: Session, doc: UserDocument, canvas_width_px: Optional[fl
                         try:
                             fid = uuid.UUID(content) if isinstance(content, str) else None
                             if fid:
-                                img_bytes = _read_file_bytes(db, fid)
+                                img_bytes = _read_file_bytes(db, fid, cache=image_cache)
                                 if img_bytes:
                                     from PIL import Image as PILImage
                                     pil_im = PILImage.open(io.BytesIO(img_bytes))

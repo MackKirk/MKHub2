@@ -7,7 +7,6 @@ import { isAdminRole } from '@/lib/projectLinePermissionKeys';
 import {
   canEditSignatureEditor,
   canManageSignatureRequests,
-  canViewSignatureEditor,
 } from '@/lib/documentHubPermissions';
 import PdfSignatureDocumentLibrary, {
   type PdfSignatureLibraryDoc,
@@ -16,7 +15,7 @@ import SendForSignatureModal from '@/components/SendForSignatureModal';
 import SignatureTemplateEditor, {
   type SigTemplatePayload,
 } from '@/components/SignatureTemplateEditor';
-import { AppEmptyState, AppPageHeader, AppCard, uiCx, uiSpacing } from '@/components/ui';
+import { AppPageHeader, uiCx, uiSpacing } from '@/components/ui';
 import { hasSigningFieldsInTemplate } from '@/types/documentCreator';
 
 type SigDoc = PdfSignatureLibraryDoc & { file_id?: string };
@@ -30,13 +29,12 @@ export default function SignatureEditorPage() {
   const isAdmin = isAdminRole(me?.roles);
   const perms = new Set((me?.permissions || []).map(String));
   const canEdit = canEditSignatureEditor(isAdmin, perms);
-  const canView = canViewSignatureEditor(isAdmin, perms);
   const canSend = canEdit || canManageSignatureRequests(isAdmin, perms);
 
   const { data: documents = [] } = useQuery({
     queryKey: ['document-signature-templates'],
     queryFn: () => api<SigDoc[]>('GET', '/document-signature-templates'),
-    enabled: isFetched && canView,
+    enabled: isFetched,
   });
 
   const [templateDoc, setTemplateDoc] = useState<SigDoc | null>(null);
@@ -73,48 +71,35 @@ export default function SignatureEditorPage() {
         icon={<PenLine className="h-4 w-4" />}
       />
 
-      {!isFetched ? (
-        <AppCard>
-          <AppEmptyState title="Loading…" description="Checking your permissions." />
-        </AppCard>
-      ) : !canView ? (
-        <AppCard>
-          <AppEmptyState
-            title="No access"
-            description="You do not have permission to view the Signature Editor."
-          />
-        </AppCard>
-      ) : (
-        <PdfSignatureDocumentLibrary
-          documents={documents}
-          fileCategoryId="document-signature-template"
-          thumbnailUrl={(id) => `/document-signature-templates/${id}/thumbnail`}
-          previewUrl={(id) => `/document-signature-templates/${id}/preview`}
-          readOnly={!canEdit}
-          sectionTitle="Signature documents (PDF)"
-          emptyTitle="No signature documents yet."
-          emptyDescription="Upload PDFs above to place signature fields."
-          onCreate={async (name, fileId) => {
-            await api('POST', '/document-signature-templates', { name, file_id: fileId });
-            await qc.invalidateQueries({ queryKey: ['document-signature-templates'] });
-          }}
-          onDelete={async (doc) => {
-            await api('DELETE', `/document-signature-templates/${doc.id}`);
-            await qc.invalidateQueries({ queryKey: ['document-signature-templates'] });
-          }}
-          onEditTemplate={(doc) => setTemplateDoc(doc)}
-          extraMenuItems={
-            canSend
-              ? [
-                  {
-                    label: 'Send for signature',
-                    onSelect: openSendForSignature,
-                  },
-                ]
-              : undefined
-          }
-        />
-      )}
+      <PdfSignatureDocumentLibrary
+        documents={documents}
+        fileCategoryId="document-signature-template"
+        thumbnailUrl={(id) => `/document-signature-templates/${id}/thumbnail`}
+        previewUrl={(id) => `/document-signature-templates/${id}/preview`}
+        readOnly={!canEdit}
+        sectionTitle="Signature documents (PDF)"
+        emptyTitle="No signature documents yet."
+        emptyDescription="Upload PDFs above to place signature fields."
+        onCreate={async (name, fileId) => {
+          await api('POST', '/document-signature-templates', { name, file_id: fileId });
+          await qc.invalidateQueries({ queryKey: ['document-signature-templates'] });
+        }}
+        onDelete={async (doc) => {
+          await api('DELETE', `/document-signature-templates/${doc.id}`);
+          await qc.invalidateQueries({ queryKey: ['document-signature-templates'] });
+        }}
+        onEditTemplate={(doc) => setTemplateDoc(doc)}
+        extraMenuItems={
+          canSend
+            ? [
+                {
+                  label: 'Send for signature',
+                  onSelect: openSendForSignature,
+                },
+              ]
+            : undefined
+        }
+      />
 
       {sendDoc ? (
         <SendForSignatureModal

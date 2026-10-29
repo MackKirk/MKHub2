@@ -7,12 +7,16 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Any
 
+import json
+import queue
+import threading
+
 from fastapi import APIRouter, Depends, HTTPException, Body, Query
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
-from ..db import get_db
+from ..db import SessionLocal, get_db
 from ..models.models import (
     DocumentTemplate,
     DocumentType,
@@ -1846,7 +1850,12 @@ def export_document_pdf(
     user: User = Depends(get_current_user),
     _=Depends(require_permissions(*_HR_USER_DOC_READ_PERMS)),
 ):
-    """Generate PDF for the document and return file."""
+    """
+    Generate PDF for the document and return file bytes directly.
+
+    Kept for mobile and external clients. Staff web UI prefers
+    POST /export-pdf/stream + GET /export-pdf/result/{token} (progress overlay).
+    """
     try:
         did = uuid.UUID(document_id)
     except ValueError:
@@ -1879,6 +1888,170 @@ def export_document_pdf(
         media_type="application/pdf",
         headers={
             "Content-Disposition": f'attachment; filename="{doc.title or "document"}.pdf"',
+        },
+    )
+
+
+def _sse_pack(event: str, payload: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(payload, separators=(',', ':'))}\n\n"
+
+
+@router.post("/documents/{document_id}/export-pdf/stream")
+def export_document_pdf_stream(
+    document_id: str,
+    body: Optional[ExportPdfOptions] = Body(default=None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions(*_HR_USER_DOC_READ_PERMS)),
+):
+    """
+    Stream PDF export progress as SSE, then a ready event with a short-lived download token.
+    Does not replace POST /export-pdf (still returns the PDF bytes directly).
+    """
+    try:
+        did = uuid.UUID(document_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid document id")
+    doc = db.query(UserDocument).filter(UserDocument.id == did).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    if not _can_access_document(user, doc, db, require_write=False):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    user_id = user.id
+    canvas_width_px = body.canvas_width_px if body else None
+    filename = f"{(doc.title or 'document').strip() or 'document'}.pdf"
+    progress_q: queue.Queue = queue.Queue()
+
+    def worker() -> None:
+        from ..document_creator.export_pdf_result_cache import store_export_pdf_result
+        from ..document_creator.pdf_builder import build_pdf_bytes
+
+        db2 = SessionLocal()
+        try:
+            doc2 = db2.query(UserDocument).filter(UserDocument.id == did).first()
+            if not doc2:
+                progress_q.put(("error", {"detail": "Document not found"}))
+                return
+
+            def on_progress(phase: str, current: int, total: int) -> None:
+                total_n = max(0, int(total))
+                current_n = max(0, int(current))
+                if total_n <= 0:
+                    pct = 0
+                else:
+                    pct = int(round(100.0 * min(current_n, total_n) / total_n))
+                # Weight: image load ~40%, pages ~60%
+                if phase == "loading_images":
+                    pct = int(round(pct * 0.4))
+                elif phase == "building_pages":
+                    pct = 40 + int(round(pct * 0.6))
+                progress_q.put(
+                    (
+                        "progress",
+                        {
+                            "phase": phase,
+                            "current": current_n,
+                            "total": total_n,
+                            "pct": max(0, min(100, pct)),
+                        },
+                    )
+                )
+
+            original_pages = doc2.pages
+            doc2.pages = _pages_with_project_tokens(
+                original_pages,
+                doc2.project_id,
+                db2,
+                when=doc2.created_at,
+                employee_user_id=getattr(doc2, "subject_user_id", None),
+            )
+            try:
+                pdf_bytes = build_pdf_bytes(
+                    db2,
+                    doc2,
+                    canvas_width_px=canvas_width_px,
+                    on_progress=on_progress,
+                )
+            finally:
+                doc2.pages = original_pages
+
+            token = store_export_pdf_result(
+                pdf_bytes=pdf_bytes,
+                user_id=user_id,
+                document_id=did,
+                filename=filename,
+            )
+            progress_q.put(("ready", {"token": token, "filename": filename}))
+        except Exception as e:
+            progress_q.put(("error", {"detail": f"PDF generation failed: {str(e)}"}))
+        finally:
+            db2.close()
+
+    def event_gen():
+        t = threading.Thread(target=worker, daemon=True)
+        t.start()
+        while True:
+            try:
+                kind, payload = progress_q.get(timeout=15.0)
+            except queue.Empty:
+                # Keep proxies from idle-closing the stream.
+                yield ": keepalive\n\n"
+                if not t.is_alive() and progress_q.empty():
+                    yield _sse_pack("error", {"detail": "PDF generation ended unexpectedly"})
+                    break
+                continue
+            if kind == "progress":
+                yield _sse_pack("progress", payload)
+            elif kind == "ready":
+                yield _sse_pack("ready", payload)
+                break
+            elif kind == "error":
+                yield _sse_pack("error", payload)
+                break
+        t.join(timeout=5.0)
+
+    return StreamingResponse(
+        event_gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.get("/documents/{document_id}/export-pdf/result/{token}")
+def export_document_pdf_result(
+    document_id: str,
+    token: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions(*_HR_USER_DOC_READ_PERMS)),
+):
+    """One-shot download of a PDF produced by export-pdf/stream."""
+    from ..document_creator.export_pdf_result_cache import take_export_pdf_result
+
+    try:
+        did = uuid.UUID(document_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid document id")
+    doc = db.query(UserDocument).filter(UserDocument.id == did).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    if not _can_access_document(user, doc, db, require_write=False):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    item = take_export_pdf_result(str(token or "").strip(), user_id=user.id, document_id=did)
+    if not item:
+        raise HTTPException(status_code=404, detail="Export result not found or expired")
+
+    return Response(
+        content=item.pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{item.filename}"',
         },
     )
 

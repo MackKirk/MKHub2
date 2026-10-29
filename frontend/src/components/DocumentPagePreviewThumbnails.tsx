@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { withFileAccessToken } from '@/lib/api';
-import type { DocumentPage, DocElement, RichTextRun } from '@/types/documentCreator';
+import { lineAlignAt } from '@/lib/documentTextAlign';
+import type { DocumentPage, DocElement, PageMargins, RichTextRun } from '@/types/documentCreator';
 import { isInlineAtomRun } from '@/types/documentCreator';
 import { docElementRotationDeg, docElementRotateStyle } from '@/utils/documentElementGeometry';
 
@@ -8,7 +9,7 @@ const A4_ASPECT = 210 / 297;
 const DEFAULT_THUMB_WIDTH_PX = 48;
 const REFERENCE_CANVAS_WIDTH_PX = 910;
 
-type Template = { id: string; name?: string; background_file_id?: string };
+type Template = { id: string; name?: string; background_file_id?: string; margins?: PageMargins | null };
 
 function contentLines(content: string | null | undefined): string[] {
   return (content ?? '').replace(/\r\n/g, '\n').split('\n');
@@ -57,7 +58,7 @@ function PreviewTextElement({ el }: { el: DocElement }) {
   return (
     <div className="h-full w-full overflow-hidden" style={{ display: 'flex', flexDirection: 'column', justifyContent }}>
       {lineRuns.map((runs, lineIdx) => {
-        const lineAlign = el.lineTextAligns?.[lineIdx] ?? el.textAlign ?? 'left';
+        const lineAlign = lineAlignAt(el, lineIdx);
         return (
           <div
             key={lineIdx}
@@ -89,24 +90,39 @@ function PreviewTextElement({ el }: { el: DocElement }) {
   );
 }
 
-function ScaledPagePreview({
-  page,
-  backgroundUrl,
-  thumbWidthPx,
-  fillWidth = false,
-  className,
-}: {
+export type ScaledPagePreviewProps = {
   page: DocumentPage;
   backgroundUrl: string | null;
-  thumbWidthPx: number;
+  thumbWidthPx?: number;
   fillWidth?: boolean;
   className?: string;
-}) {
+  /** When set, fills parent instead of owning aspect-ratio (e.g. Pages strip button). */
+  fitParent?: boolean;
+  /** Optional overlays drawn on the outer (unscaled) container — e.g. margin bands. */
+  overlays?: ReactNode;
+  /** Custom block element chrome; defaults to amber protected-zone look. */
+  renderBlock?: (el: DocElement) => ReactNode;
+};
+
+/**
+ * Page thumbnail that layouts at reference canvas size then CSS-scales.
+ * Matches builder text wrapping (unlike clamping font-size on a tiny box).
+ */
+export function ScaledPagePreview({
+  page,
+  backgroundUrl,
+  thumbWidthPx = DEFAULT_THUMB_WIDTH_PX,
+  fillWidth = false,
+  className,
+  fitParent = false,
+  overlays,
+  renderBlock,
+}: ScaledPagePreviewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [measuredWidth, setMeasuredWidth] = useState(thumbWidthPx);
 
   useEffect(() => {
-    if (!fillWidth) {
+    if (!fillWidth && !fitParent) {
       setMeasuredWidth(thumbWidthPx);
       return;
     }
@@ -121,7 +137,7 @@ function ScaledPagePreview({
     const ro = new ResizeObserver(update);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [fillWidth, thumbWidthPx]);
+  }, [fillWidth, fitParent, thumbWidthPx]);
 
   const scale = measuredWidth / REFERENCE_CANVAS_WIDTH_PX;
   const refHeight = REFERENCE_CANVAS_WIDTH_PX / A4_ASPECT;
@@ -130,11 +146,17 @@ function ScaledPagePreview({
   return (
     <div
       ref={containerRef}
-      className={`relative overflow-hidden bg-white ${fillWidth ? 'w-full' : 'flex-shrink-0'} ${className ?? ''}`}
-      style={{
-        aspectRatio: `${A4_ASPECT}`,
-        ...(fillWidth ? {} : { width: thumbWidthPx }),
-      }}
+      className={`relative overflow-hidden bg-white ${
+        fitParent ? 'h-full w-full' : fillWidth ? 'w-full' : 'flex-shrink-0'
+      } ${className ?? ''}`}
+      style={
+        fitParent
+          ? undefined
+          : {
+              aspectRatio: `${A4_ASPECT}`,
+              ...(fillWidth ? {} : { width: thumbWidthPx }),
+            }
+      }
     >
       <div
         className="pointer-events-none absolute left-0 top-0"
@@ -152,7 +174,7 @@ function ScaledPagePreview({
             className="pointer-events-none absolute inset-0 h-full w-full object-cover"
           />
         ) : (
-          <div className="pointer-events-none absolute inset-0 bg-gray-100" />
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white to-slate-100" />
         )}
         {elements.map((el: DocElement) => {
           const x = (el.x_pct ?? 10) / 100;
@@ -174,13 +196,17 @@ function ScaledPagePreview({
               {el.type === 'text' ? (
                 <PreviewTextElement el={el} />
               ) : el.type === 'block' ? (
-                <div
-                  className="h-full w-full rounded-sm border border-amber-600/40 bg-amber-500/20"
-                  style={{
-                    backgroundImage:
-                      'repeating-linear-gradient(-45deg, transparent, transparent 2px, rgba(245,158,11,0.15) 2px, rgba(245,158,11,0.15) 4px)',
-                  }}
-                />
+                renderBlock ? (
+                  renderBlock(el)
+                ) : (
+                  <div
+                    className="h-full w-full rounded-sm border border-amber-600/40 bg-amber-500/20"
+                    style={{
+                      backgroundImage:
+                        'repeating-linear-gradient(-45deg, transparent, transparent 2px, rgba(245,158,11,0.15) 2px, rgba(245,158,11,0.15) 4px)',
+                    }}
+                  />
+                )
               ) : el.type === 'initials' || el.type === 'date' ? (
                 <div className="h-full w-full rounded-sm border border-sky-500/50 bg-sky-400/30" />
               ) : el.content ? (
@@ -199,6 +225,7 @@ function ScaledPagePreview({
           );
         })}
       </div>
+      {overlays}
     </div>
   );
 }
@@ -316,4 +343,4 @@ export function DocumentPagePreviewGrid({
   );
 }
 
-export { A4_ASPECT, ScaledPagePreview };
+export { A4_ASPECT };

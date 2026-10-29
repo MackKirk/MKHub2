@@ -2,6 +2,7 @@ import { useRef } from 'react';
 import { useConfirm } from '@/components/ConfirmProvider';
 import type { DocElement } from '@/types/documentCreator';
 import { DOCUMENT_EDITOR_FONTS } from '@/types/documentCreator';
+import { applyUniformTextAlign } from '@/lib/documentTextAlign';
 
 type ElementOptionsPopoverProps = {
   element: DocElement;
@@ -253,7 +254,7 @@ export function ElementOptionsPopover({
             <div className="flex gap-1 p-0.5 rounded bg-gray-100">
               <button
                 type="button"
-                onClick={() => onUpdate(id, (el) => ({ ...el, textAlign: 'left' }))}
+                onClick={() => onUpdate(id, (el) => applyUniformTextAlign(el, 'left'))}
                 className={`flex-1 py-2 rounded flex items-center justify-center ${(element.textAlign ?? 'left') === 'left' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'}`}
                 title="Align left"
               >
@@ -261,7 +262,7 @@ export function ElementOptionsPopover({
               </button>
               <button
                 type="button"
-                onClick={() => onUpdate(id, (el) => ({ ...el, textAlign: 'center' }))}
+                onClick={() => onUpdate(id, (el) => applyUniformTextAlign(el, 'center'))}
                 className={`flex-1 py-2 rounded flex items-center justify-center ${(element.textAlign ?? 'left') === 'center' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'}`}
                 title="Align center"
               >
@@ -269,7 +270,7 @@ export function ElementOptionsPopover({
               </button>
               <button
                 type="button"
-                onClick={() => onUpdate(id, (el) => ({ ...el, textAlign: 'right' }))}
+                onClick={() => onUpdate(id, (el) => applyUniformTextAlign(el, 'right'))}
                 className={`flex-1 py-2 rounded flex items-center justify-center ${(element.textAlign ?? 'left') === 'right' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'}`}
                 title="Align right"
               >

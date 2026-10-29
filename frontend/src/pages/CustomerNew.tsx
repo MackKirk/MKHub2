@@ -542,7 +542,11 @@ export default function CustomerNew(){
                       }
                     }
                   });
-                  const created:any = await api('POST','/clients', payload);
+                  const created:any = await api(
+                    'POST',
+                    window.location.pathname.startsWith('/metals') ? '/metals/clients' : '/clients',
+                    payload,
+                  );
                   if (!created?.id){ toast.error('Create failed'); setIsCreating(false); return; }
                   if (contacts.length){
                     for (const c of contacts){
@@ -562,7 +566,9 @@ export default function CustomerNew(){
                     }
                   }
                   toast.success('Customer created');
-                  nav(`/customers/${encodeURIComponent(String(created.id))}`);
+                  nav(
+                    `${window.location.pathname.startsWith('/metals') ? '/metals/customers' : '/customers'}/${encodeURIComponent(String(created.id))}`,
+                  );
                   // Don't reset isCreating here - let the component unmount handle it
                   return; // Exit early to prevent finally from resetting state
                 }catch(_e: any){ 

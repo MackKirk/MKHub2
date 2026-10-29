@@ -2,6 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { useProduct } from '@/lib/ProductProvider';
+import { productChrome } from '@/lib/productScope';
+import { uiCx } from '@/components/ui';
 
 export type GlobalSearchItem = {
   type: string;
@@ -69,6 +72,8 @@ export default function GlobalSearch({
   compactToggle?: boolean;
 }) {
   const nav = useNavigate();
+  const { product } = useProduct();
+  const chrome = productChrome(product);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const isLg = useMinWidthLg();
@@ -328,7 +333,10 @@ export default function GlobalSearch({
         <button
           type="button"
           onClick={openSearch}
-          className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-gray-900/45 text-gray-300 shadow-inner transition-colors hover:bg-gray-900/60 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/40"
+          className={uiCx(
+            'flex h-10 w-10 items-center justify-center rounded-lg shadow-inner transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/40',
+            chrome.searchToggle,
+          )}
           aria-label="Open search"
           title="Search (Ctrl+K)"
         >
@@ -369,7 +377,10 @@ export default function GlobalSearch({
         }}
         onKeyDown={onInputKeyDown}
         placeholder={placeholder}
-        className="h-10 w-full rounded-lg border border-white/10 bg-gray-900/45 py-0 pl-10 pr-3 text-sm text-gray-100 placeholder-gray-400 shadow-inner transition-all duration-200 focus:border-brand-red/50 focus:bg-gray-900/60 focus:outline-none focus:ring-2 focus:ring-brand-red/40"
+        className={uiCx(
+          'h-10 w-full rounded-lg py-0 pl-10 pr-3 text-sm text-gray-100 placeholder-gray-400 shadow-inner transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-brand-red/40',
+          chrome.searchField,
+        )}
       />
 
       {open && (

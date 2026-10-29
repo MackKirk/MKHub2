@@ -86,7 +86,7 @@ export const PROJECT_SECTION_FEATURES = [
   'safety',
 ] as const;
 
-/** True if the user can open project detail (at least one section/tab permission). */
+/** True if the user can open project detail (main Projects & Opportunities or a section tab). */
 export function hasAnyProjectSectionPermission(
   permissions: Set<string> | Record<string, boolean>,
   businessLine: string | undefined | null,
@@ -94,6 +94,16 @@ export function hasAnyProjectSectionPermission(
   pathname?: string
 ): boolean {
   if (isAdmin) return true;
+  const line = projectLineFromBusinessLine(resolveProjectBusinessLine(businessLine, pathname));
+  const granted =
+    permissions instanceof Set
+      ? permissions
+      : new Set(
+          Object.entries(permissions as Record<string, boolean>)
+            .filter(([, v]) => !!v)
+            .map(([k]) => k),
+        );
+  if (hasProjectsOpportunitiesPermission(granted, line, false)) return true;
   return PROJECT_SECTION_FEATURES.some((feature) =>
     hasProjectFeaturePermission(permissions, businessLine, feature, false, pathname)
   );
@@ -471,6 +481,39 @@ export function canAccessProjectLineMenu(
     if (isLineMenuPermissionKey(String(perm), line)) return true;
   }
   return false;
+}
+
+/**
+ * "Projects & Opportunities" main row for a business line (not residual section tabs).
+ * Same rule for Production and R&M: only the line-scoped :read / :write keys.
+ * Legacy business:projects:* alone must not keep the Production menu visible.
+ */
+export function hasProjectsOpportunitiesPermission(
+  permissions: Set<string> | string[],
+  line: ProjectLine,
+  isAdmin = false
+): boolean {
+  if (isAdmin) return true;
+  const set =
+    permissions instanceof Set ? permissions : new Set(Array.from(permissions).map(String));
+  const prefix = PROJECT_LINE_PREFIX[line];
+  return set.has(`${prefix}:read`) || set.has(`${prefix}:write`);
+}
+
+/** R&M "Projects & Opportunities" — Warranty Review + R&M menu. */
+export function hasRmProjectsOpportunitiesPermission(
+  permissions: Set<string> | string[],
+  isAdmin = false
+): boolean {
+  return hasProjectsOpportunitiesPermission(permissions, 'repairs', isAdmin);
+}
+
+/** Production (Construction) "Projects & Opportunities" — Production menu. */
+export function hasConstructionProjectsOpportunitiesPermission(
+  permissions: Set<string> | string[],
+  isAdmin = false
+): boolean {
+  return hasProjectsOpportunitiesPermission(permissions, 'construction', isAdmin);
 }
 
 function normCategoryList(v: string[] | null | undefined): string[] | null {

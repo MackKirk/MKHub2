@@ -2,8 +2,9 @@ import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileText } from 'lucide-react';
-import { api, getToken } from '@/lib/api';
+import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
+import { useDocumentExportPdf } from '@/lib/useDocumentExportPdf';
 import { useConfirm } from '@/components/ConfirmProvider';
 import DocumentEditor from '@/components/DocumentEditor';
 import {
@@ -21,10 +22,7 @@ import {
   userDocumentBuilderPath,
   type ProjectRouteMeta,
 } from '@/lib/documentCreateScope';
-import {
-  canEditDocumentBuilder,
-  canViewDocumentBuilder,
-} from '@/lib/documentHubPermissions';
+import { canEditDocumentBuilder } from '@/lib/documentHubPermissions';
 import {
   documentEditorPath,
   filterDocuments,
@@ -53,7 +51,7 @@ export default function DocumentCreator() {
   const confirm = useConfirm();
   const [isSaving, setIsSaving] = useState(false);
   const [showWizard, setShowWizard] = useState(false);
-  const [exportingId, setExportingId] = useState<string | null>(null);
+  const { exportingId, exportPdf, ExportOverlay } = useDocumentExportPdf();
   const [promptRenameOnOpen, setPromptRenameOnOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<DocumentHubStatusFilter>('all');
@@ -83,19 +81,18 @@ export default function DocumentCreator() {
   });
   const isAdmin = isAdminRole(me?.roles);
   const permSet = useMemo(() => new Set((me?.permissions || []).map(String)), [me?.permissions]);
-  const canView = canViewDocumentBuilder(isAdmin, permSet);
   const canEdit = canEditDocumentBuilder(isAdmin, permSet);
 
   const { data: documents = [], isLoading: documentsLoading } = useQuery({
     queryKey: ['document-creator-documents'],
     queryFn: () => api<DocumentHubSummary[]>('GET', '/document-creator/documents'),
-    enabled: meFetched && canView,
+    enabled: meFetched,
   });
 
   const { data: templates = [] } = useQuery({
     queryKey: ['document-creator-templates'],
     queryFn: () => api<Template[]>('GET', '/document-creator/templates'),
-    enabled: meFetched && canView && !id,
+    enabled: meFetched && !id,
   });
 
   const visibleDocuments = useMemo(() => {
@@ -136,29 +133,12 @@ export default function DocumentCreator() {
     [canEdit, confirm, queryClient, id, navigate],
   );
 
-  const handleExportPdf = useCallback(async (doc: DocumentHubSummary) => {
-    setExportingId(doc.id);
-    try {
-      const token = getToken();
-      const r = await fetch(`/document-creator/documents/${doc.id}/export-pdf`, {
-        method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!r.ok) throw new Error(r.statusText || 'Export failed');
-      const blob = await r.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${doc.title || 'document'}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
-      toast.success('PDF downloaded.');
-    } catch (e: any) {
-      toast.error(e?.message || 'Failed to export PDF.');
-    } finally {
-      setExportingId(null);
-    }
-  }, []);
+  const handleExportPdf = useCallback(
+    async (doc: DocumentHubSummary) => {
+      await exportPdf(doc.id, { filename: `${doc.title || 'document'}.pdf`, mode: 'download' });
+    },
+    [exportPdf],
+  );
 
   const handleRenameSave = useCallback(
     async (title: string) => {
@@ -228,31 +208,6 @@ export default function DocumentCreator() {
     [canEdit, navigate, queryClient],
   );
 
-  if (!meFetched) {
-    return (
-      <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
-        <AppPageHeader title="Document Builder" icon={<FileText className="h-4 w-4" />} />
-        <AppCard>
-          <AppEmptyState title="Loading…" description="Checking your permissions." />
-        </AppCard>
-      </div>
-    );
-  }
-
-  if (!canView) {
-    return (
-      <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
-        <AppPageHeader title="Document Builder" icon={<FileText className="h-4 w-4" />} />
-        <AppCard>
-          <AppEmptyState
-            title="No access"
-            description="You do not have permission to view the Document Builder."
-          />
-        </AppCard>
-      </div>
-    );
-  }
-
   if (!id) {
     const docCountLabel =
       documents.length === 1 ? '1 document' : `${documents.length} documents`;
@@ -268,6 +223,7 @@ export default function DocumentCreator() {
 
     return (
       <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
+        {ExportOverlay}
         <AppPageHeader
           title="Document Builder"
           subtitle={`Create, edit and manage your documents · ${docCountLabel}`}
