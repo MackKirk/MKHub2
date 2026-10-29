@@ -3,6 +3,24 @@ export function earliestTimeOffDate(from = new Date()): string {
   return formatDateLocal(new Date(from.getTime() + 24 * 60 * 60 * 1000));
 }
 
+/** Local calendar date at noon, as an ISO timestamp for the API. */
+export function localDateInputToIso(dateStr: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr.trim());
+  if (!match) throw new Error("Use a date like 2026-04-15.");
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(year, month - 1, day, 12, 0, 0, 0);
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    throw new Error("Use a date like 2026-04-15.");
+  }
+  return date.toISOString();
+}
+
 /** YYYY-MM-DD in local timezone */
 export function formatDateLocal(date: Date): string {
   const y = date.getFullYear();

@@ -1,5 +1,7 @@
 import React from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { MKButton } from "../MKButton";
 import { MKCard } from "../MKCard";
 import { MKBadge } from "../MKBadge";
 import { INSPECTION_RESULT_LABELS } from "../../lib/fleetLabels";
@@ -12,11 +14,17 @@ import { typography } from "../../theme/typography";
 interface MKFleetAssetInspectionsSectionProps {
   items: FleetInspection[];
   loading: boolean;
+  canSchedule?: boolean;
+  onSchedule?: () => void;
+  onOpen?: (inspection: FleetInspection) => void;
 }
 
 export const MKFleetAssetInspectionsSection: React.FC<MKFleetAssetInspectionsSectionProps> = ({
   items,
-  loading
+  loading,
+  canSchedule = false,
+  onSchedule,
+  onOpen
 }) => {
   if (loading) {
     return (
@@ -28,16 +36,26 @@ export const MKFleetAssetInspectionsSection: React.FC<MKFleetAssetInspectionsSec
 
   if (items.length === 0) {
     return (
-      <MKCard style={styles.emptyCard} elevated>
-        <Text style={styles.emptyText}>No inspections recorded for this asset.</Text>
-      </MKCard>
+      <View style={styles.list}>
+        {canSchedule && onSchedule ? (
+          <MKButton title="Schedule inspection" onPress={onSchedule} />
+        ) : null}
+        <MKCard style={styles.emptyCard} elevated>
+          <Text style={styles.emptyText}>No inspections recorded for this asset.</Text>
+        </MKCard>
+      </View>
     );
   }
 
   return (
     <View style={styles.list}>
-      {items.map((item) => (
-        <MKCard key={item.id} style={styles.card} elevated>
+      {canSchedule && onSchedule ? (
+        <MKButton title="Schedule inspection" onPress={onSchedule} />
+      ) : null}
+      {items.map((item) => {
+        const canOpen = Boolean(item.inspection_schedule_id && onOpen);
+        const card = (
+          <MKCard style={styles.card} elevated>
           <View style={styles.cardHeader}>
             <Text style={styles.cardTitle}>
               {item.inspection_type?.replace(/_/g, " ") || "Inspection"}
@@ -51,8 +69,21 @@ export const MKFleetAssetInspectionsSection: React.FC<MKFleetAssetInspectionsSec
             <Text style={styles.meta}>Inspector: {item.inspector_name}</Text>
           ) : null}
           {item.notes ? <Text style={styles.detail}>{item.notes}</Text> : null}
+          {canOpen ? (
+            <View style={styles.openRow}>
+              <Text style={styles.openText}>Open inspection</Text>
+              <Ionicons name="chevron-forward" size={16} color={colors.homeAccent} />
+            </View>
+          ) : null}
         </MKCard>
-      ))}
+        );
+        if (!canOpen || !onOpen) return <View key={item.id}>{card}</View>;
+        return (
+          <TouchableOpacity key={item.id} activeOpacity={0.75} onPress={() => onOpen(item)}>
+            {card}
+          </TouchableOpacity>
+        );
+      })}
     </View>
   );
 };
@@ -68,6 +99,16 @@ const styles = StyleSheet.create({
   card: {
     gap: spacing.xs,
     padding: spacing.md
+  },
+  openRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 4
+  },
+  openText: {
+    ...typography.buttonSmall,
+    color: colors.homeAccent
   },
   cardHeader: {
     flexDirection: "row",

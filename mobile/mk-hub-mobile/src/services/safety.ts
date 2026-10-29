@@ -154,6 +154,36 @@ export async function updateSafetyFollowUp(
   return response.data;
 }
 
+export type SafetyInspectionListRow = {
+  id: string;
+  project_id: string;
+  project_name?: string;
+  project_code?: string;
+  inspection_date?: string | null;
+  status?: string;
+  template_name?: string | null;
+  assigned_user_id?: string | null;
+};
+
+export async function listAssignedSafetyInspections(
+  userId: string
+): Promise<SafetyInspectionListRow[]> {
+  const response = await api.get<SafetyInspectionListRow[]>("/safety/inspections", {
+    params: {
+      assigned_to_me: true,
+      limit: 100,
+      sort: "inspection_date",
+      dir: "desc"
+    }
+  });
+  const rows = Array.isArray(response.data) ? response.data : [];
+  return rows.filter((row) => {
+    if (row.assigned_user_id && row.assigned_user_id !== userId) return false;
+    const status = (row.status || "draft").toLowerCase();
+    return status === "draft" || status === "pending_signatures";
+  });
+}
+
 export async function listSafetyFollowUps(params?: {
   status?: string;
   assigned_to_me?: boolean;

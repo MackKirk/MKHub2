@@ -9,7 +9,7 @@ export type TimeOffMode = "vacation" | "sick";
 
 export type HomeStackParamList = {
   HomeMain: undefined;
-  Schedule: undefined;
+  Schedule: { focusDate?: string; openedAt?: number } | undefined;
   TimeOff: { mode?: TimeOffMode };
   ProjectsList: {
     listKind: ProjectListKind;
@@ -22,7 +22,7 @@ export type HomeStackParamList = {
     listKind: FleetListKind;
     title: string;
   };
-  FleetWorkOrders: undefined;
+  FleetWorkOrders: { entityType?: "fleet" | "equipment" } | undefined;
   FleetSchedule: undefined;
   FleetInspections: undefined;
   CompanyCreditCards: undefined;

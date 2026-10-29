@@ -104,7 +104,14 @@ function currentMenuItemId(): string | null {
   }
   if (route.name === "FleetAssetsList") {
     const params = route.params as { listKind?: string } | undefined;
-    return params?.listKind === "equipment" ? "company-equipment" : "fleet-vehicles";
+    if (params?.listKind === "equipment") return "company-equipment";
+    if (params?.listKind === "heavy_machinery") return "fleet-heavy-machinery";
+    if (params?.listKind === "other") return "fleet-other-assets";
+    return "fleet-vehicles";
+  }
+  if (route.name === "FleetWorkOrders") {
+    const params = route.params as { entityType?: string } | undefined;
+    return params?.entityType === "equipment" ? "equipment-work-orders" : "fleet-work-orders";
   }
   return ROUTE_TO_ITEM[route.name] ?? null;
 }

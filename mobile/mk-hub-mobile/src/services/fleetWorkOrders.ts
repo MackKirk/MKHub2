@@ -1,5 +1,6 @@
 import { api } from "./api";
 import type {
+  FleetHistoryItem,
   InspectionSchedule,
   WorkOrder,
   WorkOrderActivityEntry,
@@ -147,6 +148,29 @@ export async function getWorkOrdersCalendar(params?: {
     params
   });
   return response.data;
+}
+
+export async function createInspectionSchedule(body: {
+  fleet_asset_id: string;
+  scheduled_at: string;
+  urgency?: string;
+  category?: string;
+  notes?: string | null;
+}): Promise<InspectionSchedule> {
+  const response = await api.post<InspectionSchedule>("/fleet/inspection-schedules", body);
+  return response.data;
+}
+
+export async function getEquipmentWorkOrders(equipmentId: string): Promise<WorkOrder[]> {
+  const response = await api.get<WorkOrder[]>(`/fleet/equipment/${equipmentId}/work-orders`);
+  return response.data;
+}
+
+export async function getEquipmentHistory(equipmentId: string): Promise<FleetHistoryItem[]> {
+  const response = await api.get<{ items?: FleetHistoryItem[] }>(
+    `/fleet/equipment/${equipmentId}/history`
+  );
+  return Array.isArray(response.data?.items) ? response.data.items : [];
 }
 
 export async function listInspectionSchedules(params?: {

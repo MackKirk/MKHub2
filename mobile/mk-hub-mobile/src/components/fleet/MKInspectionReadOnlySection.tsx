@@ -79,17 +79,25 @@ export const MKInspectionReadOnlySection: React.FC<MKInspectionReadOnlySectionPr
               <Text style={styles.sectionTitle}>{section.title}</Text>
               {section.items.map((item) => {
                 const raw = inspection.checklist_results?.[item.key];
-                const cond =
+                const record =
                   typeof raw === "object" && raw != null
-                    ? (raw as { status?: string; condition?: string }).status ||
-                      (raw as { condition?: string }).condition ||
-                      ""
-                    : (raw as string) || "";
+                    ? (raw as {
+                        status?: string;
+                        condition?: string;
+                        comments?: string;
+                        issues?: string;
+                      })
+                    : null;
+                const cond = record
+                  ? record.status || record.condition || ""
+                  : (raw as string) || "";
+                const comment = record?.comments || record?.issues || "";
                 return (
                   <View key={item.key} style={styles.row}>
                     <View style={styles.rowText}>
                       <Text style={styles.rowLabel}>{item.label}</Text>
                       <Text style={styles.rowMeta}>{item.category}</Text>
+                      {comment ? <Text style={styles.rowMeta}>{comment}</Text> : null}
                     </View>
                     {cond ? (
                       <MKBadge variant={getInspectionConditionVariant(String(cond))}>

@@ -28,6 +28,7 @@ import type { WorkOrderCreateRequest, WorkOrderEntityType } from "../../types/fl
 interface FleetWorkOrderCreateModalProps {
   visible: boolean;
   loading?: boolean;
+  defaultEntityType?: WorkOrderEntityType;
   onClose: () => void;
   onSubmit: (payload: WorkOrderCreateRequest) => void;
 }
@@ -48,6 +49,7 @@ const URGENCY_OPTIONS: SelectOption[] = Object.entries(URGENCY_LABELS).map(
 export const FleetWorkOrderCreateModal: React.FC<FleetWorkOrderCreateModalProps> = ({
   visible,
   loading = false,
+  defaultEntityType = "fleet",
   onClose,
   onSubmit
 }) => {
@@ -66,14 +68,14 @@ export const FleetWorkOrderCreateModal: React.FC<FleetWorkOrderCreateModalProps>
 
   useEffect(() => {
     if (!visible) return;
-    setEntityType("fleet");
+    setEntityType(defaultEntityType);
     setEntityId("");
     setDescription("");
     setCategory("maintenance");
     setUrgency("normal");
     setBodyRepair(false);
     setNewStickers(false);
-  }, [visible]);
+  }, [visible, defaultEntityType]);
 
   useEffect(() => {
     if (!visible) return;

@@ -210,8 +210,13 @@ def _inspection_checklist_summary_for_work_order(inspection: FleetInspection) ->
                     cond = _mechanical_item_condition_from_results(cr, str(key))
                     if cond not in ("damage", "conditional"):
                         continue
+                    raw_item = cr.get(str(key))
+                    comment = ""
+                    if isinstance(raw_item, dict):
+                        comment = str(raw_item.get("comments") or raw_item.get("issues") or "").strip()
                     prefix = f"[{sec_title}] " if sec_title else ""
-                    lines.append(f"• {prefix}{label}: {_inspection_condition_word(cond)}")
+                    extra = f" — {comment}" if comment else ""
+                    lines.append(f"• {prefix}{label}: {_inspection_condition_word(cond)}{extra}")
 
     notes = (getattr(inspection, "notes", None) or "").strip()
     if notes:

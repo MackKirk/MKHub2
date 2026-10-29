@@ -1,5 +1,5 @@
 import React from "react";
-import { Image, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { MKBadge } from "./MKBadge";
@@ -8,11 +8,14 @@ import {
   resolveProjectCoverPath
 } from "../lib/projectUi";
 import {
+  formatProjectAddress,
   formatRelatedCustomers,
   formatSiteDisplay,
   resolveEmployeeName,
   resolveEmployeeNames
 } from "../lib/projectDetailUi";
+import { MKFieldActions } from "./MKFieldActions";
+import { openEmail, openMaps, openPhone } from "../lib/fieldActions";
 import { resolveFileUrl } from "../lib/fileUrls";
 import type { ProjectDetail, ProjectListItem } from "../types/projects";
 import { colors } from "../theme/colors";
@@ -55,18 +58,34 @@ const InfoRow: React.FC<{
   label: string;
   value: string;
   subvalue?: string;
-}> = ({ icon, label, value, subvalue }) => (
-  <View style={styles.infoRow}>
-    <View style={styles.infoIcon}>
-      <Ionicons name={icon} size={16} color={colors.textMuted} />
-    </View>
-    <View style={styles.infoCopy}>
-      <Text style={styles.infoLabel}>{label}</Text>
-      <Text style={styles.infoValue}>{value}</Text>
-      {subvalue ? <Text style={styles.infoSub}>{subvalue}</Text> : null}
-    </View>
-  </View>
-);
+  onPress?: () => void;
+}> = ({ icon, label, value, subvalue, onPress }) => {
+  const body = (
+    <>
+      <View style={styles.infoIcon}>
+        <Ionicons name={icon} size={16} color={onPress ? colors.homeAccent : colors.textMuted} />
+      </View>
+      <View style={styles.infoCopy}>
+        <Text style={styles.infoLabel}>{label}</Text>
+        <Text style={[styles.infoValue, onPress && styles.infoValueLink]}>{value}</Text>
+        {subvalue ? (
+          <Text style={[styles.infoSub, onPress && styles.infoValueLink]}>{subvalue}</Text>
+        ) : null}
+      </View>
+    </>
+  );
+  if (!onPress) return <View style={styles.infoRow}>{body}</View>;
+  return (
+    <Pressable
+      style={styles.infoRow}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      {body}
+    </Pressable>
+  );
+};
 
 export const MKProjectGeneralInfo: React.FC<MKProjectGeneralInfoProps> = ({
   project,
@@ -81,6 +100,10 @@ export const MKProjectGeneralInfo: React.FC<MKProjectGeneralInfoProps> = ({
   const progress = Math.max(0, Math.min(100, Number(data.progress ?? 0)));
   const showProgress = !isBidding && progress > 0;
   const site = formatSiteDisplay(data);
+  const mapsAddress = formatProjectAddress(data);
+  const canOpenMaps =
+    mapsAddress !== "—" ||
+    (typeof data.lat === "number" && typeof data.lng === "number");
   const coverPath = resolveProjectCoverPath(data);
   const coverUri = resolveFileUrl(coverPath, token ?? null);
   const clientName = data.client_display_name || data.client_name || "";
@@ -185,6 +208,17 @@ export const MKProjectGeneralInfo: React.FC<MKProjectGeneralInfoProps> = ({
               label="Site"
               value={site.title}
               subvalue={site.address}
+              onPress={
+                canOpenMaps
+                  ? () => {
+                      void openMaps({
+                        address: mapsAddress,
+                        lat: data.lat,
+                        lng: data.lng
+                      });
+                    }
+                  : undefined
+              }
             />
           ) : null}
           {data.lead_source ? (
@@ -246,6 +280,34 @@ export const MKProjectGeneralInfo: React.FC<MKProjectGeneralInfoProps> = ({
                   value={detail.contact_phone}
                 />
               ) : null}
+              <MKFieldActions
+                actions={[
+                  ...(detail.contact_phone
+                    ? [
+                        {
+                          key: "call",
+                          label: "Call",
+                          icon: "call-outline" as const,
+                          onPress: () => {
+                            void openPhone(detail.contact_phone);
+                          }
+                        }
+                      ]
+                    : []),
+                  ...(detail.contact_email
+                    ? [
+                        {
+                          key: "email",
+                          label: "Send e-mail",
+                          icon: "mail-outline" as const,
+                          onPress: () => {
+                            void openEmail(detail.contact_email);
+                          }
+                        }
+                      ]
+                    : [])
+                ]}
+              />
             </>
           ) : null}
 
@@ -362,6 +424,9 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 20,
     color: colors.textPrimary
+  },
+  infoValueLink: {
+    color: colors.homeAccent
   },
   infoSub: {
     fontSize: 12,

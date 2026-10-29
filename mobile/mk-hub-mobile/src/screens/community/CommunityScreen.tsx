@@ -26,9 +26,11 @@ import { colors } from "../../theme/colors";
 import { typography } from "../../theme/typography";
 import { spacing } from "../../theme/spacing";
 import { radius, shadows } from "../../theme/radius";
+import { CommunityComposeModal } from "../../components/community/CommunityComposeModal";
 import { ScreenLayout } from "../../components/ScreenLayout";
 import { useHubMenu } from "../../navigation/HubMenuProvider";
 import { useAuth } from "../../hooks/useAuth";
+import { hasPermission } from "../../lib/permissions";
 import { useCommunityBadge } from "../../hooks/useCommunityBadge";
 import {
   getCommunityPosts,
@@ -165,7 +167,12 @@ function postRail(post: CommunityPost): readonly [string, string] {
 
 export const CommunityScreen: React.FC = () => {
   const { openMenu } = useHubMenu();
-  const { token } = useAuth();
+  const { token, permissions, roles } = useAuth();
+  const canPublish = hasPermission(
+    new Set(permissions),
+    roles,
+    "hr:community:write"
+  );
   const insets = useSafeAreaInsets();
   const navigation =
     useNavigation<BottomTabNavigationProp<AppTabParamList, "Community">>();
@@ -182,6 +189,7 @@ export const CommunityScreen: React.FC = () => {
   const [loadingComments, setLoadingComments] = useState(false);
   const [submittingComment, setSubmittingComment] = useState(false);
   const [confirmingRead, setConfirmingRead] = useState(false);
+  const [composeOpen, setComposeOpen] = useState(false);
 
   const communitySummary = useMemo(() => {
     if (unreadCount === 0) return "You're all caught up";
@@ -545,6 +553,17 @@ export const CommunityScreen: React.FC = () => {
           <Text style={styles.headerTitle}>Community</Text>
           <Text style={styles.headerSubtitle}>{communitySummary}</Text>
         </View>
+        {canPublish ? (
+          <Pressable
+            style={styles.headerIconBtn}
+            onPress={() => setComposeOpen(true)}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="New post"
+          >
+            <Ionicons name="add" size={26} color={colors.textPrimary} />
+          </Pressable>
+        ) : null}
         <Pressable
           style={styles.headerIconBtn}
           onPress={() => {
@@ -644,6 +663,16 @@ export const CommunityScreen: React.FC = () => {
           }
         />
       )}
+
+      <CommunityComposeModal
+        visible={composeOpen}
+        onClose={() => setComposeOpen(false)}
+        onPublished={() => {
+          setComposeOpen(false);
+          setFilter("all");
+          void loadPosts();
+        }}
+      />
 
       <Modal
         visible={selectedPost !== null}

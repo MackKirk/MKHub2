@@ -55,6 +55,11 @@ export const getDirectAttendances = async (
   }
 };
 
+export async function getAttendanceNeedsAttention(): Promise<{ count: number }> {
+  const response = await api.get<{ count?: number }>("/dispatch/attendance/needs-attention");
+  return { count: Number(response.data?.count) || 0 };
+}
+
 export const getWeeklyAttendanceSummary = async (
   weekStart: string,
   workerId?: string

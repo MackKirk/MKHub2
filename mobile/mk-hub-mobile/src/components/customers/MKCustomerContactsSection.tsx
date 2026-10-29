@@ -1,6 +1,7 @@
 import React from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { MKFieldActions, type FieldAction } from "../MKFieldActions";
 import { MKBadge } from "../MKBadge";
 import { MKButton } from "../MKButton";
 import { MKCard } from "../MKCard";
@@ -9,6 +10,7 @@ import { radius } from "../../theme/radius";
 import { spacing } from "../../theme/spacing";
 import { typography } from "../../theme/typography";
 import type { CustomerContact } from "../../types/customers";
+import { openEmail, openPhone } from "../../lib/fieldActions";
 import { formatContactPhoneDisplay } from "../../lib/customerUi";
 
 interface MKCustomerContactsSectionProps {
@@ -65,9 +67,19 @@ export const MKCustomerContactsSection: React.FC<MKCustomerContactsSectionProps>
             </View>
           </View>
 
-          <ContactLine icon="mail-outline" value={contact.email} />
-          <ContactLine icon="call-outline" value={formatContactPhoneDisplay(contact.phone, contact.phone_extension)} />
-          <ContactLine icon="phone-portrait-outline" value={contact.mobile_phone} />
+          <ContactLine
+            icon="mail-outline"
+            value={contact.email}
+          />
+          <ContactLine
+            icon="call-outline"
+            value={formatContactPhoneDisplay(contact.phone, contact.phone_extension)}
+          />
+          <ContactLine
+            icon="phone-portrait-outline"
+            value={contact.mobile_phone}
+          />
+          <MKFieldActions actions={contactActions(contact)} />
           {contact.notes ? <Text style={styles.notes}>{contact.notes}</Text> : null}
 
           {canEdit ? (
@@ -87,6 +99,43 @@ export const MKCustomerContactsSection: React.FC<MKCustomerContactsSectionProps>
     </View>
   );
 };
+
+function contactActions(contact: CustomerContact): FieldAction[] {
+  const actions: FieldAction[] = [];
+  const phone = contact.phone?.trim();
+  const mobile = contact.mobile_phone?.trim();
+  if (phone) {
+    actions.push({
+      key: "call",
+      label: "Call",
+      icon: "call-outline",
+      onPress: () => {
+        void openPhone(phone);
+      }
+    });
+  }
+  if (mobile && mobile !== phone) {
+    actions.push({
+      key: "call-mobile",
+      label: phone ? "Call mobile" : "Call",
+      icon: "phone-portrait-outline",
+      onPress: () => {
+        void openPhone(mobile);
+      }
+    });
+  }
+  if (contact.email?.trim()) {
+    actions.push({
+      key: "email",
+      label: "Send e-mail",
+      icon: "mail-outline",
+      onPress: () => {
+        void openEmail(contact.email);
+      }
+    });
+  }
+  return actions;
+}
 
 function ContactLine({
   icon,

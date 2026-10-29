@@ -74,7 +74,7 @@ export function resolveMechanicalResultForSubmit(
 
 export type BodyFormState = {
   _metadata: Record<string, string>;
-  areas: Array<{ key: string; condition: string }>;
+  areas: Array<{ key: string; condition: string; comment: string }>;
   notes: string;
 };
 
@@ -108,11 +108,13 @@ export function buildBodyFormFromInspection(
   }
   const areas = (templateAreas || []).map((area) => {
     const areasArr =
-      (cr?.areas as Array<{ key: string; condition?: string }> | undefined) ?? [];
+      (cr?.areas as Array<{ key: string; condition?: string; issues?: string }> | undefined) ??
+      [];
     const existing = areasArr.find((a) => a.key === area.key);
     return {
       key: area.key,
-      condition: existing?.condition ?? ""
+      condition: existing?.condition ?? "",
+      comment: existing?.issues ?? ""
     };
   });
   return {
@@ -124,7 +126,7 @@ export function buildBodyFormFromInspection(
 
 export type MechanicalFormState = {
   _metadata: Record<string, string>;
-  items: Array<{ key: string; condition: string }>;
+  items: Array<{ key: string; condition: string; comment: string }>;
   notes: string;
 };
 
@@ -160,21 +162,26 @@ export function buildMechanicalFormFromInspection(
   if (!metadata.date || String(metadata.date).trim() === "") {
     metadata.date = new Date().toISOString().slice(0, 10);
   }
-  const items: Array<{ key: string; condition: string }> = [];
+  const items: Array<{ key: string; condition: string; comment: string }> = [];
   (templateSections || []).forEach((section) => {
     section.items.forEach((item) => {
       const val = cr?.[item.key];
-      const condition =
+      const record =
         typeof val === "object" && val != null
-          ? (val as { status?: string; condition?: string }).status ||
-            (val as { condition?: string }).condition ||
-            ""
-          : (val as string) || "";
+          ? (val as { status?: string; condition?: string; comments?: string; issues?: string })
+          : null;
+      const condition = record
+        ? record.status || record.condition || ""
+        : (val as string) || "";
       const norm =
         condition === "ok" || condition === "damage" || condition === "conditional"
           ? condition
           : "";
-      items.push({ key: item.key, condition: norm });
+      items.push({
+        key: item.key,
+        condition: norm,
+        comment: record?.comments || record?.issues || ""
+      });
     });
   });
   return {
@@ -202,7 +209,8 @@ export function buildBodyChecklistPayload(
     _metadata: Object.keys(_metadata).length ? _metadata : undefined,
     areas: form.areas.map((a) => ({
       key: a.key,
-      ...(a.condition ? { condition: a.condition } : {})
+      ...(a.condition ? { condition: a.condition } : {}),
+      ...(a.comment.trim() ? { issues: a.comment.trim() } : {})
     }))
   };
 }
@@ -226,8 +234,28 @@ export function buildMechanicalChecklistPayload(
   }
   return {
     _metadata: Object.keys(_metadata).length ? _metadata : undefined,
-    ...Object.fromEntries(form.items.filter((i) => i.condition).map((i) => [i.key, i.condition]))
+    ...Object.fromEntries(
+      form.items
+        .filter((i) => i.condition)
+        .map((i) => {
+          const comment = i.comment.trim();
+          return [
+            i.key,
+            comment ? { status: i.condition, comments: comment } : i.condition
+          ];
+        })
+    )
   };
+}
+
+export function canOfferScheduleNextInspection(args: {
+  thisResult: string;
+  otherLegResult?: string | null;
+  fleetAssetId?: string | null;
+}): boolean {
+  const thisOk = (args.thisResult || "").toLowerCase() === "pass";
+  const otherOk = (args.otherLegResult || "").toLowerCase() === "pass";
+  return thisOk && otherOk && Boolean(args.fleetAssetId);
 }
 
 export function isInspectionResultFinal(result?: string | null): boolean {

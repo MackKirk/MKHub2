@@ -149,7 +149,12 @@ export interface EquipmentCheckinRequest {
   notes_in?: string | null;
 }
 
-export type FleetListKind = "vehicles" | "equipment" | "all";
+export type FleetListKind =
+  | "vehicles"
+  | "heavy_machinery"
+  | "other"
+  | "equipment"
+  | "all";
 
 export type WorkOrderEntityType = "fleet" | "equipment";
 

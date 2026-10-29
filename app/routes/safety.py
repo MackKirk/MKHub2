@@ -81,6 +81,7 @@ def list_safety_inspections(
     _=Depends(require_permissions("business:projects:safety:read")),
     search: Optional[str] = Query(None, description="Filter by project name or code"),
     status: Optional[str] = Query(None, description="draft, finalized, or pending_signatures"),
+    assigned_to_me: bool = Query(False, description="Only inspections assigned to the current user"),
     sort: str = Query("inspection_date", description="inspection_date | project"),
     dir: str = Query("desc", description="asc or desc"),
     limit: int = Query(100, ge=1, le=500),
@@ -100,6 +101,8 @@ def list_safety_inspections(
     )
     if st:
         q = q.filter(ProjectSafetyInspection.status == st)
+    if assigned_to_me:
+        q = q.filter(ProjectSafetyInspection.assigned_user_id == user.id)
     if search and search.strip():
         term = f"%{search.strip().lower()}%"
         q = q.filter(

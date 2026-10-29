@@ -34,8 +34,11 @@ export const MKInspectionConditionPicker: React.FC<MKInspectionConditionPickerPr
           onPress={() => !disabled && onChange(opt.value)}
           disabled={disabled}
           activeOpacity={0.75}
+          accessibilityRole="button"
+          accessibilityLabel={opt.label}
         >
           <Text style={[styles.optionIcon, active && styles.optionIconActive]}>{opt.icon}</Text>
+          <Text style={[styles.optionLabel, active && styles.optionLabelActive]}>{opt.label}</Text>
         </TouchableOpacity>
       );
     })}
@@ -45,18 +48,21 @@ export const MKInspectionConditionPicker: React.FC<MKInspectionConditionPickerPr
 const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "stretch",
     gap: spacing.sm
   },
   option: {
-    width: 44,
-    height: 44,
+    flex: 1,
+    minHeight: 56,
     borderRadius: radius.control,
     borderWidth: 2,
     borderColor: colors.border,
     backgroundColor: colors.card,
     alignItems: "center",
-    justifyContent: "center"
+    justifyContent: "center",
+    gap: 2,
+    paddingVertical: 8,
+    paddingHorizontal: 4
   },
   optionActive: {
     borderWidth: 2
@@ -82,6 +88,16 @@ const styles = StyleSheet.create({
     color: colors.textMuted
   },
   optionIconActive: {
+    color: colors.textPrimary
+  },
+  optionLabel: {
+    fontFamily: typography.buttonSmall.fontFamily,
+    fontSize: 12,
+    lineHeight: 16,
+    color: colors.textMuted,
+    textAlign: "center"
+  },
+  optionLabelActive: {
     color: colors.textPrimary
   }
 });

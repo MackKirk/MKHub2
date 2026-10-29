@@ -1,6 +1,7 @@
-import React from "react";
-import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import React, { useEffect, useState } from "react";
+import { Modal, Pressable, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 import { MKButton } from "../MKButton";
+import { formatDateLocal } from "../../lib/dateUtils";
 import { colors } from "../../theme/colors";
 import { radius, shadows } from "../../theme/radius";
 import { spacing } from "../../theme/spacing";
@@ -12,8 +13,9 @@ interface MKInspectionFinishConfirmModalProps {
   resultLabel: string;
   result: string;
   loading?: boolean;
+  allowScheduleNext?: boolean;
   onCancel: () => void;
-  onConfirm: () => void;
+  onConfirm: (nextDate: string | null) => void;
 }
 
 export const MKInspectionFinishConfirmModal: React.FC<
@@ -24,10 +26,21 @@ export const MKInspectionFinishConfirmModal: React.FC<
   resultLabel,
   result,
   loading,
+  allowScheduleNext = false,
   onCancel,
   onConfirm
 }) => {
   const failed = result === "fail";
+  const [scheduleNext, setScheduleNext] = useState(false);
+  const [nextDate, setNextDate] = useState("");
+
+  useEffect(() => {
+    if (!visible) return;
+    setScheduleNext(false);
+    const next = new Date();
+    next.setDate(next.getDate() + 30);
+    setNextDate(formatDateLocal(next));
+  }, [visible]);
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
@@ -59,6 +72,26 @@ export const MKInspectionFinishConfirmModal: React.FC<
             </Text>
           ) : null}
 
+          {allowScheduleNext ? (
+            <View style={styles.nextBlock}>
+              <View style={styles.nextRow}>
+                <Text style={styles.nextLabel}>Schedule next inspection</Text>
+                <Switch value={scheduleNext} onValueChange={setScheduleNext} disabled={loading} />
+              </View>
+              {scheduleNext ? (
+                <TextInput
+                  style={styles.dateInput}
+                  value={nextDate}
+                  onChangeText={setNextDate}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor={colors.textMuted}
+                  autoCapitalize="none"
+                  editable={!loading}
+                />
+              ) : null}
+            </View>
+          ) : null}
+
           <View style={styles.actions}>
             <MKButton
               title="Cancel"
@@ -69,7 +102,7 @@ export const MKInspectionFinishConfirmModal: React.FC<
             />
             <MKButton
               title="Finish"
-              onPress={onConfirm}
+              onPress={() => onConfirm(scheduleNext ? nextDate.trim() : null)}
               loading={loading}
               style={styles.actionButton}
             />
@@ -154,6 +187,29 @@ const styles = StyleSheet.create({
   },
   resultLabelFail: {
     color: colors.primary
+  },
+  nextBlock: {
+    gap: spacing.sm
+  },
+  nextRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm
+  },
+  nextLabel: {
+    flex: 1,
+    ...typography.bodySmall,
+    color: colors.textPrimary
+  },
+  dateInput: {
+    minHeight: 44,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    fontSize: 15,
+    color: colors.textPrimary
   },
   warning: {
     ...typography.bodySmall,

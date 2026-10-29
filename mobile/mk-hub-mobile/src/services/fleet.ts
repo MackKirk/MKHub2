@@ -169,5 +169,7 @@ export async function checkinEquipment(
 
 export function listKindToAssetType(listKind: FleetListKind): FleetAssetType | undefined {
   if (listKind === "vehicles") return "vehicle";
+  if (listKind === "heavy_machinery") return "heavy_machinery";
+  if (listKind === "other") return "other";
   return undefined;
 }

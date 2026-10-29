@@ -12,6 +12,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHubMenu } from "../../navigation/HubMenuProvider";
 import { useAuth } from "../../hooks/useAuth";
+import { localDateInputToIso } from "../../lib/dateUtils";
 import { canViewFleetAssetTab, hasPermission } from "../../lib/permissions";
 import { buildFleetAssetSubtitle, buildFleetAssetTitle } from "../../lib/fleetAssetUi";
 import { MKPageHeader } from "../../components/MKPageHeader";
@@ -27,6 +28,7 @@ import {
 import { MKFleetAssetHero } from "../../components/fleet/MKFleetAssetHero";
 import { MKFleetAssetGeneralSection } from "../../components/fleet/MKFleetAssetGeneralSection";
 import { MKFleetAssetInspectionsSection } from "../../components/fleet/MKFleetAssetInspectionsSection";
+import { MKScheduleInspectionModal } from "../../components/fleet/MKScheduleInspectionModal";
 import { MKFleetAssetWorkOrdersSection } from "../../components/fleet/MKFleetAssetWorkOrdersSection";
 import { MKFleetAssetComplianceSection } from "../../components/fleet/MKFleetAssetComplianceSection";
 import { MKFleetAssetLogsSection } from "../../components/fleet/MKFleetAssetLogsSection";
@@ -45,6 +47,11 @@ import {
   returnEquipment,
   returnFleetAsset
 } from "../../services/fleet";
+import {
+  createInspectionSchedule,
+  getEquipmentHistory,
+  getEquipmentWorkOrders
+} from "../../services/fleetWorkOrders";
 import { toApiError } from "../../services/api";
 import type { RootStackParamList } from "../../navigation/types";
 import type {
@@ -74,6 +81,12 @@ const FLEET_TABS: FleetAssetDetailTabItem[] = [
   { key: "logs", label: "Logs", icon: "time-outline" }
 ];
 
+const EQUIPMENT_TABS: FleetAssetDetailTabItem[] = [
+  { key: "general", label: "General", icon: "grid-outline" },
+  { key: "work-orders", label: "Work Orders", icon: "clipboard-outline" },
+  { key: "logs", label: "History", icon: "time-outline" }
+];
+
 export const FleetAssetDetailScreen: React.FC = () => {
   const route = useRoute<FleetAssetDetailRoute>();
   const navigation = useNavigation<FleetAssetDetailNav>();
@@ -89,16 +102,28 @@ export const FleetAssetDetailScreen: React.FC = () => {
   const canWrite = isFleetAsset
     ? hasPermission(permissionsSet, roles, "fleet:write")
     : hasPermission(permissionsSet, roles, "equipment:write");
-
-  const visibleTabs = useMemo(
-    () =>
-      isFleetAsset
-        ? FLEET_TABS.filter((tab) =>
-            canViewFleetAssetTab(permissionsSet, roles, tab.key)
-          )
-        : [],
-    [isFleetAsset, permissionsSet, roles]
+  const canScheduleInspections =
+    hasPermission(permissionsSet, roles, "fleet:inspections:schedules:write") ||
+    permissionsSet.has("fleet:vehicles:inspections:write");
+  const canViewEquipmentWorkOrders = hasPermission(
+    permissionsSet,
+    roles,
+    "fleet:equipment:work_orders:read"
   );
+  const canViewEquipmentHistory =
+    hasPermission(permissionsSet, roles, "fleet:equipment:history:read") ||
+    permissionsSet.has("fleet:equipment:history:write");
+
+  const visibleTabs = useMemo(() => {
+    if (isFleetAsset) {
+      return FLEET_TABS.filter((tab) => canViewFleetAssetTab(permissionsSet, roles, tab.key));
+    }
+    return EQUIPMENT_TABS.filter((tab) => {
+      if (tab.key === "work-orders") return canViewEquipmentWorkOrders;
+      if (tab.key === "logs") return canViewEquipmentHistory;
+      return true;
+    });
+  }, [canViewEquipmentHistory, canViewEquipmentWorkOrders, isFleetAsset, permissionsSet, roles]);
 
   const [activeTab, setActiveTab] = useState<FleetAssetDetailTabKey>(initialTab ?? "general");
   const [loading, setLoading] = useState(true);
@@ -114,6 +139,7 @@ export const FleetAssetDetailScreen: React.FC = () => {
   const loadedTabsRef = useRef<Set<FleetAssetDetailTabKey>>(new Set());
   const [showAssign, setShowAssign] = useState(false);
   const [showReturn, setShowReturn] = useState(false);
+  const [showSchedule, setShowSchedule] = useState(false);
 
   useEffect(() => {
     if (visibleTabs.length === 0) return;
@@ -166,18 +192,25 @@ export const FleetAssetDetailScreen: React.FC = () => {
   }, [assetId, isFleetAsset]);
 
   const loadTabData = useCallback(
-    async (tab: FleetAssetDetailTabKey) => {
-      if (!isFleetAsset || loadedTabsRef.current.has(tab)) return;
+    async (tab: FleetAssetDetailTabKey, force = false) => {
+      if (tab === "general") return;
+      if (!force && loadedTabsRef.current.has(tab)) return;
       try {
         setTabLoading((prev) => ({ ...prev, [tab]: true }));
-        if (tab === "inspections") {
-          setInspections(await getFleetAssetInspections(assetId));
+        if (isFleetAsset) {
+          if (tab === "inspections") {
+            setInspections(await getFleetAssetInspections(assetId));
+          } else if (tab === "work-orders") {
+            setWorkOrders(await getFleetAssetWorkOrders(assetId));
+          } else if (tab === "compliance") {
+            setCompliance(await getFleetAssetCompliance(assetId));
+          } else if (tab === "logs") {
+            setHistory(await getFleetAssetHistory(assetId));
+          }
         } else if (tab === "work-orders") {
-          setWorkOrders(await getFleetAssetWorkOrders(assetId));
-        } else if (tab === "compliance") {
-          setCompliance(await getFleetAssetCompliance(assetId));
+          setWorkOrders(await getEquipmentWorkOrders(assetId));
         } else if (tab === "logs") {
-          setHistory(await getFleetAssetHistory(assetId));
+          setHistory(await getEquipmentHistory(assetId));
         }
         loadedTabsRef.current.add(tab);
       } catch (err) {
@@ -199,16 +232,16 @@ export const FleetAssetDetailScreen: React.FC = () => {
   }, [loadCore]);
 
   useEffect(() => {
-    if (isFleetAsset && activeTab !== "general") {
-      loadTabData(activeTab);
+    if (activeTab !== "general") {
+      void loadTabData(activeTab);
     }
-  }, [activeTab, isFleetAsset, loadTabData]);
+  }, [activeTab, loadTabData]);
 
   const handleAssign = async (payload: AssetAssignmentAssignRequest) => {
     if (!user?.id) return;
     try {
       setSubmitting(true);
-      const body = { ...payload, assigned_to_user_id: user.id };
+      const body = payload;
       if (isFleetAsset) {
         await assignFleetAsset(assetId, body);
       } else {
@@ -266,6 +299,23 @@ export const FleetAssetDetailScreen: React.FC = () => {
           <MKFleetAssetInspectionsSection
             items={inspections}
             loading={!!tabLoading.inspections}
+            canSchedule={canScheduleInspections}
+            onSchedule={() => setShowSchedule(true)}
+            onOpen={(inspection) => {
+              if (!inspection.inspection_schedule_id) return;
+              navigation.dispatch(
+                CommonActions.navigate({
+                  name: "MainTabs",
+                  params: {
+                    screen: "Home",
+                    params: {
+                      screen: "FleetInspectionDetail",
+                      params: { scheduleId: inspection.inspection_schedule_id }
+                    }
+                  }
+                })
+              );
+            }}
           />
         );
       case "work-orders":
@@ -295,6 +345,38 @@ export const FleetAssetDetailScreen: React.FC = () => {
     }
   };
 
+  const scheduleInspection = async (scheduledAt: string, notes: string) => {
+    try {
+      setSubmitting(true);
+      const created = await createInspectionSchedule({
+        fleet_asset_id: assetId,
+        scheduled_at: localDateInputToIso(scheduledAt),
+        urgency: "normal",
+        category: "inspection",
+        notes: notes || null
+      });
+      setShowSchedule(false);
+      loadedTabsRef.current.delete("inspections");
+      await loadTabData("inspections", true);
+      navigation.dispatch(
+        CommonActions.navigate({
+          name: "MainTabs",
+          params: {
+            screen: "Home",
+            params: {
+              screen: "FleetInspectionDetail",
+              params: { scheduleId: created.id }
+            }
+          }
+        })
+      );
+    } catch (err) {
+      Alert.alert("Could not schedule inspection", toApiError(err).message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const renderEquipmentFallback = () => {
     if (!equipment) return null;
     const infoRows = [
@@ -308,22 +390,36 @@ export const FleetAssetDetailScreen: React.FC = () => {
 
     return (
       <View style={styles.tabContent}>
-        <View style={styles.equipmentCard}>
-          {infoRows.map(([label, value]) => (
-            <View key={label} style={styles.infoRow}>
-              <Text style={styles.infoLabel}>{label}</Text>
-              <Text style={styles.infoValue}>{value}</Text>
+        {activeTab === "general" ? (
+          <>
+            <View style={styles.equipmentCard}>
+              {infoRows.map(([label, value]) => (
+                <View key={label} style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>{label}</Text>
+                  <Text style={styles.infoValue}>{value}</Text>
+                </View>
+              ))}
             </View>
-          ))}
-        </View>
-        {canWrite ? (
-          <View style={styles.equipmentActions}>
-            {openAssignment ? (
-              <MKButton title="Check in / Return" onPress={() => setShowReturn(true)} />
-            ) : (
-              <MKButton title="Check out" onPress={() => setShowAssign(true)} />
-            )}
-          </View>
+            {canWrite ? (
+              <View style={styles.equipmentActions}>
+                {openAssignment ? (
+                  <MKButton title="Check in / Return" onPress={() => setShowReturn(true)} />
+                ) : (
+                  <MKButton title="Check out" onPress={() => setShowAssign(true)} />
+                )}
+              </View>
+            ) : null}
+          </>
+        ) : null}
+        {activeTab === "work-orders" ? (
+          <MKFleetAssetWorkOrdersSection
+            items={workOrders}
+            loading={!!tabLoading["work-orders"]}
+            onOpenWorkOrder={openWorkOrder}
+          />
+        ) : null}
+        {activeTab === "logs" ? (
+          <MKFleetAssetLogsSection items={history} loading={!!tabLoading.logs} />
         ) : null}
       </View>
     );
@@ -348,9 +444,7 @@ export const FleetAssetDetailScreen: React.FC = () => {
           styles.scrollContent,
           {
             paddingBottom:
-              isFleetAsset && visibleTabs.length > 0
-                ? bottomTabHeight + spacing.lg
-                : spacing.xxl
+              visibleTabs.length > 0 ? bottomTabHeight + spacing.lg : spacing.xxl
           }
         ]}
         showsVerticalScrollIndicator={false}
@@ -387,7 +481,7 @@ export const FleetAssetDetailScreen: React.FC = () => {
         )}
       </ScrollView>
 
-      {isFleetAsset && visibleTabs.length > 0 ? (
+      {visibleTabs.length > 0 ? (
         <MKFleetAssetDetailTabBar
           tabs={visibleTabs}
           activeKey={activeTab}
@@ -404,9 +498,24 @@ export const FleetAssetDetailScreen: React.FC = () => {
         minOdometer={fleetAsset?.odometer_current ?? null}
         defaultOdometer={fleetAsset?.odometer_current ?? null}
         defaultHours={fleetAsset?.hours_current ?? null}
+        currentUserId={user?.id}
+        currentUserName={
+          [user?.first_name, user?.last_name].filter(Boolean).join(" ").trim() ||
+          user?.username
+        }
         loading={submitting}
         onClose={() => setShowAssign(false)}
         onSubmit={handleAssign}
+      />
+
+      <MKScheduleInspectionModal
+        visible={showSchedule}
+        assetName={screenTitle}
+        loading={submitting}
+        onClose={() => setShowSchedule(false)}
+        onSubmit={(scheduledAt, notes) => {
+          void scheduleInspection(scheduledAt, notes);
+        }}
       />
 
       <FleetReturnModal

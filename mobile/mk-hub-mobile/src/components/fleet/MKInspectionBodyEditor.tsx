@@ -10,6 +10,7 @@ import {
 import {
   buildBodyChecklistPayload,
   buildBodyFormFromInspection,
+  canOfferScheduleNextInspection,
   computeResultFromConditions,
   inspectionServerSyncKey,
   isBodyChecklistComplete,
@@ -19,7 +20,9 @@ import {
   type FleetInspectionRecord
 } from "../../lib/fleetInspectionForm";
 import { INSPECTION_RESULT_LABELS } from "../../lib/fleetLabels";
+import { localDateInputToIso } from "../../lib/dateUtils";
 import { updateFleetInspection, uploadInspectionPhoto } from "../../services/fleetInspections";
+import { createInspectionSchedule } from "../../services/fleetWorkOrders";
 import { toApiError } from "../../services/api";
 import { MKButton } from "../MKButton";
 import { MKCard } from "../MKCard";
@@ -36,6 +39,7 @@ interface MKInspectionBodyEditorProps {
   inspection: FleetInspectionRecord & { result: string; photos?: string[] | null };
   templateAreas: Array<{ key: string; label: string; description?: string }>;
   fleetAsset?: FleetAssetFormContext;
+  otherLegResult?: string | null;
   onSaved: () => void;
   onCancel: () => void;
 }
@@ -45,6 +49,7 @@ export const MKInspectionBodyEditor: React.FC<MKInspectionBodyEditorProps> = ({
   inspection,
   templateAreas,
   fleetAsset,
+  otherLegResult,
   onSaved,
   onCancel
 }) => {
@@ -55,6 +60,7 @@ export const MKInspectionBodyEditor: React.FC<MKInspectionBodyEditorProps> = ({
   const [finishConfirm, setFinishConfirm] = useState<{
     result: string;
     resultLabel: string;
+    allowScheduleNext: boolean;
   } | null>(null);
 
   const serverSyncKey = useMemo(() => inspectionServerSyncKey(inspection), [inspection]);
@@ -69,6 +75,15 @@ export const MKInspectionBodyEditor: React.FC<MKInspectionBodyEditorProps> = ({
       if (!prev) return prev;
       const next = { ...prev, areas: [...prev.areas] };
       next.areas[index] = { ...next.areas[index], condition: value };
+      return next;
+    });
+  };
+
+  const setBodyComment = (index: number, comment: string) => {
+    setBodyForm((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, areas: [...prev.areas] };
+      next.areas[index] = { ...next.areas[index], comment };
       return next;
     });
   };
@@ -96,13 +111,21 @@ export const MKInspectionBodyEditor: React.FC<MKInspectionBodyEditorProps> = ({
       const resultLabel =
         INSPECTION_RESULT_LABELS[resolved.result] ??
         resolved.result.charAt(0).toUpperCase() + resolved.result.slice(1);
-      setFinishConfirm({ result: resolved.result, resultLabel });
+      setFinishConfirm({
+        result: resolved.result,
+        resultLabel,
+        allowScheduleNext: canOfferScheduleNextInspection({
+          thisResult: resolved.result,
+          otherLegResult,
+          fleetAssetId: inspection.fleet_asset_id
+        })
+      });
       return;
     }
     await performSave(resolved.result, finish);
   };
 
-  const performSave = async (result: string, finish: boolean) => {
+  const performSave = async (result: string, finish: boolean, nextDate?: string | null) => {
     if (!bodyForm) return;
     try {
       setSaving(true);
@@ -112,6 +135,18 @@ export const MKInspectionBodyEditor: React.FC<MKInspectionBodyEditorProps> = ({
         notes: bodyForm.notes.trim() || undefined,
         photos: photoIds.length ? photoIds : undefined
       });
+      if (finish && nextDate && inspection.fleet_asset_id) {
+        try {
+          await createInspectionSchedule({
+            fleet_asset_id: inspection.fleet_asset_id,
+            scheduled_at: localDateInputToIso(nextDate),
+            urgency: "normal",
+            category: "inspection"
+          });
+        } catch (err) {
+          Alert.alert("Inspection saved", `Could not schedule the next one. ${toApiError(err).message}`);
+        }
+      }
       setFinishConfirm(null);
       onSaved();
     } catch (err) {
@@ -176,6 +211,14 @@ export const MKInspectionBodyEditor: React.FC<MKInspectionBodyEditorProps> = ({
               <MKInspectionConditionPicker
                 value={bodyForm.areas[index]?.condition ?? ""}
                 onChange={(value) => setBodyArea(index, value)}
+              />
+              <TextInput
+                style={styles.itemComment}
+                value={bodyForm.areas[index]?.comment ?? ""}
+                onChangeText={(text) => setBodyComment(index, text)}
+                placeholder="Comment"
+                placeholderTextColor={colors.textMuted}
+                multiline
               />
             </View>
           ))}
@@ -244,10 +287,11 @@ export const MKInspectionBodyEditor: React.FC<MKInspectionBodyEditorProps> = ({
         inspectionLabel="Body / Exterior"
         resultLabel={finishConfirm?.resultLabel ?? ""}
         result={finishConfirm?.result ?? ""}
+        allowScheduleNext={finishConfirm?.allowScheduleNext}
         loading={saving}
         onCancel={() => setFinishConfirm(null)}
-        onConfirm={() => {
-          if (finishConfirm) void performSave(finishConfirm.result, true);
+        onConfirm={(nextDate) => {
+          if (finishConfirm) void performSave(finishConfirm.result, true, nextDate);
         }}
       />
     </>
@@ -308,10 +352,7 @@ const styles = StyleSheet.create({
     gap: 0
   },
   checklistRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: spacing.md,
+    gap: spacing.sm,
     padding: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: colors.border
@@ -329,6 +370,16 @@ const styles = StyleSheet.create({
   areaDescription: {
     ...typography.caption,
     color: colors.textMuted
+  },
+  itemComment: {
+    minHeight: 44,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: colors.textPrimary
   },
   notesCard: {
     gap: spacing.sm

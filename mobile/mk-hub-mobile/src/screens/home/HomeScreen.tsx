@@ -17,12 +17,31 @@ import type { CompositeNavigationProp } from "@react-navigation/native";
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useAuth } from "../../hooks/useAuth";
+import { formatDateLocal } from "../../lib/dateUtils";
 import { shouldRegisterHours } from "../../lib/hoursRegistration";
 import { useCommunityBadge } from "../../hooks/useCommunityBadge";
 import { useStartupAlerts } from "../../hooks/useStartupAlerts";
 import { useTasksBadge } from "../../hooks/useTasksBadge";
 import { ScreenLayout } from "../../components/ScreenLayout";
+import {
+  HomePendingButton,
+  HomePendingModal,
+  pendingSummary
+} from "../../components/home/HomePendingPanel";
+import { hasPermission } from "../../lib/permissions";
 import { getCommunityPosts } from "../../services/community";
+import {
+  getPendingOnboardingDocuments,
+  getPendingSignatureRequests
+} from "../../services/documentsToSign";
+import {
+  listAssignedSafetyInspections,
+  listSafetyFollowUps,
+  type SafetyFollowUp,
+  type SafetyInspectionListRow
+} from "../../services/safety";
+import type { OnboardingDocumentRow, SignatureRequestRow } from "../../types/inbox";
+import { getAttendanceNeedsAttention, getShifts } from "../../services/shifts";
 import type { CommunityPost } from "../../types/community";
 import { isImageContentType, resolveFileUrl } from "../../lib/fileUrls";
 import { colors } from "../../theme/colors";
@@ -52,7 +71,14 @@ interface QuickAction {
   accentColor: string;
   tintBg: string;
   watermark?: ImageSourcePropType;
+  pending?: boolean;
   onPress: () => void;
+}
+
+function shiftNeedsResponse(status?: string | null): boolean {
+  if (status === "not_required") return false;
+  const value = (status || "pending").toLowerCase();
+  return value === "pending" || value === "viewed" || value === "";
 }
 
 const COMMUNITY_PREVIEW_LIMIT = 2;
@@ -113,7 +139,7 @@ function formatRelativeTime(iso: string): string {
 }
 
 export const HomeScreen: React.FC = () => {
-  const { user, token } = useAuth();
+  const { user, token, permissions, roles } = useAuth();
   const navigation = useNavigation<HomeNav>();
   const { openMenu } = useHubMenu();
   const { unreadCount, setUnreadCount } = useCommunityBadge();
@@ -122,6 +148,14 @@ export const HomeScreen: React.FC = () => {
 
   const [novidades, setNovidades] = useState<CommunityPost[]>([]);
   const [loadingNovidades, setLoadingNovidades] = useState(false);
+  const [schedulePending, setSchedulePending] = useState(false);
+  const [clockPending, setClockPending] = useState(false);
+  const [pendingOpen, setPendingOpen] = useState(false);
+  const [pendingLoading, setPendingLoading] = useState(false);
+  const [signatureRequests, setSignatureRequests] = useState<SignatureRequestRow[]>([]);
+  const [onboardingDocs, setOnboardingDocs] = useState<OnboardingDocumentRow[]>([]);
+  const [pendingFollowUps, setPendingFollowUps] = useState<SafetyFollowUp[]>([]);
+  const [pendingInspections, setPendingInspections] = useState<SafetyInspectionListRow[]>([]);
 
   const firstName =
     (user?.first_name && user.first_name.trim()) ||
@@ -138,6 +172,21 @@ export const HomeScreen: React.FC = () => {
   );
 
   const mustRegisterHours = shouldRegisterHours(user?.pay_type, user?.needs_register_hours);
+  const canReadSafety = hasPermission(
+    new Set(permissions),
+    roles,
+    "business:projects:safety:read"
+  );
+  const pendingCount =
+    signatureRequests.length +
+    onboardingDocs.length +
+    pendingFollowUps.length +
+    pendingInspections.length;
+  const pendingLabel = pendingSummary(
+    signatureRequests.length + onboardingDocs.length,
+    pendingFollowUps.length,
+    pendingInspections.length
+  );
 
   const quickActions: QuickAction[] = useMemo(
     () => [
@@ -150,6 +199,7 @@ export const HomeScreen: React.FC = () => {
               accentColor: "#166534",
               tintBg: "#DCFCE7",
               watermark: CLOCK_WATERMARK,
+              pending: clockPending,
               onPress: () => navigation.navigate("Clock")
             }
           ]
@@ -157,6 +207,7 @@ export const HomeScreen: React.FC = () => {
       {
         label: "Schedule",
         subtitle: "View your shifts",
+        pending: schedulePending,
         icon: "calendar-outline",
         accentColor: "#2563EB",
         tintBg: "#DBEAFE",
@@ -182,7 +233,7 @@ export const HomeScreen: React.FC = () => {
         onPress: () => goStack("TimeOff", { mode: "sick" })
       }
     ],
-    [goStack, mustRegisterHours, navigation]
+    [clockPending, goStack, mustRegisterHours, navigation, schedulePending]
   );
 
   const loadNovidades = useCallback(async () => {
@@ -205,11 +256,71 @@ export const HomeScreen: React.FC = () => {
     }
   }, [setUnreadCount]);
 
+  const loadHomeBadges = useCallback(async () => {
+    if (!user?.id) {
+      setSchedulePending(false);
+      setClockPending(false);
+      return;
+    }
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 30);
+    const range = `${formatDateLocal(start)},${formatDateLocal(end)}`;
+    const [shifts, attention] = await Promise.all([
+      getShifts(range, { workerId: user.id }).catch(() => []),
+      mustRegisterHours
+        ? getAttendanceNeedsAttention().catch(() => ({ count: 0 }))
+        : Promise.resolve({ count: 0 })
+    ]);
+    setSchedulePending(
+      (Array.isArray(shifts) ? shifts : []).some((shift) =>
+        shiftNeedsResponse(shift.ack_status)
+      )
+    );
+    setClockPending(mustRegisterHours && attention.count > 0);
+  }, [mustRegisterHours, user?.id]);
+
+  const loadHomePending = useCallback(async () => {
+    if (!user?.id) {
+      setSignatureRequests([]);
+      setOnboardingDocs([]);
+      setPendingFollowUps([]);
+      setPendingInspections([]);
+      return;
+    }
+    try {
+      setPendingLoading(true);
+      const [signatures, onboarding, followUps, inspections] = await Promise.all([
+        getPendingSignatureRequests(),
+        getPendingOnboardingDocuments(),
+        canReadSafety
+          ? listSafetyFollowUps({ assigned_to_me: true, status: "pending" }).catch(() => [])
+          : Promise.resolve([]),
+        canReadSafety
+          ? listAssignedSafetyInspections(user.id).catch(() => [])
+          : Promise.resolve([])
+      ]);
+      setSignatureRequests(signatures);
+      setOnboardingDocs(onboarding);
+      setPendingFollowUps(
+        (Array.isArray(followUps) ? followUps : []).filter(
+          (item) => (item.status || "pending").toLowerCase() !== "completed"
+        )
+      );
+      setPendingInspections(Array.isArray(inspections) ? inspections : []);
+    } finally {
+      setPendingLoading(false);
+    }
+  }, [canReadSafety, user?.id]);
+
   useFocusEffect(
     useCallback(() => {
       loadNovidades();
       void refreshTasks();
-    }, [loadNovidades, refreshTasks])
+      void loadHomeBadges();
+      void loadHomePending();
+    }, [loadHomeBadges, loadHomePending, loadNovidades, refreshTasks])
   );
 
   const renderSectionHeader = (title: string, onOpen?: () => void) => (
@@ -315,10 +426,24 @@ export const HomeScreen: React.FC = () => {
                   <Text style={styles.quickSubtitle} numberOfLines={1}>
                     {item.subtitle}
                   </Text>
+                  {item.pending ? (
+                    <View
+                      style={styles.pendingDot}
+                      accessibilityLabel="Pending"
+                    />
+                  ) : null}
                 </View>
               </TouchableOpacity>
             ))}
           </View>
+          <HomePendingButton
+            summary={pendingLabel}
+            count={pendingCount}
+            onPress={() => {
+              setPendingOpen(true);
+              void loadHomePending();
+            }}
+          />
         </View>
 
         <View style={styles.section}>
@@ -472,6 +597,41 @@ export const HomeScreen: React.FC = () => {
           </View>
         </View>
       </ScrollView>
+      <HomePendingModal
+        visible={pendingOpen}
+        loading={pendingLoading}
+        signatureRequests={signatureRequests}
+        onboardingDocs={onboardingDocs}
+        followUps={pendingFollowUps}
+        inspections={pendingInspections}
+        onClose={() => setPendingOpen(false)}
+        onOpenSign={() => {
+          setPendingOpen(false);
+          goStack("Placeholder", {
+            title: "To sign",
+            message: "Open MK Hub on the web to sign this document."
+          });
+        }}
+        onOpenFollowUp={(item) => {
+          setPendingOpen(false);
+          navigation.navigate("SafetyInspectionDetail", {
+            projectId: item.project_id,
+            inspectionId: item.source_inspection_id,
+            canWrite: true,
+            initialFollowUpId: item.id,
+            projectName: item.project_name
+          });
+        }}
+        onOpenInspection={(item) => {
+          setPendingOpen(false);
+          navigation.navigate("SafetyInspectionDetail", {
+            projectId: item.project_id,
+            inspectionId: item.id,
+            canWrite: true,
+            projectName: item.project_name
+          });
+        }}
+      />
     </ScreenLayout>
   );
 };
@@ -597,6 +757,17 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingHorizontal: 14,
     overflow: "hidden"
+  },
+  pendingDot: {
+    position: "absolute",
+    top: 10,
+    right: 10,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: "#C22033",
+    borderWidth: 2,
+    borderColor: "#fff"
   },
   quickWatermark: {
     position: "absolute",

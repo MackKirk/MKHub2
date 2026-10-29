@@ -1,11 +1,15 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -17,8 +21,19 @@ import {
   type RouteProp
 } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { MKBugReportBody } from "../../components/tasks/MKBugReportBody";
+import { MKFieldActions } from "../../components/MKFieldActions";
+import { MKImageSourcePickerModal } from "../../components/MKImageSourcePickerModal";
 import { ScreenLayout } from "../../components/ScreenLayout";
+import { useAuth } from "../../hooks/useAuth";
 import { useTasksBadge } from "../../hooks/useTasksBadge";
+import { parseBugReport } from "../../lib/bugReport";
+import { buildAuthenticatedFileUrl } from "../../lib/fileUrls";
+import { pickMediaFromSource } from "../../lib/pickMediaFromSource";
+import {
+  descriptionWithAttachments,
+  parseTaskDescription
+} from "../../lib/taskAttachments";
 import {
   formatDateTime,
   formatDue,
@@ -27,14 +42,18 @@ import {
   statusMeta,
   taskActions
 } from "../../lib/taskUi";
+import { getProjectDetail } from "../../services/projects";
 import {
+  addTaskComment,
   applyTaskUpdate,
   blockTask,
   concludeTask,
   getTask,
   getTaskLog,
   startTask,
-  unblockTask
+  unblockTask,
+  updateTaskDescription,
+  uploadTaskPhoto
 } from "../../services/tasks";
 import { toApiError } from "../../services/api";
 import { colors } from "../../theme/colors";
@@ -58,11 +77,17 @@ async function runTaskAction(taskId: string, action: string): Promise<TaskItem> 
 export const TaskDetailScreen: React.FC = () => {
   const route = useRoute<TaskDetailRoute>();
   const navigation = useNavigation<TaskDetailNav>();
+  const { token } = useAuth();
   const { grouped, setGroupedFromLocal, refreshTasks } = useTasksBadge();
   const [task, setTask] = useState<TaskItem | null>(route.params.task ?? null);
   const [log, setLog] = useState<TaskLogEntry[]>([]);
   const [loading, setLoading] = useState(!route.params.task);
   const [acting, setActing] = useState(false);
+  const [comment, setComment] = useState("");
+  const [sendingComment, setSendingComment] = useState(false);
+  const [photoOpen, setPhotoOpen] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [openingProject, setOpeningProject] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -106,6 +131,69 @@ export const TaskDetailScreen: React.FC = () => {
   const priority = priorityMeta(task?.priority);
   const due = formatDue(task?.due_date);
   const actions = task ? taskActions(task) : [];
+  const parsed = useMemo(
+    () => parseTaskDescription(task?.description),
+    [task?.description]
+  );
+  const bugReport = useMemo(
+    () => parseBugReport(parsed.description),
+    [parsed.description]
+  );
+  const isBugTask =
+    (task?.origin?.type || "").toLowerCase() === "bug" || bugReport.isBugReport;
+
+  const sendComment = async () => {
+    if (!task) return;
+    const message = comment.trim();
+    if (!message) return;
+    try {
+      setSendingComment(true);
+      await addTaskComment(task.id, message);
+      setComment("");
+      const nextLog = await getTaskLog(task.id).catch(() => []);
+      setLog(nextLog);
+    } catch (err) {
+      Alert.alert("Could not add comment", toApiError(err).message);
+    } finally {
+      setSendingComment(false);
+    }
+  };
+
+  const addPhoto = async (source: "camera" | "gallery" | "pdf") => {
+    if (!task || source === "pdf") return;
+    const files = await pickMediaFromSource(source, { allowMultiple: false });
+    const file = files[0];
+    if (!file) return;
+    try {
+      setUploadingPhoto(true);
+      const fileId = await uploadTaskPhoto(file);
+      const nextIds = Array.from(new Set([...parsed.fileIds, fileId]));
+      const updated = await updateTaskDescription(
+        task.id,
+        descriptionWithAttachments(parsed.description, nextIds)
+      );
+      setTask(updated);
+      if (grouped) setGroupedFromLocal(applyTaskUpdate(grouped, updated));
+    } catch (err) {
+      Alert.alert("Could not add photo", toApiError(err).message);
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
+  const openProject = async () => {
+    const projectId = task?.project?.id;
+    if (!projectId) return;
+    try {
+      setOpeningProject(true);
+      const project = await getProjectDetail(projectId);
+      navigation.navigate("ProjectDetail", { project });
+    } catch (err) {
+      Alert.alert("Could not open project", toApiError(err).message);
+    } finally {
+      setOpeningProject(false);
+    }
+  };
 
   return (
     <ScreenLayout scroll={false} style={styles.screen} contentStyle={styles.layout}>
@@ -123,6 +211,10 @@ export const TaskDetailScreen: React.FC = () => {
         <View style={styles.headerIconBtn} />
       </View>
 
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
       {loading && !task ? (
         <View style={styles.loadingWrap}>
           <ActivityIndicator size="large" color={colors.homeAccent} />
@@ -138,6 +230,7 @@ export const TaskDetailScreen: React.FC = () => {
             style={styles.scroll}
             contentContainerStyle={styles.content}
             showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
           >
             <View style={styles.heroCard}>
               <LinearGradient
@@ -171,8 +264,10 @@ export const TaskDetailScreen: React.FC = () => {
 
             <View style={styles.card}>
               <Text style={styles.sectionLabel}>Description</Text>
-              {task.description ? (
-                <Text style={styles.description}>{task.description}</Text>
+              {isBugTask ? (
+                <MKBugReportBody report={bugReport} />
+              ) : parsed.description ? (
+                <Text style={styles.description}>{parsed.description}</Text>
               ) : (
                 <Text style={styles.muted}>No description.</Text>
               )}
@@ -212,6 +307,60 @@ export const TaskDetailScreen: React.FC = () => {
                 label="Created"
                 value={formatDateTime(task.created_at) || "—"}
               />
+              {task.project?.id ? (
+                <MKFieldActions
+                  actions={[
+                    {
+                      key: "project",
+                      label: openingProject ? "Opening project…" : "Open project",
+                      icon: "folder-open-outline",
+                      onPress: () => {
+                        void openProject();
+                      },
+                      disabled: openingProject
+                    }
+                  ]}
+                />
+              ) : null}
+            </View>
+
+            <View style={styles.card}>
+              <Text style={styles.sectionLabel}>Photos</Text>
+              {parsed.fileIds.length > 0 ? (
+                <View style={styles.photoGrid}>
+                  {parsed.fileIds.map((fileId) => (
+                    <Image
+                      key={fileId}
+                      source={{
+                        uri: buildAuthenticatedFileUrl(fileId, {
+                          token,
+                          variant: "thumbnail",
+                          thumbnailWidth: 240
+                        }).uri
+                      }}
+                      style={styles.photo}
+                    />
+                  ))}
+                </View>
+              ) : (
+                <Text style={styles.muted}>No photos yet.</Text>
+              )}
+              <Pressable
+                style={styles.photoBtn}
+                onPress={() => setPhotoOpen(true)}
+                disabled={uploadingPhoto}
+                accessibilityRole="button"
+                accessibilityLabel="Add photo"
+              >
+                {uploadingPhoto ? (
+                  <ActivityIndicator size="small" color={colors.homeAccent} />
+                ) : (
+                  <Ionicons name="camera-outline" size={18} color={colors.homeAccent} />
+                )}
+                <Text style={styles.photoBtnText}>
+                  {uploadingPhoto ? "Uploading photo…" : "Add photo"}
+                </Text>
+              </Pressable>
             </View>
 
             <View style={styles.card}>
@@ -238,6 +387,35 @@ export const TaskDetailScreen: React.FC = () => {
                     </View>
                   ))
               )}
+              <View style={styles.commentRow}>
+                <TextInput
+                  value={comment}
+                  onChangeText={setComment}
+                  placeholder="Write a comment"
+                  placeholderTextColor={colors.textMuted}
+                  style={styles.commentInput}
+                  multiline
+                  editable={!sendingComment}
+                />
+                <Pressable
+                  style={[
+                    styles.sendBtn,
+                    (!comment.trim() || sendingComment) && styles.sendBtnDisabled
+                  ]}
+                  onPress={() => {
+                    void sendComment();
+                  }}
+                  disabled={!comment.trim() || sendingComment}
+                  accessibilityRole="button"
+                  accessibilityLabel="Send comment"
+                >
+                  {sendingComment ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Ionicons name="send" size={16} color="#fff" />
+                  )}
+                </Pressable>
+              </View>
             </View>
           </ScrollView>
 
@@ -273,6 +451,16 @@ export const TaskDetailScreen: React.FC = () => {
           ) : null}
         </>
       )}
+      </KeyboardAvoidingView>
+      <MKImageSourcePickerModal
+        visible={photoOpen}
+        title="Add photo"
+        mode="image"
+        onClose={() => setPhotoOpen(false)}
+        onSelect={(source) => {
+          void addPhoto(source);
+        }}
+      />
     </ScreenLayout>
   );
 };
@@ -293,6 +481,7 @@ const InfoRow: React.FC<{
 );
 
 const styles = StyleSheet.create({
+  flex: { flex: 1 },
   screen: { backgroundColor: colors.background },
   layout: {
     flex: 1,
@@ -416,6 +605,61 @@ const styles = StyleSheet.create({
   logBody: { flex: 1, gap: 2 },
   logMessage: { fontSize: 14, lineHeight: 20, color: colors.textBody },
   logMeta: { fontSize: 12, color: colors.textMuted },
+  photoGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8
+  },
+  photo: {
+    width: 96,
+    height: 96,
+    borderRadius: 12,
+    backgroundColor: "#F3F4F6"
+  },
+  photoBtn: {
+    minHeight: 48,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#BBF7D0",
+    backgroundColor: "#F0FDF4",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8
+  },
+  photoBtnText: {
+    ...typography.buttonSmall,
+    color: colors.homeAccent
+  },
+  commentRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 8,
+    marginTop: 4
+  },
+  commentInput: {
+    flex: 1,
+    minHeight: 44,
+    maxHeight: 120,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: colors.textPrimary
+  },
+  sendBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: colors.homeAccent,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  sendBtnDisabled: {
+    opacity: 0.45
+  },
   footer: {
     gap: 10,
     paddingTop: spacing.md

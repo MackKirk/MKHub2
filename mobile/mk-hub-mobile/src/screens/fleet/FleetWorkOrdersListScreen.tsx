@@ -11,7 +11,7 @@ import {
   View
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { CommonActions, useFocusEffect, useNavigation } from "@react-navigation/native";
+import { CommonActions, useFocusEffect, useNavigation, useRoute, type RouteProp } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useHubMenu } from "../../navigation/HubMenuProvider";
 import { useAuth } from "../../hooks/useAuth";
@@ -51,10 +51,14 @@ const STATUS_FILTERS = [
 
 export const FleetWorkOrdersListScreen: React.FC = () => {
   const navigation = useNavigation<FleetWorkOrdersNav>();
+  const route = useRoute<RouteProp<HomeStackParamList, "FleetWorkOrders">>();
+  const entityType = route.params?.entityType ?? "fleet";
   const { openMenu } = useHubMenu();
   const { user, permissions, roles } = useAuth();
   const permissionsSet = useMemo(() => new Set(permissions), [permissions]);
-  const canWrite = hasPermission(permissionsSet, roles, "work_orders:write");
+  const canWrite =
+    hasPermission(permissionsSet, roles, "work_orders:write") ||
+    (entityType === "equipment" && permissionsSet.has("fleet:equipment:work_orders:write"));
 
   const [rows, setRows] = useState<WorkOrder[]>([]);
   const [total, setTotal] = useState(0);
@@ -77,7 +81,7 @@ export const FleetWorkOrdersListScreen: React.FC = () => {
         search: query.trim() || undefined,
         status: statusFilter || undefined,
         assigned_to: relatedToMe && user?.id ? user.id : undefined,
-        entity_type: "fleet",
+        entity_type: entityType,
         limit: 50,
         sort: "created_at",
         dir: "desc"
@@ -89,7 +93,7 @@ export const FleetWorkOrdersListScreen: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [query, relatedToMe, statusFilter, user?.id]);
+  }, [entityType, query, relatedToMe, statusFilter, user?.id]);
 
   useFocusEffect(
     useCallback(() => {
@@ -157,7 +161,11 @@ export const FleetWorkOrdersListScreen: React.FC = () => {
 
   return (
     <ScreenLayout scroll={false}>
-      <MKHomeStyleHeader title="Work Orders" subtitle={subtitle} onLeftPress={openMenu} />
+      <MKHomeStyleHeader
+        title={entityType === "equipment" ? "Equipment work orders" : "Work Orders"}
+        subtitle={subtitle}
+        onLeftPress={openMenu}
+      />
 
       <View style={styles.searchWrap}>
         <Ionicons name="search" size={18} color={colors.textMuted} />
@@ -217,6 +225,7 @@ export const FleetWorkOrdersListScreen: React.FC = () => {
       <FleetWorkOrderCreateModal
         visible={showCreate}
         loading={submitting}
+        defaultEntityType={entityType}
         onClose={() => setShowCreate(false)}
         onSubmit={handleCreate}
       />

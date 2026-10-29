@@ -6,6 +6,7 @@ export interface InboxNotification {
   read: boolean;
   created_at: string;
   link?: string | null;
+  metadata?: Record<string, unknown> | null;
 }
 
 export interface SignatureRequestRow {

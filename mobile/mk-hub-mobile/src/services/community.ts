@@ -61,6 +61,48 @@ export const getPostComments = async (postId: string): Promise<CommunityComment[
   return response.data;
 };
 
+export async function uploadCommunityPhoto(file: {
+  uri: string;
+  name: string;
+  type: string;
+}): Promise<string> {
+  const form = new FormData();
+  form.append("file", {
+    uri: file.uri,
+    name: file.name,
+    type: file.type
+  } as unknown as Blob);
+  form.append("original_name", file.name);
+  form.append("content_type", file.type || "image/jpeg");
+  form.append("project_id", "");
+  form.append("client_id", "");
+  form.append("employee_id", "");
+  form.append("category_id", "community-photo");
+  const response = await api.post<{ id: string }>("/files/upload-proxy", form, {
+    headers: { "Content-Type": "multipart/form-data" }
+  });
+  return response.data.id;
+}
+
+export async function createCommunityPost(input: {
+  title: string;
+  content: string;
+  photoFileId?: string | null;
+}): Promise<CommunityPost> {
+  const response = await api.post<CommunityPost>("/community/posts", {
+    title: input.title.trim(),
+    content: input.content,
+    photo_file_id: input.photoFileId || null,
+    publish_mode: "now",
+    target_type: "all",
+    priority: "normal",
+    related_area: "general",
+    is_urgent: false,
+    requires_read_confirmation: false
+  });
+  return response.data;
+}
+
 export const createPostComment = async (
   postId: string,
   content: string,

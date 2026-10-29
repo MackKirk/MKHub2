@@ -239,6 +239,7 @@ export const FleetInspectionDetailScreen: React.FC = () => {
           inspection={bodyInspection}
           templateAreas={bodyTemplate.areas}
           fleetAsset={fleetAssetContext}
+          otherLegResult={schedule.mechanical_result}
           onSaved={handleEditorSaved}
           onCancel={() => setBodyEditorOpen(false)}
         />
@@ -307,6 +308,7 @@ export const FleetInspectionDetailScreen: React.FC = () => {
           inspection={mechanicalInspection}
           templateSections={mechanicalTemplate.sections}
           fleetAsset={fleetAssetContext}
+          otherLegResult={schedule.body_result}
           onSaved={handleEditorSaved}
           onCancel={() => setMechEditorOpen(false)}
         />

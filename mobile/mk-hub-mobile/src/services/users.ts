@@ -14,6 +14,28 @@ export interface ListUsersParams {
   is_admin?: boolean;
 }
 
+export async function listEmployees(query?: string): Promise<Array<{ id: string; name: string }>> {
+  const response = await api.get<Array<{ id?: string; name?: string; username?: string }>>(
+    "/employees",
+    {
+      params: {
+        q: query?.trim() || undefined,
+        limit: 30,
+        active_only: true,
+        lite: true,
+        sort: "name"
+      }
+    }
+  );
+  const rows = Array.isArray(response.data) ? response.data : [];
+  return rows
+    .map((row) => ({
+      id: String(row.id || ""),
+      name: (row.name || row.username || "").trim()
+    }))
+    .filter((row) => row.id && row.name);
+}
+
 export async function listUsers(
   params: ListUsersParams = {}
 ): Promise<HubUsersListResponse> {

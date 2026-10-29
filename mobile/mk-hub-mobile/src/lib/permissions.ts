@@ -168,6 +168,14 @@ export function hasPermission(
   if (requiredPermission === "equipment:write") {
     return has || permissions.has("fleet:equipment:write");
   }
+  if (requiredPermission === "fleet:equipment:work_orders:read") {
+    return (
+      has ||
+      permissions.has("fleet:equipment:work_orders:write") ||
+      permissions.has("work_orders:read") ||
+      permissions.has("fleet:work_orders:read")
+    );
+  }
   if (requiredPermission === "work_orders:read") {
     return (
       has ||

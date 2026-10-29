@@ -221,6 +221,28 @@ export const HUB_MENU_CATEGORIES: HubMenuCategory[] = [
           screen: "FleetAssetsList",
           params: { listKind: "vehicles", title: "Vehicles" }
         }
+      },
+      {
+        id: "fleet-heavy-machinery",
+        label: "Heavy machinery",
+        icon: "construct-outline",
+        requiredPermission: "fleet:vehicles:read",
+        target: {
+          type: "stack",
+          screen: "FleetAssetsList",
+          params: { listKind: "heavy_machinery", title: "Heavy machinery" }
+        }
+      },
+      {
+        id: "fleet-other-assets",
+        label: "Other assets",
+        icon: "cube-outline",
+        requiredPermission: "fleet:vehicles:read",
+        target: {
+          type: "stack",
+          screen: "FleetAssetsList",
+          params: { listKind: "other", title: "Other assets" }
+        }
       }
     ]
   },
@@ -238,6 +260,17 @@ export const HUB_MENU_CATEGORIES: HubMenuCategory[] = [
           type: "stack",
           screen: "FleetAssetsList",
           params: { listKind: "equipment", title: "Equipment" }
+        }
+      },
+      {
+        id: "equipment-work-orders",
+        label: "Work Orders",
+        icon: "clipboard-outline",
+        requiredPermission: "fleet:equipment:work_orders:read",
+        target: {
+          type: "stack",
+          screen: "FleetWorkOrders",
+          params: { entityType: "equipment" }
         }
       },
       {

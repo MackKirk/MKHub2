@@ -146,6 +146,61 @@ export const unblockTask = async (taskId: string): Promise<TaskItem> => {
   return normalizeTask(response.data);
 };
 
+export const addTaskComment = async (
+  taskId: string,
+  message: string
+): Promise<TaskLogEntry> => {
+  const response = await api.post(`/tasks/${taskId}/log`, {
+    message: message.trim()
+  });
+  const item = asRecord(response.data);
+  const actor = asRecord(item.actor);
+  return {
+    id: String(item.id ?? ""),
+    task_id: String(item.task_id ?? taskId),
+    type: String(item.type ?? "comment"),
+    message: String(item.message ?? message.trim()),
+    actor: {
+      id: asString(actor.id),
+      name: asString(actor.name)
+    },
+    created_at: asString(item.created_at)
+  };
+};
+
+export const updateTaskDescription = async (
+  taskId: string,
+  description: string
+): Promise<TaskItem> => {
+  const response = await api.patch(`/tasks/${taskId}/description`, {
+    description
+  });
+  return normalizeTask(response.data);
+};
+
+export async function uploadTaskPhoto(file: {
+  uri: string;
+  name: string;
+  type: string;
+}): Promise<string> {
+  const form = new FormData();
+  form.append("file", {
+    uri: file.uri,
+    name: file.name,
+    type: file.type
+  } as unknown as Blob);
+  form.append("original_name", file.name);
+  form.append("content_type", file.type || "image/jpeg");
+  form.append("project_id", "");
+  form.append("client_id", "");
+  form.append("employee_id", "");
+  form.append("category_id", "tasks");
+  const response = await api.post<{ id: string }>("/files/upload-proxy", form, {
+    headers: { "Content-Type": "multipart/form-data" }
+  });
+  return response.data.id;
+};
+
 export function applyTaskUpdate(
   grouped: TaskGroupedResponse,
   updated: TaskItem

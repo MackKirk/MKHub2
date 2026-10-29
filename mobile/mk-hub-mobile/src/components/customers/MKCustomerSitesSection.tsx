@@ -1,8 +1,9 @@
 import React from "react";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Pressable, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { MKButton } from "../MKButton";
 import { MKCard } from "../MKCard";
+import { openMaps } from "../../lib/fieldActions";
 import { formatSiteAddress } from "../../lib/customerUi";
 import { colors } from "../../theme/colors";
 import { spacing } from "../../theme/spacing";
@@ -57,9 +58,17 @@ export const MKCustomerSitesSection: React.FC<MKCustomerSitesSectionProps> = ({
                   {site.site_name || "Site"}
                 </Text>
                 {address ? (
-                  <Text style={styles.siteAddress} numberOfLines={2}>
-                    {address}
-                  </Text>
+                  <Pressable
+                    onPress={() => {
+                      void openMaps({ address });
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Directions"
+                  >
+                    <Text style={[styles.siteAddress, styles.siteAddressLink]} numberOfLines={2}>
+                      {address}
+                    </Text>
+                  </Pressable>
                 ) : (
                   <Text style={styles.siteAddress}>No address</Text>
                 )}
@@ -139,6 +148,9 @@ const styles = StyleSheet.create({
   siteAddress: {
     ...typography.caption,
     color: colors.textMuted
+  },
+  siteAddressLink: {
+    color: colors.homeAccent
   },
   notes: {
     ...typography.bodySmall,

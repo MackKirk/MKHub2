@@ -1,8 +1,9 @@
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { MKBadge } from "../MKBadge";
 import { MKButton } from "../MKButton";
+import { openMaps } from "../../lib/fieldActions";
 import {
   customerDisplayName,
   formatCustomerAddress,
@@ -57,12 +58,19 @@ export const MKCustomerHero: React.FC<MKCustomerHeroProps> = ({
       </View>
 
       {address ? (
-        <View style={styles.metaRow}>
-          <Ionicons name="location-outline" size={16} color={colors.textMuted} />
-          <Text style={styles.metaText} numberOfLines={2}>
+        <Pressable
+          style={styles.metaRow}
+          onPress={() => {
+            void openMaps({ address });
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Directions"
+        >
+          <Ionicons name="location-outline" size={16} color={colors.homeAccent} />
+          <Text style={[styles.metaText, styles.metaLink]} numberOfLines={2}>
             {address}
           </Text>
-        </View>
+        </Pressable>
       ) : null}
 
       {customer.code ? (
@@ -128,5 +136,8 @@ const styles = StyleSheet.create({
     ...typography.bodySmall,
     color: colors.textBody,
     flex: 1
+  },
+  metaLink: {
+    color: colors.homeAccent
   }
 });
