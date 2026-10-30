@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
+import time
 import uuid
 from typing import Optional
 
@@ -18,6 +20,28 @@ from .hub_route_manifest import is_public_path, is_restricted_allowed
 from .security import decode_token
 
 logger = logging.getLogger(__name__)
+
+# Repeated thumbnail requests must not each re-run the signature inbox queries.
+_COMPLIANCE_GATE_TTL_S = 60.0
+_compliance_gate_cache: dict[uuid.UUID, tuple[float, object]] = {}
+_compliance_gate_lock = threading.Lock()
+
+
+def _cached_signature_compliance(db: Session, user_id: uuid.UUID):
+    now = time.monotonic()
+    with _compliance_gate_lock:
+        hit = _compliance_gate_cache.get(user_id)
+        if hit is not None and now - hit[0] < _COMPLIANCE_GATE_TTL_S:
+            return hit[1]
+    result = get_signature_compliance(db, user_id)
+    with _compliance_gate_lock:
+        _compliance_gate_cache[user_id] = (time.monotonic(), result)
+        if len(_compliance_gate_cache) > 4000:
+            cutoff = time.monotonic() - _COMPLIANCE_GATE_TTL_S
+            stale = [key for key, (ts, _res) in _compliance_gate_cache.items() if ts < cutoff]
+            for key in stale:
+                _compliance_gate_cache.pop(key, None)
+    return result
 
 _UUID = r"[0-9a-fA-F-]{36}"
 _SELF_USER_RESOURCE = re.compile(rf"^/auth/users/({_UUID})(?:/.*)?$")
@@ -160,7 +184,7 @@ def require_hub_access(
         return
 
     try:
-        compliance = get_signature_compliance(db, user.id)
+        compliance = _cached_signature_compliance(db, user.id)
     except ComplianceCheckError as exc:
         _log_compliance_failure(conn, exc)
         return

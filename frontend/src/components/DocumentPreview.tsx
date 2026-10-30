@@ -1,5 +1,5 @@
-import { withFileAccessToken } from '@/lib/api';
 import { effectiveLineTextAligns, lineAlignAt, type TextAlign } from '@/lib/documentTextAlign';
+import { DOCUMENT_DISPLAY_IMAGE_WIDTH } from '@/lib/documentDisplayImage';
 import { useRef, useState, useCallback, useEffect, useLayoutEffect, Fragment, type RefObject, type DragEvent } from 'react';
 import type { DocElement, RichTextRun, DocumentSignerRoleDef } from '@/types/documentCreator';
 import {
@@ -34,6 +34,7 @@ import {
   marginBandRingClass,
 } from '@/components/document-editor/documentProtectedVisuals';
 import { PinIcon } from '@/components/document-editor/documentEditorIcons';
+import { QueuedDocumentImage } from '@/components/document-editor/QueuedDocumentImage';
 import { notifyTextEditBlocking } from '@/components/document-editor/notifyTextEditBlocking';
 import {
   DOCUMENT_MIN_SIZE_PCT,
@@ -117,7 +118,6 @@ const MIN_SIZE_PCT = DOCUMENT_MIN_SIZE_PCT;
 // Reference width used to keep font sizing stable across window sizes.
 // Font sizes are stored in "reference px" and scaled by (canvasWidth / REFERENCE_CANVAS_WIDTH_PX).
 const REFERENCE_CANVAS_WIDTH_PX = DOCUMENT_REF_WIDTH_PX;
-const DOCUMENT_PREVIEW_IMAGE_WIDTH_PX = 900;
 
 /** Ribbon strip below toolbar — keep focus in inline text editor when using formatting controls. */
 const DOCUMENT_EDITOR_FORMATTING_SELECTOR = '[data-document-editor-formatting]';
@@ -3818,13 +3818,10 @@ export default function DocumentPreview({
                   </div>
                 ) : (
                   el.content && (
-                    <img
-                      src={withFileAccessToken(
-                        `/files/${el.content}/thumbnail?w=${DOCUMENT_PREVIEW_IMAGE_WIDTH_PX}`,
-                      )}
-                      alt=""
-                      decoding="async"
-                      className="w-full h-full pointer-events-none"
+                    <QueuedDocumentImage
+                      fileId={el.content}
+                      width={DOCUMENT_DISPLAY_IMAGE_WIDTH}
+                      className="pointer-events-none h-full w-full"
                       style={{
                         objectFit: el.imageFit ?? 'contain',
                         objectPosition: el.imagePosition ?? '50% 50%',

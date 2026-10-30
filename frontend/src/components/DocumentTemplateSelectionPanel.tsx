@@ -15,6 +15,7 @@ import {
   ScaledPagePreview,
 } from '@/components/DocumentPagePreviewThumbnails';
 import { withFileAccessToken } from '@/lib/api';
+import { documentFileThumbnailPath } from '@/lib/documentDisplayImage';
 import type { DocumentCreationSelection } from '@/components/ChooseDocumentTypeModal';
 import {
   fetchExpandedPages,
@@ -387,7 +388,7 @@ export function DocumentTemplateSelectionPanel({
             const label = pageLabel(selectedType, index);
             const template = backgroundTemplates.find((t) => t.id === (page.template_id ?? ''));
             const backgroundUrl = template?.background_file_id
-              ? withFileAccessToken(`/files/${template.background_file_id}/thumbnail?w=512`)
+              ? withFileAccessToken(documentFileThumbnailPath(template.background_file_id))
               : null;
             return (
               <button
@@ -421,6 +422,7 @@ export function DocumentTemplateSelectionPanel({
                     backgroundUrl={backgroundUrl}
                     thumbWidthPx={GRID_THUMB_WIDTH_PX}
                     fillWidth
+                    imagePlaceholders
                   />
                 </div>
                 <div className="px-2 pb-2 pt-1 min-w-0">

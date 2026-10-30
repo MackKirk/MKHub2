@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessToken } from '@/lib/api';
+import { documentFileThumbnailPath } from '@/lib/documentDisplayImage';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
 import OverlayPortal from '@/components/OverlayPortal';
@@ -250,7 +251,7 @@ export default function DocumentTemplatesTab({ readOnly = false }: { readOnly?: 
                 <div className="h-48 w-full rounded-t-lg bg-gray-100 overflow-hidden flex items-center justify-center">
                   {t.background_file_id ? (
                     <img
-                      src={withFileAccessToken(`/files/${t.background_file_id}/thumbnail?w=320`)}
+                      src={withFileAccessToken(documentFileThumbnailPath(t.background_file_id))}
                       alt={t.name}
                       className="max-w-full max-h-full object-contain"
                     />
@@ -329,7 +330,7 @@ export default function DocumentTemplatesTab({ readOnly = false }: { readOnly?: 
                 <div className="flex flex-wrap items-center gap-3">
                   {editFileId && editFileId !== 'uploading' && (
                     <img
-                      src={withFileAccessToken(`/files/${editFileId}/thumbnail?w=120`)}
+                      src={withFileAccessToken(documentFileThumbnailPath(editFileId))}
                       alt=""
                       className="h-20 rounded border border-gray-200 object-contain bg-gray-50"
                     />

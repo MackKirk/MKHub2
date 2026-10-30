@@ -31,6 +31,10 @@ Image.MAX_IMAGE_PIXELS = 40_000_000
 
 THUMB_CACHE_DIR = Path(os.getenv("THUMBNAIL_CACHE_DIR", "var/cache/thumbnails"))
 THUMB_CONCURRENCY = max(1, int(os.getenv("THUMBNAIL_CONCURRENCY", "2")))
+# One on-screen width for document photos. The original blob is never copied.
+# This cache lives on the server disk and is capped by THUMBNAIL_CACHE_MAX_BYTES.
+DISPLAY_THUMB_WIDTH = 1600
+THUMB_CACHE_MAX_BYTES = max(1, int(os.getenv("THUMBNAIL_CACHE_MAX_BYTES", str(400 * 1024 * 1024))))
 _thumb_sema = threading.BoundedSemaphore(THUMB_CONCURRENCY)
 
 _JPEG_FORMATS = {"JPEG", "MPO", "JFIF"}
@@ -43,7 +47,7 @@ class ThumbnailResult:
 
 
 def clamp_thumb_width(w: Optional[int]) -> int:
-    return max(32, min(1024, int(w or 200)))
+    return max(32, min(DISPLAY_THUMB_WIDTH, int(w or 200)))
 
 
 def _cache_stem(file_id: str, width: int, size_bytes: Optional[int]) -> str:
@@ -75,20 +79,37 @@ def cache_store(file_id: str, width: int, size_bytes: Optional[int], result: Thu
         logger.warning("thumbnail cache write failed: %s", e)
 
 
-def _evict_cache_if_needed(max_files: int = 2000) -> None:
+def _evict_cache_if_needed() -> None:
+    """Drop oldest display copies until the disk cache is under its byte budget.
+
+    The newest file is kept even if it alone exceeds the budget, so a single
+    write is not deleted immediately.
+    """
     try:
-        files = [p for p in THUMB_CACHE_DIR.iterdir() if p.is_file()]
+        paths = [p for p in THUMB_CACHE_DIR.iterdir() if p.is_file()]
     except OSError:
         return
-    overflow = len(files) - max_files
-    if overflow <= 0:
-        return
-    files.sort(key=lambda p: p.stat().st_mtime)
-    for p in files[: overflow + 100]:
+    sized: list[tuple[float, int, Path]] = []
+    total = 0
+    for path in paths:
         try:
-            p.unlink()
+            st = path.stat()
         except OSError:
-            pass
+            continue
+        sized.append((st.st_mtime, st.st_size, path))
+        total += st.st_size
+    if total <= THUMB_CACHE_MAX_BYTES:
+        return
+    sized.sort(key=lambda item: item[0])
+    victims = sized[:-1] if len(sized) > 1 else []
+    for _mtime, size, path in victims:
+        if total <= THUMB_CACHE_MAX_BYTES:
+            break
+        try:
+            path.unlink()
+        except OSError:
+            continue
+        total -= size
 
 
 def thumbnail_slot():

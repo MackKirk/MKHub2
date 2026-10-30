@@ -1,11 +1,12 @@
 import os
 import uuid
 from datetime import datetime
+from types import SimpleNamespace
 from typing import Optional
 
 from urllib.parse import unquote, quote
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Form, File, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Form, File, UploadFile
 from fastapi.responses import RedirectResponse, Response, StreamingResponse
 from sqlalchemy.orm import Session
 from slugify import slugify
@@ -43,6 +44,7 @@ from ..services.image_thumbnails import (
     clamp_thumb_width,
     render_thumbnail,
     thumbnail_slot,
+    DISPLAY_THUMB_WIDTH,
 )
 from ..storage.blob_provider import BlobStorageProvider
 from ..storage.local_provider import LocalStorageProvider
@@ -458,9 +460,59 @@ async def upload_proxy(
         raise HTTPException(status_code=500, detail=f"Failed to confirm upload: {str(e)}")
 
 
+def _should_warm_document_display(content_type: Optional[str], category: Optional[str], key: str) -> bool:
+    """Document photos only. Other uploads stay out of the display cache until someone views them."""
+    cat = (category or "").lower()
+    if not cat.startswith("document-creator"):
+        return False
+    ctype = (content_type or "").lower()
+    if ctype.startswith("image/"):
+        return True
+    name = (key or "").lower()
+    return name.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif", ".bmp"))
+
+
+def _warm_document_display_image(
+    file_id: str, key: str, size_bytes: int, content_type: str, provider: str
+) -> None:
+    """Queue the on-screen copy. Two workers upload it to storage; this call returns immediately."""
+    from ..services.document_display_image import enqueue_display_job
+
+    enqueue_display_job(
+        file_id=file_id,
+        source_key=key,
+        size_bytes=int(size_bytes or 0),
+        content_type=content_type or "",
+        provider=provider or "",
+    )
+
+
+def _schedule_document_display_warm(
+    background_tasks: BackgroundTasks,
+    *,
+    file_id: str,
+    key: str,
+    size_bytes: int,
+    content_type: Optional[str],
+    provider: str,
+    category: Optional[str],
+) -> None:
+    if not _should_warm_document_display(content_type, category, key):
+        return
+    background_tasks.add_task(
+        _warm_document_display_image,
+        str(file_id),
+        str(key or ""),
+        int(size_bytes or 0),
+        str(content_type or ""),
+        str(provider or ""),
+    )
+
+
 @router.post("/confirm")
 def confirm(
     req: ConfirmRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     storage: StorageProvider = Depends(get_storage),
     user: User = Depends(get_current_user),
@@ -598,6 +650,15 @@ def confirm(
                     )
                     db.add(fo)
                     db.commit()
+                    _schedule_document_display_warm(
+                        background_tasks,
+                        file_id=str(fo.id),
+                        key=jpg_key,
+                        size_bytes=len(jpg_content),
+                        content_type="image/jpeg",
+                        provider=provider,
+                        category=mcat,
+                    )
                     return {"id": str(fo.id)}
                 except Exception as cli_err:
                     logger.warning(f"heif-convert fallback failed for {original_key}: {cli_err}. Saving HEIC as-is.", exc_info=True)
@@ -702,6 +763,15 @@ def confirm(
             )
             db.add(fo)
             db.commit()
+            _schedule_document_display_warm(
+                background_tasks,
+                file_id=str(fo.id),
+                key=jpg_key,
+                size_bytes=len(jpg_content),
+                content_type="image/jpeg",
+                provider=provider,
+                category=mcat,
+            )
             return {"id": str(fo.id)}
         except Exception as e:
             # If conversion fails, log warning but fall back to saving HEIC as-is
@@ -729,6 +799,15 @@ def confirm(
     )
     db.add(fo)
     db.commit()
+    _schedule_document_display_warm(
+        background_tasks,
+        file_id=str(fo.id),
+        key=req.key,
+        size_bytes=int(req.size_bytes or 0),
+        content_type=req.content_type,
+        provider=provider,
+        category=mcat,
+    )
     return {"id": str(fo.id)}
 
 
@@ -1069,7 +1148,7 @@ def preview(
         return {"preview_url": url, "expires_in": 300}
 
 
-def _read_storage_bytes_for_thumbnail(storage, fo: FileObject, file_id: str, logger) -> bytes:
+def _read_storage_bytes_for_thumbnail(storage, fo, file_id: str, logger) -> bytes:
     """Load original file bytes without quadratic concatenation."""
     if isinstance(storage, LocalStorageProvider):
         file_path = storage._get_path(fo.key)
@@ -1129,7 +1208,8 @@ def thumbnail(
     assert_can_read_file_object(user, db, fo)
 
     target_w = clamp_thumb_width(w)
-    cached = cache_lookup(file_id, target_w, fo.size_bytes)
+    size_bytes = fo.size_bytes
+    cached = cache_lookup(file_id, target_w, size_bytes)
     if cached is not None:
         return Response(
             content=cached.content,
@@ -1137,24 +1217,47 @@ def thumbnail(
             headers={"Cache-Control": "private, max-age=86400"},
         )
 
+    # Copy what rendering needs, then return the DB connection before the download and Pillow work.
+    # A document with many photos must not hold a pool connection for each one.
     storage = get_storage_for_file(fo)
+    thumb_file = SimpleNamespace(
+        key=fo.key,
+        provider=fo.provider,
+        content_type=fo.content_type,
+    )
+    db.close()
     try:
+        if target_w == DISPLAY_THUMB_WIDTH:
+            from ..services.document_display_image import ensure_display_copy
+
+            result = ensure_display_copy(
+                storage,
+                file_id=file_id,
+                source_key=str(thumb_file.key or ""),
+                size_bytes=int(size_bytes or 0),
+                content_type=str(thumb_file.content_type or ""),
+            )
+            return Response(
+                content=result.content,
+                media_type=result.media_type,
+                headers={"Cache-Control": "private, max-age=86400"},
+            )
         with thumbnail_slot():
-            cached = cache_lookup(file_id, target_w, fo.size_bytes)
+            cached = cache_lookup(file_id, target_w, size_bytes)
             if cached is not None:
                 return Response(
                     content=cached.content,
                     media_type=cached.media_type,
                     headers={"Cache-Control": "private, max-age=86400"},
                 )
-            file_content = _read_storage_bytes_for_thumbnail(storage, fo, file_id, logger)
+            file_content = _read_storage_bytes_for_thumbnail(storage, thumb_file, file_id, logger)
             result = render_thumbnail(
                 file_content,
                 target_w,
-                original_name=str(fo.key or ""),
-                content_type=str(fo.content_type or ""),
+                original_name=str(thumb_file.key or ""),
+                content_type=str(thumb_file.content_type or ""),
             )
-        cache_store(file_id, target_w, fo.size_bytes, result)
+        cache_store(file_id, target_w, size_bytes, result)
         return Response(
             content=result.content,
             media_type=result.media_type,
@@ -1164,8 +1267,8 @@ def thumbnail(
         raise
     except Exception as e:
         logger.error(
-            f"Thumbnail generation failed for file {file_id} (key: {fo.key if fo else 'unknown'}, "
-            f"content_type: {getattr(fo, 'content_type', 'unknown') if fo else 'unknown'}): {str(e)}",
+            f"Thumbnail generation failed for file {file_id} (key: {thumb_file.key or 'unknown'}, "
+            f"content_type: {thumb_file.content_type or 'unknown'}): {str(e)}",
             exc_info=True,
         )
         raise HTTPException(status_code=500, detail=f"Failed to generate thumbnail: {str(e)}")

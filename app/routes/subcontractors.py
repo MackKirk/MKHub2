@@ -935,6 +935,9 @@ def _try_remove_orphan_file_object_subco(db: Session, file_object_id: uuid.UUID)
 
         storage = get_storage_for_file(fo)
         storage.delete(fo.key)
+        from ..services.document_display_image import delete_display_copies
+
+        delete_display_copies(storage, str(fo.id))
     except Exception:
         pass
     db.delete(fo)

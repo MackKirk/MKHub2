@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useNavigateBack } from '@/hooks/useNavigateBack';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, getToken, withFileAccessToken, ApiError, getApiErrorCode, isDocumentConcurrencyError } from '@/lib/api';
+import { documentFileThumbnailPath } from '@/lib/documentDisplayImage';
 import {
   fetchDocumentExportPdfResult,
   streamDocumentExportPdf,
@@ -1157,18 +1158,14 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
       if (useStackedPages && Math.abs(i - currentPageIndex) > 1) continue;
       if (!useStackedPages && i !== currentPageIndex) continue;
       const page = pages[i];
-      const tmpl = templates.find((t) => t.id === (page.template_id ?? ''));
-      if (tmpl?.background_file_id) {
-        urls.push(withFileAccessToken(`/files/${tmpl.background_file_id}/thumbnail?w=800`));
-      }
       for (const el of page.elements ?? []) {
         if (el.type === 'image' && el.content) {
-          urls.push(withFileAccessToken(`/files/${el.content}/thumbnail?w=900`));
+          urls.push(withFileAccessToken(documentFileThumbnailPath(el.content)));
         }
       }
     }
     return urls;
-  }, [pages, templates, currentPageIndex, isTemplate]);
+  }, [pages, currentPageIndex, isTemplate]);
   const mediaLoading = useDocumentMediaLoading(canvasMediaUrls);
 
   // Keyboard shortcuts: Delete, Arrow keys, Undo/Redo, Copy/Paste/Duplicate
@@ -1343,7 +1340,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
     return { width: Math.max(100, w), height: Math.max(100, h) };
   })();
   const backgroundFileId = currentTemplate?.background_file_id;
-  const backgroundUrl = backgroundFileId ? withFileAccessToken(`/files/${backgroundFileId}/thumbnail?w=800`) : null;
+  const backgroundUrl = backgroundFileId ? withFileAccessToken(documentFileThumbnailPath(backgroundFileId)) : null;
   const defaultMargins: PageMargins = { left_pct: 0, right_pct: 0, top_pct: 0, bottom_pct: 0 };
   /** Margins: page overrides template overrides default */
   const effectiveMargins: PageMargins = {
@@ -2375,7 +2372,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
             </button>
             <div className="mt-2 grid grid-cols-2 gap-2">
               {templates.map((t) => {
-                const thumb = t.background_file_id ? withFileAccessToken(`/files/${t.background_file_id}/thumbnail?w=260`) : null;
+                const thumb = t.background_file_id ? withFileAccessToken(documentFileThumbnailPath(t.background_file_id)) : null;
                 const selected = currentTemplateId === t.id;
                 return (
                   <button
@@ -2748,7 +2745,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
             {pages.map((page, pageIndex) => {
               const tmplForPage = templates.find((t) => t.id === (page.template_id ?? ''));
               const bgForPage = tmplForPage?.background_file_id
-                ? withFileAccessToken(`/files/${tmplForPage.background_file_id}/thumbnail?w=800`)
+                ? withFileAccessToken(documentFileThumbnailPath(tmplForPage.background_file_id))
                 : null;
               const marginsForPage: PageMargins = {
                 ...defaultMargins,
@@ -3108,7 +3105,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
                   const img = new Image();
                   img.onload = () => resolve();
                   img.onerror = () => resolve();
-                  img.src = withFileAccessToken(`/files/${fileId}/thumbnail?w=900`);
+                  img.src = withFileAccessToken(documentFileThumbnailPath(fileId));
                 });
               } catch {
                 /* ignore prefetch errors */

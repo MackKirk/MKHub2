@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessToken } from '@/lib/api';
+import { documentFileThumbnailPath } from '@/lib/documentDisplayImage';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
 import type { DocumentTypePreset } from '@/components/DocumentTypePicker';
@@ -751,7 +752,7 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
                   {pages.map((p, idx) => {
                     const template = templates.find((t) => t.id === p.template_id);
                     const backgroundUrl = template?.background_file_id
-                      ? withFileAccessToken(`/files/${template.background_file_id}/thumbnail?w=120`)
+                      ? withFileAccessToken(documentFileThumbnailPath(template.background_file_id))
                       : null;
                     return (
                       <div

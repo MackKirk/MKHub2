@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { api, withFileAccessToken } from '@/lib/api';
+import { documentFileThumbnailPath } from '@/lib/documentDisplayImage';
 import DocumentPreview from '@/components/DocumentPreview';
 import type { DocumentPage, DocumentSignerRoleDef, PageMargins } from '@/types/documentCreator';
 import {
@@ -80,7 +81,7 @@ export default function DocumentPreviewModal({
           {pages.map((page, pageIndex) => {
             const tmpl = templates.find((t) => t.id === (page.template_id ?? ''));
             const bgUrl = tmpl?.background_file_id
-              ? withFileAccessToken(`/files/${tmpl.background_file_id}/thumbnail?w=800`)
+              ? withFileAccessToken(documentFileThumbnailPath(tmpl.background_file_id))
               : null;
             const margins: PageMargins = {
               ...DEFAULT_MARGINS,

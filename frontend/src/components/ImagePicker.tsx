@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { api, withFileAccessToken } from '@/lib/api';
+import { DOCUMENT_DISPLAY_IMAGE_WIDTH } from '@/lib/documentDisplayImage';
 import toast from 'react-hot-toast';
 import ImageEditor from '@/components/ImageEditor';
 import ImagePickerGalleryDialog from '@/components/ImagePickerGalleryDialog';
@@ -716,7 +717,7 @@ export default function ImagePicker({
             setProgressMessage('');
           };
           image.crossOrigin = 'anonymous';
-          image.src = withFileAccessToken(`/files/${fileObjectId}/thumbnail?w=1024`);
+          image.src = withFileAccessToken(`/files/${fileObjectId}/thumbnail?w=${DOCUMENT_DISPLAY_IMAGE_WIDTH}`);
           return;
         }
         
@@ -775,7 +776,7 @@ export default function ImagePicker({
               setProgressMessage('');
             };
             img2.crossOrigin = 'anonymous';
-            img2.src = withFileAccessToken(`/files/${fileObjectId}/thumbnail?w=1024`);
+            img2.src = withFileAccessToken(`/files/${fileObjectId}/thumbnail?w=${DOCUMENT_DISPLAY_IMAGE_WIDTH}`);
           }).catch((e:any)=>{
             toast.error('Failed to load image');
             setIsLoading(false); 
@@ -844,7 +845,7 @@ export default function ImagePicker({
         setProgressMessage('');
       };
       image.crossOrigin = 'anonymous';
-      image.src = withFileAccessToken(`/files/${fileObjectId}/thumbnail?w=1024`);
+      image.src = withFileAccessToken(`/files/${fileObjectId}/thumbnail?w=${DOCUMENT_DISPLAY_IMAGE_WIDTH}`);
     }catch(e: any){ 
       console.error('Upload failed:', e);
       const errorMsg = e?.message || e?.response?.data?.detail || 'Upload failed';
@@ -881,7 +882,7 @@ export default function ImagePicker({
       image.onerror = ()=>{ toast.error('Failed to load image'); setIsLoading(false); setShowProgress(false); setProgressMessage(''); };
       image.crossOrigin = 'anonymous';
       // Use thumbnail endpoint to ensure browser-compatible PNG (works for HEIC too)
-      image.src = withFileAccessToken(`/files/${fileObjectId}/thumbnail?w=1024`);
+      image.src = withFileAccessToken(`/files/${fileObjectId}/thumbnail?w=${DOCUMENT_DISPLAY_IMAGE_WIDTH}`);
     }catch(e){ toast.error('Failed to open image'); }
   };
 
@@ -1169,7 +1170,7 @@ export default function ImagePicker({
     }
     // Stable URL — ImageEditor keys reloads on this string; avoid cache-bust timestamps here.
     if (originalFileObjectId) {
-      return withFileAccessToken(`/files/${originalFileObjectId}/thumbnail?w=1024`);
+      return withFileAccessToken(`/files/${originalFileObjectId}/thumbnail?w=${DOCUMENT_DISPLAY_IMAGE_WIDTH}`);
     }
     // Fallback to image src
     return img.src;

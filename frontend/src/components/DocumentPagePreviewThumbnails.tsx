@@ -1,5 +1,7 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { withFileAccessToken } from '@/lib/api';
+import { documentFileThumbnailPath } from '@/lib/documentDisplayImage';
+import { ImageIcon } from '@/components/document-editor/documentEditorIcons';
 import { lineAlignAt } from '@/lib/documentTextAlign';
 import type { DocumentPage, DocElement, PageMargins, RichTextRun } from '@/types/documentCreator';
 import { isInlineAtomRun } from '@/types/documentCreator';
@@ -102,6 +104,8 @@ export type ScaledPagePreviewProps = {
   overlays?: ReactNode;
   /** Custom block element chrome; defaults to amber protected-zone look. */
   renderBlock?: (el: DocElement) => ReactNode;
+  /** Draw a gray image icon instead of fetching each photo (editor page strip). */
+  imagePlaceholders?: boolean;
 };
 
 /**
@@ -117,6 +121,7 @@ export function ScaledPagePreview({
   fitParent = false,
   overlays,
   renderBlock,
+  imagePlaceholders = false,
 }: ScaledPagePreviewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [measuredWidth, setMeasuredWidth] = useState(thumbWidthPx);
@@ -209,9 +214,13 @@ export function ScaledPagePreview({
                 )
               ) : el.type === 'initials' || el.type === 'date' ? (
                 <div className="h-full w-full rounded-sm border border-sky-500/50 bg-sky-400/30" />
+              ) : imagePlaceholders && el.content ? (
+                <div className="flex h-full w-full items-center justify-center overflow-hidden bg-slate-200 text-slate-500">
+                  <ImageIcon className="h-16 w-16 max-h-[70%] max-w-[70%]" />
+                </div>
               ) : el.content ? (
                 <img
-                  src={withFileAccessToken(`/files/${el.content}/thumbnail?w=256`)}
+                  src={withFileAccessToken(documentFileThumbnailPath(el.content))}
                   loading="lazy"
                   alt=""
                   className="h-full w-full"
@@ -275,7 +284,7 @@ export function DocumentPagePreviewThumbnails({
       {toShow.map((page, i) => {
         const template = templates.find((t) => t.id === (page.template_id ?? ''));
         const backgroundUrl = template?.background_file_id
-          ? withFileAccessToken(`/files/${template.background_file_id}/thumbnail?w=512`)
+          ? withFileAccessToken(documentFileThumbnailPath(template.background_file_id))
           : null;
         return (
           <ScaledPagePreview
@@ -284,6 +293,7 @@ export function DocumentPagePreviewThumbnails({
             backgroundUrl={backgroundUrl}
             thumbWidthPx={thumbWidthPx}
             fillWidth={fillWidth}
+            imagePlaceholders
             className={
               fillWidth
                 ? 'h-full w-full rounded-none border-0 shadow-none'
@@ -326,7 +336,7 @@ export function DocumentPagePreviewGrid({
       {toShow.map((page, i) => {
         const template = templates.find((t) => t.id === (page.template_id ?? ''));
         const backgroundUrl = template?.background_file_id
-          ? withFileAccessToken(`/files/${template.background_file_id}/thumbnail?w=512`)
+          ? withFileAccessToken(documentFileThumbnailPath(template.background_file_id))
           : null;
         return (
           <ScaledPagePreview
@@ -335,6 +345,7 @@ export function DocumentPagePreviewGrid({
             backgroundUrl={backgroundUrl}
             thumbWidthPx={thumbWidthPx}
             fillWidth
+            imagePlaceholders
             className="rounded border border-gray-200 shadow-sm"
           />
         );

@@ -1,4 +1,5 @@
 import { withFileAccessToken } from '@/lib/api';
+import { documentFileThumbnailPath } from '@/lib/documentDisplayImage';
 import { Fragment, memo, useState } from 'react';
 import type { DocumentPage, PageMargins } from '@/types/documentCreator';
 import { ScaledPagePreview } from '@/components/DocumentPagePreviewThumbnails';
@@ -84,6 +85,7 @@ const PageThumbnail = memo(function PageThumbnail({
         page={page}
         backgroundUrl={backgroundUrl}
         fitParent
+        imagePlaceholders
         className="!absolute inset-0 border-0 shadow-none"
         renderBlock={() => (
           <div
@@ -238,7 +240,7 @@ export default function DocumentPagesStrip({
       {pages.map((page, i) => {
         const template = templates.find((t) => t.id === (page.template_id ?? ''));
         const backgroundUrl = template?.background_file_id
-          ? withFileAccessToken(`/files/${template.background_file_id}/thumbnail?w=512`)
+          ? withFileAccessToken(documentFileThumbnailPath(template.background_file_id))
           : null;
         const isDragging = dragPageIndex === i;
         const isDropTarget = dragOverIndex === i;
