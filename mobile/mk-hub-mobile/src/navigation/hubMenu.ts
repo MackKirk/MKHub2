@@ -69,6 +69,12 @@ export const HUB_MENU_CATEGORIES: HubMenuCategory[] = [
         target: { type: "tab", screen: "Tasks" }
       },
       {
+        id: "signatures",
+        label: "Signatures",
+        icon: "create-outline",
+        target: { type: "stack", screen: "Signatures" }
+      },
+      {
         id: "community",
         label: "Community",
         icon: "chatbubbles-outline",

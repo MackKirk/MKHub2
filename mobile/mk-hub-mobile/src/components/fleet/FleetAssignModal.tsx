@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -91,10 +92,26 @@ export const FleetAssignModal: React.FC<FleetAssignModalProps> = ({
 
   const handleSubmit = () => {
     if (!selected) return;
+    const odometerValue = odometerOut.trim()
+      ? Number.parseInt(odometerOut, 10)
+      : null;
+    if (
+      showOdometer &&
+      minOdometer != null &&
+      odometerValue != null &&
+      !Number.isNaN(odometerValue) &&
+      odometerValue < minOdometer
+    ) {
+      Alert.alert(
+        "Odometer too low",
+        `Odometer out must be at least ${minOdometer}.`
+      );
+      return;
+    }
     onSubmit({
       assigned_to_user_id: selected.id,
       assigned_to_name: selected.name,
-      odometer_out: odometerOut.trim() ? Number.parseInt(odometerOut, 10) : null,
+      odometer_out: odometerValue != null && !Number.isNaN(odometerValue) ? odometerValue : null,
       hours_out: hoursOut.trim() ? Number.parseFloat(hoursOut) : null,
       notes_out: notesOut.trim() || null
     });
@@ -181,6 +198,7 @@ export const FleetAssignModal: React.FC<FleetAssignModalProps> = ({
           <MKButton title="Cancel" variant="secondary" onPress={onClose} disabled={loading} />
           <MKButton
             title="Check out"
+            variant="accent"
             onPress={handleSubmit}
             loading={loading}
             disabled={!selected}

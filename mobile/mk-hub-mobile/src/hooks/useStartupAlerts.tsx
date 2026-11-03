@@ -26,13 +26,22 @@ import {
   getWeeklyAttendanceSummary
 } from "../services/shifts";
 import { getMyTasks } from "../services/tasks";
+import {
+  listAssignedSafetyInspections,
+  listSafetyFollowUps,
+  type SafetyFollowUp,
+  type SafetyInspectionListRow
+} from "../services/safety";
 import type { InboxNotification, OnboardingDocumentRow, SignatureRequestRow } from "../types/inbox";
 import type { TaskItem } from "../types/tasks";
 import { requestClockLog } from "../lib/clockNavigation";
 import { shouldRegisterHours } from "../lib/hoursRegistration";
+import { hasPermission } from "../lib/permissions";
 import {
   goToAppTab,
-  goToSignPlaceholder,
+  goToDocumentSign,
+  goToRoot,
+  goToSignaturesList,
   openNotificationTarget
 } from "../lib/inboxNavigation";
 import {
@@ -61,6 +70,8 @@ type PendingSnapshot = {
   otherOpenTaskCount: number;
   signatureRequests: SignatureRequestRow[];
   onboardingDocs: OnboardingDocumentRow[];
+  followUps: SafetyFollowUp[];
+  inspections: SafetyInspectionListRow[];
   hasContent: boolean;
 };
 
@@ -96,7 +107,10 @@ function isDueSoon(dueDate: string | null | undefined, now = Date.now()): boolea
   return t <= now + DUE_SOON_DAYS * 86400000;
 }
 
-async function fetchPending(userId: string): Promise<PendingSnapshot> {
+async function fetchPending(
+  userId: string,
+  canReadSafety: boolean
+): Promise<PendingSnapshot> {
   const prev = previousWeekday();
   const prevDate = formatDateLocal(prev);
   const todayDate = formatDateLocal(new Date());
@@ -105,19 +119,26 @@ async function fetchPending(userId: string): Promise<PendingSnapshot> {
     formatDateLocal(getWeekStartSunday())
   ]);
 
-  const [grouped, signatures, onboarding, ...summaries] = await Promise.all([
-    getMyTasks().catch(() => ({
-      accepted: [],
-      in_progress: [],
-      blocked: [],
-      done: []
-    })),
-    getPendingSignatureRequests(),
-    getPendingOnboardingDocuments(),
-    ...[...weeks].map((weekStart) =>
-      getWeeklyAttendanceSummary(weekStart, userId).catch(() => ({ days: [] }))
-    )
-  ]);
+  const [grouped, signatures, onboarding, followUps, inspections, ...summaries] =
+    await Promise.all([
+      getMyTasks().catch(() => ({
+        accepted: [],
+        in_progress: [],
+        blocked: [],
+        done: []
+      })),
+      getPendingSignatureRequests(),
+      getPendingOnboardingDocuments(),
+      canReadSafety
+        ? listSafetyFollowUps({ assigned_to_me: true, status: "pending" }).catch(() => [])
+        : Promise.resolve([]),
+      canReadSafety
+        ? listAssignedSafetyInspections(userId).catch(() => [])
+        : Promise.resolve([]),
+      ...[...weeks].map((weekStart) =>
+        getWeeklyAttendanceSummary(weekStart, userId).catch(() => ({ days: [] }))
+      )
+    ]);
 
   const allDays = summaries.flatMap((summary) => summary?.days ?? []);
   const missedPrev = !dayHasLoggedHours(allDays, prevDate);
@@ -136,6 +157,10 @@ async function fetchPending(userId: string): Promise<PendingSnapshot> {
     .sort((a, b) => (a.remaining_days ?? 99) - (b.remaining_days ?? 99))
     .slice(0, DOC_LIMIT);
   const signatureRequests = signatures.slice(0, DOC_LIMIT);
+  const pendingFollowUps = (Array.isArray(followUps) ? followUps : []).filter(
+    (item) => (item.status || "pending").toLowerCase() !== "completed"
+  );
+  const pendingInspections = Array.isArray(inspections) ? inspections : [];
 
   return {
     hours: missedPrev
@@ -146,19 +171,28 @@ async function fetchPending(userId: string): Promise<PendingSnapshot> {
     otherOpenTaskCount: otherOpen,
     signatureRequests,
     onboardingDocs,
+    followUps: pendingFollowUps,
+    inspections: pendingInspections,
     hasContent:
       missedPrev ||
       shownTasks.length > 0 ||
       otherOpen > 0 ||
       signatureRequests.length > 0 ||
-      onboardingDocs.length > 0
+      onboardingDocs.length > 0 ||
+      pendingFollowUps.length > 0 ||
+      pendingInspections.length > 0
   };
 }
 
 export const StartupAlertsProvider: React.FC<{ children: React.ReactNode }> = ({
   children
 }) => {
-  const { user, token, isLoading } = useAuth();
+  const { user, token, isLoading, permissions, roles } = useAuth();
+  const canReadSafety = hasPermission(
+    new Set(permissions),
+    roles,
+    "business:projects:safety:read"
+  );
   const [pendingVisible, setPendingVisible] = useState(false);
   const [pendingLoading, setPendingLoading] = useState(false);
   const [hours, setHours] = useState<PendingHours | null>(null);
@@ -166,6 +200,8 @@ export const StartupAlertsProvider: React.FC<{ children: React.ReactNode }> = ({
   const [otherOpenTaskCount, setOtherOpenTaskCount] = useState(0);
   const [signatureRequests, setSignatureRequests] = useState<SignatureRequestRow[]>([]);
   const [onboardingDocs, setOnboardingDocs] = useState<OnboardingDocumentRow[]>([]);
+  const [followUps, setFollowUps] = useState<SafetyFollowUp[]>([]);
+  const [inspections, setInspections] = useState<SafetyInspectionListRow[]>([]);
 
   const [notifVisible, setNotifVisible] = useState(false);
   const [notifLoading, setNotifLoading] = useState(false);
@@ -181,6 +217,8 @@ export const StartupAlertsProvider: React.FC<{ children: React.ReactNode }> = ({
     setOtherOpenTaskCount(snapshot.otherOpenTaskCount);
     setSignatureRequests(snapshot.signatureRequests);
     setOnboardingDocs(snapshot.onboardingDocs);
+    setFollowUps(snapshot.followUps);
+    setInspections(snapshot.inspections);
   }, []);
 
   const loadAndMaybeShowPending = useCallback(
@@ -192,7 +230,7 @@ export const StartupAlertsProvider: React.FC<{ children: React.ReactNode }> = ({
       );
       try {
         setPendingLoading(true);
-        const snapshot = await fetchPending(user.id);
+        const snapshot = await fetchPending(user.id, canReadSafety);
         const hoursEligibleSnapshot: PendingSnapshot = mustRegisterHours
           ? snapshot
           : {
@@ -203,7 +241,9 @@ export const StartupAlertsProvider: React.FC<{ children: React.ReactNode }> = ({
                 snapshot.tasks.length > 0 ||
                 snapshot.otherOpenTaskCount > 0 ||
                 snapshot.signatureRequests.length > 0 ||
-                snapshot.onboardingDocs.length > 0
+                snapshot.onboardingDocs.length > 0 ||
+                snapshot.followUps.length > 0 ||
+                snapshot.inspections.length > 0
             };
         const withJoke: PendingSnapshot =
           mustRegisterHours &&
@@ -234,7 +274,9 @@ export const StartupAlertsProvider: React.FC<{ children: React.ReactNode }> = ({
               withJoke.tasks.length > 0 || withJoke.otherOpenTaskCount > 0,
             hasUrgent:
               withJoke.signatureRequests.length > 0 ||
-              withJoke.onboardingDocs.length > 0
+              withJoke.onboardingDocs.length > 0 ||
+              withJoke.followUps.length > 0 ||
+              withJoke.inspections.length > 0
           },
           cadence
         );
@@ -247,6 +289,8 @@ export const StartupAlertsProvider: React.FC<{ children: React.ReactNode }> = ({
             ? withJoke.signatureRequests
             : [],
           onboardingDocs: eligible.hasUrgent ? withJoke.onboardingDocs : [],
+          followUps: eligible.hasUrgent ? withJoke.followUps : [],
+          inspections: eligible.hasUrgent ? withJoke.inspections : [],
           hasContent:
             eligible.hasClock || eligible.hasTasks || eligible.hasUrgent
         };
@@ -274,6 +318,7 @@ export const StartupAlertsProvider: React.FC<{ children: React.ReactNode }> = ({
     },
     [
       applyPending,
+      canReadSafety,
       user?.id,
       user?.username,
       user?.pay_type,
@@ -357,6 +402,8 @@ export const StartupAlertsProvider: React.FC<{ children: React.ReactNode }> = ({
         otherOpenTaskCount={otherOpenTaskCount}
         signatureRequests={signatureRequests}
         onboardingDocs={onboardingDocs}
+        followUps={followUps}
+        inspections={inspections}
         onDismiss={dismissPending}
         onLogHours={() => {
           if (hours?.date) requestClockLog(hours.date);
@@ -367,9 +414,32 @@ export const StartupAlertsProvider: React.FC<{ children: React.ReactNode }> = ({
           dismissPending();
           goToAppTab("Tasks");
         }}
-        onOpenSign={() => {
+        onOpenSign={(item) => {
           dismissPending();
-          goToSignPlaceholder();
+          if (item) {
+            goToDocumentSign(item);
+            return;
+          }
+          goToSignaturesList();
+        }}
+        onOpenFollowUp={(item) => {
+          dismissPending();
+          goToRoot("SafetyInspectionDetail", {
+            projectId: item.project_id,
+            inspectionId: item.source_inspection_id,
+            canWrite: canReadSafety,
+            initialFollowUpId: item.id,
+            projectName: item.project_name
+          });
+        }}
+        onOpenInspection={(item) => {
+          dismissPending();
+          goToRoot("SafetyInspectionDetail", {
+            projectId: item.project_id,
+            inspectionId: item.id,
+            canWrite: canReadSafety,
+            projectName: item.project_name
+          });
         }}
       />
       <NotificationsModal

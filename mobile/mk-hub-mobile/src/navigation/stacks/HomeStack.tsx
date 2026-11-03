@@ -5,6 +5,8 @@ import { ProjectsListScreen } from "../../screens/projects/ProjectsListScreen";
 import { ScheduleScreen } from "../../screens/schedule/ScheduleScreen";
 import { TimeOffScreen } from "../../screens/timeOff/TimeOffScreen";
 import { PlaceholderScreen } from "../../screens/common/PlaceholderScreen";
+import { SignaturesListScreen } from "../../screens/signatures/SignaturesListScreen";
+import { DocumentSignScreen } from "../../screens/signatures/DocumentSignScreen";
 import { FleetMyAssetsScreen } from "../../screens/fleet/FleetMyAssetsScreen";
 import { FleetAssetsListScreen } from "../../screens/fleet/FleetAssetsListScreen";
 import { FleetWorkOrdersListScreen } from "../../screens/fleet/FleetWorkOrdersListScreen";
@@ -26,6 +28,8 @@ export const HomeStackNavigator: React.FC = () => {
       <Stack.Screen name="TimeOff" component={TimeOffScreen} />
       <Stack.Screen name="ProjectsList" component={ProjectsListScreen} />
       <Stack.Screen name="Placeholder" component={PlaceholderScreen} />
+      <Stack.Screen name="Signatures" component={SignaturesListScreen} />
+      <Stack.Screen name="DocumentSign" component={DocumentSignScreen} />
       <Stack.Screen name="FleetMyAssets" component={FleetMyAssetsScreen} />
       <Stack.Screen name="FleetAssetsList" component={FleetAssetsListScreen} />
       <Stack.Screen name="FleetWorkOrders" component={FleetWorkOrdersListScreen} />

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import {
+  Alert,
   Modal,
   Pressable,
   StyleSheet,
@@ -8,7 +9,8 @@ import {
   View
 } from "react-native";
 import { MKButton } from "../MKButton";
-import { formatDateLocal } from "../../lib/dateUtils";
+import { MKDateQuickPick } from "../MKDateQuickPick";
+import { formatDateLocal, localDateInputToIso } from "../../lib/dateUtils";
 import { colors } from "../../theme/colors";
 import { radius, shadows } from "../../theme/radius";
 import { spacing } from "../../theme/spacing";
@@ -38,6 +40,19 @@ export const MKScheduleInspectionModal: React.FC<MKScheduleInspectionModalProps>
     setNotes("");
   }, [visible]);
 
+  const handleSubmit = () => {
+    try {
+      localDateInputToIso(date.trim());
+    } catch (err) {
+      Alert.alert(
+        "Invalid date",
+        err instanceof Error ? err.message : "Use a date like 2026-04-15."
+      );
+      return;
+    }
+    onSubmit(date.trim(), notes.trim());
+  };
+
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={loading ? undefined : onClose}>
@@ -48,16 +63,7 @@ export const MKScheduleInspectionModal: React.FC<MKScheduleInspectionModalProps>
               ? `Creates a pending Body and Mechanical inspection for ${assetName}.`
               : "Creates a pending Body and Mechanical inspection."}
           </Text>
-          <Text style={styles.label}>Date</Text>
-          <TextInput
-            style={styles.input}
-            value={date}
-            onChangeText={setDate}
-            placeholder="YYYY-MM-DD"
-            placeholderTextColor={colors.textMuted}
-            autoCapitalize="none"
-            editable={!loading}
-          />
+          <MKDateQuickPick value={date} onChange={setDate} editable={!loading} />
           <Text style={styles.label}>Notes</Text>
           <TextInput
             style={[styles.input, styles.notes]}
@@ -72,7 +78,8 @@ export const MKScheduleInspectionModal: React.FC<MKScheduleInspectionModalProps>
             <MKButton title="Cancel" variant="secondary" onPress={onClose} disabled={loading} />
             <MKButton
               title="Schedule"
-              onPress={() => onSubmit(date.trim(), notes.trim())}
+              variant="accent"
+              onPress={handleSubmit}
               loading={loading}
             />
           </View>

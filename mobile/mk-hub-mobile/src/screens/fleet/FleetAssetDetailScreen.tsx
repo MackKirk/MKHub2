@@ -102,9 +102,11 @@ export const FleetAssetDetailScreen: React.FC = () => {
   const canWrite = isFleetAsset
     ? hasPermission(permissionsSet, roles, "fleet:write")
     : hasPermission(permissionsSet, roles, "equipment:write");
-  const canScheduleInspections =
-    hasPermission(permissionsSet, roles, "fleet:inspections:schedules:write") ||
-    permissionsSet.has("fleet:vehicles:inspections:write");
+  const canScheduleInspections = hasPermission(
+    permissionsSet,
+    roles,
+    "fleet:inspections:schedules:write"
+  );
   const canViewEquipmentWorkOrders = hasPermission(
     permissionsSet,
     roles,

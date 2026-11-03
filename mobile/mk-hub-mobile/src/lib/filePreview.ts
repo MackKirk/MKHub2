@@ -37,34 +37,51 @@ export function buildPdfJsViewerHtml(base64: string): string {
 </head>
 <body>
   <div id="pages"></div>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script>
-    pdfjsLib.GlobalWorkerOptions.workerSrc =
-      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-    var raw = atob(${JSON.stringify(base64)});
-    var bytes = new Uint8Array(raw.length);
-    for (var i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
-    pdfjsLib.getDocument({ data: bytes }).promise.then(function (pdf) {
-      var host = document.getElementById("pages");
-      var scale = 1.35;
-      function render(n) {
-        pdf.getPage(n).then(function (page) {
-          var viewport = page.getViewport({ scale: scale });
-          var canvas = document.createElement("canvas");
-          var ctx = canvas.getContext("2d");
-          canvas.width = viewport.width;
-          canvas.height = viewport.height;
-          host.appendChild(canvas);
-          page.render({ canvasContext: ctx, viewport: viewport }).promise.then(function () {
-            if (n < pdf.numPages) render(n + 1);
-          });
-        });
-      }
-      render(1);
-    }).catch(function () {
+    function showPdfError(msg) {
       document.body.innerHTML =
-        '<p style="color:#e5e7eb;font-family:sans-serif;padding:24px;text-align:center;">Could not render this PDF.</p>';
-    });
+        '<p style="color:#e5e7eb;font-family:sans-serif;padding:24px;text-align:center;">' +
+        msg +
+        "</p>";
+    }
+    function startRender() {
+      if (typeof pdfjsLib === "undefined") {
+        showPdfError("PDF preview needs network. Use Open PDF on the device instead.");
+        return;
+      }
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
+        "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+      var raw = atob(${JSON.stringify(base64)});
+      var bytes = new Uint8Array(raw.length);
+      for (var i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+      pdfjsLib.getDocument({ data: bytes }).promise.then(function (pdf) {
+        var host = document.getElementById("pages");
+        var scale = 1.35;
+        function render(n) {
+          pdf.getPage(n).then(function (page) {
+            var viewport = page.getViewport({ scale: scale });
+            var canvas = document.createElement("canvas");
+            var ctx = canvas.getContext("2d");
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+            host.appendChild(canvas);
+            page.render({ canvasContext: ctx, viewport: viewport }).promise.then(function () {
+              if (n < pdf.numPages) render(n + 1);
+            });
+          });
+        }
+        render(1);
+      }).catch(function () {
+        showPdfError("Could not render this PDF. Use Open PDF on the device instead.");
+      });
+    }
+    var s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+    s.onload = startRender;
+    s.onerror = function () {
+      showPdfError("PDF preview needs network. Use Open PDF on the device instead.");
+    };
+    document.head.appendChild(s);
   </script>
 </body>
 </html>`;

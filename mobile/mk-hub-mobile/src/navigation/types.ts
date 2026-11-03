@@ -17,6 +17,12 @@ export type HomeStackParamList = {
     title: string;
   };
   Placeholder: { title: string; message?: string };
+  Signatures: undefined;
+  DocumentSign: {
+    source: "onboarding" | "document_builder";
+    id: string;
+    title?: string;
+  };
   FleetMyAssets: undefined;
   FleetAssetsList: {
     listKind: FleetListKind;

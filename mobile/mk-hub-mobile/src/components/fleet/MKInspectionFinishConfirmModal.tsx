@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { Modal, Pressable, StyleSheet, Switch, Text, TextInput, View } from "react-native";
+import { Alert, Modal, Pressable, StyleSheet, Switch, Text, View } from "react-native";
 import { MKButton } from "../MKButton";
-import { formatDateLocal } from "../../lib/dateUtils";
+import { MKDateQuickPick } from "../MKDateQuickPick";
+import { formatDateLocal, localDateInputToIso } from "../../lib/dateUtils";
 import { colors } from "../../theme/colors";
 import { radius, shadows } from "../../theme/radius";
 import { spacing } from "../../theme/spacing";
@@ -79,14 +80,11 @@ export const MKInspectionFinishConfirmModal: React.FC<
                 <Switch value={scheduleNext} onValueChange={setScheduleNext} disabled={loading} />
               </View>
               {scheduleNext ? (
-                <TextInput
-                  style={styles.dateInput}
+                <MKDateQuickPick
                   value={nextDate}
-                  onChangeText={setNextDate}
-                  placeholder="YYYY-MM-DD"
-                  placeholderTextColor={colors.textMuted}
-                  autoCapitalize="none"
+                  onChange={setNextDate}
                   editable={!loading}
+                  label="Next date"
                 />
               ) : null}
             </View>
@@ -102,7 +100,21 @@ export const MKInspectionFinishConfirmModal: React.FC<
             />
             <MKButton
               title="Finish"
-              onPress={() => onConfirm(scheduleNext ? nextDate.trim() : null)}
+              variant="accent"
+              onPress={() => {
+                if (scheduleNext) {
+                  try {
+                    localDateInputToIso(nextDate.trim());
+                  } catch (err) {
+                    Alert.alert(
+                      "Invalid date",
+                      err instanceof Error ? err.message : "Use a date like 2026-04-15."
+                    );
+                    return;
+                  }
+                }
+                onConfirm(scheduleNext ? nextDate.trim() : null);
+              }}
               loading={loading}
               style={styles.actionButton}
             />
@@ -200,15 +212,6 @@ const styles = StyleSheet.create({
   nextLabel: {
     flex: 1,
     ...typography.bodySmall,
-    color: colors.textPrimary
-  },
-  dateInput: {
-    minHeight: 44,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    fontSize: 15,
     color: colors.textPrimary
   },
   warning: {

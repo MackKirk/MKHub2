@@ -198,6 +198,14 @@ export function hasPermission(
   if (requiredPermission === "inspections:write") {
     return has || permissions.has("fleet:inspections:write");
   }
+  if (requiredPermission === "fleet:inspections:schedules:write") {
+    return (
+      has ||
+      permissions.has("fleet:inspections:write") ||
+      permissions.has("inspections:write") ||
+      permissions.has("fleet:vehicles:inspections:write")
+    );
+  }
   if (requiredPermission === "fleet:shop:access") {
     return (
       hasPermission(permissions, roles, "work_orders:read") ||

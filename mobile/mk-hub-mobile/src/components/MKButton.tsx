@@ -14,15 +14,28 @@ import { spacing } from "../theme/spacing";
 import { radius, shadows } from "../theme/radius";
 import { typography } from "../theme/typography";
 
+type ButtonVariant = "primary" | "secondary" | "accent";
+
 interface MKButtonProps {
   title: string;
   onPress: (event: GestureResponderEvent) => void;
   disabled?: boolean;
   loading?: boolean;
   style?: ViewStyle;
-  variant?: "primary" | "secondary";
+  variant?: ButtonVariant;
   size?: "default" | "compact";
 }
+
+function darkenHex(hex: string, amount = 0.18): string {
+  const raw = hex.replace("#", "");
+  const n = parseInt(raw, 16);
+  const r = Math.max(0, Math.round(((n >> 16) & 255) * (1 - amount)));
+  const g = Math.max(0, Math.round(((n >> 8) & 255) * (1 - amount)));
+  const b = Math.max(0, Math.round((n & 255) * (1 - amount)));
+  return `#${[r, g, b].map((c) => c.toString(16).padStart(2, "0")).join("")}`;
+}
+
+const HOME_GREEN_DARK = darkenHex(colors.homeAccent);
 
 export const MKButton: React.FC<MKButtonProps> = ({
   title,
@@ -35,18 +48,16 @@ export const MKButton: React.FC<MKButtonProps> = ({
 }) => {
   const isDisabled = disabled || loading;
   const innerStyle = size === "compact" ? styles.innerCompact : styles.inner;
+  const filled = variant === "primary" || variant === "accent";
+  const spinnerColor = filled ? "#ffffff" : colors.primary;
 
-  const content =
-    loading ? (
-      <ActivityIndicator
-        color={variant === "primary" ? "#ffffff" : colors.primary}
-        size="small"
-      />
-    ) : variant === "primary" ? (
-      <Text style={styles.text}>{title}</Text>
-    ) : (
-      <Text style={styles.textSecondary}>{title}</Text>
-    );
+  const content = loading ? (
+    <ActivityIndicator color={spinnerColor} size="small" />
+  ) : filled ? (
+    <Text style={styles.text}>{title}</Text>
+  ) : (
+    <Text style={styles.textSecondary}>{title}</Text>
+  );
 
   if (isDisabled) {
     return (
@@ -56,9 +67,19 @@ export const MKButton: React.FC<MKButtonProps> = ({
     );
   }
 
-  if (variant === "primary") {
+  if (variant === "primary" || variant === "accent") {
+    const gradient =
+      variant === "accent"
+        ? [colors.homeAccent, HOME_GREEN_DARK]
+        : [colors.primary, colors.primaryDark];
     return (
-      <View style={[styles.wrapper, styles.buttonPrimaryShadow, style]}>
+      <View
+        style={[
+          styles.wrapper,
+          variant === "accent" ? styles.buttonAccentShadow : styles.buttonPrimaryShadow,
+          style
+        ]}
+      >
         <TouchableOpacity
           activeOpacity={0.85}
           onPress={onPress}
@@ -66,7 +87,7 @@ export const MKButton: React.FC<MKButtonProps> = ({
           style={styles.touchable}
         >
           <LinearGradient
-            colors={[colors.primary, colors.primaryDark]}
+            colors={gradient as [string, string]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
             style={innerStyle}
@@ -103,6 +124,14 @@ const styles = StyleSheet.create({
   buttonPrimaryShadow: {
     ...shadows.buttonPrimary,
     backgroundColor: colors.primaryDark
+  },
+  buttonAccentShadow: {
+    shadowColor: colors.homeAccent,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+    backgroundColor: HOME_GREEN_DARK
   },
   inner: {
     paddingVertical: spacing.lg,

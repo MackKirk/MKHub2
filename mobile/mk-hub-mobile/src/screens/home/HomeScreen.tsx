@@ -25,9 +25,12 @@ import { useTasksBadge } from "../../hooks/useTasksBadge";
 import { ScreenLayout } from "../../components/ScreenLayout";
 import {
   HomePendingButton,
-  HomePendingModal,
   pendingSummary
 } from "../../components/home/HomePendingPanel";
+import {
+  PendingItemsModal,
+  type PendingHours
+} from "../../components/alerts/PendingItemsModal";
 import { hasPermission } from "../../lib/permissions";
 import { getCommunityPosts } from "../../services/community";
 import {
@@ -41,7 +44,15 @@ import {
   type SafetyInspectionListRow
 } from "../../services/safety";
 import type { OnboardingDocumentRow, SignatureRequestRow } from "../../types/inbox";
-import { getAttendanceNeedsAttention, getShifts } from "../../services/shifts";
+import type { TaskItem } from "../../types/tasks";
+import {
+  getAttendanceNeedsAttention,
+  getShifts,
+  getWeekStartSunday,
+  getWeeklyAttendanceSummary
+} from "../../services/shifts";
+import { getMyTasks } from "../../services/tasks";
+import { formatWeekdayLong, previousWeekday } from "../../lib/workdays";
 import type { CommunityPost } from "../../types/community";
 import { isImageContentType, resolveFileUrl } from "../../lib/fileUrls";
 import { colors } from "../../theme/colors";
@@ -152,6 +163,9 @@ export const HomeScreen: React.FC = () => {
   const [clockPending, setClockPending] = useState(false);
   const [pendingOpen, setPendingOpen] = useState(false);
   const [pendingLoading, setPendingLoading] = useState(false);
+  const [pendingHours, setPendingHours] = useState<PendingHours | null>(null);
+  const [pendingTasks, setPendingTasks] = useState<TaskItem[]>([]);
+  const [pendingOtherTasks, setPendingOtherTasks] = useState(0);
   const [signatureRequests, setSignatureRequests] = useState<SignatureRequestRow[]>([]);
   const [onboardingDocs, setOnboardingDocs] = useState<OnboardingDocumentRow[]>([]);
   const [pendingFollowUps, setPendingFollowUps] = useState<SafetyFollowUp[]>([]);
@@ -178,15 +192,20 @@ export const HomeScreen: React.FC = () => {
     "business:projects:safety:read"
   );
   const pendingCount =
+    (pendingHours ? 1 : 0) +
+    pendingTasks.length +
+    pendingOtherTasks +
     signatureRequests.length +
     onboardingDocs.length +
     pendingFollowUps.length +
     pendingInspections.length;
-  const pendingLabel = pendingSummary(
-    signatureRequests.length + onboardingDocs.length,
-    pendingFollowUps.length,
-    pendingInspections.length
-  );
+  const pendingLabel = pendingSummary({
+    hoursPending: !!pendingHours,
+    taskCount: pendingTasks.length + pendingOtherTasks,
+    signCount: signatureRequests.length + onboardingDocs.length,
+    followUpCount: pendingFollowUps.length,
+    inspectionCount: pendingInspections.length
+  });
 
   const quickActions: QuickAction[] = useMemo(
     () => [
@@ -283,6 +302,9 @@ export const HomeScreen: React.FC = () => {
 
   const loadHomePending = useCallback(async () => {
     if (!user?.id) {
+      setPendingHours(null);
+      setPendingTasks([]);
+      setPendingOtherTasks(0);
       setSignatureRequests([]);
       setOnboardingDocs([]);
       setPendingFollowUps([]);
@@ -291,16 +313,66 @@ export const HomeScreen: React.FC = () => {
     }
     try {
       setPendingLoading(true);
-      const [signatures, onboarding, followUps, inspections] = await Promise.all([
-        getPendingSignatureRequests(),
-        getPendingOnboardingDocuments(),
-        canReadSafety
-          ? listSafetyFollowUps({ assigned_to_me: true, status: "pending" }).catch(() => [])
-          : Promise.resolve([]),
-        canReadSafety
-          ? listAssignedSafetyInspections(user.id).catch(() => [])
-          : Promise.resolve([])
-      ]);
+      const prev = previousWeekday();
+      const prevDate = formatDateLocal(prev);
+      const weekStarts = [
+        formatDateLocal(getWeekStartSunday(prev)),
+        formatDateLocal(getWeekStartSunday())
+      ];
+      const uniqueWeeks = [...new Set(weekStarts)];
+
+      const [signatures, onboarding, followUps, inspections, grouped, ...summaries] =
+        await Promise.all([
+          getPendingSignatureRequests(),
+          getPendingOnboardingDocuments(),
+          canReadSafety
+            ? listSafetyFollowUps({ assigned_to_me: true, status: "pending" }).catch(() => [])
+            : Promise.resolve([]),
+          canReadSafety
+            ? listAssignedSafetyInspections(user.id).catch(() => [])
+            : Promise.resolve([]),
+          getMyTasks().catch(() => ({
+            accepted: [],
+            in_progress: [],
+            blocked: [],
+            done: []
+          })),
+          ...uniqueWeeks.map((weekStart) =>
+            mustRegisterHours
+              ? getWeeklyAttendanceSummary(weekStart, user.id).catch(() => ({ days: [] }))
+              : Promise.resolve({ days: [] })
+          )
+        ]);
+
+      const allDays = summaries.flatMap((summary) => summary?.days ?? []);
+      const missedPrev =
+        mustRegisterHours &&
+        !allDays.some(
+          (day) =>
+            day.date === prevDate &&
+            ((day.hours_worked_minutes || 0) > 0 || !!(day.clock_in && day.clock_out))
+        );
+      setPendingHours(
+        missedPrev ? { label: formatWeekdayLong(prev), date: prevDate } : null
+      );
+
+      const openTasks = [...(grouped.accepted ?? []), ...(grouped.in_progress ?? [])];
+      const now = Date.now();
+      const dueTasks = openTasks
+        .filter((task) => {
+          if (!task.due_date) return false;
+          const t = new Date(task.due_date).getTime();
+          return !Number.isNaN(t) && t <= now + 7 * 86400000;
+        })
+        .sort((a, b) => {
+          const aT = a.due_date ? new Date(a.due_date).getTime() : 0;
+          const bT = b.due_date ? new Date(b.due_date).getTime() : 0;
+          return aT - bT;
+        });
+      const shown = dueTasks.slice(0, 4);
+      setPendingTasks(shown);
+      setPendingOtherTasks(Math.max(0, openTasks.length - shown.length));
+
       setSignatureRequests(signatures);
       setOnboardingDocs(onboarding);
       setPendingFollowUps(
@@ -312,7 +384,7 @@ export const HomeScreen: React.FC = () => {
     } finally {
       setPendingLoading(false);
     }
-  }, [canReadSafety, user?.id]);
+  }, [canReadSafety, mustRegisterHours, user?.id]);
 
   useFocusEffect(
     useCallback(() => {
@@ -597,27 +669,36 @@ export const HomeScreen: React.FC = () => {
           </View>
         </View>
       </ScrollView>
-      <HomePendingModal
+      <PendingItemsModal
         visible={pendingOpen}
         loading={pendingLoading}
+        hours={pendingHours}
+        tasks={pendingTasks}
+        otherOpenTaskCount={pendingOtherTasks}
         signatureRequests={signatureRequests}
         onboardingDocs={onboardingDocs}
         followUps={pendingFollowUps}
         inspections={pendingInspections}
-        onClose={() => setPendingOpen(false)}
-        onOpenSign={() => {
+        onDismiss={() => setPendingOpen(false)}
+        onLogHours={() => {
           setPendingOpen(false);
-          goStack("Placeholder", {
-            title: "To sign",
-            message: "Open MK Hub on the web to sign this document."
-          });
+          navigation.navigate("Clock");
+        }}
+        onOpenTasks={() => {
+          setPendingOpen(false);
+          navigation.navigate("Tasks");
+        }}
+        onOpenSign={(item) => {
+          setPendingOpen(false);
+          if (item) goStack("DocumentSign", item);
+          else goStack("Signatures");
         }}
         onOpenFollowUp={(item) => {
           setPendingOpen(false);
           navigation.navigate("SafetyInspectionDetail", {
             projectId: item.project_id,
             inspectionId: item.source_inspection_id,
-            canWrite: true,
+            canWrite: canReadSafety,
             initialFollowUpId: item.id,
             projectName: item.project_name
           });
@@ -627,7 +708,7 @@ export const HomeScreen: React.FC = () => {
           navigation.navigate("SafetyInspectionDetail", {
             projectId: item.project_id,
             inspectionId: item.id,
-            canWrite: true,
+            canWrite: canReadSafety,
             projectName: item.project_name
           });
         }}

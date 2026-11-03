@@ -46,7 +46,7 @@ export function goToHomeScreen<T extends keyof HomeStackParamList>(
   );
 }
 
-function goToRoot(screen: string, params?: object): void {
+export function goToRoot(screen: string, params?: object): void {
   if (!navigationRef.isReady()) return;
   navigationRef.dispatch(
     CommonActions.navigate({
@@ -56,11 +56,21 @@ function goToRoot(screen: string, params?: object): void {
   );
 }
 
+export function goToSignaturesList(): void {
+  goToHomeScreen("Signatures");
+}
+
+export function goToDocumentSign(args: {
+  source: "onboarding" | "document_builder";
+  id: string;
+  title?: string;
+}): void {
+  goToHomeScreen("DocumentSign", args);
+}
+
+/** @deprecated Use goToSignaturesList */
 export function goToSignPlaceholder(): void {
-  goToHomeScreen("Placeholder", {
-    title: "To sign",
-    message: "Open MK Hub on the web to sign this document."
-  });
+  goToSignaturesList();
 }
 
 function goToWebPlaceholder(title?: string | null): void {
@@ -269,8 +279,33 @@ export async function openNotificationTarget(notif: InboxNotification): Promise<
     return;
   }
 
-  if (isSignaturePath(pathname)) {
-    goToSignPlaceholder();
+  if (isSignaturePath(pathname) || type.includes("signature") || type.includes("onboarding")) {
+    const requestId =
+      search.get("request_id") ||
+      metaString(meta, "request_id") ||
+      metaString(meta, "signature_request_id");
+    const onboardingItemId =
+      search.get("item_id") ||
+      search.get("assignment_item_id") ||
+      metaString(meta, "assignment_item_id") ||
+      metaString(meta, "item_id");
+    if (requestId) {
+      goToDocumentSign({
+        source: "document_builder",
+        id: requestId,
+        title: notif.title
+      });
+      return;
+    }
+    if (onboardingItemId) {
+      goToDocumentSign({
+        source: "onboarding",
+        id: onboardingItemId,
+        title: notif.title
+      });
+      return;
+    }
+    goToSignaturesList();
     return;
   }
 

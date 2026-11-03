@@ -75,6 +75,8 @@ const ROUTE_TO_ITEM: Record<string, string> = {
   Community: "community",
   Schedule: "schedule",
   TimeOff: "time-off",
+  Signatures: "signatures",
+  DocumentSign: "signatures",
   CustomersList: "customers-list",
   UsersList: "users",
   UserDetail: "users",

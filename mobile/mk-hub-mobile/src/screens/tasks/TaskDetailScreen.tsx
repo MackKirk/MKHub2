@@ -4,6 +4,7 @@ import {
   Alert,
   Image,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -24,6 +25,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { MKBugReportBody } from "../../components/tasks/MKBugReportBody";
 import { MKFieldActions } from "../../components/MKFieldActions";
 import { MKImageSourcePickerModal } from "../../components/MKImageSourcePickerModal";
+import { MKPageHeader } from "../../components/MKPageHeader";
 import { ScreenLayout } from "../../components/ScreenLayout";
 import { useAuth } from "../../hooks/useAuth";
 import { useTasksBadge } from "../../hooks/useTasksBadge";
@@ -87,7 +89,16 @@ export const TaskDetailScreen: React.FC = () => {
   const [sendingComment, setSendingComment] = useState(false);
   const [photoOpen, setPhotoOpen] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [previewFileId, setPreviewFileId] = useState<string | null>(null);
   const [openingProject, setOpeningProject] = useState(false);
+
+  const previewSource = useMemo(() => {
+    if (!previewFileId) return null;
+    return buildAuthenticatedFileUrl(previewFileId, {
+      token,
+      variant: "inline"
+    });
+  }, [previewFileId, token]);
 
   const load = useCallback(async () => {
     try {
@@ -197,19 +208,11 @@ export const TaskDetailScreen: React.FC = () => {
 
   return (
     <ScreenLayout scroll={false} style={styles.screen} contentStyle={styles.layout}>
-      <View style={styles.topHeader}>
-        <Pressable
-          style={styles.headerIconBtn}
-          onPress={() => navigation.goBack()}
-          hitSlop={8}
-        >
-          <Ionicons name="arrow-back" size={22} color={colors.textPrimary} />
-        </Pressable>
-        <Text style={styles.headerTitle} numberOfLines={1}>
-          Task
-        </Text>
-        <View style={styles.headerIconBtn} />
-      </View>
+      <MKPageHeader
+        title="Task"
+        subtitle={task?.title || undefined}
+        onBack={() => navigation.goBack()}
+      />
 
       <KeyboardAvoidingView
         style={styles.flex}
@@ -328,19 +331,26 @@ export const TaskDetailScreen: React.FC = () => {
               <Text style={styles.sectionLabel}>Photos</Text>
               {parsed.fileIds.length > 0 ? (
                 <View style={styles.photoGrid}>
-                  {parsed.fileIds.map((fileId) => (
-                    <Image
-                      key={fileId}
-                      source={{
-                        uri: buildAuthenticatedFileUrl(fileId, {
-                          token,
-                          variant: "thumbnail",
-                          thumbnailWidth: 240
-                        }).uri
-                      }}
-                      style={styles.photo}
-                    />
-                  ))}
+                  {parsed.fileIds.map((fileId) => {
+                    const thumb = buildAuthenticatedFileUrl(fileId, {
+                      token,
+                      variant: "thumbnail",
+                      thumbnailWidth: 240
+                    });
+                    return (
+                      <Pressable
+                        key={fileId}
+                        onPress={() => setPreviewFileId(fileId)}
+                        accessibilityRole="imagebutton"
+                        accessibilityLabel="View photo"
+                      >
+                        <Image
+                          source={{ uri: thumb.uri, headers: thumb.headers }}
+                          style={styles.photo}
+                        />
+                      </Pressable>
+                    );
+                  })}
                 </View>
               ) : (
                 <Text style={styles.muted}>No photos yet.</Text>
@@ -461,6 +471,31 @@ export const TaskDetailScreen: React.FC = () => {
           void addPhoto(source);
         }}
       />
+      <Modal
+        visible={Boolean(previewFileId)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPreviewFileId(null)}
+      >
+        <View style={styles.previewBackdrop}>
+          <Pressable
+            style={styles.previewClose}
+            onPress={() => setPreviewFileId(null)}
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel="Close photo"
+          >
+            <Ionicons name="close" size={24} color="#fff" />
+          </Pressable>
+          {previewSource ? (
+            <Image
+              source={{ uri: previewSource.uri, headers: previewSource.headers }}
+              style={styles.previewImage}
+              resizeMode="contain"
+            />
+          ) : null}
+        </View>
+      </Modal>
     </ScreenLayout>
   );
 };
@@ -489,31 +524,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: spacing.md
   },
-  topHeader: {
-    flexDirection: "row",
+  loadingWrap: { flex: 1, justifyContent: "center", alignItems: "center" },
+  previewBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.92)",
+    justifyContent: "center",
     alignItems: "center",
-    gap: spacing.md,
-    marginBottom: spacing.md
+    padding: spacing.lg
   },
-  headerIconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: colors.border,
+  previewClose: {
+    position: "absolute",
+    top: Platform.OS === "ios" ? 56 : 24,
+    right: 20,
+    zIndex: 2,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(255,255,255,0.16)",
     alignItems: "center",
     justifyContent: "center"
   },
-  headerTitle: {
-    flex: 1,
-    textAlign: "center",
-    fontFamily: typography.button.fontFamily,
-    fontSize: 18,
-    lineHeight: 24,
-    color: colors.textPrimary
+  previewImage: {
+    width: "100%",
+    height: "80%"
   },
-  loadingWrap: { flex: 1, justifyContent: "center", alignItems: "center" },
   loadingText: {
     marginTop: spacing.md,
     ...typography.bodySmall,

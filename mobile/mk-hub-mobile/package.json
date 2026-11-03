@@ -1,6 +1,6 @@
 {
   "name": "mk-hub-mobile",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "private": true,
   "main": "node_modules/expo/AppEntry.js",
   "scripts": {
@@ -13,6 +13,7 @@
   "dependencies": {
     "@expo-google-fonts/montserrat": "^0.4.2",
     "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-community/datetimepicker": "8.4.4",
     "@react-navigation/bottom-tabs": "^6.6.0",
     "@react-navigation/native": "^6.1.0",
     "@react-navigation/native-stack": "^6.9.0",
