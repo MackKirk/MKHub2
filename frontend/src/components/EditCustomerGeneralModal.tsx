@@ -60,6 +60,7 @@ type Props = {
   section: CustomerGeneralEditSection | null;
   onClose: () => void;
   clientId: string;
+  apiBase?: string;
   client: CustomerGeneralClient | null | undefined;
   clientDisplayName?: string | null;
   onSaved?: () => void;
@@ -121,6 +122,7 @@ export default function EditCustomerGeneralModal({
   section,
   onClose,
   clientId,
+  apiBase = '/clients',
   client,
   clientDisplayName,
   onSaved,
@@ -299,7 +301,7 @@ export default function EditCustomerGeneralModal({
     if (!payload) return;
     try {
       setIsSaving(true);
-      await api('PATCH', `/clients/${clientId}`, payload);
+      await api('PATCH', `${apiBase}/${clientId}`, payload);
       toast.success('Saved');
       onSaved?.();
       handleClose();

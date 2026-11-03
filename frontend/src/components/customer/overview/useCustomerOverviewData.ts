@@ -121,18 +121,24 @@ export function useCustomerOverviewData(
   dateFrom: string | undefined,
   dateTo: string | undefined,
   displayMode: OverviewDisplayMode,
+  apiBase: string = '/clients',
 ) {
   const { from, to } = effectiveRange(dateFrom, dateTo);
 
   const insightsQuery = useQuery({
-    queryKey: ['clientInsights', clientId, from, to],
+    queryKey: ['clientInsights', apiBase, clientId, from, to],
     queryFn: () =>
       api<CustomerInsightsResponse>(
         'GET',
-        `/clients/${encodeURIComponent(clientId)}/insights?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+        `${apiBase}/${encodeURIComponent(clientId)}/insights?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
       ),
     enabled: !!clientId,
     staleTime: 60_000,
+    retry: (failureCount, error) => {
+      const status = (error as { status?: number } | undefined)?.status;
+      if (status === 404 || status === 403) return false;
+      return failureCount < 2;
+    },
   });
 
   const payload = insightsQuery.data;

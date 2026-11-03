@@ -13,6 +13,7 @@ from ..models.models import (
     Project,
     Client,
     ClientSite,
+    MetalsClient,
     Quote,
     FleetAsset,
     Equipment,
@@ -20,6 +21,7 @@ from ..models.models import (
     CompanyCreditCard,
     FuelCard,
 )
+from ..services.client_product_scope import can_read_metals_customers
 from ..services.business_line import (
     BUSINESS_LINE_CONSTRUCTION,
     BUSINESS_LINE_REPAIRS_MAINTENANCE,
@@ -178,6 +180,7 @@ def global_search(
                 db.query(Client)
                 .filter(Client.deleted_at.is_(None))
                 .filter(Client.is_system.is_(False))
+                .filter(Client.serves_hub.is_(True))
                 .filter(
                     or_(
                         Client.name.ilike(like),
@@ -223,14 +226,57 @@ def global_search(
         except Exception:
             pass
 
+    # ----- Metals customers -----
+    if can_read_metals_customers(user):
+        try:
+            rows = (
+                db.query(MetalsClient)
+                .filter(MetalsClient.deleted_at.is_(None))
+                .filter(MetalsClient.is_system.is_(False))
+                .filter(
+                    or_(
+                        MetalsClient.name.ilike(like),
+                        MetalsClient.display_name.ilike(like),
+                        MetalsClient.code.ilike(like),
+                        MetalsClient.address_line1.ilike(like),
+                        MetalsClient.city.ilike(like),
+                        MetalsClient.province.ilike(like),
+                    )
+                )
+                .order_by(MetalsClient.created_at.desc())
+                .limit(limit)
+                .all()
+            )
+            items = []
+            for c in rows:
+                cid = str(c.id)
+                display = (getattr(c, "display_name", None) or "").strip()
+                name = (getattr(c, "name", None) or "").strip()
+                code = (getattr(c, "code", None) or "").strip()
+                title = display or name or cid
+                subtitle = " · ".join([x for x in [code, getattr(c, "city", None), getattr(c, "province", None)] if x])
+                items.append(
+                    {
+                        "type": "customer",
+                        "id": cid,
+                        "title": title,
+                        "subtitle": subtitle or None,
+                        "href": f"/metals/customers/{cid}",
+                    }
+                )
+            if items:
+                sections.append({"id": "metals_customers", "label": "Metals Customers", "items": items})
+        except Exception:
+            pass
+
     # ----- Quotes -----
     if _has_permission(user, "sales:quotations:read"):
         try:
             rows = (
-                db.query(Quote, Client)
+                db.query(Quote, MetalsClient)
                 .outerjoin(
-                    Client,
-                    and_(Quote.client_id == Client.id, Client.deleted_at.is_(None)),
+                    MetalsClient,
+                    and_(Quote.client_id == MetalsClient.id, MetalsClient.deleted_at.is_(None)),
                 )
                 .filter(Quote.deleted_at.is_(None))
                 .filter(
@@ -238,8 +284,8 @@ def global_search(
                         Quote.name.ilike(like),
                         Quote.code.ilike(like),
                         Quote.order_number.ilike(like),
-                        Client.name.ilike(like),
-                        Client.display_name.ilike(like),
+                        MetalsClient.name.ilike(like),
+                        MetalsClient.display_name.ilike(like),
                     )
                 )
                 .order_by(Quote.updated_at.desc())

@@ -50,6 +50,7 @@ type AuthorInfo = { name: string; avatar: string };
 
 type CustomerNotesTabProps = {
   clientId: string;
+  apiBase?: string;
   canWrite: boolean;
   reportCategories: ReportCategory[];
   projects: ProjectOption[];
@@ -75,7 +76,7 @@ function getAttachmentIcon(contentType: string, originalName: string): string {
   return '📎';
 }
 
-export function CustomerNotesTab({
+export function CustomerNotesTab({ apiBase = '/clients',
   clientId,
   canWrite,
   reportCategories,
@@ -90,7 +91,7 @@ export function CustomerNotesTab({
 
   const { data: notes = [], refetch, isLoading } = useQuery({
     queryKey: ['clientNotes', clientId],
-    queryFn: () => api<ClientNote[]>('GET', `/clients/${clientId}/notes`),
+    queryFn: () => api<ClientNote[]>('GET', `${apiBase}/${clientId}/notes`),
     enabled: !!clientId,
   });
 
@@ -300,7 +301,7 @@ export function CustomerNotesTab({
                 });
                 if (result !== 'confirm') return;
                 try {
-                  await api('DELETE', `/clients/${clientId}/notes/${selected.id}`);
+                  await api('DELETE', `${apiBase}/${clientId}/notes/${selected.id}`);
                   toast.success('Note deleted');
                   setSelectedId(null);
                   await refresh();
@@ -558,12 +559,12 @@ function ClientNoteModal({
           ...existingImages,
           attachments: [...existingAttachments, ...newAttachments],
         };
-        await api('PATCH', `/clients/${clientId}/notes/${note.id}`, payload);
+        await api('PATCH', `${apiBase}/${clientId}/notes/${note.id}`, payload);
       } else {
         if (newAttachments.length > 0) {
           payload.images = { attachments: newAttachments };
         }
-        await api('POST', `/clients/${clientId}/notes`, payload);
+        await api('POST', `${apiBase}/${clientId}/notes`, payload);
       }
       await onSuccess();
     } catch (e: any) {

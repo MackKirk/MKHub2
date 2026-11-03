@@ -72,10 +72,12 @@ export function CustomerOverviewTab({
   clientId,
   client,
   onTabChange,
+  apiBase = '/clients',
 }: {
   clientId: string;
   client?: ClientRecord;
   onTabChange: (tab: 'contacts' | 'sites' | 'opportunities') => void;
+  apiBase?: string;
 }) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -97,18 +99,18 @@ export function CustomerOverviewTab({
   const [hasAnimated, setHasAnimated] = useState(false);
 
   const { data: contacts } = useQuery({
-    queryKey: ['clientContacts', clientId],
-    queryFn: () => api<Contact[]>('GET', `/clients/${clientId}/contacts`),
+    queryKey: ['clientContacts', apiBase, clientId],
+    queryFn: () => api<Contact[]>('GET', `${apiBase}/${clientId}/contacts`),
   });
   const { data: sites } = useQuery({
-    queryKey: ['clientSites', clientId],
-    queryFn: () => api<unknown[]>('GET', `/clients/${clientId}/sites`),
+    queryKey: ['clientSites', apiBase, clientId],
+    queryFn: () => api<unknown[]>('GET', `${apiBase}/${clientId}/sites`),
   });
 
   const dateFromParam = dateFrom || undefined;
   const dateToParam = dateTo || undefined;
 
-  const data = useCustomerOverviewData(clientId, dateFromParam, dateToParam, displayMode);
+  const data = useCustomerOverviewData(clientId, dateFromParam, dateToParam, displayMode, apiBase);
 
   useEffect(() => {
     if (!data.isLoading && !hasAnimated) {

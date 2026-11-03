@@ -184,6 +184,19 @@ export const IMPLEMENTED_PERMISSIONS = new Set([
   'inventory:products:related:read',
   'inventory:products:related:write',
   'product:metals:access',
+  'metals:customers:read',
+  'metals:customers:write',
+  'metals:customers:overview:read',
+  'metals:customers:general:read',
+  'metals:customers:general:write',
+  'metals:customers:contacts:read',
+  'metals:customers:contacts:write',
+  'metals:customers:files:read',
+  'metals:customers:files:write',
+  'metals:customers:sites:read',
+  'metals:customers:sites:write',
+  'metals:customers:notes:read',
+  'metals:customers:notes:write',
   'business:customers:read',
   'business:customers:write',
   'business:customers:overview:read',
@@ -245,8 +258,6 @@ export function isHiddenPermissionKey(key: string): boolean {
   if (key === 'training:access' || key === 'training:manage') return true;
   if (key === 'settings:access') return true;
   if (key === 'properties:access') return true;
-  // Metals customers grants exist for API/routes; UI only exposes the product switch for now.
-  if (key === 'metals:customers:read' || key === 'metals:customers:write') return true;
   if (key === 'documents:delete' || key === 'documents:move') return true;
   if (isHiddenProjectLinePermissionKey(key)) return true;
   if (key === 'fleet:read' || key === 'fleet:write' || key === 'fleet:manage') return true;

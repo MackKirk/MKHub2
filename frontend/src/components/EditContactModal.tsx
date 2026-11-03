@@ -34,6 +34,7 @@ type Props = {
   open: boolean;
   onClose: () => void;
   clientId: string;
+  apiBase?: string;
   clientDisplayName?: string | null;
   contact: ClientContactRecord | null;
   /** Existing thumbnail URL when opening the modal */
@@ -46,6 +47,7 @@ export default function EditContactModal({
   open,
   onClose,
   clientId,
+  apiBase = '/clients',
   clientDisplayName,
   contact,
   photoUrl = '',
@@ -98,7 +100,7 @@ export default function EditContactModal({
     }
     try {
       setIsSaving(true);
-      await api('PATCH', `/clients/${clientId}/contacts/${contact.id}`, {
+      await api('PATCH', `${apiBase}/${clientId}/contacts/${contact.id}`, {
         name: name.trim(),
         email,
         phone,
@@ -109,7 +111,7 @@ export default function EditContactModal({
       });
       if (photoBlob) {
         try {
-          await uploadContactPhoto(clientId, String(contact.id), photoBlob);
+          await uploadContactPhoto(clientId, String(contact.id), photoBlob, apiBase);
         } catch {
           toast.error('Contact saved, but photo upload failed');
         }
@@ -133,7 +135,7 @@ export default function EditContactModal({
     if (!ok) return;
     try {
       setIsSaving(true);
-      await api('DELETE', `/clients/${clientId}/contacts/${contact.id}`);
+      await api('DELETE', `${apiBase}/${clientId}/contacts/${contact.id}`);
       toast.success('Contact deleted');
       onDeleted?.();
       handleClose();

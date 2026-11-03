@@ -28,7 +28,12 @@ function normalizeClientId(id: string | null | undefined): string {
   return id == null ? '' : String(id).trim();
 }
 
-async function fetchClientsPage(page: number, q: string, pageSize: number): Promise<AppClientSelectClient[]> {
+async function fetchClientsPage(
+  page: number,
+  q: string,
+  pageSize: number,
+  listApiBase: string,
+): Promise<AppClientSelectClient[]> {
   const qs = new URLSearchParams({
     limit: String(pageSize),
     page: String(page),
@@ -38,7 +43,7 @@ async function fetchClientsPage(page: number, q: string, pageSize: number): Prom
   if (q) qs.set('q', q);
   const result = await api<{ items?: AppClientSelectClient[] } | AppClientSelectClient[]>(
     'GET',
-    `/clients?${qs.toString()}`,
+    `${listApiBase}?${qs.toString()}`,
   );
   if (Array.isArray(result)) return result;
   if (result?.items) return result.items;
@@ -51,6 +56,8 @@ export type UseAppClientSelectCatalogOptions = {
   fetchList?: boolean;
   pageSize?: number;
   selectedIds?: string[];
+  /** Hub `/clients` or Metals `/metals/clients`. */
+  listApiBase?: string;
 };
 
 export function useAppClientSelectCatalog({
@@ -59,6 +66,7 @@ export function useAppClientSelectCatalog({
   fetchList = true,
   pageSize = DEFAULT_PAGE_SIZE,
   selectedIds = [],
+  listApiBase = '/clients',
 }: UseAppClientSelectCatalogOptions) {
   const q = search.trim();
   const selectedIdList = useMemo(
@@ -67,10 +75,10 @@ export function useAppClientSelectCatalog({
   );
 
   const infinite = useInfiniteQuery({
-    queryKey: ['app-client-select-catalog', { q, pageSize }],
+    queryKey: ['app-client-select-catalog', { q, pageSize, listApiBase }],
     enabled: enabled && fetchList,
     initialPageParam: 1,
-    queryFn: async ({ pageParam }) => fetchClientsPage(pageParam as number, q, pageSize),
+    queryFn: async ({ pageParam }) => fetchClientsPage(pageParam as number, q, pageSize, listApiBase),
     getNextPageParam: (lastPage, allPages) => {
       if (lastPage.length < pageSize) return undefined;
       return allPages.length + 1;
@@ -99,12 +107,12 @@ export function useAppClientSelectCatalog({
   );
 
   const fallbackQuery = useQuery({
-    queryKey: ['app-client-select-selected', missingSelectedIds.join(',')],
+    queryKey: ['app-client-select-selected', listApiBase, missingSelectedIds.join(',')],
     enabled: enabled && missingSelectedIds.length > 0,
     queryFn: async () => {
       const rows = await Promise.all(
         missingSelectedIds.map((id) =>
-          api<AppClientSelectClient>('GET', `/clients/${encodeURIComponent(id)}`),
+          api<AppClientSelectClient>('GET', `${listApiBase}/${encodeURIComponent(id)}`),
         ),
       );
       return rows.filter((c) => c?.id);

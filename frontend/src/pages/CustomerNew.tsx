@@ -542,24 +542,21 @@ export default function CustomerNew(){
                       }
                     }
                   });
-                  const created:any = await api(
-                    'POST',
-                    window.location.pathname.startsWith('/metals') ? '/metals/clients' : '/clients',
-                    payload,
-                  );
+                  const createApi = window.location.pathname.startsWith('/metals') ? '/metals/clients' : '/clients';
+                  const created:any = await api('POST', createApi, payload);
                   if (!created?.id){ toast.error('Create failed'); setIsCreating(false); return; }
                   if (contacts.length){
                     for (const c of contacts){
                       try{ 
                         const contactPayload:any = { name: c.name||'Contact', email: c.email||null, phone: c.phone||null, phone_extension: c.phone_extension||null, role_title: c.role_title||null, department: c.department||null, is_primary: !!c.is_primary };
-                        const contactCreated:any = await api('POST', `/clients/${encodeURIComponent(created.id)}/contacts`, contactPayload);
+                        const contactCreated:any = await api('POST', `${createApi}/${encodeURIComponent(created.id)}/contacts`, contactPayload);
                         // Upload photo if it exists
                         if (c.photo_blob && contactCreated?.id){
                           try{
                             const up:any = await api('POST','/files/upload',{ project_id:null, client_id:created.id, employee_id:null, category_id:'contact-photo', original_name:`contact-${contactCreated.id}.jpg`, content_type:'image/jpeg' });
                             await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type':'image/jpeg', 'x-ms-blob-type':'BlockBlob' }, body: c.photo_blob });
                             const conf:any = await api('POST','/files/confirm',{ key: up.key, size_bytes: c.photo_blob.size, checksum_sha256:'na', content_type:'image/jpeg' });
-                            await api('POST', `/clients/${encodeURIComponent(created.id)}/files?file_object_id=${encodeURIComponent(conf.id)}&category=${encodeURIComponent('contact-photo-'+contactCreated.id)}&original_name=${encodeURIComponent('contact-'+contactCreated.id+'.jpg')}`);
+                            await api('POST', `${createApi}/${encodeURIComponent(created.id)}/files?file_object_id=${encodeURIComponent(conf.id)}&category=${encodeURIComponent('contact-photo-'+contactCreated.id)}&original_name=${encodeURIComponent('contact-'+contactCreated.id+'.jpg')}`);
                           }catch(_e){ console.error('Failed to upload contact photo', _e); }
                         }
                       }catch(_e){ console.error('Failed to create contact', _e); }

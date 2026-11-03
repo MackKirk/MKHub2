@@ -28,12 +28,16 @@ export const METALS_CUSTOMERS_WRITE = 'metals:customers:write';
 export const HUB_ONLY_CATEGORY_IDS = new Set([
   'services', // Production (Sales)
   'repairs_maintenance',
-  'sales', // Quotations
   'safety',
   'fleet',
   'company-assets',
   'properties',
   'print_shop',
+]);
+
+/** Categories only in Metals product. */
+export const METALS_ONLY_CATEGORY_IDS = new Set([
+  'sales', // Quotations
 ]);
 
 /** Hub-only path prefixes / exact paths — redirect to /home when product is metals. */
@@ -46,13 +50,15 @@ const HUB_ONLY_PATH_PREFIXES = [
   '/rm-projects',
   '/rm-warranty-review',
   '/customers',
-  '/quotes',
   '/safety',
   '/fleet',
   '/company-assets',
   '/properties',
   '/print-shop',
 ];
+
+/** Metals-only path prefixes — redirect to /home when product is hub. */
+const METALS_ONLY_PATH_PREFIXES = ['/metals', '/quotes'];
 
 export function isHubOnlyPath(pathname: string): boolean {
   if (pathname.startsWith('/metals')) return false;
@@ -62,13 +68,15 @@ export function isHubOnlyPath(pathname: string): boolean {
 }
 
 export function isMetalsOnlyPath(pathname: string): boolean {
-  return pathname === '/metals' || pathname.startsWith('/metals/');
+  return METALS_ONLY_PATH_PREFIXES.some(
+    (p) => pathname === p || pathname.startsWith(`${p}/`) || pathname.startsWith(`${p}?`),
+  );
 }
 
 /**
  * Filter menu categories for the active product.
  * Hub: full menus (no metals-only leftovers).
- * Metals: shared + Business with Metals Customers + Suppliers/Products (same shape as Hub).
+ * Metals: shared + Business with Metals Customers + Suppliers/Products + Quotations.
  */
 export function filterMenuCategoriesForProduct<
   T extends {
@@ -82,7 +90,9 @@ export function filterMenuCategoriesForProduct<
   },
 >(categories: T[], product: ProductId): T[] {
   if (product === 'hub') {
-    return categories.filter((c) => c.id !== 'metals-business');
+    return categories.filter(
+      (c) => c.id !== 'metals-business' && !METALS_ONLY_CATEGORY_IDS.has(c.id),
+    );
   }
 
   const out: T[] = [];
@@ -108,6 +118,10 @@ export function filterMenuCategoriesForProduct<
       if (items.length > 0) {
         out.push({ ...cat, items });
       }
+      continue;
+    }
+    if (METALS_ONLY_CATEGORY_IDS.has(cat.id)) {
+      out.push(cat);
     }
     // Drop dedicated metals-business category — Customers live under Business
   }

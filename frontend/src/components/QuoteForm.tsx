@@ -185,9 +185,9 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
 
   const [clientId] = useState<string>(String(clientIdProp || initial?.client_id || ''));
   
-  const { data:client } = useQuery({ queryKey:['client', clientId], queryFn: ()=> clientId? api<Client>('GET', `/clients/${clientId}`): Promise.resolve(null) });
+  const { data:client } = useQuery({ queryKey:['client', clientId], queryFn: ()=> clientId? api<Client>('GET', `/metals/clients/${clientId}`): Promise.resolve(null) });
   const { data:nextCode } = useQuery({ queryKey:['quoteCode', clientId], queryFn: ()=> (mode==='new' && clientId)? api<any>('GET', `/quotes/next-code?client_id=${encodeURIComponent(clientId)}`) : Promise.resolve(null) });
-  const { data:contacts, refetch: refetchContacts } = useQuery({ queryKey:['clientContacts', clientId], queryFn: ()=> clientId? api<any[]>('GET', `/clients/${clientId}/contacts`): Promise.resolve([]), enabled: !!clientId });
+  const { data:contacts, refetch: refetchContacts } = useQuery({ queryKey:['clientContacts', clientId], queryFn: ()=> clientId? api<any[]>('GET', `/metals/clients/${clientId}/contacts`): Promise.resolve([]), enabled: !!clientId });
   const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
   
   const { data:me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
@@ -313,7 +313,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
       if (willBePrimary && contacts && contacts.length > 0) {
         const primaryContact = contacts.find((c: any) => c.is_primary);
         if (primaryContact) {
-          await api('PATCH', `/clients/${clientId}/contacts/${primaryContact.id}`, {
+          await api('PATCH', `/metals/clients/${clientId}/contacts/${primaryContact.id}`, {
             is_primary: false,
           });
         }
@@ -327,7 +327,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
         department: newContactDept,
         is_primary: willBePrimary,
       };
-      const created: any = await api('POST', `/clients/${clientId}/contacts`, payload);
+      const created: any = await api('POST', `/metals/clients/${clientId}/contacts`, payload);
       if (contactPhotoBlob && created.id) {
         try {
           const up: any = await api('POST', '/files/upload', {
@@ -351,7 +351,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
           });
           await api(
             'POST',
-            `/clients/${clientId}/files?file_object_id=${encodeURIComponent(conf.id)}&category=${encodeURIComponent('contact-photo-' + created.id)}&original_name=${encodeURIComponent('contact-' + created.id + '.jpg')}`,
+            `/metals/clients/${clientId}/files?file_object_id=${encodeURIComponent(conf.id)}&category=${encodeURIComponent('contact-photo-' + created.id)}&original_name=${encodeURIComponent('contact-' + created.id + '.jpg')}`,
           );
         } catch (e) {
           console.error('Failed to upload contact photo:', e);
@@ -2941,7 +2941,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                   checksum_sha256: 'na', 
                   content_type: 'image/jpeg' 
                 });
-                await api('POST', `/clients/${clientId}/files?file_object_id=${encodeURIComponent(conf.id)}&category=${encodeURIComponent('contact-photo-' + pickerForContact)}&original_name=${encodeURIComponent('contact-' + pickerForContact + '.jpg')}`);
+                await api('POST', `/metals/clients/${clientId}/files?file_object_id=${encodeURIComponent(conf.id)}&category=${encodeURIComponent('contact-photo-' + pickerForContact)}&original_name=${encodeURIComponent('contact-' + pickerForContact + '.jpg')}`);
                 toast.success('Contact photo updated');
                 await refetchContacts();
               }

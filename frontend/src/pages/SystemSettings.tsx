@@ -335,6 +335,7 @@ function PermissionTemplatesSection({ canEdit = true }: { canEdit?: boolean }) {
     let businessCat: PermDefCategory | null = null;
     let inventoryCat: PermDefCategory | null = null;
     let quotationsCat: PermDefCategory | null = null;
+    let productCat: PermDefCategory | null = null;
     raw.forEach((cat) => {
       if (cat.name === 'business') {
         const constructionPerms = (cat.permissions || []).filter((p) => isConstructionProjectPermissionKey(p.key));
@@ -433,16 +434,28 @@ function PermissionTemplatesSection({ canEdit = true }: { canEdit?: boolean }) {
       } else if (cat.name === 'work_orders' || cat.name === 'inspections') {
         // Legacy categories — superseded by fleet:* keys in UI
       } else if (cat.name === 'product') {
-        processed.push({
-          ...cat,
-          label: 'Mack Kirk Metals access',
-          description: 'Switch between Hub and the Mack Kirk Metals product workspace.',
-          permissions: (cat.permissions || []).filter((p) => p.key === 'product:metals:access'),
-        });
+        productCat = cat;
       } else {
         processed.push(cat);
       }
     });
+    if (productCat || quotationsCat) {
+      const metalsPerms = [
+        ...((productCat?.permissions || []).filter(
+          (p) => p.key === 'product:metals:access' || p.key.startsWith('metals:customers:'),
+        )),
+        ...((quotationsCat?.permissions || []).filter(
+          (p) => p.key === 'sales:quotations:read' || p.key === 'sales:quotations:write',
+        )),
+      ].filter((p) => !isHiddenPermissionKey(p.key));
+      processed.push({
+        id: 'product',
+        name: 'product',
+        label: 'Mack Kirk Metals',
+        description: 'Access Mack Kirk Metals, Metals customers (tabs), and Quotations.',
+        permissions: metalsPerms,
+      });
+    }
     if (businessCat || inventoryCat) {
       const combined = [
         ...(businessCat?.permissions || []),
@@ -459,17 +472,7 @@ function PermissionTemplatesSection({ canEdit = true }: { canEdit?: boolean }) {
         processed.push(insert);
       }
     }
-    const normalizedQuotations: PermDefCategory = {
-      id: 'quotations',
-      name: 'quotations',
-      label: 'Quotations',
-      description:
-        quotationsCat?.description ||
-        'Permissions for Sales quotations (View / Edit).',
-      permissions: quotationsCat?.permissions || [],
-    };
-    processed.push(normalizedQuotations);
-    const orderedPrimaryNames = ['construction', 'repairs_maintenance', 'business', 'quotations'];
+    const orderedPrimaryNames = ['construction', 'repairs_maintenance', 'business', 'product'];
     const primaryCategories = orderedPrimaryNames
       .map((name) => processed.find((c) => c.name === name))
       .filter(Boolean) as PermDefCategory[];
@@ -572,6 +575,10 @@ function PermissionTemplatesSection({ canEdit = true }: { canEdit?: boolean }) {
     const handlePermToggle = (key: string) => {
       let next = toggleKey(key, selectedKeys);
       if (!next.has(key)) next = applyCascadeUncheck(key, next);
+      else if (key === 'sales:quotations:read' || key === 'sales:quotations:write') {
+        next = new Set(next);
+        next.add('metals:customers:read');
+      }
       next = syncCompanyAssetsAccessInKeySet(next);
       next = syncDocumentsAccessInKeySet(next);
       next = syncFleetAccessInKeySet(next);
@@ -674,7 +681,51 @@ function PermissionTemplatesSection({ canEdit = true }: { canEdit?: boolean }) {
               (subPermissions.length > 0 || (cat.name === 'product' && !!areaAccessPerm)) && (
                 <div className="px-4 pb-4 border-t border-gray-200 pt-3 mt-0">
                   {cat.name === 'product' ? (
-                    areaAccessPerm ? permRow(areaAccessPerm) : null
+                    <div className="space-y-4">
+                      {areaAccessPerm ? permRow(areaAccessPerm) : null}
+                      {(() => {
+                        const areaPerms = subPermissions.filter((p) =>
+                          p.key.startsWith('metals:customers:'),
+                        );
+                        if (areaPerms.length === 0) return null;
+                        const permRecord = Object.fromEntries(
+                          [...selectedKeys].map((k) => [k, true]),
+                        );
+                        const customerKeys = areaPerms.map((p) => p.key);
+                        return (
+                          <CustomerPermissionsGrid
+                            areaPerms={areaPerms}
+                            permissions={permRecord}
+                            canEdit={!disabled}
+                            onAccessLevelChange={(readKey, writeKey, level: CustomerAccessLevel) => {
+                              onChange(
+                                applyCustomerAccessLevelToKeySet(
+                                  selectedKeys,
+                                  customerKeys,
+                                  readKey,
+                                  writeKey,
+                                  level,
+                                ),
+                              );
+                            }}
+                          />
+                        );
+                      })()}
+                      {(() => {
+                        const areaPerms = subPermissions.filter((p) =>
+                          p.key.startsWith('sales:quotations:'),
+                        );
+                        if (areaPerms.length === 0) return null;
+                        const viewPerms = areaPerms.filter((p) => p.key.includes(':read'));
+                        const editPerms = areaPerms.filter((p) => p.key.includes(':write'));
+                        return (
+                          <div className="border rounded-lg p-2.5 bg-gray-50">
+                            <div className="text-sm font-semibold text-gray-700 mb-2">Quotations</div>
+                            {viewEditBlock(viewPerms, editPerms)}
+                          </div>
+                        );
+                      })()}
+                    </div>
                   ) : cat.name === 'construction' ? (
                     (() => {
                       const areaPerms = subPermissions.filter((p) =>
@@ -981,25 +1032,6 @@ function PermissionTemplatesSection({ canEdit = true }: { canEdit?: boolean }) {
                         />
                       );
                     })()
-                  ) : cat.name === 'quotations' ? (
-                    /* Quotations */
-                    <div className="space-y-4">
-                      {['quotations'].map((area) => {
-                        const areaPerms = subPermissions.filter((p) => p.key.includes(`sales:${area}`));
-                        if (areaPerms.length === 0) return null;
-                        const viewPerms = areaPerms.filter((p) => p.key.includes(':read'));
-                        const editPerms = areaPerms.filter((p) => p.key.includes(':write'));
-                        return (
-                          <div key={area} className="border rounded-lg p-2.5 bg-gray-50">
-                            <div className="text-sm font-semibold text-gray-700 mb-2">Quotations</div>
-                            {viewEditBlock(viewPerms, editPerms)}
-                          </div>
-                        );
-                      })}
-                      {subPermissions.length === 0 && (
-                        <div className="text-xs text-gray-600">No permissions in this category.</div>
-                      )}
-                    </div>
                   ) : (
                     <div className="space-y-1.5">
                       {subPermissions.map((perm) => permRow(perm))}

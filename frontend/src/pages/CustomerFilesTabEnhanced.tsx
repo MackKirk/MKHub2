@@ -63,7 +63,8 @@ export type ClientFileForFiles = {
 
 type ClientDeletedFile = ClientFileForFiles & { deleted_at?: string | null; deleted_by_id?: string | null };
 
-export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPermission }: { clientId: string; files: ClientFileForFiles[]; onRefresh: () => any; hasEditPermission?: boolean }) {
+export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPermission, apiBase = '/clients'}: { clientId: string;
+  apiBase?: string; files: ClientFileForFiles[]; onRefresh: () => any; hasEditPermission?: boolean }) {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
   const canEditFiles = !!hasEditPermission;
@@ -102,7 +103,7 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
 
   const { data: deletedFiles = [], refetch: refetchDeletedFiles } = useQuery({
     queryKey: ['clientDeletedFiles', clientId],
-    queryFn: () => api<ClientDeletedFile[]>('GET', `/clients/${encodeURIComponent(clientId)}/files/deleted`),
+    queryFn: () => api<ClientDeletedFile[]>('GET', `${apiBase}/${encodeURIComponent(clientId)}/files/deleted`),
     enabled: !!clientId && isAdmin && filesSection === 'deleted',
   });
 
@@ -112,7 +113,7 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
 
   const { data: categories } = useQuery({
     queryKey: ['file-categories'],
-    queryFn: () => api<any[]>('GET', '/clients/file-categories'),
+    queryFn: () => api<any[]>('GET', `${apiBase}/file-categories`),
   });
 
   const visibleCategories = useMemo(() => {
@@ -313,7 +314,7 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
     fileSelection.clear();
     const results = await Promise.allSettled(
       unique.map((fileId) =>
-        api('PUT', `/clients/${clientId}/files/${fileId}`, { category: categoryValue }),
+        api('PUT', `${apiBase}/${clientId}/files/${fileId}`, { category: categoryValue }),
       ),
     );
     const ok = results.filter((r) => r.status === 'fulfilled').length;
@@ -374,7 +375,7 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
     setBulkDeleting(true);
     try {
       const results = await Promise.allSettled(
-        ids.map((fileId) => api('DELETE', `/clients/${clientId}/files/${fileId}`)),
+        ids.map((fileId) => api('DELETE', `${apiBase}/${clientId}/files/${fileId}`)),
       );
       const ok = results.filter((r) => r.status === 'fulfilled').length;
       await queryClient.invalidateQueries({ queryKey: ['clientDeletedFiles', clientId] });
@@ -494,7 +495,7 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
           checksum_sha256: 'na',
           content_type: item.file.type || 'application/octet-stream',
         });
-        await api('POST', `/clients/${clientId}/files?file_object_id=${encodeURIComponent(conf.id)}&category=${encodeURIComponent(category || '')}&original_name=${encodeURIComponent(item.file.name)}`);
+        await api('POST', `${apiBase}/${clientId}/files?file_object_id=${encodeURIComponent(conf.id)}&category=${encodeURIComponent(category || '')}&original_name=${encodeURIComponent(item.file.name)}`);
         setUploadQueue((prev) => prev.map((u) => (u.id === item.id ? { ...u, status: 'success', progress: 100 } : u)));
       } catch (e: any) {
         setUploadQueue((prev) => prev.map((u) => (u.id === item.id ? { ...u, status: 'error', error: e.message || 'Upload failed' } : u)));
@@ -518,7 +519,7 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
     if (result !== 'confirm') return;
     try {
       if (!canEditFiles) return;
-      await api('DELETE', `/clients/${clientId}/files/${fileId}`);
+      await api('DELETE', `${apiBase}/${clientId}/files/${fileId}`);
       await queryClient.invalidateQueries({ queryKey: ['clientDeletedFiles', clientId] });
       await onRefresh();
       toast.success('Removed from library');
@@ -536,7 +537,7 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
     });
     if (result !== 'confirm') return;
     try {
-      await api('DELETE', `/clients/${encodeURIComponent(clientId)}/files/deleted/${encodeURIComponent(fileId)}`);
+      await api('DELETE', `${apiBase}/${encodeURIComponent(clientId)}/files/deleted/${encodeURIComponent(fileId)}`);
       await refetchDeletedFiles();
       await onRefresh();
       toast.success('File permanently deleted');
@@ -547,7 +548,7 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
 
   const handleRestoreDeletedFile = async (fileId: string) => {
     try {
-      await api('POST', `/clients/${encodeURIComponent(clientId)}/files/deleted/${encodeURIComponent(fileId)}/restore`);
+      await api('POST', `${apiBase}/${encodeURIComponent(clientId)}/files/deleted/${encodeURIComponent(fileId)}/restore`);
       await refetchDeletedFiles();
       await onRefresh();
       toast.success('File restored to library');
@@ -568,7 +569,7 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
     }
     if (!canEditFiles) return;
     try {
-      await api('PUT', `/clients/${clientId}/files/${fileId}`, { original_name: trimmed });
+      await api('PUT', `${apiBase}/${clientId}/files/${fileId}`, { original_name: trimmed });
       setEditingFileNameId(null);
       setEditingFileNameValue('');
       await onRefresh();
@@ -1139,7 +1140,7 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
                                         onClick={async (e) => {
                                           e.stopPropagation();
                                           try {
-                                            await api('PATCH', `/clients/${clientId}/files/${f.id}/portal-visibility`, {
+                                            await api('PATCH', `${apiBase}/${clientId}/files/${f.id}/portal-visibility`, {
                                               customer_visible: !f.customer_visible,
                                             });
                                             toast.success(
@@ -1346,7 +1347,7 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
                 content_type: 'image/png',
               });
               const originalFile = files.find((f) => f.file_object_id === editingImage.fileObjectId);
-              await api('POST', `/clients/${encodeURIComponent(clientId)}/files?file_object_id=${encodeURIComponent(conf.id)}&category=${encodeURIComponent(originalFile?.category || 'image-edited')}&original_name=${encodeURIComponent(editedName)}${originalFile?.site_id ? `&site_id=${encodeURIComponent(originalFile.site_id)}` : ''}`);
+              await api('POST', `${apiBase}/${encodeURIComponent(clientId)}/files?file_object_id=${encodeURIComponent(conf.id)}&category=${encodeURIComponent(originalFile?.category || 'image-edited')}&original_name=${encodeURIComponent(editedName)}${originalFile?.site_id ? `&site_id=${encodeURIComponent(originalFile.site_id)}` : ''}`);
               toast.success('Image saved as edited copy');
               await onRefresh();
               setEditingImage(null);

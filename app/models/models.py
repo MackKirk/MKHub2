@@ -1162,6 +1162,315 @@ class ClientDocument(Base):
     deleted_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
 
+# ---------------------------------------------------------------------------
+# Mack Kirk Metals CRM (distinct from Hub clients)
+# ---------------------------------------------------------------------------
+
+
+class MetalsClient(Base):
+    __tablename__ = "metals_clients"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    code: Mapped[Optional[str]] = mapped_column(String(50), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    legal_name: Mapped[Optional[str]] = mapped_column(String(255))
+    display_name: Mapped[Optional[str]] = mapped_column(String(255))
+    client_type: Mapped[Optional[str]] = mapped_column(String(50))
+    client_status: Mapped[Optional[str]] = mapped_column(String(50))
+    lead_source: Mapped[Optional[str]] = mapped_column(String(100))
+    estimator_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    description: Mapped[Optional[str]] = mapped_column(String(4000))
+
+    address_line1: Mapped[Optional[str]] = mapped_column(String(255))
+    address_line2: Mapped[Optional[str]] = mapped_column(String(255))
+    city: Mapped[Optional[str]] = mapped_column(String(100))
+    province: Mapped[Optional[str]] = mapped_column(String(100))
+    postal_code: Mapped[Optional[str]] = mapped_column(String(50))
+    country: Mapped[Optional[str]] = mapped_column(String(100))
+
+    billing_address_line1: Mapped[Optional[str]] = mapped_column(String(255))
+    billing_address_line2: Mapped[Optional[str]] = mapped_column(String(255))
+    billing_city: Mapped[Optional[str]] = mapped_column(String(100))
+    billing_province: Mapped[Optional[str]] = mapped_column(String(100))
+    billing_postal_code: Mapped[Optional[str]] = mapped_column(String(50))
+    billing_country: Mapped[Optional[str]] = mapped_column(String(100))
+    billing_same_as_address: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    type_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    status_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    payment_terms_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    billing_contact: Mapped[Optional[str]] = mapped_column(String(255))
+    invoice_to: Mapped[Optional[str]] = mapped_column(String(255))
+    billing_email: Mapped[Optional[str]] = mapped_column(String(255))
+    po_required: Mapped[bool] = mapped_column(Boolean, default=False)
+    tax_number: Mapped[Optional[str]] = mapped_column(String(100))
+    dataforma_id: Mapped[Optional[str]] = mapped_column(String(100), unique=True)
+
+    preferred_language: Mapped[Optional[str]] = mapped_column(String(50))
+    preferred_channels: Mapped[Optional[list]] = mapped_column(JSON)
+    marketing_opt_in: Mapped[bool] = mapped_column(Boolean, default=False)
+    invoice_delivery_method: Mapped[Optional[str]] = mapped_column(String(50))
+    statement_delivery_method: Mapped[Optional[str]] = mapped_column(String(50))
+    cc_emails_for_invoices: Mapped[Optional[list]] = mapped_column(JSON)
+    cc_emails_for_estimates: Mapped[Optional[list]] = mapped_column(JSON)
+    do_not_contact: Mapped[bool] = mapped_column(Boolean, default=False)
+    do_not_contact_reason: Mapped[Optional[str]] = mapped_column(String(500))
+
+    is_system: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    deleted_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+
+class MetalsClientContact(Base):
+    __tablename__ = "metals_client_contacts"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    client_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("metals_clients.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    role_title: Mapped[Optional[str]] = mapped_column(String(100))
+    department: Mapped[Optional[str]] = mapped_column(String(100))
+    email: Mapped[Optional[str]] = mapped_column(String(255))
+    phone: Mapped[Optional[str]] = mapped_column(String(100))
+    phone_extension: Mapped[Optional[str]] = mapped_column(String(20))
+    mobile_phone: Mapped[Optional[str]] = mapped_column(String(100))
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
+    sort_index: Mapped[int] = mapped_column(Integer, default=0)
+    notes: Mapped[Optional[str]] = mapped_column(String(1000))
+    role_tags: Mapped[Optional[list]] = mapped_column(JSON)
+
+
+class MetalsClientSite(Base):
+    __tablename__ = "metals_client_sites"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    client_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("metals_clients.id", ondelete="CASCADE"), index=True
+    )
+    site_name: Mapped[Optional[str]] = mapped_column(String(255))
+    site_address_line1: Mapped[Optional[str]] = mapped_column(String(255))
+    site_address_line1_complement: Mapped[Optional[str]] = mapped_column(String(255))
+    site_address_line2: Mapped[Optional[str]] = mapped_column(String(255))
+    site_address_line2_complement: Mapped[Optional[str]] = mapped_column(String(255))
+    site_address_line3: Mapped[Optional[str]] = mapped_column(String(255))
+    site_address_line3_complement: Mapped[Optional[str]] = mapped_column(String(255))
+    site_city: Mapped[Optional[str]] = mapped_column(String(100))
+    site_province: Mapped[Optional[str]] = mapped_column(String(100))
+    site_postal_code: Mapped[Optional[str]] = mapped_column(String(50))
+    site_country: Mapped[Optional[str]] = mapped_column(String(100))
+    site_lat: Mapped[Optional[float]] = mapped_column(Numeric(10, 7))
+    site_lng: Mapped[Optional[float]] = mapped_column(Numeric(10, 7))
+    site_notes: Mapped[Optional[str]] = mapped_column(String(1000))
+    sort_index: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class MetalsClientFolder(Base):
+    __tablename__ = "metals_client_folders"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    client_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("metals_clients.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    parent_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("metals_client_folders.id", ondelete="SET NULL")
+    )
+    sort_index: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    access_permissions: Mapped[Optional[dict]] = mapped_column(JSON)
+
+
+class MetalsClientFile(Base):
+    __tablename__ = "metals_client_files"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    client_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("metals_clients.id", ondelete="CASCADE"), index=True
+    )
+    site_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("metals_client_sites.id", ondelete="CASCADE")
+    )
+    file_object_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="CASCADE")
+    )
+    category: Mapped[Optional[str]] = mapped_column(String(100))
+    folder_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("metals_client_folders.id", ondelete="SET NULL")
+    )
+    key: Mapped[Optional[str]] = mapped_column(String(1024))
+    original_name: Mapped[Optional[str]] = mapped_column(String(255))
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    uploaded_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    notes: Mapped[Optional[str]] = mapped_column(String(1000))
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    deleted_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    customer_visible: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="false")
+
+
+class MetalsClientDocument(Base):
+    __tablename__ = "metals_client_documents"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    client_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("metals_clients.id", ondelete="CASCADE"), index=True
+    )
+    doc_type: Mapped[str] = mapped_column(String(100))
+    title: Mapped[Optional[str]] = mapped_column(String(255))
+    notes: Mapped[Optional[str]] = mapped_column(String(1000))
+    file_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    deleted_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+
+class MetalsClientNote(Base):
+    __tablename__ = "metals_client_notes"
+    __table_args__ = (Index("ix_metals_client_notes_client_created", "client_id", "created_at"),)
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    client_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("metals_clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    title: Mapped[Optional[str]] = mapped_column(String(255))
+    category_id: Mapped[Optional[str]] = mapped_column(String(100))
+    description: Mapped[Optional[str]] = mapped_column(Text())
+    images: Mapped[Optional[dict]] = mapped_column(JSON)
+    status: Mapped[Optional[str]] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+
+
+class MetalsMigrationBatch(Base):
+    __tablename__ = "metals_migration_batches"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    mode: Mapped[str] = mapped_column(String(20), nullable=False)
+    quotes_count: Mapped[Optional[int]] = mapped_column(Integer)
+    distinct_hub_clients: Mapped[Optional[int]] = mapped_column(Integer)
+    cloned_clients: Mapped[Optional[int]] = mapped_column(Integer)
+    remapped_quotes: Mapped[Optional[int]] = mapped_column(Integer)
+    hub_hidden: Mapped[Optional[int]] = mapped_column(Integer)
+    notes: Mapped[Optional[str]] = mapped_column(Text())
+    ok: Mapped[Optional[bool]] = mapped_column(Boolean)
+
+
+class MetalsClientIdMap(Base):
+    __tablename__ = "metals_client_id_map"
+
+    hub_client_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    metals_client_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("metals_clients.id", ondelete="CASCADE"), unique=True, nullable=False
+    )
+    batch_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("metals_migration_batches.id", ondelete="SET NULL")
+    )
+    cloned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+
+class MetalsContactIdMap(Base):
+    __tablename__ = "metals_contact_id_map"
+
+    hub_contact_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    metals_contact_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("metals_client_contacts.id", ondelete="CASCADE"), unique=True, nullable=False
+    )
+    hub_client_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    batch_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("metals_migration_batches.id", ondelete="SET NULL")
+    )
+
+
+class MetalsSiteIdMap(Base):
+    __tablename__ = "metals_site_id_map"
+
+    hub_site_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    metals_site_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("metals_client_sites.id", ondelete="CASCADE"), unique=True, nullable=False
+    )
+    hub_client_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    batch_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("metals_migration_batches.id", ondelete="SET NULL")
+    )
+
+
+class MetalsFolderIdMap(Base):
+    __tablename__ = "metals_folder_id_map"
+
+    hub_folder_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    metals_folder_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("metals_client_folders.id", ondelete="CASCADE"), unique=True, nullable=False
+    )
+    hub_client_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    batch_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("metals_migration_batches.id", ondelete="SET NULL")
+    )
+
+
+class MetalsFileIdMap(Base):
+    __tablename__ = "metals_file_id_map"
+
+    hub_file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    metals_file_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("metals_client_files.id", ondelete="CASCADE"), unique=True, nullable=False
+    )
+    hub_client_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    batch_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("metals_migration_batches.id", ondelete="SET NULL")
+    )
+
+
+class MetalsDocumentIdMap(Base):
+    __tablename__ = "metals_document_id_map"
+
+    hub_document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    metals_document_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("metals_client_documents.id", ondelete="CASCADE"), unique=True, nullable=False
+    )
+    hub_client_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    batch_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("metals_migration_batches.id", ondelete="SET NULL")
+    )
+
+
+class MetalsNoteIdMap(Base):
+    __tablename__ = "metals_note_id_map"
+
+    hub_note_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    metals_note_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("metals_client_notes.id", ondelete="CASCADE"), unique=True, nullable=False
+    )
+    hub_client_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    batch_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("metals_migration_batches.id", ondelete="SET NULL")
+    )
+
+
 class DocumentTemplate(Base):
     """Template for document creator: background art + optional area definitions, margins, default elements."""
     __tablename__ = "document_templates"

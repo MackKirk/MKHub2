@@ -735,7 +735,7 @@ export default function AppShell({ children }: PropsWithChildren){
     },
     {
       id: 'sales',
-      label: '2B Removed',
+      label: 'Quotations',
       icon: <IconSales />,
       items: [
         { id: 'quotations', label: 'Quotations', path: '/quotes', icon: <IconQuotations />, requiredPermission: 'sales:quotations:read' },
@@ -959,12 +959,13 @@ export default function AppShell({ children }: PropsWithChildren){
     return (item: GlobalSearchItem) => {
       // Pages already filtered, but keep it safe.
       if (item.type === 'page') return true;
-      // Metals product: hide Hub-only operational search hits
+      // Hub: Quotations live in Metals — hide quote hits here
+      if (product === 'hub' && item.type === 'quote') return false;
+      // Metals product: hide Hub-only operational search hits (quotes are Metals)
       if (product === 'metals') {
         if (
           item.type === 'project' ||
           item.type === 'opportunity' ||
-          item.type === 'quote' ||
           item.type === 'fleet_asset' ||
           item.type === 'equipment' ||
           item.type === 'work_order' ||
@@ -975,6 +976,9 @@ export default function AppShell({ children }: PropsWithChildren){
         }
         if (item.type === 'customer') {
           return hasPermission(METALS_CUSTOMERS_READ) || isAdmin;
+        }
+        if (item.type === 'quote') {
+          return hasPermission('sales:quotations:read') || isAdmin;
         }
       }
       if (item.type === 'project' || item.type === 'opportunity') {
@@ -1149,8 +1153,10 @@ export default function AppShell({ children }: PropsWithChildren){
   const categoryHasSubPanel = (category: MenuCategory) => {
     const visibleCount = category.items.filter(canSeeMenuItem).length;
     if (category.id === 'document-hub') return visibleCount >= 1;
+    // Business always opens a second panel (Customers, etc.) — never navigate on category click
+    if (category.id === 'business') return visibleCount >= 1;
     if (hubAccessBlocked && category.id === 'personal' && visibleCount >= 1) return true;
-    return visibleCount > 1 || category.id === 'sales';
+    return visibleCount > 1;
   };
 
   // When opening the menu, select the category for the current route (if it has a sub-panel)

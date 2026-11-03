@@ -32,7 +32,12 @@ export function buildContactTelHref(phone?: string | null, extension?: string | 
   return `tel:${digits};ext=${ext}`;
 }
 
-export async function uploadContactPhoto(clientId: string, contactId: string, blob: Blob) {
+export async function uploadContactPhoto(
+  clientId: string,
+  contactId: string,
+  blob: Blob,
+  apiBase: string = '/clients',
+) {
   const up: any = await api('POST', '/files/upload', {
     project_id: null,
     client_id: clientId,
@@ -54,6 +59,6 @@ export async function uploadContactPhoto(clientId: string, contactId: string, bl
   });
   await api(
     'POST',
-    `/clients/${clientId}/files?file_object_id=${encodeURIComponent(conf.id)}&category=${encodeURIComponent('contact-photo-' + contactId)}&original_name=${encodeURIComponent('contact-' + contactId + '.jpg')}`,
+    `${apiBase}/${clientId}/files?file_object_id=${encodeURIComponent(conf.id)}&category=${encodeURIComponent('contact-photo-' + contactId)}&original_name=${encodeURIComponent('contact-' + contactId + '.jpg')}`,
   );
 }

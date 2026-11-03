@@ -1,5 +1,5 @@
 """
-Seed Product / Mack Kirk Metals access and customers permissions.
+Seed Product / Mack Kirk Metals access, customers (incl. tabs), permissions.
 """
 import sys
 import os
@@ -35,21 +35,23 @@ def seed_product_metals_permissions():
     try:
         category = db.query(PermissionCategory).filter(PermissionCategory.name == "product").first()
         if category:
-            category.label = "Mack Kirk Metals access"
-            category.description = "Switch between Hub and the Mack Kirk Metals product workspace."
+            category.label = "Mack Kirk Metals"
+            category.description = (
+                "Access Mack Kirk Metals, Metals customers (tabs), and related product permissions."
+            )
             category.is_active = True
         else:
             category = PermissionCategory(
                 name="product",
-                label="Mack Kirk Metals access",
-                description="Switch between Hub and the Mack Kirk Metals product workspace.",
+                label="Mack Kirk Metals",
+                description=(
+                    "Access Mack Kirk Metals, Metals customers (tabs), and related product permissions."
+                ),
                 sort_index=25,
             )
             db.add(category)
         db.flush()
 
-        # Switch permission is the only one shown in the UI for now.
-        # Customers keys stay seeded for API/route gates but are hidden in permission UIs.
         perms = [
             {
                 "key": "product:metals:access",
@@ -59,15 +61,81 @@ def seed_product_metals_permissions():
             },
             {
                 "key": "metals:customers:read",
-                "label": "View Metals customers",
-                "description": "Allows viewing the Metals customers list and details.",
+                "label": "Customers",
+                "description": "Allows viewing the Metals customers list and opening customer records",
                 "sort_index": 2,
             },
             {
                 "key": "metals:customers:write",
-                "label": "Edit Metals customers",
-                "description": "Allows creating and updating Metals customers.",
+                "label": "Customers (create/delete)",
+                "description": "Allows creating and deleting Metals customer records",
                 "sort_index": 3,
+            },
+            {
+                "key": "metals:customers:overview:read",
+                "label": "Overview",
+                "description": "Allows viewing the Metals customer Overview tab",
+                "sort_index": 31,
+            },
+            {
+                "key": "metals:customers:general:read",
+                "label": "General",
+                "description": "Allows viewing the Metals customer General tab",
+                "sort_index": 32,
+            },
+            {
+                "key": "metals:customers:general:write",
+                "label": "General",
+                "description": "Allows editing Metals customer profile on the General tab",
+                "sort_index": 33,
+            },
+            {
+                "key": "metals:customers:contacts:read",
+                "label": "Contacts",
+                "description": "Allows viewing Metals customer contacts",
+                "sort_index": 34,
+            },
+            {
+                "key": "metals:customers:contacts:write",
+                "label": "Contacts",
+                "description": "Allows creating, updating, and deleting Metals customer contacts",
+                "sort_index": 35,
+            },
+            {
+                "key": "metals:customers:files:read",
+                "label": "Files",
+                "description": "Allows viewing Metals customer files, folders, and documents",
+                "sort_index": 36,
+            },
+            {
+                "key": "metals:customers:files:write",
+                "label": "Files",
+                "description": "Allows uploading and managing Metals customer files and folders",
+                "sort_index": 37,
+            },
+            {
+                "key": "metals:customers:sites:read",
+                "label": "Sites",
+                "description": "Allows viewing Metals customer sites",
+                "sort_index": 38,
+            },
+            {
+                "key": "metals:customers:sites:write",
+                "label": "Sites",
+                "description": "Allows creating, updating, and deleting Metals customer sites",
+                "sort_index": 39,
+            },
+            {
+                "key": "metals:customers:notes:read",
+                "label": "Notes / History",
+                "description": "Allows viewing the Metals customer Notes/History communication log",
+                "sort_index": 40,
+            },
+            {
+                "key": "metals:customers:notes:write",
+                "label": "Notes / History",
+                "description": "Allows creating, updating, and deleting Metals customer communication notes",
+                "sort_index": 41,
             },
         ]
 

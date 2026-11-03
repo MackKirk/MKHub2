@@ -16,8 +16,11 @@ from ..auth.security import (
     _has_permission,
     _has_project_feature_permission,
     _user_is_admin,
+    can_read_metals_client_for_quotes,
     has_project_files_category_permission,
     has_customer_tab_permission,
+    has_metals_customer_list_permission,
+    has_metals_customer_tab_permission,
     can_access_business_line,
     can_write_business_line,
     user_has_any_project_documents_permission,
@@ -40,6 +43,9 @@ from ..models.models import (
     CommunityPost,
     PropertyFile,
     Property,
+    MetalsClient,
+    MetalsClientFile,
+    MetalsClientIdMap,
 )
 from ..services.permissions import is_admin
 from ..services.safety_sign_request_access import user_has_any_sign_request_on_project
@@ -175,6 +181,53 @@ def merge_confirm_scope(
     )
 
 
+def _user_can_read_metals_client_files(user: User) -> bool:
+    # List/hero logos use /files thumbnails; Files tab and Quotations also need reads.
+    return (
+        has_metals_customer_tab_permission(user, "files", "read")
+        or has_metals_customer_list_permission(user)
+        or can_read_metals_client_for_quotes(user)
+    )
+
+
+def _user_can_write_metals_client_files(user: User) -> bool:
+    return has_metals_customer_tab_permission(user, "files", "write")
+
+
+def _metals_user_may_read_client_scoped_file(
+    user: User, db: Session, fo: FileObject, cid: uuid.UUID
+) -> bool:
+    """
+    Migrated Metals CRM reuses Hub FileObjects (client_id often still a Hub clients.id).
+    Allow Metals / Quotations readers when the FO is tied to Metals via map, attachment, or quote JSON.
+    """
+    if not _user_can_read_metals_client_files(user):
+        return False
+
+    if (
+        db.query(MetalsClient.id)
+        .filter(MetalsClient.id == cid, MetalsClient.deleted_at.is_(None))
+        .first()
+    ):
+        return True
+
+    if (
+        db.query(MetalsClientFile.id)
+        .filter(
+            MetalsClientFile.file_object_id == fo.id,
+            MetalsClientFile.deleted_at.is_(None),
+        )
+        .first()
+    ):
+        return True
+
+    if db.query(MetalsClientIdMap.hub_client_id).filter(MetalsClientIdMap.hub_client_id == cid).first():
+        return True
+
+    # Quotations UI loads customer logos / covers by FO id (often still stamped with Hub client_id)
+    return can_read_metals_client_for_quotes(user)
+
+
 def assert_can_initiate_upload(
     user: User,
     db: Session,
@@ -210,17 +263,34 @@ def assert_can_initiate_upload(
 
     if cid:
         cl = db.query(Client).filter(Client.id == cid).first()
-        if not cl:
+        if cl:
+            if has_customer_tab_permission(user, "files", "write"):
+                return
+            # Customer Notes / History attachments
+            cat_norm = (category_id or "").strip().lower()
+            if cat_norm in ("client-note", "project-report") and has_customer_tab_permission(
+                user, "notes", "write"
+            ):
+                return
+            raise _forbidden("missing business:customers:files:write")
+        mcl = (
+            db.query(MetalsClient)
+            .filter(MetalsClient.id == cid, MetalsClient.deleted_at.is_(None))
+            .first()
+        )
+        if not mcl:
             raise HTTPException(status_code=404, detail="Client not found")
-        if has_customer_tab_permission(user, "files", "write"):
+        if _user_can_write_metals_client_files(user):
             return
-        # Customer Notes / History attachments
         cat_norm = (category_id or "").strip().lower()
-        if cat_norm in ("client-note", "project-report") and has_customer_tab_permission(
+        if cat_norm in ("client-note", "project-report") and has_metals_customer_tab_permission(
             user, "notes", "write"
         ):
             return
-        raise _forbidden("missing business:customers:files:write")
+        # Quote cover / contact photos attached while editing quotations
+        if can_read_metals_client_for_quotes(user) and _has_permission(user, "sales:quotations:write"):
+            return
+        raise _forbidden("missing metals:customers:files:write")
 
     if eid:
         ep = db.query(EmployeeProfile).filter(EmployeeProfile.id == eid).first()
@@ -274,12 +344,15 @@ def assert_can_initiate_upload(
     if not (
         _has_permission(user, "business:projects:files:write")
         or _has_permission(user, "business:customers:write")
+        or _has_permission(user, "metals:customers:write")
+        or _user_can_write_metals_client_files(user)
         or _has_permission(user, "users:write")
         or _has_permission(user, "hr:users:write")
         or _has_permission(user, "documents:write")
         or _has_permission(user, "training:admin:write")
         or _has_permission(user, "training:manage")
         or _has_permission(user, "settings:files_assets:write")
+        or _has_permission(user, "sales:quotations:write")
     ):
         raise _forbidden("missing upload permission for misc scope")
 
@@ -313,9 +386,11 @@ def assert_can_read_storage_key(user: User, db: Session, storage_key: str) -> No
             return
         raise _forbidden("cannot read project file from storage key")
     if c:
-        if not has_customer_tab_permission(user, "files", "read"):
-            raise _forbidden("missing business:customers:files:read")
-        return
+        if has_customer_tab_permission(user, "files", "read"):
+            return
+        if _user_can_read_metals_client_files(user):
+            return
+        raise _forbidden("missing customers:files:read")
     if e:
         if not (
             _has_permission(user, "hr:users:read")
@@ -327,6 +402,8 @@ def assert_can_read_storage_key(user: User, db: Session, storage_key: str) -> No
         _has_permission(user, "business:projects:files:read")
         or _has_permission(user, "business:projects:files:write")
         or _has_permission(user, "business:customers:read")
+        or _has_permission(user, "metals:customers:read")
+        or can_read_metals_client_for_quotes(user)
         or _has_permission(user, "users:read")
         or _has_permission(user, "hr:users:read")
         or _has_permission(user, "documents:read")
@@ -337,7 +414,7 @@ def assert_can_read_storage_key(user: User, db: Session, storage_key: str) -> No
 def _resolve_file_scope_from_references(
     db: Session, fo: FileObject
 ) -> Tuple[Optional[uuid.UUID], Optional[uuid.UUID], Optional[uuid.UUID]]:
-    """Best-effort: infer project/client/employee from FKs on FileObject or ClientFile."""
+    """Best-effort: infer project/client/employee from FKs on FileObject or ClientFile/MetalsClientFile."""
     if fo.project_id or fo.client_id or fo.employee_id:
         return fo.project_id, fo.client_id, fo.employee_id
 
@@ -348,6 +425,14 @@ def _resolve_file_scope_from_references(
     )
     if cf and cf.client_id:
         return None, cf.client_id, None
+
+    mcf = (
+        db.query(MetalsClientFile)
+        .filter(MetalsClientFile.file_object_id == fo.id, MetalsClientFile.deleted_at.is_(None))
+        .first()
+    )
+    if mcf and mcf.client_id:
+        return None, mcf.client_id, None
 
     return None, None, None
 
@@ -583,6 +668,8 @@ def _can_read_file_object_via_inferred_storage_scope(
     if cid:
         if _has_permission(user, "business:customers:read"):
             return True
+        if _user_can_read_metals_client_files(user):
+            return True
         return _can_read_client_scoped_file_via_proposal(user, db, fo, cid)
 
     if eid:
@@ -776,14 +863,24 @@ def assert_can_read_file_object(user: User, db: Session, fo: FileObject) -> None
         raise _forbidden(f"missing project files:read for category ({cat or 'uncategorized'})")
 
     if cid:
+        if _metals_user_may_read_client_scoped_file(user, db, fo, cid):
+            return
+
         cl = db.query(Client).filter(Client.id == cid).first()
-        if not cl:
+        if cl:
+            if has_customer_tab_permission(user, "files", "read"):
+                return
+            if _can_read_client_scoped_file_via_proposal(user, db, fo, cid):
+                return
+            raise _forbidden("missing business:customers:files:read")
+        mcl = (
+            db.query(MetalsClient)
+            .filter(MetalsClient.id == cid, MetalsClient.deleted_at.is_(None))
+            .first()
+        )
+        if not mcl:
             raise HTTPException(status_code=404, detail="Client not found")
-        if has_customer_tab_permission(user, "files", "read"):
-            return
-        if _can_read_client_scoped_file_via_proposal(user, db, fo, cid):
-            return
-        raise _forbidden("missing business:customers:files:read")
+        raise _forbidden("missing metals:customers:files:read")
 
     if eid:
         ep = db.query(EmployeeProfile).filter(EmployeeProfile.id == eid).first()

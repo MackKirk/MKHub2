@@ -1,4 +1,4 @@
-﻿import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
+import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessToken, withFileAccessTokenIfNeeded } from '@/lib/api';
 import { sortByLabel } from '@/lib/sortOptions';
@@ -58,10 +58,10 @@ import {
   canViewCustomerTab as canViewCustomerTabFn,
   type CustomerTab as CustomerTabId,
   canEditCustomerTab as canEditCustomerTabFn,
-  canEditCustomerRecord as canEditCustomerRecordFn,
 } from '@/lib/customerPermissions';
 import { CustomerOverviewTab } from '@/components/customer/overview/CustomerOverviewTab';
 import { CustomerNotesTab } from '@/components/customer/CustomerNotesTab';
+import { customersApiBase, customersUiBase } from '@/lib/customerProductPaths';
 
 type Client = { id:string, name?:string, display_name?:string, code?:string, city?:string, province?:string, postal_code?:string, country?:string, address_line1?:string, address_line2?:string, created_at?:string };
 type Site = { id:string, site_name?:string, site_address_line1?:string, site_city?:string, site_province?:string, site_country?:string };
@@ -111,26 +111,29 @@ export default function CustomerDetail(){
   const [newProjectName, setNewProjectName] = useState('');
   const [customerReportModalOpen, setCustomerReportModalOpen] = useState<{ open: boolean; projectId?: string } | null>(null);
   const confirm = useConfirm();
-  const customersListPath = location.pathname.startsWith('/metals/customers')
-    ? '/metals/customers'
-    : '/customers';
+  const apiBase = customersApiBase(location.pathname);
+  const customersListPath = customersUiBase(location.pathname);
+  const isMetalsCustomer = apiBase === '/metals/clients';
+  const customerPermScope = isMetalsCustomer ? 'metals' : 'hub';
   const navigateBackToCustomers = useNavigateBack(customersListPath);
-  const { data:client, isLoading } = useQuery({ queryKey:['client', id], queryFn: ()=>api<Client>('GET', `/clients/${id}`) });
+  const { data:client, isLoading } = useQuery({ queryKey:['client', apiBase, id], queryFn: ()=>api<Client>('GET', `${apiBase}/${id}`) });
   const { data: me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
   const isAdmin = (me?.roles||[]).includes('admin');
   const permissions = new Set(me?.permissions || []);
-  const canViewCustomerTab = (t: CustomerTabId) => canViewCustomerTabFn(isAdmin, permissions, t);
-  const canEditCustomerTab = (t: CustomerTabId) => canEditCustomerTabFn(isAdmin, permissions, t);
-  const canDeleteCustomer = canEditCustomerRecordFn(isAdmin, permissions);
+  const canViewCustomerTab = (t: CustomerTabId) =>
+    canViewCustomerTabFn(isAdmin, permissions, t, customerPermScope);
+  const canEditCustomerTab = (t: CustomerTabId) =>
+    canEditCustomerTabFn(isAdmin, permissions, t, customerPermScope);
+  const canDeleteCustomer = isAdmin;
   const hasEditGeneral = canEditCustomerTab('general');
   const hasContactsEdit = canEditCustomerTab('contacts');
   const hasFilesView = canViewCustomerTab('files');
   const hasFilesEdit = canEditCustomerTab('files');
   const hasSitesEdit = canEditCustomerTab('sites');
-  const hasProjectsTabView = canViewCustomerTab('projects');
-  const hasProjectsEdit = canEditCustomerTab('projects');
-  const hasOpportunitiesTabView = canViewCustomerTab('opportunities');
-  const hasOpportunitiesEdit = canEditCustomerTab('opportunities');
+  const hasProjectsTabView = !isMetalsCustomer && canViewCustomerTab('projects');
+  const hasProjectsEdit = !isMetalsCustomer && canEditCustomerTab('projects');
+  const hasOpportunitiesTabView = !isMetalsCustomer && canViewCustomerTab('opportunities');
+  const hasOpportunitiesEdit = !isMetalsCustomer && canEditCustomerTab('opportunities');
   const hasOverviewView = canViewCustomerTab('overview');
   const hasGeneralView = canViewCustomerTab('general');
   const hasContactsView = canViewCustomerTab('contacts');
@@ -143,8 +146,8 @@ export default function CustomerDetail(){
       (permissions.has('business:projects:write') ||
         permissions.has('business:construction:projects:write') ||
         permissions.has('business:rm:projects:write')));
-  const { data:sites } = useQuery({ queryKey:['clientSites', id], queryFn: ()=>api<Site[]>('GET', `/clients/${id}/sites`) });
-  const { data:files, refetch: refetchFiles } = useQuery({ queryKey:['clientFiles', id], queryFn: ()=>api<ClientFile[]>('GET', `/clients/${id}/files`) });
+  const { data:sites } = useQuery({ queryKey:['clientSites', id], queryFn: ()=>api<Site[]>('GET', `${apiBase}/${id}/sites`) });
+  const { data:files, refetch: refetchFiles } = useQuery({ queryKey:['clientFiles', id], queryFn: ()=>api<ClientFile[]>('GET', `${apiBase}/${id}/files`) });
   const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
   const { data: projectDivisions } = useQuery({
     queryKey: PROJECT_DIVISIONS_QUERY_KEY,
@@ -189,11 +192,11 @@ export default function CustomerDetail(){
     return () => window.removeEventListener('keydown', onKey);
   }, [newProjectOpen]);
   const { data: participationData, isLoading: participationLoading } = useQuery({
-    queryKey: ['clientProjectParticipations', id],
+    queryKey: ['clientProjectParticipations', apiBase, id],
     queryFn: () =>
       api<ClientParticipationsResponse>(
         'GET',
-        `/clients/${encodeURIComponent(String(id || ''))}/project-participations`
+        `${apiBase}/${encodeURIComponent(String(id || ''))}/project-participations`
       ),
     enabled: (hasProjectsTabView || hasOpportunitiesTabView || hasOverviewView || hasNotesView) && !!id,
     staleTime: 60_000,
@@ -210,15 +213,17 @@ export default function CustomerDetail(){
     () => participationData?.rollup ?? [],
     [participationData]
   );
-  const { data:contacts } = useQuery({ queryKey:['clientContacts', id], queryFn: ()=>api<Contact[]>('GET', `/clients/${id}/contacts`) });
+  const { data:contacts } = useQuery({ queryKey:['clientContacts', id], queryFn: ()=>api<Contact[]>('GET', `${apiBase}/${id}/contacts`) });
   // Determine available tabs based on permissions
   // Order: Overview → General → Contacts → Files → Sites → Notes → Opportunities → Projects
   const availableTabs = useMemo(
     () =>
-      (['overview', 'general', 'contacts', 'files', 'sites', 'notes', 'opportunities', 'projects'] as const).filter(
-        (t) => canViewCustomerTab(t)
-      ),
-    [isAdmin, permissions]
+      (
+        isMetalsCustomer
+          ? (['overview', 'general', 'contacts', 'files', 'sites', 'notes'] as const)
+          : (['overview', 'general', 'contacts', 'files', 'sites', 'notes', 'opportunities', 'projects'] as const)
+      ).filter((t) => canViewCustomerTab(t)),
+    [isAdmin, permissions, isMetalsCustomer, customerPermScope]
   );
   
   // Sync tab from URL when location.search changes
@@ -232,10 +237,16 @@ export default function CustomerDetail(){
     }
   }, [location.search]);
 
-  // Redirect to first available tab if current tab is not available
+  // Redirect to first available tab if current tab is not available; hero-only when none
   useEffect(() => {
-    if (availableTabs.length === 0) return;
     const currentKey = tab === null ? 'overview' : tab;
+    if (availableTabs.length === 0) {
+      if (tab !== null) {
+        setTab(null);
+        if (location.search) navigate(location.pathname, { replace: true });
+      }
+      return;
+    }
     if (!availableTabs.includes(currentKey as (typeof availableTabs)[number])) {
       const first = availableTabs[0];
       const newTab = first === 'overview' ? null : (first as CustomerTab);
@@ -246,7 +257,7 @@ export default function CustomerDetail(){
         navigate(`${location.pathname}?tab=${newTab}`, { replace: true });
       }
     }
-  }, [tab, availableTabs, location.pathname, navigate]);
+  }, [tab, availableTabs, location.pathname, location.search, navigate]);
 
   // Auto-collapse hero when a tab is selected (not overview), expand when on overview
   useEffect(() => {
@@ -399,7 +410,7 @@ export default function CustomerDetail(){
               });
               if (ok !== 'confirm') return;
               try {
-                await api('DELETE', `/clients/${encodeURIComponent(String(id || ''))}`);
+                await api('DELETE', `${apiBase}/${encodeURIComponent(String(id || ''))}`);
                 toast.success('Customer deleted');
                 await queryClient.invalidateQueries({ queryKey: ['clients'] });
                 navigate(customersListPath);
@@ -568,10 +579,11 @@ export default function CustomerDetail(){
       )}
       </div>
 
+      {(isLoading || availableTabs.length > 0 || !isMetalsCustomer) && (
       <AppCard bodyClassName="p-5">
           {isLoading? <div className="h-24 animate-pulse bg-gray-100 rounded"/> : (
             <>
-              {availableTabs.length === 0 && (
+              {availableTabs.length === 0 && !isMetalsCustomer && (
                 <p className="text-sm text-gray-600">You do not have permission to view any section of this customer.</p>
               )}
               {tab === null && hasOverviewView && (
@@ -579,6 +591,7 @@ export default function CustomerDetail(){
                     clientId={String(id)}
                     client={client as Parameters<typeof CustomerOverviewTab>[0]['client']}
                     onTabChange={(t) => handleTabClick(t)}
+                    apiBase={apiBase}
                   />
               )}
               {tab==='general' && hasGeneralView && (
@@ -683,17 +696,19 @@ export default function CustomerDetail(){
                 </div>
               )}
               {tab==='files' && hasFilesView && (
-                <CustomerFilesTabEnhanced clientId={String(id)} files={files||[]} onRefresh={refetchFiles} hasEditPermission={hasFilesEdit} />
+                <CustomerFilesTabEnhanced clientId={String(id)} files={files||[]} onRefresh={refetchFiles} hasEditPermission={hasFilesEdit} apiBase={apiBase} />
               )}
               {tab==='contacts' && hasContactsView && (
                 <ContactsCard
                   id={String(id)}
                   hasEditPermission={hasContactsEdit}
                   clientDisplayName={client?.display_name || client?.name || ''}
+                  apiBase={apiBase}
                 />
               )}
               {tab==='sites' && hasSitesView && (
                 <SitesCard
+                  apiBase={apiBase}
                   clientId={String(id || '')}
                   sites={sites || []}
                   hasEditPermission={hasSitesEdit}
@@ -711,6 +726,7 @@ export default function CustomerDetail(){
                   canWrite={hasNotesEdit}
                   reportCategories={reportCategories}
                   projects={notesProjectOptions}
+                  apiBase={apiBase}
                 />
               )}
               {tab==='opportunities' && hasOpportunitiesTabView && (
@@ -818,15 +834,17 @@ export default function CustomerDetail(){
             </>
           )}
       </AppCard>
+      )}
       <EditCustomerGeneralModal
         open={generalEditSection !== null}
         section={generalEditSection}
         onClose={() => setGeneralEditSection(null)}
         clientId={String(id || '')}
+        apiBase={apiBase}
         client={client}
         clientDisplayName={client?.display_name || client?.name || ''}
         onSaved={() => {
-          queryClient.invalidateQueries({ queryKey: ['client', id] });
+          queryClient.invalidateQueries({ queryKey: ['client', apiBase, id] });
           queryClient.invalidateQueries({ queryKey: ['clients'] });
         }}
       />
@@ -836,7 +854,7 @@ export default function CustomerDetail(){
           const putResp = await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type':'image/jpeg', 'x-ms-blob-type':'BlockBlob' }, body: blob });
           if (!putResp.ok) throw new Error(`Upload failed (${putResp.status})`);
           const conf:any = await api('POST','/files/confirm',{ key: up.key, size_bytes: blob.size, checksum_sha256:'na', content_type:'image/jpeg' });
-          await api('POST', `/clients/${id}/files?file_object_id=${encodeURIComponent(conf.id)}&category=client-logo-derived&original_name=client-logo.jpg`);
+          await api('POST', `${apiBase}/${id}/files?file_object_id=${encodeURIComponent(conf.id)}&category=client-logo-derived&original_name=client-logo.jpg`);
           toast.success('Logo updated');
           await queryClient.invalidateQueries({ queryKey: ['clientFiles', id] });
           await queryClient.invalidateQueries({ queryKey: ['clients'] });
@@ -850,7 +868,7 @@ export default function CustomerDetail(){
             const putResp = await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type':'image/jpeg', 'x-ms-blob-type':'BlockBlob' }, body: blob });
             if (!putResp.ok) throw new Error(`Upload failed (${putResp.status})`);
             const conf:any = await api('POST','/files/confirm',{ key: up.key, size_bytes: blob.size, checksum_sha256:'na', content_type:'image/jpeg' });
-            await api('POST', `/clients/${id}/files?file_object_id=${encodeURIComponent(conf.id)}&category=project-cover-derived&original_name=project-cover.jpg`);
+            await api('POST', `${apiBase}/${id}/files?file_object_id=${encodeURIComponent(conf.id)}&category=project-cover-derived&original_name=project-cover.jpg`);
             toast.success('Project cover updated');
             await queryClient.invalidateQueries({ queryKey: ['clientFiles', id] });
           }catch(e){ toast.error('Failed to update project cover'); }
@@ -875,7 +893,7 @@ export default function CustomerDetail(){
         description="Invite people to this company’s customer portal."
         size="md"
       >
-        {id ? <PortalAccessPanel clientId={String(id)} enabled={canInvitePortal} /> : null}
+        {id && !isMetalsCustomer ? <PortalAccessPanel clientId={String(id)} enabled={canInvitePortal} /> : null}
       </AppModal>
     </div>
   );
@@ -991,7 +1009,7 @@ function UserInline({ id }:{ id:string }){
   return <span className="font-semibold">{label||EM_DASH}</span>;
 }
 
-function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: { id: string, files: ClientFile[], sites: Site[], onRefresh: ()=>any, hasEditPermission?: boolean }){
+function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission, apiBase = '/clients' }: { id: string, files: ClientFile[], sites: Site[], onRefresh: ()=>any, hasEditPermission?: boolean, apiBase?: string }){
   const confirm = useConfirm();
   const [which, setWhich] = useState<'all'|'client'|'site'>('all');
   const [siteId, setSiteId] = useState<string>('');
@@ -1001,9 +1019,9 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
   const [picList, setPicList] = useState<ClientFile[]>([]);
   useEffect(()=>{ setPicList(pics); }, [pics]);
 
-  const { data:folders, refetch: refetchFolders } = useQuery({ queryKey:['client-folders', id], queryFn: ()=> api<any[]>( 'GET', `/clients/${encodeURIComponent(id)}/folders`) });
+  const { data:folders, refetch: refetchFolders } = useQuery({ queryKey:['client-folders', id], queryFn: ()=> api<any[]>( 'GET', `${apiBase}/${encodeURIComponent(id)}/folders`) });
   const [activeFolderId, setActiveFolderId] = useState<string>('all');
-  const { data:docs, refetch: refetchDocs } = useQuery({ queryKey:['client-docs', id, activeFolderId], queryFn: ()=>{ const qs = activeFolderId!=='all'? (`?folder_id=${encodeURIComponent(activeFolderId)}`) : ''; return api<any[]>( 'GET', `/clients/${encodeURIComponent(id)}/documents${qs}` ); }});
+  const { data:docs, refetch: refetchDocs } = useQuery({ queryKey:['client-docs', id, activeFolderId], queryFn: ()=>{ const qs = activeFolderId!=='all'? (`?folder_id=${encodeURIComponent(activeFolderId)}`) : ''; return api<any[]>( 'GET', `${apiBase}/${encodeURIComponent(id)}/documents${qs}` ); }});
   const [showUpload, setShowUpload] = useState(false);
   const [fileObj, setFileObj] = useState<File|null>(null);
   const [title, setTitle] = useState<string>('');
@@ -1021,11 +1039,11 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
 
   const fetchDownloadUrl = async (fid:string)=>{ try{ const r:any = await api('GET', withFileAccessToken(`/files/${fid}/download`)); return String(r.download_url||''); }catch(_e){ toast.error('Download link unavailable'); return ''; } };
 
-  const upload = async()=>{ try{ if(!fileObj){ toast.error('Select a file'); return; } if(activeFolderId==='all'){ toast.error('Open a folder first'); return; } const name=fileObj.name; const type=fileObj.type||'application/octet-stream'; const up=await api('POST','/files/upload',{ original_name:name, content_type:type, client_id:id, project_id:null, employee_id:null, category_id:'client-docs' }); await fetch(up.upload_url,{ method:'PUT', headers:{ 'Content-Type':type,'x-ms-blob-type':'BlockBlob' }, body:fileObj }); const conf=await api('POST','/files/confirm',{ key:up.key, size_bytes:fileObj.size, checksum_sha256:'na', content_type:type }); await api('POST', `/clients/${encodeURIComponent(id)}/documents`, { folder_id: activeFolderId, title: title||name, file_id: conf.id }); toast.success('Uploaded'); setShowUpload(false); setFileObj(null); setTitle(''); await refetchDocs(); }catch(_e){ toast.error('Upload failed'); } };
-  const uploadToFolder = async(folderId:string, file: File)=>{ try{ const name=file.name; const type=file.type||'application/octet-stream'; const up=await api('POST','/files/upload',{ original_name:name, content_type:type, client_id:id, project_id:null, employee_id:null, category_id:'client-docs' }); await fetch(up.upload_url,{ method:'PUT', headers:{ 'Content-Type':type,'x-ms-blob-type':'BlockBlob' }, body:file }); const conf=await api('POST','/files/confirm',{ key:up.key, size_bytes:file.size, checksum_sha256:'na', content_type:type }); await api('POST', `/clients/${encodeURIComponent(id)}/documents`, { folder_id: folderId, title: name, file_id: conf.id }); }catch(_e){} };
-  const removeDoc = async(docId:string)=>{ const ok = await confirm({ title:'Delete file', message:'Are you sure you want to delete this file?' }); if(ok !== 'confirm') return; try{ await api('DELETE', `/clients/${encodeURIComponent(id)}/documents/${encodeURIComponent(docId)}`); toast.success('Deleted'); await refetchDocs(); }catch(_e){ toast.error('Delete failed'); } };
-  const removeFolder = async(folderId:string, folderName:string)=>{ const ok = await confirm({ title:'Delete folder', message:`Are you sure you want to delete "${folderName}"? This action cannot be undone.` }); if(ok !== 'confirm') return; try{ await api('DELETE', `/clients/${encodeURIComponent(id)}/folders/${encodeURIComponent(folderId)}`); toast.success('Folder deleted'); await refetchFolders(); if(activeFolderId===folderId) setActiveFolderId('all'); }catch(_e){ toast.error('Delete failed'); } };
-  const removePic = async(picId:string)=>{ const ok = await confirm({ title:'Delete image', message:'Are you sure you want to delete this image?' }); if(ok !== 'confirm') return; try{ await api('DELETE', `/clients/${encodeURIComponent(id)}/files/${encodeURIComponent(picId)}`); toast.success('Image deleted'); await onRefresh(); setPicList(prev=> prev.filter(p=> p.id !== picId)); }catch(_e){ toast.error('Delete failed'); } };
+  const upload = async()=>{ try{ if(!fileObj){ toast.error('Select a file'); return; } if(activeFolderId==='all'){ toast.error('Open a folder first'); return; } const name=fileObj.name; const type=fileObj.type||'application/octet-stream'; const up=await api('POST','/files/upload',{ original_name:name, content_type:type, client_id:id, project_id:null, employee_id:null, category_id:'client-docs' }); await fetch(up.upload_url,{ method:'PUT', headers:{ 'Content-Type':type,'x-ms-blob-type':'BlockBlob' }, body:fileObj }); const conf=await api('POST','/files/confirm',{ key:up.key, size_bytes:fileObj.size, checksum_sha256:'na', content_type:type }); await api('POST', `${apiBase}/${encodeURIComponent(id)}/documents`, { folder_id: activeFolderId, title: title||name, file_id: conf.id }); toast.success('Uploaded'); setShowUpload(false); setFileObj(null); setTitle(''); await refetchDocs(); }catch(_e){ toast.error('Upload failed'); } };
+  const uploadToFolder = async(folderId:string, file: File)=>{ try{ const name=file.name; const type=file.type||'application/octet-stream'; const up=await api('POST','/files/upload',{ original_name:name, content_type:type, client_id:id, project_id:null, employee_id:null, category_id:'client-docs' }); await fetch(up.upload_url,{ method:'PUT', headers:{ 'Content-Type':type,'x-ms-blob-type':'BlockBlob' }, body:file }); const conf=await api('POST','/files/confirm',{ key:up.key, size_bytes:file.size, checksum_sha256:'na', content_type:type }); await api('POST', `${apiBase}/${encodeURIComponent(id)}/documents`, { folder_id: folderId, title: name, file_id: conf.id }); }catch(_e){} };
+  const removeDoc = async(docId:string)=>{ const ok = await confirm({ title:'Delete file', message:'Are you sure you want to delete this file?' }); if(ok !== 'confirm') return; try{ await api('DELETE', `${apiBase}/${encodeURIComponent(id)}/documents/${encodeURIComponent(docId)}`); toast.success('Deleted'); await refetchDocs(); }catch(_e){ toast.error('Delete failed'); } };
+  const removeFolder = async(folderId:string, folderName:string)=>{ const ok = await confirm({ title:'Delete folder', message:`Are you sure you want to delete "${folderName}"? This action cannot be undone.` }); if(ok !== 'confirm') return; try{ await api('DELETE', `${apiBase}/${encodeURIComponent(id)}/folders/${encodeURIComponent(folderId)}`); toast.success('Folder deleted'); await refetchFolders(); if(activeFolderId===folderId) setActiveFolderId('all'); }catch(_e){ toast.error('Delete failed'); } };
+  const removePic = async(picId:string)=>{ const ok = await confirm({ title:'Delete image', message:'Are you sure you want to delete this image?' }); if(ok !== 'confirm') return; try{ await api('DELETE', `${apiBase}/${encodeURIComponent(id)}/files/${encodeURIComponent(picId)}`); toast.success('Image deleted'); await onRefresh(); setPicList(prev=> prev.filter(p=> p.id !== picId)); }catch(_e){ toast.error('Delete failed'); } };
 
   const topFolders = useMemo(()=> (folders||[]).filter((f:any)=> !f.parent_id), [folders]);
   const childFolders = useMemo(()=> (folders||[]).filter((f:any)=> f.parent_id===activeFolderId), [folders, activeFolderId]);
@@ -1139,7 +1157,7 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
                       if(!dest){ toast.error('Select destination folder'); return; }
                       try{
                         for(const docId of Array.from(selectedDocIds)){
-                          await api('PUT', `/clients/${encodeURIComponent(String(id))}/documents/${encodeURIComponent(String(docId))}`, { folder_id: dest });
+                          await api('PUT', `${apiBase}/${encodeURIComponent(String(id))}/documents/${encodeURIComponent(String(docId))}`, { folder_id: dest });
                         }
                         toast.success('Moved'); setSelectedDocIds(new Set()); await refetchDocs();
                       }catch(_e){ toast.error('Failed'); }
@@ -1245,7 +1263,7 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
                     toast.error('Folder name required');
                     return;
                   }
-                  await api('POST', `/clients/${encodeURIComponent(id)}/folders`, body);
+                  await api('POST', `${apiBase}/${encodeURIComponent(id)}/folders`, body);
                   toast.success('Folder created');
                   setNewFolderOpen(false);
                   setNewFolderName('');
@@ -1282,7 +1300,7 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
               onClick={async () => {
                 if (!renameFolder) return;
                 try {
-                  await api('PUT', `/clients/${encodeURIComponent(id)}/folders/${encodeURIComponent(renameFolder.id)}`, {
+                  await api('PUT', `${apiBase}/${encodeURIComponent(id)}/folders/${encodeURIComponent(renameFolder.id)}`, {
                     name: (renameFolder.name || '').trim(),
                   });
                   toast.success('Renamed');
@@ -1320,7 +1338,7 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
               onClick={async () => {
                 if (!renameDoc) return;
                 try {
-                  await api('PUT', `/clients/${encodeURIComponent(id)}/documents/${encodeURIComponent(renameDoc.id)}`, {
+                  await api('PUT', `${apiBase}/${encodeURIComponent(id)}/documents/${encodeURIComponent(renameDoc.id)}`, {
                     title: (renameDoc.title || '').trim(),
                   });
                   toast.success('Renamed');
@@ -1371,7 +1389,7 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
                   return;
                 }
                 try {
-                  await api('PUT', `/clients/${encodeURIComponent(id)}/documents/${encodeURIComponent(moveDoc.id)}`, {
+                  await api('PUT', `${apiBase}/${encodeURIComponent(id)}/documents/${encodeURIComponent(moveDoc.id)}`, {
                     folder_id: moveDocFolderId,
                   });
                   toast.success('Moved');
@@ -1451,7 +1469,7 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
               const originalFile = files.find(f => f.file_object_id === editingImage.fileObjectId);
               
               // Attach edited image to client (keeping same site_id and category if original had them)
-              await api('POST', `/clients/${encodeURIComponent(id)}/files?file_object_id=${encodeURIComponent(conf.id)}&category=${encodeURIComponent(originalFile?.category || 'image-edited')}&original_name=${encodeURIComponent(editedName)}${originalFile?.site_id ? `&site_id=${encodeURIComponent(originalFile.site_id)}` : ''}`);
+              await api('POST', `${apiBase}/${encodeURIComponent(id)}/files?file_object_id=${encodeURIComponent(conf.id)}&category=${encodeURIComponent(originalFile?.category || 'image-edited')}&original_name=${encodeURIComponent(editedName)}${originalFile?.site_id ? `&site_id=${encodeURIComponent(originalFile.site_id)}` : ''}`);
               
               toast.success('Image saved as edited copy');
               await onRefresh();
@@ -1467,7 +1485,7 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
   );
 }
 
-function SitesCard({
+function SitesCard({ apiBase = '/clients',
   clientId,
   sites,
   hasEditPermission,
@@ -1476,6 +1494,7 @@ function SitesCard({
   onSitesRefresh,
   onFilesRefresh,
 }: {
+  apiBase?: string;
   clientId: string;
   sites: Site[];
   hasEditPermission?: boolean;
@@ -1618,6 +1637,7 @@ function SitesCard({
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         clientId={clientId}
+        apiBase={apiBase}
         clientDisplayName={clientDisplayName}
         onSaved={refreshSites}
       />
@@ -1625,6 +1645,7 @@ function SitesCard({
         open={!!editSite}
         onClose={() => setEditSite(null)}
         clientId={clientId}
+        apiBase={apiBase}
         clientDisplayName={clientDisplayName}
         site={editSite}
         coverUrl={editSite ? coverBySiteId.get(String(editSite.id)) || '' : ''}
@@ -1643,7 +1664,7 @@ function SitesCard({
           overlayClassName={uiModalLayer.nestedPicker}
           onConfirm={async (blob) => {
             try {
-              await uploadSiteCover(clientId, coverPickerSiteId, blob);
+              await uploadSiteCover(clientId, coverPickerSiteId, blob, apiBase);
               toast.success('Site cover updated');
               onFilesRefresh();
             } catch {
@@ -1658,10 +1679,10 @@ function SitesCard({
   );
 }
 
-function ContactsCard({ id, hasEditPermission, clientDisplayName }: { id: string, hasEditPermission?: boolean, clientDisplayName?: string }){
+function ContactsCard({ id, hasEditPermission, clientDisplayName, apiBase = '/clients' }: { id: string, hasEditPermission?: boolean, clientDisplayName?: string, apiBase?: string }){
   const queryClient = useQueryClient();
-  const { data, refetch } = useQuery({ queryKey:['clientContacts', id], queryFn: ()=>api<any[]>('GET', `/clients/${id}/contacts`) });
-  const { data:files } = useQuery({ queryKey:['clientFilesForContacts', id], queryFn: ()=>api<any[]>('GET', `/clients/${id}/files`) });
+  const { data, refetch } = useQuery({ queryKey:['clientContacts', id], queryFn: ()=>api<any[]>('GET', `${apiBase}/${id}/contacts`) });
+  const { data:files } = useQuery({ queryKey:['clientFilesForContacts', id], queryFn: ()=>api<any[]>('GET', `${apiBase}/${id}/files`) });
   const [list, setList] = useState<any[]>([]);
   useEffect(()=>{ setList(data||[]); }, [data]);
   const [editContact, setEditContact] = useState<ClientContactRecord | null>(null);
@@ -1703,7 +1724,7 @@ function ContactsCard({ id, hasEditPermission, clientDisplayName }: { id: string
     curr.splice(to,0,moved);
     setList(curr);
     try{ 
-      await api('POST', `/clients/${id}/contacts/reorder`, curr.map(c=> String(c.id))); 
+      await api('POST', `${apiBase}/${id}/contacts/reorder`, curr.map(c=> String(c.id))); 
       toast.success('Order saved'); 
       refetch(); 
     }catch(e){ 
@@ -1846,6 +1867,7 @@ function ContactsCard({ id, hasEditPermission, clientDisplayName }: { id: string
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         clientId={id}
+        apiBase={apiBase}
         clientDisplayName={clientDisplayName}
         onCreated={() => refreshContacts()}
       />
@@ -1853,6 +1875,7 @@ function ContactsCard({ id, hasEditPermission, clientDisplayName }: { id: string
         open={!!editContact}
         onClose={() => setEditContact(null)}
         clientId={id}
+        apiBase={apiBase}
         clientDisplayName={clientDisplayName}
         contact={editContact}
         photoUrl={editContact ? avatarByContactId.get(String(editContact.id)) || '' : ''}
