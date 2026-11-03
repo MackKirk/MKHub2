@@ -705,7 +705,7 @@ def update_client(client_id: str, payload: dict, db: Session = Depends(get_db), 
 
 
 @router.delete("/{client_id}")
-def delete_client(client_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user), _=Depends(require_permissions("business:customers:write"))):
+def delete_client(client_id: str, db: Session = Depends(get_db), user: User = Depends(require_roles("admin"))):
     try:
         c = db.query(Client).filter(Client.id == client_id, Client.deleted_at.is_(None)).first()
     except ProgrammingError as e:

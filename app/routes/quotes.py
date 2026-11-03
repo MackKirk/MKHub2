@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse
 from ..config import settings
 from ..logging import RequestIdMiddleware
 from ..db import get_db
-from ..models.models import FileObject, Quote, Client, Material, User, EmployeeProfile
+from ..models.models import FileObject, Quote, MetalsClient, Material, User, EmployeeProfile
 from ..auth.security import get_current_user, require_permissions
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, cast, String, Date, func
@@ -296,14 +296,14 @@ def _apply_quote_list_filters(
             query = query.filter(Quote.outcome_status.in_(statuses))
 
     if q:
-        query = query.outerjoin(Client, Quote.client_id == Client.id)
+        query = query.outerjoin(MetalsClient, Quote.client_id == MetalsClient.id)
         query = query.filter(
             or_(
                 Quote.name.ilike(f"%{q}%"),
                 Quote.code.ilike(f"%{q}%"),
                 Quote.order_number.ilike(f"%{q}%"),
-                Client.display_name.ilike(f"%{q}%"),
-                Client.name.ilike(f"%{q}%"),
+                MetalsClient.display_name.ilike(f"%{q}%"),
+                MetalsClient.name.ilike(f"%{q}%"),
             )
         )
 
@@ -707,9 +707,9 @@ def next_code(client_id: str, db: Session = Depends(get_db)):
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid client_id format")
     
-    client = db.query(Client).filter(Client.id == client_uuid, Client.deleted_at.is_(None)).first()
+    client = db.query(MetalsClient).filter(MetalsClient.id == client_uuid, MetalsClient.deleted_at.is_(None)).first()
     if not client:
-        raise HTTPException(status_code=404, detail="Client not found")
+        raise HTTPException(status_code=404, detail="Metals client not found")
     
     if not client.code:
         raise HTTPException(status_code=400, detail="Client must have a code. Please update the client first.")
@@ -755,9 +755,9 @@ def save_quote(
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid client_id format")
         
-        client = db.query(Client).filter(Client.id == client_uuid, Client.deleted_at.is_(None)).first()
+        client = db.query(MetalsClient).filter(MetalsClient.id == client_uuid, MetalsClient.deleted_at.is_(None)).first()
         if not client:
-            raise HTTPException(status_code=404, detail="Client not found")
+            raise HTTPException(status_code=404, detail="Metals client not found")
         
         if not client.code:
             raise HTTPException(status_code=400, detail="Client must have a code. Please update the client first.")
@@ -865,7 +865,7 @@ def list_quotes(
     client_ids = list(set([r.client_id for r in rows if r.client_id]))
     clients_map = {}
     if client_ids:
-        clients = db.query(Client).filter(Client.id.in_(client_ids)).all()
+        clients = db.query(MetalsClient).filter(MetalsClient.id.in_(client_ids)).all()
         for client in clients:
             clients_map[str(client.id)] = {
                 "id": str(client.id),

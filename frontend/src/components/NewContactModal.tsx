@@ -23,6 +23,7 @@ type Props = {
   open: boolean;
   onClose: () => void;
   clientId: string;
+  apiBase?: string;
   /** Shown in the header as "New contact — {name}" for context */
   clientDisplayName?: string | null;
   onCreated?: (contact: { id: string; name?: string }) => void;
@@ -36,6 +37,7 @@ export default function NewContactModal({
   open,
   onClose,
   clientId,
+  apiBase = '/clients',
   clientDisplayName,
   onCreated,
   stackOnTop = false,
@@ -84,7 +86,7 @@ export default function NewContactModal({
     }
     try {
       setIsCreatingContact(true);
-      const created = await api<{ id: string; name?: string }>('POST', `/clients/${clientId}/contacts`, {
+      const created = await api<{ id: string; name?: string }>('POST', `${apiBase}/${clientId}/contacts`, {
         name: name.trim(),
         email,
         phone,
@@ -95,7 +97,7 @@ export default function NewContactModal({
       });
       if (photoBlob && created?.id) {
         try {
-          await uploadContactPhoto(clientId, String(created.id), photoBlob);
+          await uploadContactPhoto(clientId, String(created.id), photoBlob, apiBase);
         } catch {
           toast.error('Contact created, but photo upload failed');
         }

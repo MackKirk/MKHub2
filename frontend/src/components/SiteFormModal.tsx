@@ -73,6 +73,7 @@ type Props = {
   open: boolean;
   onClose: () => void;
   clientId: string;
+  apiBase?: string;
   clientDisplayName?: string | null;
   /** When null/undefined, modal is in create mode */
   site?: ClientSiteRecord | null;
@@ -90,6 +91,7 @@ export default function SiteFormModal({
   open,
   onClose,
   clientId,
+  apiBase = '/clients',
   clientDisplayName,
   site,
   coverUrl = '',
@@ -173,20 +175,20 @@ export default function SiteFormModal({
     try {
       setIsSaving(true);
       if (isEdit && site?.id) {
-        await api('PATCH', `/clients/${clientId}/sites/${site.id}`, form);
+        await api('PATCH', `${apiBase}/${clientId}/sites/${site.id}`, form);
         if (coverBlob) {
           try {
-            await uploadSiteCover(clientId, String(site.id), coverBlob);
+            await uploadSiteCover(clientId, String(site.id), coverBlob, apiBase);
           } catch {
             toast.error('Site saved, but cover upload failed');
           }
         }
         toast.success('Site updated');
       } else {
-        const created = await api<{ id: string }>('POST', `/clients/${clientId}/sites`, form);
+        const created = await api<{ id: string }>('POST', `${apiBase}/${clientId}/sites`, form);
         if (coverBlob && created?.id) {
           try {
-            await uploadSiteCover(clientId, String(created.id), coverBlob);
+            await uploadSiteCover(clientId, String(created.id), coverBlob, apiBase);
           } catch {
             toast.error('Site created, but cover upload failed');
           }
@@ -213,7 +215,7 @@ export default function SiteFormModal({
     if (!ok) return;
     try {
       setIsSaving(true);
-      await api('DELETE', `/clients/${clientId}/sites/${site.id}`);
+      await api('DELETE', `${apiBase}/${clientId}/sites/${site.id}`);
       toast.success('Site deleted');
       onDeleted?.();
       handleClose();

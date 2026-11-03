@@ -99,6 +99,13 @@ export function canEnablePermission(
   if (permKey === 'business:customers:write') {
     return has('business:customers:read');
   }
+  if (permKey === 'metals:customers:write') {
+    return has('metals:customers:read');
+  }
+  // View Quotations may be checked first; handler auto-enables metals:customers:read.
+  if (permKey === 'sales:quotations:write') {
+    return has('sales:quotations:read');
+  }
   if (permKey === 'inventory:suppliers:write') {
     return has('inventory:suppliers:read');
   }
@@ -116,6 +123,20 @@ export function canEnablePermission(
     permKey.startsWith('business:customers:') &&
     permKey.endsWith(':write') &&
     permKey !== 'business:customers:write'
+  ) {
+    return has(permKey.replace(':write', ':read'));
+  }
+  if (
+    permKey.startsWith('metals:customers:') &&
+    permKey.endsWith(':read') &&
+    permKey !== 'metals:customers:read'
+  ) {
+    return has('metals:customers:read');
+  }
+  if (
+    permKey.startsWith('metals:customers:') &&
+    permKey.endsWith(':write') &&
+    permKey !== 'metals:customers:write'
   ) {
     return has(permKey.replace(':write', ':read'));
   }
@@ -146,9 +167,6 @@ export function canEnablePermission(
     permKey !== 'inventory:products:write'
   ) {
     return has(permKey.replace(':write', ':read'));
-  }
-  if (permKey === 'sales:quotations:write') {
-    return has('sales:quotations:read');
   }
   if (
     permKey === 'documents:write' ||
@@ -581,6 +599,21 @@ export function applyPermissionUncheckCascade(
     uncheckedKey.startsWith('business:customers:') &&
     uncheckedKey.endsWith(':read') &&
     uncheckedKey !== 'business:customers:read'
+  ) {
+    newPerms[uncheckedKey.replace(':read', ':write')] = false;
+  } else if (uncheckedKey === 'metals:customers:read') {
+    newPerms['metals:customers:write'] = false;
+    newPerms['sales:quotations:read'] = false;
+    newPerms['sales:quotations:write'] = false;
+    Object.keys(newPerms).forEach((k) => {
+      if (k.startsWith('metals:customers:') && k !== 'metals:customers:read') {
+        newPerms[k] = false;
+      }
+    });
+  } else if (
+    uncheckedKey.startsWith('metals:customers:') &&
+    uncheckedKey.endsWith(':read') &&
+    uncheckedKey !== 'metals:customers:read'
   ) {
     newPerms[uncheckedKey.replace(':read', ':write')] = false;
   } else if (uncheckedKey === 'inventory:suppliers:read') {

@@ -161,8 +161,8 @@ export default function Customers(){
   
   // Load available locations from clients (for all filters - countries, provinces, cities)
   const { data: locationsData } = useQuery({ 
-    queryKey:['client-locations'], 
-    queryFn: ()=>api<any>('GET','/clients/locations'),
+    queryKey:['client-locations', listApi], 
+    queryFn: ()=>api<any>('GET',`${listApi}/locations`),
     staleTime: 300_000
   });
   
@@ -268,7 +268,9 @@ export default function Customers(){
   
   // Check permissions
   const { data: me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
-  const hasEditPermission = (me?.roles||[]).includes('admin') || (me?.permissions||[]).includes('business:customers:write');
+  const hasEditPermission =
+    (me?.roles || []).includes('admin') ||
+    (me?.permissions || []).includes(isMetals ? 'metals:customers:write' : 'business:customers:write');
   
   // Organize locations data (countries, provinces, cities from actual clients only)
   const locations = locationsData || {};

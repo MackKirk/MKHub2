@@ -98,6 +98,7 @@ export default function QuoteNew() {
           value={clientId}
           onChange={setClientId}
           disabled={!!initialClientId}
+          listApiBase="/metals/clients"
           placeholder="Search or select customer…"
           emptyMessage="No customers found."
           fieldHint="Customer\n\nThe customer this quotation is for. Required before creating the quote."

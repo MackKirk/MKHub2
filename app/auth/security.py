@@ -751,6 +751,12 @@ def _has_permission(user: User, perm: str) -> bool:
                 elif area == 'sales':
                     # Quotations UI grants sales:quotations:* only (no sales:access checkbox)
                     pass
+                elif area == 'metals':
+                    # Metals customers tabs stand alone (product:metals:access is product switch only)
+                    pass
+                elif area == 'product':
+                    # product:metals:access is the product switch; no product:access gate
+                    pass
                 else:
                     # Check if area access is explicitly denied (False in override)
                     if area_access_key in perm_map and not perm_map.get(area_access_key):
@@ -900,6 +906,75 @@ def assert_customer_tab(
 ) -> None:
     if not has_customer_tab_permission(user, tab, action):
         raise _forbidden(f"missing business:customers:{tab}:{action}")
+
+
+METALS_CUSTOMER_TAB_KEYS: tuple[str, ...] = (
+    "overview",
+    "general",
+    "contacts",
+    "files",
+    "sites",
+    "notes",
+)
+
+
+def has_metals_customer_list_permission(user: User) -> bool:
+    """Access to /metals/customers list and create/delete Metals customer records."""
+    return _has_permission(user, "metals:customers:read") or _has_permission(
+        user, "metals:customers:write"
+    )
+
+
+def has_metals_customer_detail_access(user: User) -> bool:
+    """Open a Metals customer record (list permission or any tab)."""
+    if has_metals_customer_list_permission(user):
+        return True
+    for tab in METALS_CUSTOMER_TAB_KEYS:
+        if has_metals_customer_tab_permission(user, tab, "read"):
+            return True
+    return False
+
+
+def has_metals_customer_tab_permission(
+    user: User,
+    tab: str,
+    action: Literal["read", "write"] = "read",
+) -> bool:
+    """
+    Tab-level access for Metals customer detail.
+
+    Strict: each tab needs metals:customers:{tab}:read|write.
+    Main metals:customers:read opens the list + customer hero only (no tab fallback).
+    """
+    if action not in ("read", "write"):
+        return False
+    t = (tab or "").strip().lower()
+    if t not in METALS_CUSTOMER_TAB_KEYS:
+        return False
+
+    read_key = f"metals:customers:{t}:read"
+    write_key = f"metals:customers:{t}:write"
+
+    if action == "write":
+        return _has_permission(user, write_key)
+
+    return _has_permission(user, read_key) or _has_permission(user, write_key)
+
+
+def assert_metals_customer_tab(
+    user: User,
+    tab: str,
+    action: Literal["read", "write"] = "read",
+) -> None:
+    if not has_metals_customer_tab_permission(user, tab, action):
+        raise _forbidden(f"missing metals:customers:{tab}:{action}")
+
+
+def can_read_metals_client_for_quotes(user: User) -> bool:
+    """Quotations read may fetch Metals client/contacts/files for quote UI (read-only)."""
+    return _has_permission(user, "sales:quotations:read") or _has_permission(
+        user, "sales:quotations:write"
+    )
 
 
 FLEET_ASSET_TAB_KEYS: tuple[str, ...] = (

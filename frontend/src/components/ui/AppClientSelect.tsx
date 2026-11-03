@@ -31,6 +31,8 @@ type AppClientSelectCommonProps = {
   /** When search has no matches, show a create action (requires non-empty search query). */
   onCreateNew?: (searchQuery: string) => void;
   createNewLabel?: string;
+  /** Hub `/clients` or Metals `/metals/clients`. */
+  listApiBase?: string;
 };
 
 export type AppClientSelectSingleProps = AppClientSelectCommonProps & {
@@ -115,6 +117,7 @@ function AppClientSelectSingle({
   triggerClassName,
   onCreateNew,
   createNewLabel = 'Create new',
+  listApiBase = '/clients',
 }: AppClientSelectSingleProps) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState('');
@@ -136,6 +139,7 @@ function AppClientSelectSingle({
     fetchList: open,
     pageSize,
     selectedIds: value ? [value] : [],
+    listApiBase,
   });
 
   const staticSorted = useMemo(() => {
@@ -288,6 +292,7 @@ function AppClientSelectMultiple({
   triggerClassName,
   onCreateNew,
   createNewLabel = 'Create new',
+  listApiBase = '/clients',
 }: AppClientSelectMultipleProps) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState('');
@@ -309,6 +314,7 @@ function AppClientSelectMultiple({
     fetchList: open,
     pageSize,
     selectedIds: value,
+    listApiBase,
   });
 
   const staticSorted = useMemo(() => {

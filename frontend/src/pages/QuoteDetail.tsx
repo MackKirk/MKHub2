@@ -238,7 +238,7 @@ function QuoteDetailHero({
                   <HeroField label="Project Owner / Source">
                     {quote.client_id ? (
                       <Link
-                        to={`/customers/${encodeURIComponent(String(quote.client_id))}`}
+                        to={`/metals/customers/${encodeURIComponent(String(quote.client_id))}`}
                         className="block break-words text-sm font-semibold text-brand-red hover:underline"
                       >
                         {client?.display_name || client?.name || 'Open record'}
@@ -390,14 +390,14 @@ export default function QuoteDetail() {
   const { data: client } = useQuery({
     queryKey: ['client', quote?.client_id],
     queryFn: () =>
-      quote?.client_id ? api<any>('GET', `/clients/${quote.client_id}`) : Promise.resolve(null),
+      quote?.client_id ? api<any>('GET', `/metals/clients/${quote.client_id}`) : Promise.resolve(null),
     enabled: !!quote?.client_id,
   });
   const { data: clientFiles, refetch: refetchFiles } = useQuery({
     queryKey: ['clientFiles', quote?.client_id],
     queryFn: () =>
       quote?.client_id
-        ? api<ClientFile[]>('GET', `/clients/${quote.client_id}/files`)
+        ? api<ClientFile[]>('GET', `/metals/clients/${quote.client_id}/files`)
         : Promise.resolve([]),
     enabled: !!quote?.client_id,
   });
@@ -584,7 +584,7 @@ export default function QuoteDetail() {
             });
             await api(
               'POST',
-              `/clients/${encodeURIComponent(String(quote.client_id))}/files?file_object_id=${encodeURIComponent(conf.id)}&category=quote-cover-derived&original_name=quote-cover.jpg`,
+              `/metals/clients/${encodeURIComponent(String(quote.client_id))}/files?file_object_id=${encodeURIComponent(conf.id)}&category=quote-cover-derived&original_name=quote-cover.jpg`,
             );
             toast.success('Cover updated');
             await refetchFiles();

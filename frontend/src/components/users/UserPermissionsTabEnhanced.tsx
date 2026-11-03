@@ -419,12 +419,19 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
           return prev;
         }
       }
-      // Check dependencies for Edit Quotations
-      else if (key === 'sales:quotations:write') {
-        // Requires sales:quotations:read (View Quotations)
+      // Quotations require View Metals Customers; write also requires View Quotations
+      else if (key === 'sales:quotations:read') {
+        if (newValue && !prev['metals:customers:read']) {
+          // Auto-enable required Customers view for quote UX
+          newPerms['metals:customers:read'] = true;
+        }
+      } else if (key === 'sales:quotations:write') {
         if (newValue && !prev['sales:quotations:read']) {
           toast.error('This permission requires "View Quotations" to be enabled first');
           return prev;
+        }
+        if (newValue && !prev['metals:customers:read'] && !newPerms['metals:customers:read']) {
+          newPerms['metals:customers:read'] = true;
         }
       }
       // Check dependencies for Edit Customers
@@ -437,7 +444,7 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
       }
       else if (key === 'metals:customers:write') {
         if (newValue && !prev['metals:customers:read']) {
-          toast.error('This permission requires "View Metals customers" to be enabled first');
+          toast.error('This permission requires "View Customers" (Metals) to be enabled first');
           return prev;
         }
       }
@@ -493,14 +500,6 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
         // Requires business:projects:read (View Projects & Opportunities)
         if (newValue && !prev['business:projects:read']) {
           toast.error('This permission requires "View Projects & Opportunities" to be enabled first');
-          return prev;
-        }
-      }
-      // Check dependencies for Edit Quotations
-      else if (key === 'sales:quotations:write') {
-        // Requires sales:quotations:read (View Quotations)
-        if (newValue && !prev['sales:quotations:read']) {
-          toast.error('This permission requires "View Quotations" to be enabled first');
           return prev;
         }
       }
@@ -637,6 +636,13 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
         }
         else if (key === 'metals:customers:read') {
           newPerms['metals:customers:write'] = false;
+          newPerms['sales:quotations:read'] = false;
+          newPerms['sales:quotations:write'] = false;
+          Object.keys(newPerms).forEach((k) => {
+            if (k.startsWith('metals:customers:') && k !== 'metals:customers:read') {
+              newPerms[k] = false;
+            }
+          });
         }
         // If disabling View Projects & Opportunities, disable Edit Projects & Opportunities and all view sub-permissions
         else if (key === 'business:projects:read') {
@@ -1183,6 +1189,7 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
             let businessCategory: any = null;
             let inventoryCategory: any = null;
             let quotationsCategory: any = null;
+            let productCategory: any = null;
             permissionsData.permissions_by_category?.forEach((cat: any) => {
               if (cat.category.name === 'business') {
                 const constructionPerms = cat.permissions.filter((p: any) => isConstructionProjectPermissionKey(p.key));
@@ -1312,17 +1319,7 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
               } else if (cat.category.name === 'work_orders' || cat.category.name === 'inspections') {
                 // Legacy categories — superseded by fleet:* keys in UI
               } else if (cat.category.name === 'product') {
-                processedCategories.push({
-                  ...cat,
-                  category: {
-                    ...cat.category,
-                    label: 'Mack Kirk Metals access',
-                    description: 'Switch between Hub and the Mack Kirk Metals product workspace.',
-                  },
-                  permissions: (cat.permissions || []).filter(
-                    (p: any) => p.key === 'product:metals:access',
-                  ),
-                });
+                productCategory = cat;
               } else {
                 processedCategories.push(cat);
               }
@@ -1348,19 +1345,30 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
               }
             }
 
-            processedCategories.push({
-              category: {
-                id: 'quotations',
-                name: 'quotations',
-                label: 'Quotations',
-                description:
-                  quotationsCategory?.category?.description ||
-                  'Permissions for Sales quotations (View / Edit).',
-              },
-              permissions: quotationsCategory?.permissions || [],
-            });
+            if (productCategory || quotationsCategory) {
+              const metalsPerms = [
+                ...((productCategory?.permissions || []).filter(
+                  (p: any) =>
+                    p.key === 'product:metals:access' || p.key.startsWith('metals:customers:'),
+                )),
+                ...((quotationsCategory?.permissions || []).filter(
+                  (p: any) =>
+                    p.key === 'sales:quotations:read' || p.key === 'sales:quotations:write',
+                )),
+              ].filter((p: any) => !isHiddenPermissionKey(p.key));
+              processedCategories.push({
+                category: {
+                  id: 'product',
+                  name: 'product',
+                  label: 'Mack Kirk Metals',
+                  description:
+                    'Access Mack Kirk Metals, Metals customers (tabs), and Quotations.',
+                },
+                permissions: metalsPerms,
+              });
+            }
 
-            const orderedPrimaryNames = ['construction', 'repairs_maintenance', 'business', 'quotations'];
+            const orderedPrimaryNames = ['construction', 'repairs_maintenance', 'business', 'product'];
             const primaryCategories = orderedPrimaryNames
               .map((name) => processedCategories.find((c: any) => c.category?.name === name))
               .filter(Boolean);
@@ -1423,15 +1431,78 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
                   <div className={uiCx('border-t bg-gray-50/40 px-4 pb-4 pt-3', uiBorders.subtle)}>
                     {/* Special handling for HR category - group by area (users, attendance, community, etc.) */}
                     {cat.category.name === 'product' ? (
-                      areaAccessPerm ? (
-                        <PermissionToggleLabel
-                          label={areaAccessPerm.label}
-                          description={areaAccessPerm.description}
-                          checked={!!permissions[areaAccessPerm.key]}
-                          disabled={!canEdit}
-                          onToggle={() => handleToggle(areaAccessPerm.key)}
-                        />
-                      ) : null
+                      <div className="space-y-4">
+                        {areaAccessPerm ? (
+                          <PermissionToggleLabel
+                            label={areaAccessPerm.label}
+                            description={areaAccessPerm.description}
+                            checked={!!permissions[areaAccessPerm.key]}
+                            disabled={!canEdit}
+                            onToggle={() => handleToggle(areaAccessPerm.key)}
+                          />
+                        ) : null}
+                        {(() => {
+                          const areaPerms = subPermissions.filter((p: any) =>
+                            p.key.startsWith('metals:customers:'),
+                          );
+                          if (areaPerms.length === 0) return null;
+                          return (
+                            <CustomerPermissionsGrid
+                              areaPerms={areaPerms}
+                              permissions={permissions}
+                              canEdit={canEdit}
+                              onAccessLevelChange={handleCustomerAccessLevel}
+                            />
+                          );
+                        })()}
+                        {(() => {
+                          const areaPerms = subPermissions.filter((p: any) =>
+                            p.key.startsWith('sales:quotations:'),
+                          );
+                          if (areaPerms.length === 0) return null;
+                          const viewPerms = areaPerms.filter((p: any) => p.key.includes(':read'));
+                          const editPerms = areaPerms.filter((p: any) => p.key.includes(':write'));
+                          return (
+                            <div className="rounded-lg bg-gray-50/80 p-2.5">
+                              <div className={uiCx(permissionUi.subgroupTitle, 'mb-2')}>Quotations</div>
+                              <div className="grid md:grid-cols-2 gap-2.5">
+                                {viewPerms.length > 0 && (
+                                  <div className="space-y-1.5">
+                                    <PermissionColumnTitle>View</PermissionColumnTitle>
+                                    {viewPerms.map((perm: any) => (
+                                      <PermissionCheckboxItem
+                                        key={perm.id}
+                                        perm={perm}
+                                        checked={!!permissions[perm.key]}
+                                        disabled={!canEdit}
+                                        onToggle={() => handleToggle(perm.key)}
+                                      />
+                                    ))}
+                                  </div>
+                                )}
+                                {editPerms.length > 0 && (
+                                  <div className="space-y-1.5">
+                                    <PermissionColumnTitle>Edit</PermissionColumnTitle>
+                                    {editPerms.map((perm: any) => {
+                                      const canEnableEdit =
+                                        canEdit && canEnableEditPermission(perm.key, permissions);
+                                      return (
+                                        <PermissionCheckboxItem
+                                          key={perm.id}
+                                          perm={perm}
+                                          checked={!!permissions[perm.key]}
+                                          disabled={!canEnableEdit}
+                                          onToggle={() => handleToggle(perm.key)}
+                                        />
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
                     ) : cat.category.name === 'human_resources' ? (
                       <HrPermissionsPanel
                         areaPerms={subPermissions}
@@ -1598,59 +1669,6 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
                             />
                           );
                         })()}
-                      </div>
-                    ) : cat.category.name === 'quotations' ? (
-                      /* Special handling for Quotations category */
-                      <div className="space-y-4">
-                        {['quotations'].map((area: string) => {
-                          const areaPerms = subPermissions.filter((p: any) => p.key.includes(`sales:${area}`));
-                          if (areaPerms.length === 0) return null;
-                          
-                          const areaLabel = area.charAt(0).toUpperCase() + area.slice(1);
-                          const viewPerms = areaPerms.filter((p: any) => p.key.includes(':read'));
-                          const editPerms = areaPerms.filter((p: any) => p.key.includes(':write'));
-                          
-                          return (
-                            <div key={area} className="rounded-lg bg-gray-50/80 p-2.5">
-                              <div className={uiCx(permissionUi.subgroupTitle, 'mb-2')}>{areaLabel}</div>
-                              <div className="grid md:grid-cols-2 gap-2.5">
-                                {/* View Permissions Column */}
-                                {viewPerms.length > 0 && (
-                                  <div className="space-y-1.5">
-                                    <PermissionColumnTitle>View</PermissionColumnTitle>
-                                    {viewPerms.map((perm: any) => (
-                                        <PermissionCheckboxItem
-                                          key={perm.id}
-                                          perm={perm}
-                                          checked={!!permissions[perm.key]}
-                                          disabled={!canEdit}
-                                          onToggle={() => handleToggle(perm.key)}
-                                        />
-                                    ))}
-                                  </div>
-                                )}
-                                {/* Edit Permissions Column */}
-                                {editPerms.length > 0 && (
-                                  <div className="space-y-1.5">
-                                    <PermissionColumnTitle>Edit</PermissionColumnTitle>
-                                    {editPerms.map((perm: any) => {
-                                      const canEnableEdit = canEdit && canEnableEditPermission(perm.key, permissions);
-                                      return (
-                                        <PermissionCheckboxItem
-                                          key={perm.id}
-                                          perm={perm}
-                                          checked={!!permissions[perm.key]}
-                                          disabled={!canEnableEdit}
-                                          onToggle={() => handleToggle(perm.key)}
-                                        />
-                                      );
-                                    })}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
                       </div>
                     ) : (
                       /* Default layout for other categories */

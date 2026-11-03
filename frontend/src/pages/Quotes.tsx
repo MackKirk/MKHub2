@@ -354,7 +354,7 @@ export default function Quotes() {
 
   const { data: clientsData } = useQuery({
     queryKey: ['clients-for-filter'],
-    queryFn: () => api<any>('GET', '/clients?limit=100'),
+    queryFn: () => api<any>('GET', '/metals/clients?limit=100'),
     staleTime: 300_000,
   });
 
@@ -381,7 +381,7 @@ export default function Quotes() {
       await Promise.all(
         clientIds.map(async (clientId) => {
           try {
-            const files = await api<any[]>('GET', `/clients/${encodeURIComponent(clientId)}/files`);
+            const files = await api<any[]>('GET', `/metals/clients/${encodeURIComponent(clientId)}/files`);
             filesMap[clientId] = files || [];
           } catch {
             filesMap[clientId] = [];

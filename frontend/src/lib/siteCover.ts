@@ -3,12 +3,19 @@ import { api } from '@/lib/api';
 /** Crop frame aspect for site card banners (matches card `object-cover` strip). */
 export const SITE_CARD_COVER_CROP = { width: 900, height: 300 } as const;
 
-export async function uploadSiteCover(clientId: string, siteId: string, blob: Blob) {  const up: any = await api('POST', '/files/upload', {
+export async function uploadSiteCover(
+  clientId: string,
+  siteId: string,
+  blob: Blob,
+  apiBase: string = '/clients',
+) {
+  const up: any = await api('POST', '/files/upload', {
     project_id: null,
     client_id: clientId,
     employee_id: null,
     category_id: 'site-cover-derived',
-    original_name: 'site-cover.jpg',    content_type: 'image/jpeg',
+    original_name: 'site-cover.jpg',
+    content_type: 'image/jpeg',
   });
   await fetch(up.upload_url, {
     method: 'PUT',
@@ -23,6 +30,6 @@ export async function uploadSiteCover(clientId: string, siteId: string, blob: Bl
   });
   await api(
     'POST',
-    `/clients/${clientId}/files?file_object_id=${encodeURIComponent(conf.id)}&category=site-cover-derived&original_name=site-cover.jpg&site_id=${encodeURIComponent(siteId)}`,
+    `${apiBase}/${clientId}/files?file_object_id=${encodeURIComponent(conf.id)}&category=site-cover-derived&original_name=site-cover.jpg&site_id=${encodeURIComponent(siteId)}`,
   );
 }

@@ -10,6 +10,9 @@ import {
 export const CUSTOMER_MAIN_READ = 'business:customers:read';
 export const CUSTOMER_MAIN_WRITE = 'business:customers:write';
 
+export const METALS_CUSTOMER_MAIN_READ = 'metals:customers:read';
+export const METALS_CUSTOMER_MAIN_WRITE = 'metals:customers:write';
+
 export const CUSTOMER_TABS = [
   'overview',
   'general',
@@ -21,7 +24,39 @@ export const CUSTOMER_TABS = [
   'projects',
 ] as const;
 
+/** Metals CRM tabs (no Hub opportunities/projects). */
+export const METALS_CUSTOMER_TABS = [
+  'overview',
+  'general',
+  'contacts',
+  'files',
+  'sites',
+  'notes',
+] as const;
+
 export type CustomerTab = (typeof CUSTOMER_TABS)[number];
+export type MetalsCustomerTab = (typeof METALS_CUSTOMER_TABS)[number];
+export type CustomerPermScope = 'hub' | 'metals';
+
+function scopePrefix(scope: CustomerPermScope): string {
+  return scope === 'metals' ? 'metals:customers' : 'business:customers';
+}
+
+function mainReadKey(scope: CustomerPermScope): string {
+  return scope === 'metals' ? METALS_CUSTOMER_MAIN_READ : CUSTOMER_MAIN_READ;
+}
+
+function mainWriteKey(scope: CustomerPermScope): string {
+  return scope === 'metals' ? METALS_CUSTOMER_MAIN_WRITE : CUSTOMER_MAIN_WRITE;
+}
+
+function tabsForScope(scope: CustomerPermScope): readonly string[] {
+  return scope === 'metals' ? METALS_CUSTOMER_TABS : CUSTOMER_TABS;
+}
+
+function scopeFromKey(key: string): CustomerPermScope {
+  return key.startsWith('metals:customers:') ? 'metals' : 'hub';
+}
 
 function has(permissions: Set<string>, key: string): boolean {
   return permissions.has(key);
@@ -55,15 +90,19 @@ export function canAccessCustomerDetail(isAdmin: boolean, permissions: Set<strin
 export function canViewCustomerTab(
   isAdmin: boolean,
   permissions: Set<string>,
-  tab: CustomerTab
+  tab: CustomerTab,
+  scope: CustomerPermScope = 'hub',
 ): boolean {
   if (isAdmin) return true;
-  const readKey = `business:customers:${tab}:read`;
-  const writeKey = `business:customers:${tab}:write`;
+  if (scope === 'metals' && !METALS_CUSTOMER_TABS.includes(tab as MetalsCustomerTab)) return false;
+  const prefix = scopePrefix(scope);
+  const readKey = `${prefix}:${tab}:read`;
+  const writeKey = `${prefix}:${tab}:write`;
   if (has(permissions, readKey) || has(permissions, writeKey)) return true;
-  // Communication log: anyone with customer list access
-  if (tab === 'notes') {
-    return has(permissions, CUSTOMER_MAIN_READ) || has(permissions, CUSTOMER_MAIN_WRITE);
+  // Hub legacy: Notes/History opens with main customers list access.
+  // Metals requires the explicit Notes tab permission.
+  if (tab === 'notes' && scope === 'hub') {
+    return has(permissions, mainReadKey(scope)) || has(permissions, mainWriteKey(scope));
   }
   return false;
 }
@@ -71,56 +110,83 @@ export function canViewCustomerTab(
 export function canReadCustomerTab(
   isAdmin: boolean,
   permissions: Set<string>,
-  tab: CustomerTab
+  tab: CustomerTab,
+  scope: CustomerPermScope = 'hub',
 ): boolean {
   if (isAdmin) return true;
-  if (canViewCustomerTab(isAdmin, permissions, tab)) return true;
+  if (canViewCustomerTab(isAdmin, permissions, tab, scope)) return true;
 
+  // Metals: main customers:read opens list + hero only; each tab needs its own key.
+  if (scope === 'metals') return false;
+
+  const mainR = mainReadKey(scope);
+  const mainW = mainWriteKey(scope);
   if (tab === 'general' || tab === 'contacts' || tab === 'notes') {
-    if (has(permissions, CUSTOMER_MAIN_READ) || has(permissions, CUSTOMER_MAIN_WRITE)) return true;
+    if (has(permissions, mainR) || has(permissions, mainW)) return true;
   }
   if (tab === 'files') {
-    if (has(permissions, 'business:projects:files:read') || has(permissions, 'business:projects:files:write')) {
+    if (
+      has(permissions, 'business:projects:files:read') ||
+      has(permissions, 'business:projects:files:write')
+    ) {
       return true;
     }
-    if (has(permissions, CUSTOMER_MAIN_READ) || has(permissions, CUSTOMER_MAIN_WRITE)) return true;
+    if (has(permissions, mainR) || has(permissions, mainW)) return true;
   }
-  if (tab === 'overview' || tab === 'sites' || tab === 'opportunities' || tab === 'projects') {
+  if (tab === 'overview' || tab === 'sites') {
+    if (has(permissions, mainR) || has(permissions, mainW)) return true;
+    if (hasAnyProjectLineRead(permissions)) return true;
+  }
+  if (tab === 'opportunities' || tab === 'projects') {
     if (hasAnyProjectLineRead(permissions)) return true;
   }
   return false;
 }
 
 /** Create/delete customer records and other list-level actions (`Edit Customers`). */
-export function canEditCustomerRecord(isAdmin: boolean, permissions: Set<string>): boolean {
+export function canEditCustomerRecord(
+  isAdmin: boolean,
+  permissions: Set<string>,
+  scope: CustomerPermScope = 'hub',
+): boolean {
   if (isAdmin) return true;
-  return has(permissions, CUSTOMER_MAIN_WRITE);
+  return has(permissions, mainWriteKey(scope));
 }
 
 /** Strict tab edit: only the tab's own write permission (no legacy fallbacks). */
 export function canEditCustomerTab(
   isAdmin: boolean,
   permissions: Set<string>,
-  tab: CustomerTab
+  tab: CustomerTab,
+  scope: CustomerPermScope = 'hub',
 ): boolean {
   if (isAdmin) return true;
-  if (has(permissions, `business:customers:${tab}:write`)) return true;
-  if (tab === 'notes' && has(permissions, CUSTOMER_MAIN_WRITE)) return true;
+  if (scope === 'metals' && !METALS_CUSTOMER_TABS.includes(tab as MetalsCustomerTab)) return false;
+  if (has(permissions, `${scopePrefix(scope)}:${tab}:write`)) return true;
+  // Hub legacy: Notes write follows main customers write
+  if (tab === 'notes' && scope === 'hub' && has(permissions, mainWriteKey(scope))) return true;
   return false;
 }
 
 export function canWriteCustomerTab(
   isAdmin: boolean,
   permissions: Set<string>,
-  tab: CustomerTab
+  tab: CustomerTab,
+  scope: CustomerPermScope = 'hub',
 ): boolean {
   if (isAdmin) return true;
-  if (canEditCustomerTab(isAdmin, permissions, tab)) return true;
+  if (canEditCustomerTab(isAdmin, permissions, tab, scope)) return true;
+
+  // Metals: tab write is strict (no main customers:write fallback)
+  if (scope === 'metals') return false;
 
   if (tab === 'general' || tab === 'contacts' || tab === 'sites' || tab === 'notes') {
-    if (has(permissions, CUSTOMER_MAIN_WRITE)) return true;
+    if (has(permissions, mainWriteKey(scope))) return true;
   }
-  if (tab === 'files' && has(permissions, 'business:projects:files:write')) return true;
+  if (tab === 'files') {
+    if (has(permissions, 'business:projects:files:write')) return true;
+    if (has(permissions, mainWriteKey(scope))) return true;
+  }
   if (
     (tab === 'opportunities' || tab === 'projects') &&
     (has(permissions, 'business:projects:write') ||
@@ -133,23 +199,32 @@ export function canWriteCustomerTab(
 }
 
 export function isCustomerTabReadKey(key: string): boolean {
-  return CUSTOMER_TABS.some((t) => key === `business:customers:${t}:read`);
+  const scope = scopeFromKey(key);
+  const prefix = scopePrefix(scope);
+  return tabsForScope(scope).some((t) => key === `${prefix}:${t}:read`);
 }
 
 export function isCustomerTabWriteKey(key: string): boolean {
-  return CUSTOMER_TABS.some((t) => key === `business:customers:${t}:write`);
+  const scope = scopeFromKey(key);
+  const prefix = scopePrefix(scope);
+  return tabsForScope(scope).some((t) => key === `${prefix}:${t}:write`);
 }
 
 export function splitCustomerAreaPermissions(areaPerms: { key: string }[]) {
-  const mainViewPerm = areaPerms.find((p) => p.key === CUSTOMER_MAIN_READ);
-  const mainEditPerm = areaPerms.find((p) => p.key === CUSTOMER_MAIN_WRITE);
+  const scope: CustomerPermScope = areaPerms.some((p) => p.key.startsWith('metals:customers:'))
+    ? 'metals'
+    : 'hub';
+  const mainR = mainReadKey(scope);
+  const mainW = mainWriteKey(scope);
+  const mainViewPerm = areaPerms.find((p) => p.key === mainR);
+  const mainEditPerm = areaPerms.find((p) => p.key === mainW);
   const subViewPerms = areaPerms.filter(
-    (p) => p.key.includes(':read') && p.key !== CUSTOMER_MAIN_READ && isCustomerTabReadKey(p.key)
+    (p) => p.key.includes(':read') && p.key !== mainR && isCustomerTabReadKey(p.key),
   );
   const subEditPerms = areaPerms.filter(
-    (p) => p.key.includes(':write') && p.key !== CUSTOMER_MAIN_WRITE && isCustomerTabWriteKey(p.key)
+    (p) => p.key.includes(':write') && p.key !== mainW && isCustomerTabWriteKey(p.key),
   );
-  return { mainViewPerm, mainEditPerm, subViewPerms, subEditPerms };
+  return { mainViewPerm, mainEditPerm, subViewPerms, subEditPerms, scope };
 }
 
 export type CustomerAccessLevel = PermissionAccessLevel;
@@ -170,7 +245,11 @@ export function formatCustomerPermissionLabel(label: string): string {
 export function buildCustomerPermissionRows(
   areaPerms: { id: string; key: string; label: string; description?: string }[]
 ): CustomerPermissionRow[] {
-  const { mainViewPerm, mainEditPerm, subViewPerms } = splitCustomerAreaPermissions(areaPerms);
+  const { mainViewPerm, mainEditPerm, subViewPerms, scope } = splitCustomerAreaPermissions(areaPerms);
+  const prefix = scopePrefix(scope);
+  const mainR = mainReadKey(scope);
+  const mainW = mainWriteKey(scope);
+  const tabs = tabsForScope(scope);
   const rows: CustomerPermissionRow[] = [];
 
   if (mainViewPerm) {
@@ -178,14 +257,14 @@ export function buildCustomerPermissionRows(
       id: mainViewPerm.id,
       label: formatCustomerPermissionLabel(mainViewPerm.label),
       description: mainViewPerm.description,
-      readKey: CUSTOMER_MAIN_READ,
-      writeKey: mainEditPerm ? CUSTOMER_MAIN_WRITE : undefined,
+      readKey: mainR,
+      writeKey: mainEditPerm ? mainW : undefined,
     });
   }
 
   for (const viewPerm of subViewPerms) {
-    const tab = CUSTOMER_TABS.find((t) => viewPerm.key === `business:customers:${t}:read`);
-    const writeKey = tab ? `business:customers:${tab}:write` : undefined;
+    const tab = tabs.find((t) => viewPerm.key === `${prefix}:${t}:read`);
+    const writeKey = tab ? `${prefix}:${tab}:write` : undefined;
     const hasWriteDef = writeKey && areaPerms.some((p) => p.key === writeKey);
     rows.push({
       id: viewPerm.id,
@@ -216,21 +295,23 @@ export function applyCustomerAccessLevel(
   level: CustomerAccessLevel
 ): Record<string, boolean> {
   const next = { ...permissions };
+  const scope = scopeFromKey(readKey);
+  const mainR = mainReadKey(scope);
 
   if (level === 'blocked') {
     next[readKey] = false;
     if (writeKey) next[writeKey] = false;
-    if (readKey === CUSTOMER_MAIN_READ) {
-      return applyPermissionUncheckCascade(CUSTOMER_MAIN_READ, next);
+    if (readKey === mainR) {
+      return applyPermissionUncheckCascade(mainR, next);
     }
-    if (readKey.endsWith(':read') && readKey !== CUSTOMER_MAIN_READ) {
+    if (readKey.endsWith(':read') && readKey !== mainR) {
       return applyPermissionUncheckCascade(readKey, next);
     }
     return next;
   }
 
-  if (readKey !== CUSTOMER_MAIN_READ && !next[CUSTOMER_MAIN_READ]) {
-    next[CUSTOMER_MAIN_READ] = true;
+  if (readKey !== mainR && !next[mainR]) {
+    next[mainR] = true;
   }
 
   if (level === 'view') {

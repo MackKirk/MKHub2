@@ -544,6 +544,32 @@ def create_app() -> FastAPI:
                 except Exception as _e:
                     print(f"[startup] client_notes create_all (non-critical): {_e}")
 
+                try:
+                    from .models import models as _m
+
+                    Base.metadata.create_all(
+                        bind=engine,
+                        tables=[
+                            _m.MetalsClient.__table__,
+                            _m.MetalsClientContact.__table__,
+                            _m.MetalsClientSite.__table__,
+                            _m.MetalsClientFolder.__table__,
+                            _m.MetalsClientFile.__table__,
+                            _m.MetalsClientDocument.__table__,
+                            _m.MetalsClientNote.__table__,
+                            _m.MetalsMigrationBatch.__table__,
+                            _m.MetalsClientIdMap.__table__,
+                            _m.MetalsContactIdMap.__table__,
+                            _m.MetalsSiteIdMap.__table__,
+                            _m.MetalsFolderIdMap.__table__,
+                            _m.MetalsFileIdMap.__table__,
+                            _m.MetalsDocumentIdMap.__table__,
+                            _m.MetalsNoteIdMap.__table__,
+                        ],
+                    )
+                except Exception as _e:
+                    print(f"[startup] metals_* CRM tables create_all (non-critical): {_e}")
+
                 if dialect != "postgresql" and "postgresql" not in dialect:
                     print("[startup] Skipping schema migrations (non-PostgreSQL). Production requires PostgreSQL.")
                 else:
