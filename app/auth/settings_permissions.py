@@ -64,6 +64,7 @@ DROPDOWN_SETTINGS_LIST_NAMES = frozenset(
         "report_categories",
         "timesheet",
         "service_items",
+        "job_types",
         "document_template_categories",
     }
 )
@@ -266,6 +267,9 @@ def can_read_list_in_settings_bundle(user: User, list_name: str) -> bool:
             or _has_permission(user, "hr:users:edit:timesheet")
             or _has_permission(user, "hr:users:view:timesheet")
         )
+    if list_name == "job_types":
+        # Create/Edit Shift consumers — any authenticated user may read the catalog.
+        return True
     if list_name == DOCUMENT_TEMPLATE_CATEGORIES_LIST_NAME:
         return can_read_document_templates(user)
     return (

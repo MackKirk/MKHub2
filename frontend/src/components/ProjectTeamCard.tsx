@@ -12,7 +12,7 @@ import {
   hasProjectLineWritePermission,
   isAdminRole,
 } from '@/lib/projectLinePermissionKeys';
-import { JOB_TYPES } from '@/constants/jobTypes';
+import { jobTypeSelectOptions } from '@/lib/jobTypes';
 import { shiftAckMeta, shiftAckTracked } from '@/lib/shiftAck';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { CreateShiftModal } from '@/components/DispatchTab';
@@ -323,11 +323,8 @@ export default function ProjectTeamCard({
   }, [settings]);
 
   const jobTypeOptions = useMemo(
-    () => [
-      { value: '', label: 'No job type selected' },
-      ...JOB_TYPES.map((job) => ({ value: job.name, label: job.name })),
-    ],
-    [],
+    () => jobTypeSelectOptions(settings?.job_types),
+    [settings?.job_types],
   );
 
   const [showAddMember, setShowAddMember] = useState(false);

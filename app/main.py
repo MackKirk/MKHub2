@@ -1368,6 +1368,14 @@ def create_app() -> FastAPI:
                         db.rollback()
                         print(f"[startup] work_types seed (non-critical): {_e}")
 
+                    try:
+                        from .services.job_types import ensure_job_types_list as _ensure_jt
+
+                        _ensure_jt(db)
+                    except Exception as _e:
+                        db.rollback()
+                        print(f"[startup] job_types seed (non-critical): {_e}")
+
                     # Check for cloth_size and cloth_sizes_custom columns in employee_profiles
                     rows = db.execute(
                         text(

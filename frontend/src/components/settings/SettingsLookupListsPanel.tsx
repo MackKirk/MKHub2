@@ -57,6 +57,7 @@ const LIST_DESCRIPTIONS: Record<string, string> = {
   training_matrix_slots: 'Columns on the training matrix (slug + cell type).',
   timesheet: 'Default break length, eligible employees, and geofence radius.',
   service_items: 'Work Types used when logging hours (Regular is default; add Crane, Electrical, etc. here).',
+  job_types: 'Optional job types on Create/Edit Shift (General Labor, Leak Investigation, etc.).',
 };
 
 type ListGroupId = 'statuses' | 'organization' | 'training' | 'operations' | 'other';
@@ -81,7 +82,7 @@ function groupForList(name: string): ListGroupId {
   const n = name.toLowerCase();
   if (n.includes('status')) return 'statuses';
   if (n === 'training_matrix_slots') return 'training';
-  if (n === 'timesheet' || n === 'service_items') return 'operations';
+  if (n === 'timesheet' || n === 'service_items' || n === 'job_types') return 'operations';
   if (
     n.includes('division') ||
     n === 'payment_terms' ||

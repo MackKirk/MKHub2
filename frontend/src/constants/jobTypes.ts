@@ -1,6 +1,6 @@
 /**
- * Pre-defined job types for shifts
- * This list can be extended or replaced with an API endpoint in the future
+ * Fallback Job Types for shifts when Settings `job_types` is empty / unavailable.
+ * Canonical catalog is seeded via ensure_job_types_list (Settings Lookup lists).
  */
 export const JOB_TYPES = [
   { id: 'general_labor', name: 'General Labor' },
@@ -13,10 +13,7 @@ export const JOB_TYPES = [
   { id: 'demolition', name: 'Demolition' },
   { id: 'safety', name: 'Safety' },
   { id: 'supervision', name: 'Supervision' },
+  { id: 'leak_investigation', name: 'Leak Investigation' },
 ];
 
-export type JobType = typeof JOB_TYPES[number];
-
-
-
-
+export type JobType = (typeof JOB_TYPES)[number];

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
 import OverlayPortal from '@/components/OverlayPortal';
 import toast from 'react-hot-toast';
-import { JOB_TYPES } from '@/constants/jobTypes';
+import { jobTypeSelectOptions } from '@/lib/jobTypes';
 import { formatDateLocal } from '@/lib/dateUtils';
 import { editShiftQuickInfo } from '@/lib/formModalQuickInfo';
 import {
@@ -174,12 +174,7 @@ export default function EditShiftModal({
   const lockedHint =
     'Worker and date cannot be changed. To change them, delete this shift and create a new one.';
 
-  const jobOpts =
-    jobTypeOptions ??
-    [
-      { value: '', label: 'No job type selected' },
-      ...JOB_TYPES.map((job) => ({ value: job.name, label: job.name })),
-    ];
+  const jobOpts = jobTypeOptions ?? jobTypeSelectOptions();
 
   const timeOfDaySection = (
     <div className="space-y-2">
@@ -358,10 +353,9 @@ export default function EditShiftModal({
                 disabled={!canEdit}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
               >
-                <option value="">No job type selected</option>
-                {JOB_TYPES.map((job) => (
-                  <option key={job.id} value={job.name}>
-                    {job.name}
+                {jobOpts.map((opt) => (
+                  <option key={opt.value || '__none'} value={opt.value}>
+                    {opt.label}
                   </option>
                 ))}
               </select>

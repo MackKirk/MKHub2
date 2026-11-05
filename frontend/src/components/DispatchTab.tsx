@@ -63,7 +63,7 @@ import {
   uiSpacing,
   uiTypography,
 } from '@/components/ui';
-import { JOB_TYPES } from '@/constants/jobTypes';
+import { jobTypeSelectOptions } from '@/lib/jobTypes';
 import { shiftAckMeta, shiftAckTracked } from '@/lib/shiftAck';
 import ShiftNoteField from '@/components/ShiftNoteField';
 import { ShiftWorkerDivisionPicker } from '@/components/ShiftWorkerDivisionPicker';
@@ -305,11 +305,8 @@ export default function DispatchTab({
   };
 
   const jobTypeOptions = useMemo(
-    () => [
-      { value: '', label: 'No job type selected' },
-      ...JOB_TYPES.map((job) => ({ value: job.name, label: job.name })),
-    ],
-    [],
+    () => jobTypeSelectOptions(settings?.job_types),
+    [settings?.job_types],
   );
 
   const alertBanners = (
@@ -1893,12 +1890,7 @@ export function CreateShiftModal({
     Array.isArray(selectedDates) &&
     selectedDates.length > 0;
 
-  const jobOpts =
-    jobTypeOptions ??
-    [
-      { value: '', label: 'No job type selected' },
-      ...JOB_TYPES.map((job) => ({ value: job.name, label: job.name })),
-    ];
+  const jobOpts = jobTypeOptions ?? jobTypeSelectOptions();
 
   const shiftCount =
     (Array.isArray(selectedWorkers) ? selectedWorkers.length : 0) *
@@ -2669,10 +2661,9 @@ export function CreateShiftModal({
                 onChange={(e) => setJobType(e.target.value)}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
               >
-                <option value="">No job type selected</option>
-                {JOB_TYPES.map((job) => (
-                  <option key={job.id} value={job.name}>
-                    {job.name}
+                {jobOpts.map((opt) => (
+                  <option key={opt.value || '__none'} value={opt.value}>
+                    {opt.label}
                   </option>
                 ))}
               </select>
