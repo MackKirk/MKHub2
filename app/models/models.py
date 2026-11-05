@@ -104,6 +104,17 @@ class UserHomeDashboard(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
 
+class UserListPreferences(Base):
+    """Per-user list UI preferences (e.g. opportunity status chip selection by business line)."""
+    __tablename__ = "user_list_preferences"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, nullable=False
+    )
+    data: Mapped[Optional[dict]] = mapped_column(JSON)  # { opportunity_status_ids: { construction: [], repairs: [] } }
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+
 class UsernameReservation(Base):
     __tablename__ = "username_reservations"
 

@@ -8208,15 +8208,20 @@ _PROJECT_TAB_COUNT_STATUS_SPECS = (
     ("in_progress", ("in progress", "on progress")),
     ("on_hold", ("on hold",)),
     ("finished", ("finished",)),
+    ("cancelled", ("cancelled", "canceled")),
     ("conflict", ("conflict", "schedule conflict")),
 )
 
 _OPPORTUNITY_TAB_COUNT_STATUS_SPECS = (
     ("prospecting", ("prospecting",)),
     ("refused", ("refused",)),
+    ("cancelled", ("cancelled", "canceled")),
     ("sent_to_customer", ("sent to customer",)),
     ("conflict", ("conflict", "schedule conflict")),
-    ("low_and_awarded", ("low & awarded", "lost & awarded", "lost and awarded")),
+    (
+        "low_and_awarded",
+        ("low & awarded", "low and awarded", "lost & awarded", "lost and awarded"),
+    ),
 )
 
 
@@ -8504,10 +8509,16 @@ def _business_list_tab_counts(
     counts: dict[str, int] = {
         "related_to_me": base.filter(_project_related_to_user_filter(user.id)).count(),
     }
+    # Per-status UUID keys so list chips always get a count (not only hardcoded labels).
+    status_list = db.query(SettingList).filter(SettingList.name == "project_statuses").first()
+    if status_list:
+        for item in db.query(SettingItem).filter(SettingItem.list_id == status_list.id).all():
+            counts[str(item.id)] = _count_with_status_filter(base, item.id, item.label)
+    # Keep legacy slug keys for any older consumers / Related-style chips.
     for key, labels in status_specs:
         status_id, status_label = _status_id_and_label_by_labels(db, labels)
         if status_id:
-            counts[key] = _count_with_status_filter(base, status_id, status_label)
+            counts[key] = counts.get(str(status_id), _count_with_status_filter(base, status_id, status_label))
         else:
             counts[key] = 0
     return counts

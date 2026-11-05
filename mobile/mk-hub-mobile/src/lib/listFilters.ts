@@ -71,7 +71,7 @@ export function resolveOpportunityQuickStatusFilters(
     {
       key: "low_and_awarded",
       label: "Low & Awarded",
-      labels: ["low & awarded", "lost & awarded", "lost and awarded"]
+      labels: ["low & awarded", "low and awarded", "lost & awarded", "lost and awarded"]
     }
   ]);
 }
