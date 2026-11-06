@@ -1,6 +1,7 @@
 /**
  * Human-readable lines for fleet asset Activity history (audit-backed), similar to project Recent Activity.
  */
+import { formatDateTimeVancouver, formatDateVancouver } from '@/lib/dateUtils';
 
 const FLEET_ASSET_FIELD_LABELS: Record<string, string> = {
   asset_type: 'Asset type',
@@ -116,16 +117,13 @@ function formatFleetAuditDateTimeString(raw: string, preferDateOnly = false): st
   const d = new Date(t);
   if (Number.isNaN(d.getTime())) return null;
   if (preferDateOnly) {
-    return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(d);
+    return formatDateVancouver(t);
   }
   const hasClock = t.includes('T') || /\d{2}:\d{2}/.test(t.slice(10));
   if (hasClock && t.length >= 13) {
-    return new Intl.DateTimeFormat(undefined, {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    }).format(d);
+    return formatDateTimeVancouver(t, { dateStyle: 'medium', timeStyle: 'short' });
   }
-  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(d);
+  return formatDateVancouver(t);
 }
 
 /** True when audit payload is a delete snapshot (no before/after diff). */

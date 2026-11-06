@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessToken } from '@/lib/api';
+import { formatDateVancouver } from '@/lib/dateUtils';
 import toast from 'react-hot-toast';
 import { INSPECTION_RESULT_LABELS } from '@/lib/fleetBadges';
 import { useConfirm } from '@/components/ConfirmProvider';
@@ -329,7 +330,7 @@ export function ScheduleBodyInlineEditor({
             <div>
               <span className="text-gray-600 block text-sm font-semibold">Date</span>
               <span className="text-gray-900">
-                {inspection.inspection_date ? new Date(inspection.inspection_date).toLocaleDateString() : new Date().toLocaleDateString()}
+                {inspection.inspection_date ? formatDateVancouver(inspection.inspection_date) : formatDateVancouver(new Date().toISOString())}
               </span>
             </div>
           </div>
@@ -735,7 +736,7 @@ export function ScheduleMechanicalInlineEditor({
             <div>
               <span className="text-gray-600 block text-sm font-semibold">Date</span>
               <span className="text-gray-900">
-                {inspection.inspection_date ? new Date(inspection.inspection_date).toLocaleDateString() : new Date().toLocaleDateString()}
+                {inspection.inspection_date ? formatDateVancouver(inspection.inspection_date) : formatDateVancouver(new Date().toISOString())}
               </span>
             </div>
           </div>

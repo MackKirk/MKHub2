@@ -1,4 +1,5 @@
 import { api, withFileAccessToken } from '@/lib/api';
+import { formatDateVancouver, formatDateTimeVancouver } from '@/lib/dateUtils';
 import toast from 'react-hot-toast';
 import {
   AppBadge,
@@ -334,7 +335,7 @@ function ReportDetailPanel({
                   <div className={uiCx(uiTypography.body, 'font-semibold')}>{authorInfo.name}</div>
                   <div className={uiTypography.helper}>
                     {reportDate
-                      ? reportDate.toLocaleDateString('en-US', {
+                      ? formatDateTimeVancouver(selectedReport.created_at, {
                           weekday: 'long',
                           month: 'long',
                           day: 'numeric',
@@ -667,7 +668,7 @@ export function ProjectReportsTabDs(props: ProjectReportsTabDsProps) {
                               )}
                             >
                               {reportDate &&
-                                reportDate.toLocaleDateString('en-US', {
+                                formatDateVancouver(r.created_at, {
                                   month: 'short',
                                   day: 'numeric',
                                 })}

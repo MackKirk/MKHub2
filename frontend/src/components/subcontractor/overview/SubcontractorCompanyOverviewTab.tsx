@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Briefcase, Mail, Users } from 'lucide-react';
 import { api } from '@/lib/api';
+import { formatDateVancouver } from '@/lib/dateUtils';
 import {
   SubcontractorCompanyOverviewActivity,
   type ActivityFeedItem,
@@ -62,7 +63,7 @@ export function SubcontractorCompanyOverviewTab({
   const primaryContact = contacts.find((c) => c.is_primary) || contacts[0];
 
   const companySince = company.created_at
-    ? new Date(company.created_at).toLocaleDateString('en-CA', {
+    ? formatDateVancouver(company.created_at, {
         year: 'numeric',
         month: 'short',
         day: 'numeric',

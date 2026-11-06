@@ -1,4 +1,5 @@
 import type { OverviewDatePreset } from './customerOverviewTypes';
+import { formatDateVancouver } from '@/lib/dateUtils';
 
 export function isoLocalDate(d: Date): string {
   const yyyy = d.getFullYear();
@@ -29,12 +30,7 @@ export function presetToRange(preset: OverviewDatePreset): { date_from?: string;
 
 export function formatDateForDisplay(dateString: string): string {
   if (!dateString) return '';
-  try {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  } catch {
-    return dateString;
-  }
+  return formatDateVancouver(dateString, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 export function formatCurrency(value: number): string {

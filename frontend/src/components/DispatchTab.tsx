@@ -16,7 +16,7 @@ import { api, withFileAccessToken } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
 import EditShiftModal from '@/components/EditShiftModal';
-import { formatDateLocal, getTodayLocal } from '@/lib/dateUtils';
+import { formatDateLocal, getTodayLocal, formatDateTimeVancouver } from '@/lib/dateUtils';
 import OverlayPortal from '@/components/OverlayPortal';
 import {
   hasProjectFeatureWritePermission,
@@ -1091,9 +1091,9 @@ function PendingAttendanceRow({
                                                       attendance.type === 'in' ? 'Clock In' : 'Clock Out'}
           </div>
           <div className="text-xs text-gray-600 mt-0.5">
-            {attendance.clock_in_time ? new Date(attendance.clock_in_time).toLocaleString() : 
-             attendance.clock_out_time ? new Date(attendance.clock_out_time).toLocaleString() :
-             attendance.time_selected_utc ? new Date(attendance.time_selected_utc).toLocaleString() : '--'}
+            {attendance.clock_in_time ? formatDateTimeVancouver(attendance.clock_in_time) : 
+             attendance.clock_out_time ? formatDateTimeVancouver(attendance.clock_out_time) :
+             attendance.time_selected_utc ? formatDateTimeVancouver(attendance.time_selected_utc) : '--'}
           </div>
           {attendance.reason_text && (
             <div className="text-xs text-gray-700 mt-0.5">{attendance.reason_text}</div>

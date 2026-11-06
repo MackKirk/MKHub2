@@ -294,19 +294,7 @@ function BambooFilesLastSyncRow({
 }) {
   const [saving, setSaving] = useState(false);
   const queryClient = useQueryClient();
-  const display = (() => {
-    if (!lastSyncIso) return '—';
-    const ymd = String(lastSyncIso).slice(0, 10);
-    if (/^\d{4}-\d{2}-\d{2}$/.test(ymd)) {
-      const [y, m, d] = ymd.split('-').map(Number);
-      return new Date(y, m - 1, d).toLocaleDateString(undefined, { dateStyle: 'medium' });
-    }
-    try {
-      return new Date(lastSyncIso).toLocaleDateString(undefined, { dateStyle: 'medium' });
-    } catch {
-      return '—';
-    }
-  })();
+  const display = lastSyncIso ? formatDateVancouver(lastSyncIso) : '—';
   const saveToday = async () => {
     if (saving || !isAdmin) return;
     const d = new Date();
@@ -1350,11 +1338,7 @@ export default function UserInfo(){
             {(() => {
               const iso = p?.updated_at;
               if (!iso) return '—';
-              try {
-                return new Date(iso as string).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-              } catch {
-                return '—';
-              }
+              return formatDateTimeVancouver(iso as string);
             })()}
             {p?.updated_by_name ? <span className="text-gray-700"> · {p.updated_by_name}</span> : null}
           </div>
@@ -2658,7 +2642,7 @@ function JobSection({ type, p, editable, userId, collectChanges, usersOptions, s
 // Helper functions for attendance display (same as Attendance.tsx)
 const formatDateTime = (iso?: string | null) => {
   if (!iso) return '--';
-  return new Date(iso).toLocaleString('en-US', {
+  return formatDateTimeVancouver(iso, {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
@@ -3564,7 +3548,7 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
                             className="text-yellow-600"
                             title={
                               event.shift_deleted_by
-                                ? `The shift related to this attendance was deleted by ${event.shift_deleted_by}${event.shift_deleted_at ? ` on ${new Date(event.shift_deleted_at).toLocaleDateString()}` : ''}`
+                                ? `The shift related to this attendance was deleted by ${event.shift_deleted_by}${event.shift_deleted_at ? ` on ${formatDateVancouver(event.shift_deleted_at)}` : ''}`
                                 : 'The shift related to this attendance was deleted'
                             }
                           >
@@ -5423,7 +5407,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                   const days = hoursToDays(r.hours);
                   return (
                     <tr key={r.id} className="border-b">
-                      <td className="py-2 px-2">{new Date(r.requested_at).toLocaleDateString()}</td>
+                      <td className="py-2 px-2">{formatDateVancouver(r.requested_at)}</td>
                       <td className="py-2 px-2">
                         {r.policy_name} - {r.status}
                         {r.notes && <div className="text-sm text-gray-600">{r.notes}</div>}

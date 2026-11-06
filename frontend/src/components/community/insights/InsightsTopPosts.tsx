@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { withFileAccessTokenIfNeeded } from '@/lib/api';
+import { formatDateVancouver } from '@/lib/dateUtils';
 import { AREA_COLORS, PRIORITY_COLORS, HorizontalBar } from './InsightsCharts';
 import { InsightsSection, InsightsEmptyState } from './InsightsSection';
 import {
@@ -31,9 +32,7 @@ function sortValue(p: TopPost, key: SortKey): number {
 
 function formatRelativeDate(iso: string | null): string {
   if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return formatDateVancouver(iso, { month: 'short', day: 'numeric' });
 }
 
 function Avatar({ name, url }: { name: string | null; url: string | null }) {

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api, withFileAccessToken } from '@/lib/api';
+import { formatDateVancouver, formatDateTimeVancouver } from '@/lib/dateUtils';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { ReportNoteBody } from '@/components/ReportNoteBody';
 import { ReportAttachmentAreaMultiple } from '@/components/ReportAttachmentArea';
@@ -252,7 +253,7 @@ export function CustomerNotesTab({ apiBase = '/clients',
                       <span>
                         {author.name}
                         {note.created_at
-                          ? ` · ${new Date(note.created_at).toLocaleDateString('en-US', {
+                          ? ` · ${formatDateVancouver(note.created_at, {
                               month: 'short',
                               day: 'numeric',
                               year: 'numeric',
@@ -372,7 +373,7 @@ function NoteDetail({
                   <div className={uiCx(uiTypography.body, 'font-semibold')}>{author.name}</div>
                   <div className={uiTypography.helper}>
                     {reportDate
-                      ? reportDate.toLocaleDateString('en-US', {
+                      ? formatDateTimeVancouver(note.created_at, {
                           weekday: 'long',
                           month: 'long',
                           day: 'numeric',

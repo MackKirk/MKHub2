@@ -137,6 +137,18 @@ def seed_product_metals_permissions():
                 "description": "Allows creating, updating, and deleting Metals customer communication notes",
                 "sort_index": 41,
             },
+            {
+                "key": "metals:website:read",
+                "label": "Website inbox",
+                "description": "Allows viewing website estimates and orders from the MK Metals public site",
+                "sort_index": 50,
+            },
+            {
+                "key": "metals:website:write",
+                "label": "Website inbox (manage)",
+                "description": "Allows updating website submissions, converting estimates to quotes, and confirming orders",
+                "sort_index": 51,
+            },
         ]
 
         for perm_data in perms:

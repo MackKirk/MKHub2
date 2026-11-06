@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { PenLine } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api, getToken } from '@/lib/api';
+import { formatDateTimeVancouver } from '@/lib/dateUtils';
 import DocumentSignModal from '@/components/DocumentSignModal';
 import OverlayPortal from '@/components/OverlayPortal';
 import {
@@ -31,11 +32,7 @@ type SignatureRequestRow = {
 
 function formatWhen(iso: string | null | undefined): string {
   if (!iso) return '—';
-  try {
-    return new Date(iso).toLocaleString();
-  } catch {
-    return iso;
-  }
+  return formatDateTimeVancouver(iso);
 }
 
 export default function DocumentsToSignPage() {

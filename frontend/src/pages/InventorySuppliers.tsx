@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { formatDateVancouver } from '@/lib/dateUtils';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
 import ImagePicker from '@/components/ImagePicker';
@@ -2114,7 +2115,7 @@ export default function InventorySuppliers() {
                                     <div className="text-sm text-gray-600">Estimate #{usage.estimate_id} - Project was deleted</div>
                                     {usage.created_at && (
                                       <div className="text-xs text-gray-600 mt-1">
-                                        Created: {new Date(usage.created_at).toLocaleDateString()}
+                                        Created: {formatDateVancouver(usage.created_at)}
                                       </div>
                                     )}
                                   </div>
@@ -2131,7 +2132,7 @@ export default function InventorySuppliers() {
                                         )}
                                         {usage.created_at && (
                                           <div className="text-xs text-gray-600 mt-1">
-                                            Created: {new Date(usage.created_at).toLocaleDateString()}
+                                            Created: {formatDateVancouver(usage.created_at)}
                                           </div>
                                         )}
                                       </>

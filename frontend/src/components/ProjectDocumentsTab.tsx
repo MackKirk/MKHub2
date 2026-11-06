@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { formatDateVancouver } from '@/lib/dateUtils';
 import toast from 'react-hot-toast';
 import { useDocumentExportPdf } from '@/lib/useDocumentExportPdf';
 import { useConfirm } from '@/components/ConfirmProvider';
@@ -42,12 +43,7 @@ type UserDocument = {
 };
 
 function formatDate(s: string | undefined | null): string {
-  if (!s) return '—';
-  try {
-    return new Date(s).toLocaleDateString(undefined, { dateStyle: 'short' });
-  } catch {
-    return '—';
-  }
+  return formatDateVancouver(s, { dateStyle: 'short' });
 }
 
 const INLINE_EDITOR_MIN_HEIGHT_PX = 560;

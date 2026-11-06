@@ -6,6 +6,7 @@ import { forwardRef, useCallback, useEffect, useMemo, useRef, useState, type Rea
 import { toPng } from 'html-to-image';
 import QRCode from 'qrcode';
 import { api, withFileAccessTokenIfNeeded } from '@/lib/api';
+import { formatDateTimeVancouver } from '@/lib/dateUtils';
 import toast from 'react-hot-toast';
 import SubcontractorWorkerTimesheetBlock from '@/components/SubcontractorWorkerTimesheetBlock';
 import UserReports from '@/components/UserReports';
@@ -1490,7 +1491,7 @@ export default function SubcontractorWorkerPage() {
                             className="px-3 py-2.5 hover:bg-gray-50/90 grid grid-cols-1 md:grid-cols-12 gap-2 text-sm"
                           >
                             <div className="md:col-span-2 text-gray-600 tabular-nums whitespace-nowrap shrink-0">
-                              {new Date(ev.at).toLocaleString()}
+                              {formatDateTimeVancouver(ev.at)}
                             </div>
                             <div className="md:col-span-7 min-w-0">
                               <div className="font-semibold text-gray-900">{ev.title}</div>

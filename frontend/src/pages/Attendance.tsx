@@ -4,7 +4,7 @@ import toast from 'react-hot-toast';
 import { CalendarDays, Check, Clock, List, SlidersHorizontal, TriangleAlert, X } from 'lucide-react';
 import { api, withFileAccessToken } from '@/lib/api';
 import { useConfirm } from '@/components/ConfirmProvider';
-import { attendanceWorkDate, getTodayLocal } from '@/lib/dateUtils';
+import { attendanceWorkDate, getTodayLocal, formatDateTimeVancouver, formatDateVancouver } from '@/lib/dateUtils';
 import { isCompleteLocalDatetime, LocalDateTimeFields } from '@/components/LocalDateTimeFields';
 import { JobSearchCombobox } from '@/components/JobSearchCombobox';
 import {
@@ -223,7 +223,7 @@ const toUtcISOString = (localValue?: string) => {
 
 const formatDateTime = (iso?: string | null) => {
   if (!iso) return '--';
-  return new Date(iso).toLocaleString('en-US', {
+  return formatDateTimeVancouver(iso, {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
@@ -2044,7 +2044,7 @@ export default function Attendance() {
                         <AppTooltip
                           content={
                             event.shift_deleted_by
-                              ? `The shift related to this attendance was deleted by ${event.shift_deleted_by}${event.shift_deleted_at ? ` on ${new Date(event.shift_deleted_at).toLocaleDateString()}` : ''}`
+                              ? `The shift related to this attendance was deleted by ${event.shift_deleted_by}${event.shift_deleted_at ? ` on ${formatDateVancouver(event.shift_deleted_at)}` : ''}`
                               : 'The shift related to this attendance was deleted'
                           }
                         >
@@ -2292,7 +2292,7 @@ export default function Attendance() {
                           Linked shift was deleted
                           {viewingEvent.shift_deleted_by ? ` by ${viewingEvent.shift_deleted_by}` : ''}
                           {viewingEvent.shift_deleted_at
-                            ? ` on ${new Date(viewingEvent.shift_deleted_at).toLocaleString()}`
+                            ? ` on ${formatDateTimeVancouver(viewingEvent.shift_deleted_at)}`
                             : ''}
                         </div>
                       ) : null}

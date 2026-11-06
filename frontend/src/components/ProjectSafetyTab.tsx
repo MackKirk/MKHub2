@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api, withFileAccessToken } from '@/lib/api';
+import { formatDateTimeVancouver } from '@/lib/dateUtils';
 import { AppButton, AppFormModal, AppSelect, uiCx, uiLayout } from '@/components/ui';
 import { projectSafetyNewInspectionQuickInfo } from '@/lib/formModalQuickInfo';
 import OverlayPortal from '@/components/OverlayPortal';
@@ -145,7 +146,7 @@ function getYnRaw(
 
 function formatInspectionSignedAt(iso: string | undefined | null): string {
   if (!iso || Number.isNaN(Date.parse(iso))) return '—';
-  return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  return formatDateTimeVancouver(iso);
 }
 
 type SafetySignRequestRow = NonNullable<SafetyInspectionRow['sign_requests']>[number];
@@ -1465,10 +1466,7 @@ export default function ProjectSafetyTab({
                       <div className="min-w-0 text-left">
                         <div className="text-sm font-semibold text-gray-900">
                           {row.inspection_date
-                            ? new Date(row.inspection_date).toLocaleString(undefined, {
-                                dateStyle: 'medium',
-                                timeStyle: 'short',
-                              })
+                            ? formatDateTimeVancouver(row.inspection_date)
                             : '—'}
                         </div>
                         <div className="text-xs text-gray-600 truncate mt-0.5">{tmpl}</div>

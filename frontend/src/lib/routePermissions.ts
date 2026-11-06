@@ -1,4 +1,4 @@
-import { METALS_CUSTOMERS_READ } from '@/lib/productScope';
+import { METALS_CUSTOMERS_READ, METALS_WEBSITE_READ } from '@/lib/productScope';
 
 export type RoutePermissionRule = {
   /** Path prefix or exact path (matched with trailing-slash normalized). */
@@ -28,6 +28,7 @@ export const ROUTE_PERMISSION_RULES: RoutePermissionRule[] = [
   { path: '/opportunities', permission: 'business:construction:projects:read' },
 
   // Customers (metals before hub)
+  { path: '/metals/website', permission: METALS_WEBSITE_READ },
   { path: '/metals/customers', permission: METALS_CUSTOMERS_READ },
   { path: '/customers', permission: 'business:customers:read' },
 

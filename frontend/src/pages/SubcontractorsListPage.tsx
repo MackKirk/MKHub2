@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Briefcase, Search, SlidersHorizontal } from 'lucide-react';
 import { api, withFileAccessTokenIfNeeded } from '@/lib/api';
+import { formatDateVancouver } from '@/lib/dateUtils';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import FilterBuilderModal from '@/components/FilterBuilder/FilterBuilderModal';
 import FilterChip from '@/components/FilterBuilder/FilterChip';
@@ -308,7 +309,7 @@ export default function SubcontractorsListPage() {
         <AppPageHeader
           title="Subcontractors"
           subtitle="Manage third-party companies and their workers"
-          icon={<Briefcase className="h-4 w-4" />}
+          icon={<Briefcase className="h-4 w-4" />}
         />
 
         <AppCard bodyClassName={uiSpacing.cardPadding}>
@@ -586,7 +587,7 @@ function CompanyRow({ c, onOpen }: { c: Company; onOpen: () => void }) {
       <div className={uiCx(uiTypography.helper, 'min-w-0 truncate')}>{c.phone || '—'}</div>
       <div className={uiCx(uiTypography.body, 'min-w-0 text-sm')}>{c.worker_count ?? 0}</div>
       <div className={uiCx(uiTypography.helper, 'min-w-0 text-xs')}>
-        {c.created_at ? new Date(c.created_at).toLocaleDateString() : '—'}
+        {c.created_at ? formatDateVancouver(c.created_at) : '—'}
       </div>
       <div className="min-w-0">
         <AppBadge variant={c.is_active ? 'success' : 'warning'} className="normal-case tracking-normal">

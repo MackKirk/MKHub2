@@ -5,7 +5,7 @@ import { api, withFileAccessToken } from '@/lib/api';
 import { FILE_LIBRARY_ACCEPT, UploadProgressPanel } from '@/components/files';
 import { putFile, rejectOversizedBatch } from '@/lib/fileUploadBatch';
 import toast from 'react-hot-toast';
-import { formatDateLocal } from '@/lib/dateUtils';
+import { formatDateLocal, formatDateVancouver } from '@/lib/dateUtils';
 import { useConfirm } from '@/components/ConfirmProvider';
 import {
   employeeReportDetailQuickInfo,
@@ -97,12 +97,7 @@ export type UserReportsProps =
 
 function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '—';
-  try {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-  } catch {
-    return dateStr;
-  }
+  return formatDateVancouver(dateStr, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
 function formatCurrency(value: number): string {

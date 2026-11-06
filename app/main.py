@@ -36,6 +36,9 @@ from .routes.clients import router as clients_router
 from .routes.portal_hub_auth import router as portal_hub_auth_router
 from .routes.portal_hub import router as portal_hub_router
 from .routes.portal_hub_staff import router as portal_hub_staff_router, share_router as portal_hub_share_router
+from .routes.public_metals import router as public_metals_router
+from .routes.portal_metals import router as portal_metals_router
+from .routes.metals_website import router as metals_website_router
 from .routes.employees import router as employees_router
 from .routes.calendar import router as calendar_router
 from .routes.settings import router as settings_router
@@ -277,6 +280,9 @@ def create_app() -> FastAPI:
     app.include_router(portal_hub_router)
     app.include_router(portal_hub_staff_router, dependencies=_hub)
     app.include_router(portal_hub_share_router, dependencies=_hub)
+    app.include_router(public_metals_router)
+    app.include_router(portal_metals_router)
+    app.include_router(metals_website_router, dependencies=_hub)
     app.include_router(employees_router, dependencies=_hub)
     app.include_router(calendar_router, dependencies=_hub)
     app.include_router(auto_tasks_router, dependencies=_hub)
@@ -352,6 +358,7 @@ def create_app() -> FastAPI:
     # React frontend (SPA) - fallback router that serves index.html for unknown paths
     FRONT_DIST = os.path.join("frontend", "dist")
     PORTAL_DIST = os.path.join("portal", "dist")
+    WEBSITE_DIST = os.path.join("website", "dist")
     PRIVACY_POLICY_PATH = os.path.join("app", "ui", "privacy.html")
 
     @app.get("/privacy")
@@ -379,7 +386,16 @@ def create_app() -> FastAPI:
                                 portal_index,
                                 headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
                             )
-                # Allowlist actual non-SPA paths (and never steal /portal for hub shell)
+                # MK Metals public website SPA
+                elif path == "/website" or path.startswith("/website/"):
+                    if os.path.isdir(WEBSITE_DIST):
+                        website_index = os.path.join(WEBSITE_DIST, "index.html")
+                        if os.path.exists(website_index):
+                            return FileResponse(
+                                website_index,
+                                headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+                            )
+                # Allowlist actual non-SPA paths (and never steal /portal or /website for hub shell)
                 elif not (
                     path.startswith("/api")
                     or path.startswith("/auth")
@@ -387,6 +403,8 @@ def create_app() -> FastAPI:
                     or path.startswith("/ui")
                     or path.startswith("/assets")
                     or path.startswith("/portal")
+                    or path.startswith("/website")
+                    or path.startswith("/public/metals")
                     or path in {"/favicon.ico", "/robots.txt", "/metrics", "/privacy", "/privacy-policy"}
                 ):
                     if os.path.isdir(FRONT_DIST):
@@ -633,6 +651,15 @@ def create_app() -> FastAPI:
                             PortalHubRefreshToken,
                         )
 
+                        from .models.models import (
+                            PortalMetalsMembership,
+                            MetalsCatalogCategory,
+                            MetalsCatalogProduct,
+                            MetalsWebsiteSubmission,
+                            MetalsWebsiteSubmissionItem,
+                            MetalsWebsiteSubmissionFile,
+                        )
+
                         Base.metadata.create_all(
                             bind=engine,
                             tables=[
@@ -640,6 +667,12 @@ def create_app() -> FastAPI:
                                 PortalHubMembership.__table__,
                                 PortalHubInvite.__table__,
                                 PortalHubRefreshToken.__table__,
+                                PortalMetalsMembership.__table__,
+                                MetalsCatalogCategory.__table__,
+                                MetalsCatalogProduct.__table__,
+                                MetalsWebsiteSubmission.__table__,
+                                MetalsWebsiteSubmissionItem.__table__,
+                                MetalsWebsiteSubmissionFile.__table__,
                             ],
                         )
                         db.commit()
@@ -3955,6 +3988,31 @@ def create_app() -> FastAPI:
                 return FileResponse(PORTAL_INDEX, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
             raise FastAPIHTTPException(status_code=404, detail="Portal not built")
 
+    # MK Metals public website SPA under /website
+    if os.path.isdir(WEBSITE_DIST):
+        WEBSITE_INDEX = os.path.join(WEBSITE_DIST, "index.html")
+        website_assets = os.path.join(WEBSITE_DIST, "assets")
+        if os.path.isdir(website_assets):
+            app.mount("/website/assets", StaticFiles(directory=website_assets), name="website_spa_assets")
+
+        @app.get("/website")
+        @app.get("/website/")
+        def website_root():
+            if os.path.exists(WEBSITE_INDEX):
+                return FileResponse(WEBSITE_INDEX, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+            raise FastAPIHTTPException(status_code=404, detail="Website not built")
+
+        @app.get("/website/{full_path:path}")
+        def website_spa_fallback(full_path: str):
+            if full_path.startswith("assets/") or full_path == "assets":
+                raise FastAPIHTTPException(status_code=404, detail="Not found")
+            asset_path = os.path.join(WEBSITE_DIST, full_path)
+            if os.path.isfile(asset_path):
+                return FileResponse(asset_path, headers={"Cache-Control": "public, max-age=3600"})
+            if os.path.exists(WEBSITE_INDEX):
+                return FileResponse(WEBSITE_INDEX, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+            raise FastAPIHTTPException(status_code=404, detail="Website not built")
+
     # After all API routers, serve built JS/CSS with correct MIME types and avoid
     # returning index.html for missing *.js (which breaks dynamic imports with "text/html" MIME).
     if os.path.isdir(FRONT_DIST):
@@ -3965,9 +4023,11 @@ def create_app() -> FastAPI:
 
         @app.get("/{full_path:path}")
         def spa_fallback(full_path: str):
-            # Portal is handled above; never serve hub shell for /portal/*
+            # Portal / website handled above; never serve hub shell for those prefixes
             if full_path == "portal" or full_path.startswith("portal/"):
                 raise FastAPIHTTPException(status_code=404, detail="Portal not built")
+            if full_path == "website" or full_path.startswith("website/"):
+                raise FastAPIHTTPException(status_code=404, detail="Website not built")
             # If a built file exists under dist (e.g. favicon at root), serve it
             asset_path = os.path.join(FRONT_DIST, full_path)
             if os.path.isfile(asset_path):

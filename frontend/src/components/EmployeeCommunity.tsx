@@ -4,6 +4,7 @@ import type { Editor } from '@tiptap/core';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessTokenIfNeeded } from '@/lib/api';
+import { formatDateVancouver } from '@/lib/dateUtils';
 import toast from 'react-hot-toast';
 import { CommunityPostBanner } from '@/components/community/CommunityPostBanner';
 import { CommunityPostBody } from '@/components/community/CommunityPostBody';
@@ -583,7 +584,7 @@ export default function EmployeeCommunity({
     if (diffHours < 1) return 'Just now';
     if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
     if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
-    return date.toLocaleDateString();
+    return formatDateVancouver(dateString);
   };
 
   const unreadCount = useMemo(

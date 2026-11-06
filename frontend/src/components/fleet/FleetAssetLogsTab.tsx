@@ -8,6 +8,7 @@ import {
   resolveFleetHistoryActor,
 } from '@/lib/fleetHistoryActor';
 import { getFleetHistoryEntryBadgeVariant } from '@/lib/fleetUi';
+import { formatDateTimeVancouver } from '@/lib/dateUtils';
 import {
   AppBadge,
   AppCard,
@@ -225,7 +226,7 @@ export function FleetAssetLogsTab({
                       )}
                     </div>
                     <div className={uiCx(uiTypography.body, 'shrink-0 text-right text-gray-600')}>
-                      {item.occurred_at ? new Date(item.occurred_at).toLocaleString() : '—'}
+                      {item.occurred_at ? formatDateTimeVancouver(item.occurred_at) : '—'}
                     </div>
                   </div>
                 </div>

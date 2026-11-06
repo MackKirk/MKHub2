@@ -32,30 +32,9 @@ import {
   uiSpacing,
   uiTypography,
 } from '@/components/ui';
+import { formatDateTimeVancouver, parseUtcTimestamp } from '@/lib/dateUtils';
 
-/** Stored in UTC; display in Vancouver (PST/PDT). */
-const LOG_TIMEZONE = 'America/Vancouver';
 const PAGE_SIZE = 75;
-
-function parseUtcTimestamp(iso: string): Date {
-  const s = iso.trim();
-  if (!s) return new Date(NaN);
-  if (/[zZ]$|[+-]\d{2}:?\d{2}$/.test(s)) {
-    return new Date(s);
-  }
-  const normalized = s.includes('T') ? s : s.replace(' ', 'T');
-  return new Date(normalized.endsWith('Z') ? normalized : `${normalized}Z`);
-}
-
-function formatLogTimeVancouver(iso: string): string {
-  const d = parseUtcTimestamp(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: LOG_TIMEZONE,
-    dateStyle: 'short',
-    timeStyle: 'medium',
-  }).format(d);
-}
 
 function formatRelativeTime(iso: string): string {
   const d = parseUtcTimestamp(iso);
@@ -369,7 +348,7 @@ function CopyIdButton({ value, label = 'Copy' }: { value: string; label?: string
 function TimeCell({ iso }: { iso: string }) {
   return (
     <div className="whitespace-nowrap">
-      <div className="text-gray-900">{formatLogTimeVancouver(iso)}</div>
+      <div className="text-gray-900">{formatDateTimeVancouver(iso)}</div>
       <div className={uiTypography.helper}>{formatRelativeTime(iso)}</div>
     </div>
   );
@@ -1332,7 +1311,7 @@ export default function SystemAdmin() {
               onNavigate={() => setAuditDetail(null)}
             />
             <div className="grid gap-3 sm:grid-cols-2">
-              <MetaTile label="When (Vancouver)">{formatLogTimeVancouver(auditDetail.timestamp_utc)}</MetaTile>
+              <MetaTile label="When (Vancouver)">{formatDateTimeVancouver(auditDetail.timestamp_utc)}</MetaTile>
               <MetaTile label="Action">
                 <AppBadge variant={actionBadgeVariant(auditDetail.action)}>{auditDetail.action}</AppBadge>
               </MetaTile>
@@ -1376,7 +1355,7 @@ export default function SystemAdmin() {
         {systemDetail && (
           <div className="space-y-5">
             <div className="grid gap-3 sm:grid-cols-2">
-              <MetaTile label="When (Vancouver)">{formatLogTimeVancouver(systemDetail.timestamp_utc)}</MetaTile>
+              <MetaTile label="When (Vancouver)">{formatDateTimeVancouver(systemDetail.timestamp_utc)}</MetaTile>
               <MetaTile label="Level">
                 <AppBadge variant={levelBadgeVariant(systemDetail.level)}>{systemDetail.level}</AppBadge>
               </MetaTile>

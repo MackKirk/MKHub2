@@ -7,6 +7,7 @@ import { useConfirm } from '@/components/ConfirmProvider';
 import { ProjectSearchCombobox } from '@/components/ProjectSearchCombobox';
 import { scWorkerClockQuickInfo } from '@/lib/formModalQuickInfo';
 import { formatRoundedHhmm, parseHhmm } from '@/lib/timePickerUtils';
+import { formatDateTimeVancouver } from '@/lib/dateUtils';
 import {
   AppButton,
   AppCheckbox,
@@ -492,7 +493,7 @@ export function SubcontractorWorkerClockModalLayer({
         {clockType === 'out' && openAttendance && (
           <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-900">
             {openAttendance.project_name ? `Project: ${openAttendance.project_name}` : 'Open session'}
-            {openAttendance.clock_in_time ? ` · Since ${new Date(openAttendance.clock_in_time).toLocaleString()}` : ''}
+            {openAttendance.clock_in_time ? ` · Since ${formatDateTimeVancouver(openAttendance.clock_in_time)}` : ''}
           </div>
         )}
 

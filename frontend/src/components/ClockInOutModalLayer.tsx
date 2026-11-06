@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { JobSearchCombobox } from '@/components/JobSearchCombobox';
 import { formatJobPickerLine, getPredefinedJob, isPredefinedJobId } from '@/constants/predefinedJobs';
-import { formatDateLocal, getTodayLocal } from '@/lib/dateUtils';
+import { formatDateLocal, formatTimeVancouver, getTodayLocal } from '@/lib/dateUtils';
 import { formatRoundedHhmm } from '@/lib/timePickerUtils';
 import {
   AppButton,
@@ -66,7 +66,7 @@ function formatDateShort(dateStr: string): string {
 }
 
 function formatClockTimestamp(iso: string): string {
-  return new Date(iso).toLocaleTimeString('en-US', {
+  return formatTimeVancouver(iso, {
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,

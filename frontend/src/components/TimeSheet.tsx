@@ -6,7 +6,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
-import { formatDateLocal, getTodayLocal } from '@/lib/dateUtils';
+import { formatDateLocal, getTodayLocal, formatTimeVancouver } from '@/lib/dateUtils';
 import OverlayPortal from '@/components/OverlayPortal';
 
 // Helper function to convert 24h time (HH:MM:SS or HH:MM) to 12h format (h:mm AM/PM)
@@ -376,11 +376,11 @@ export default function TimeSheet({ projectId, userId }: TimeSheetProps) {
                         <div className="flex items-center gap-2">
                           {getStatusBadge(clockIn.status)}
                           <span className="text-sm text-gray-700">
-                            {clockIn.clock_in_time ? new Date(clockIn.clock_in_time).toLocaleTimeString('en-US', {
+                            {clockIn.clock_in_time ? formatTimeVancouver(clockIn.clock_in_time, {
                               hour: 'numeric',
                               minute: '2-digit',
                               hour12: true,
-                            }) : (clockIn.time_selected_utc ? new Date(clockIn.time_selected_utc).toLocaleTimeString('en-US', {
+                            }) : (clockIn.time_selected_utc ? formatTimeVancouver(clockIn.time_selected_utc, {
                               hour: 'numeric',
                               minute: '2-digit',
                               hour12: true,
@@ -407,11 +407,11 @@ export default function TimeSheet({ projectId, userId }: TimeSheetProps) {
                         <div className="flex items-center gap-2">
                           {getStatusBadge(clockOut.status)}
                           <span className="text-sm text-gray-700">
-                            {clockOut.clock_out_time ? new Date(clockOut.clock_out_time).toLocaleTimeString('en-US', {
+                            {clockOut.clock_out_time ? formatTimeVancouver(clockOut.clock_out_time, {
                               hour: 'numeric',
                               minute: '2-digit',
                               hour12: true,
-                            }) : (clockOut.time_selected_utc ? new Date(clockOut.time_selected_utc).toLocaleTimeString('en-US', {
+                            }) : (clockOut.time_selected_utc ? formatTimeVancouver(clockOut.time_selected_utc, {
                               hour: 'numeric',
                               minute: '2-digit',
                               hour12: true,

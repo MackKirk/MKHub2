@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Clock3 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { shouldRegisterHours } from '@/lib/payType';
-import { getTodayLocal } from '@/lib/dateUtils';
+import { getTodayLocal, formatTimeVancouver, formatDateVancouver } from '@/lib/dateUtils';
 import FadeInOnMount from '@/components/FadeInOnMount';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import { ClockInOutModalLayer } from '@/components/ClockInOutModalLayer';
@@ -196,7 +196,7 @@ export function ClockInOutWidget({ config: _config }: ClockInOutWidgetProps) {
           Today
         </div>
         <div className="text-sm font-semibold text-gray-900">
-          {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+          {formatDateVancouver(new Date().toISOString(), { weekday: 'short', month: 'short', day: 'numeric' })}
         </div>
       </div>
 
@@ -259,11 +259,11 @@ export function ClockInOutWidget({ config: _config }: ClockInOutWidgetProps) {
                 .slice(0, 3)
                 .map((a) => (
                   <div key={a.id} className="flex justify-between gap-2 py-1.5 tabular-nums">
-                    <span>{formatTime12h(a.clock_in_time ? new Date(a.clock_in_time).toTimeString().slice(0, 5) : null)}</span>
+                    <span>{a.clock_in_time ? formatTimeVancouver(a.clock_in_time, { hour: 'numeric', minute: '2-digit', hour12: true }) : '--:--'}</span>
                     <span className="text-gray-600">–</span>
                     <span>
                       {a.clock_out_time
-                        ? formatTime12h(new Date(a.clock_out_time).toTimeString().slice(0, 5))
+                        ? formatTimeVancouver(a.clock_out_time, { hour: 'numeric', minute: '2-digit', hour12: true })
                         : '--:--'}
                     </span>
                   </div>

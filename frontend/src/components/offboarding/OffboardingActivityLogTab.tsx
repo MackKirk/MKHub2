@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { formatDateTimeVancouver } from '@/lib/dateUtils';
 import { getFleetHistoryEntryBadgeVariant } from '@/lib/fleetUi';
 import {
   formatOffboardingActivityMessage,
@@ -82,7 +83,7 @@ export default function OffboardingActivityLogTab({ caseId }: { caseId: string }
                       </p>
                     </div>
                     <p className={uiCx(uiTypography.body, 'shrink-0 text-right text-gray-600')}>
-                      {row.created_at ? new Date(row.created_at).toLocaleString() : '—'}
+                      {row.created_at ? formatDateTimeVancouver(row.created_at) : '—'}
                     </p>
                   </div>
                 </div>

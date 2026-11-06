@@ -4,6 +4,7 @@ import DirectorMeetingMonthCalendar, {
   formatYmdHeading,
 } from '@/components/DirectorMeetingMonthCalendar';
 import { AppBadge } from '@/components/ui';
+import { formatTimeVancouver, formatDateVancouver } from '@/lib/dateUtils';
 
 export type SlotPickerSlot = {
   starts_at: string;
@@ -48,27 +49,15 @@ function bookedColleagueLabel(slot: SlotPickerSlot): string {
 }
 
 function formatTimeOnly(isoStart: string, isoEnd: string) {
-  try {
-    const a = new Date(isoStart);
-    const b = new Date(isoEnd);
-    if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return '';
-    return `${a.toLocaleTimeString(undefined, { timeStyle: 'short' })} – ${b.toLocaleTimeString(undefined, {
-      timeStyle: 'short',
-    })}`;
-  } catch {
-    return '';
-  }
+  const a = formatTimeVancouver(isoStart, { timeStyle: 'short' });
+  const b = formatTimeVancouver(isoEnd, { timeStyle: 'short' });
+  if (!a || !b) return '';
+  return `${a} – ${b}`;
 }
 
 /** For banners / summaries next to the picker. */
 export function formatDirectorSlotDayLabel(isoStart: string): string {
-  try {
-    const a = new Date(isoStart);
-    if (Number.isNaN(a.getTime())) return '';
-    return a.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
-  } catch {
-    return '';
-  }
+  return formatDateVancouver(isoStart, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
 }
 
 export function formatDirectorSlotTimeRange(isoStart: string, isoEnd: string): string {

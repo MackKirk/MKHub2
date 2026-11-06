@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown } from 'lucide-react';
 import { api } from '@/lib/api';
+import { formatDateVancouver } from '@/lib/dateUtils';
 import toast from 'react-hot-toast';
 import { CommunityNewPostPreviewModal } from '@/components/community/CommunityNewPostPreviewModal';
 import { useConfirm } from '@/components/ConfirmProvider';
@@ -243,7 +244,7 @@ export function AnnouncementManagerCard({ post }: { post: any }) {
     if (diffHours < 1) return 'Just now';
     if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
     if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
-    return date.toLocaleDateString();
+    return formatDateVancouver(dateString);
   };
 
   const status = post.status || 'published';

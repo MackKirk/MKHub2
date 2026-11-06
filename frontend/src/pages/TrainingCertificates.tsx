@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import QRCodeLib from 'qrcode';
 import { withFileAccessToken } from '@/lib/api';
+import { formatDateVancouver } from '@/lib/dateUtils';
 import type { TrainingCertificate } from '@/hooks/useMyTrainingData';
 import {
   AppBadge,
@@ -51,10 +52,10 @@ function CertificateCard({ cert, expired }: { cert: TrainingCertificate; expired
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <h3 className="text-lg font-bold text-gray-900">{cert.course_title}</h3>
-          <p className={uiTypography.helper}>Issued: {new Date(cert.issued_at).toLocaleDateString()}</p>
+          <p className={uiTypography.helper}>Issued: {formatDateVancouver(cert.issued_at)}</p>
           {cert.expires_at ? (
             <p className={uiCx(uiTypography.helper, expired && 'font-semibold text-orange-600')}>
-              {expired ? 'Expired' : 'Expires'}: {new Date(cert.expires_at).toLocaleDateString()}
+              {expired ? 'Expired' : 'Expires'}: {formatDateVancouver(cert.expires_at)}
             </p>
           ) : null}
           <p className="mt-2 text-sm text-gray-600">Certificate #: {cert.certificate_number}</p>

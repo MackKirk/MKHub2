@@ -5,7 +5,7 @@ import { api, withFileAccessToken } from '@/lib/api';
 import { sortByLabel } from '@/lib/sortOptions';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
-import { formatDateLocal, getCurrentMonthLocal } from '@/lib/dateUtils';
+import { formatDateLocal, getCurrentMonthLocal, formatDateVancouver } from '@/lib/dateUtils';
 import UserLoans from '@/components/UserLoans';
 import OverlayPortal from '@/components/OverlayPortal';
 import { UserEmployeeReviewsSection } from '@/components/users/UserEmployeeReviewsTabEnhanced';
@@ -328,7 +328,7 @@ function UserTimesheet({ userId }:{ userId:string }){
               {e.shift_deleted && (
                 <span
                   className="text-yellow-600"
-                  title={e.shift_deleted_by ? `The shift related to this attendance was deleted by ${e.shift_deleted_by}${e.shift_deleted_at ? ` on ${new Date(e.shift_deleted_at).toLocaleDateString()}` : ''}` : 'The shift related to this attendance was deleted'}
+                  title={e.shift_deleted_by ? `The shift related to this attendance was deleted by ${e.shift_deleted_by}${e.shift_deleted_at ? ` on ${formatDateVancouver(e.shift_deleted_at)}` : ''}` : 'The shift related to this attendance was deleted'}
                 >
                   <svg className="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />

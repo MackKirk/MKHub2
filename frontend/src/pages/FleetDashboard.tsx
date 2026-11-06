@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api } from '@/lib/api';
+import { formatDateVancouver } from '@/lib/dateUtils';
 import { useMemo, useState } from 'react';
 import NewFleetAssetModal from '@/components/fleet/NewFleetAssetModal';
 import { EquipmentNewForm } from './EquipmentNew';
@@ -268,7 +269,7 @@ function ComplianceExpiringPanel({
                   {item.fleet_asset_name || 'Asset'}
                 </div>
                 <div className={uiTypography.overline}>
-                  {item.record_type} · {item.expiry_date ? new Date(item.expiry_date).toLocaleDateString() : ''}
+                  {item.record_type} · {item.expiry_date ? formatDateVancouver(item.expiry_date) : ''}
                 </div>
               </div>
               <AppButton type="button" variant="ghost" size="sm" className={linkButtonClass} onClick={() => onOpenAsset(item.fleet_asset_id)}>
@@ -391,7 +392,7 @@ function PendingInspectionsCard({
                   {item.fleet_asset_name || item.id}
                 </div>
                 {item.inspection_date ? (
-                  <div className={uiTypography.overline}>{new Date(item.inspection_date).toLocaleDateString()}</div>
+                  <div className={uiTypography.overline}>{formatDateVancouver(item.inspection_date)}</div>
                 ) : null}
               </div>
               <AppButton

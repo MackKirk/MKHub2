@@ -1497,7 +1497,7 @@ export default function ProjectFilesTabEnhanced({
                               <td className="px-3 py-2 text-sm text-gray-600">{getFileTypeLabel(df)}</td>
                               <td className="px-3 py-2 text-sm text-gray-600">{df.category || '—'}</td>
                               <td className="px-3 py-2 text-sm text-gray-600">
-                                {df.deleted_at ? new Date(df.deleted_at).toLocaleString() : '—'}
+                                {df.deleted_at ? formatDateTimeVancouver(df.deleted_at) : '—'}
                               </td>
                               <td className="px-3 py-2">
                                 <div className="flex flex-wrap items-center gap-1">

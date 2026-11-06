@@ -13,6 +13,7 @@ import {
   uiSpacing,
   uiTypography,
 } from '@/components/ui';
+import { formatDateVancouver, formatTimeVancouver, formatDateTimeVancouver } from '@/lib/dateUtils';
 
 const EM_DASH = '—';
 
@@ -68,14 +69,14 @@ function WorkOrderGeneralTab({
   onNavigateInspection,
 }: Props) {
   const scheduledDate = workOrder.scheduled_start_at
-    ? new Date(workOrder.scheduled_start_at).toLocaleDateString('en-CA', {
+    ? formatDateVancouver(workOrder.scheduled_start_at, {
         year: 'numeric',
         month: 'short',
         day: 'numeric',
       })
     : null;
   const scheduledTime = workOrder.scheduled_start_at
-    ? new Date(workOrder.scheduled_start_at).toLocaleTimeString('en-CA', {
+    ? formatTimeVancouver(workOrder.scheduled_start_at, {
         hour: '2-digit',
         minute: '2-digit',
       })
@@ -169,7 +170,7 @@ function WorkOrderGeneralTab({
               label="Check-in"
               value={
                 workOrder.check_in_at
-                  ? new Date(workOrder.check_in_at).toLocaleString('en-CA', {
+                  ? formatDateTimeVancouver(workOrder.check_in_at, {
                       dateStyle: 'short',
                       timeStyle: 'short',
                     })
@@ -180,7 +181,7 @@ function WorkOrderGeneralTab({
               label="Check-out"
               value={
                 workOrder.check_out_at
-                  ? new Date(workOrder.check_out_at).toLocaleString('en-CA', {
+                  ? formatDateTimeVancouver(workOrder.check_out_at, {
                       dateStyle: 'short',
                       timeStyle: 'short',
                     })

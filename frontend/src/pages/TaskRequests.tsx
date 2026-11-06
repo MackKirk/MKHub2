@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api, withFileAccessToken } from '@/lib/api';
 import { sortByLabel } from '@/lib/sortOptions';
+import { formatDateVancouver, formatDateTimeVancouver } from '@/lib/dateUtils';
 import OverlayPortal from '@/components/OverlayPortal';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { FileText } from 'lucide-react';
@@ -257,7 +258,7 @@ export default function TaskRequestsPage() {
     if (diffMins < 60) return `${diffMins}m ago`;
     if (diffHours < 24) return `${diffHours}h ago`;
     if (diffDays < 7) return `${diffDays}d ago`;
-    return updated.toLocaleDateString();
+    return formatDateVancouver(dateStr);
   };
 
   useEffect(() => {
@@ -548,7 +549,7 @@ function RequestDetailsPanel({
           )}
           {request.due_date && (
             <div>Desired date: <span className="font-semibold text-gray-900">
-              {new Date(request.due_date).toLocaleDateString()}
+              {formatDateVancouver(request.due_date)}
             </span></div>
           )}
         </div>
@@ -568,7 +569,7 @@ function RequestDetailsPanel({
               <div key={msg.id} className={uiCx(uiRadius.card, uiBorders.subtle, uiColors.surface, uiSpacing.compactCardPadding)}>
                 <div className={uiCx('mb-2 flex items-center justify-between', uiTypography.overline)}>
                   <span>{msg.sender_name || 'System'}</span>
-                  <span>{new Date(msg.created_at).toLocaleString()}</span>
+                  <span>{formatDateTimeVancouver(msg.created_at)}</span>
                 </div>
                 <div className={uiCx(uiTypography.body, 'whitespace-pre-wrap')}>{msg.body}</div>
               </div>
@@ -844,7 +845,7 @@ function ViewRequestModal({
                     <div key={msg.id} className="rounded-xl border border-gray-200 bg-white p-4">
                       <div className="flex items-center justify-between text-xs text-gray-600 mb-2">
                         <span className="font-semibold">{msg.sender_name || 'System'}</span>
-                        <span>{new Date(msg.created_at).toLocaleString()}</span>
+                        <span>{formatDateTimeVancouver(msg.created_at)}</span>
                       </div>
                       <div className="text-sm text-gray-800 whitespace-pre-wrap">{msg.body}</div>
                     </div>
@@ -937,14 +938,14 @@ function ViewRequestModal({
                   <div>
                     <div className="text-gray-600 mb-1">Desired date</div>
                     <div className="font-semibold text-gray-900">
-                      {new Date(request.due_date).toLocaleDateString()}
+                      {formatDateVancouver(request.due_date)}
                     </div>
                   </div>
                 )}
                 <div>
                   <div className="text-gray-600 mb-1">Created</div>
                   <div className="font-semibold text-gray-900">
-                    {new Date(request.created_at).toLocaleDateString()}
+                    {formatDateVancouver(request.created_at)}
                   </div>
                 </div>
               </div>
@@ -1397,12 +1398,12 @@ function RequestsListModal({
                     <div className="text-sm text-gray-600 flex flex-wrap gap-2">
                       <span className="capitalize">{req.priority || 'normal'}</span>
                       {req.due_date && (
-                        <span>Due: {new Date(req.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                        <span>Due: {formatDateVancouver(req.due_date, { month: 'short', day: 'numeric' })}</span>
                       )}
                     </div>
                     <div className="text-sm text-gray-600">
                       {req.requested_by?.name || req.requested_by?.id || 'Unknown'} •{' '}
-                      {new Date(req.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      {formatDateVancouver(req.created_at, { month: 'short', day: 'numeric' })}
                     </div>
                   </button>
                 ))
@@ -1453,7 +1454,7 @@ function RequestsListModal({
                     {selected.due_date && (
                       <span>
                         Desired date:{' '}
-                        <strong>{new Date(selected.due_date).toLocaleDateString()}</strong>
+                        <strong>{formatDateVancouver(selected.due_date)}</strong>
                       </span>
                     )}
                   </div>
@@ -1473,7 +1474,7 @@ function RequestsListModal({
                         <div key={msg.id} className="rounded border p-3 bg-gray-50">
                           <div className="flex items-center justify-between text-sm text-gray-600">
                             <span>{msg.sender_name || 'System'}</span>
-                            <span>{new Date(msg.created_at).toLocaleString()}</span>
+                            <span>{formatDateTimeVancouver(msg.created_at)}</span>
                           </div>
                           <div className="mt-1 text-sm text-gray-800 whitespace-pre-wrap">{msg.body}</div>
                         </div>
@@ -1690,12 +1691,12 @@ function RequestsHistoryModal({
                     <div className="text-sm text-gray-600 flex flex-wrap gap-2">
                       <span className="capitalize">{req.priority || 'normal'}</span>
                       {req.due_date && (
-                        <span>Due: {new Date(req.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                        <span>Due: {formatDateVancouver(req.due_date, { month: 'short', day: 'numeric' })}</span>
                       )}
                     </div>
                     <div className="text-sm text-gray-600">
                       {req.requested_by?.name || req.requested_by?.id || 'Unknown'} •{' '}
-                      {new Date(req.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      {formatDateVancouver(req.created_at, { month: 'short', day: 'numeric' })}
                     </div>
                   </button>
                 ))
@@ -1746,7 +1747,7 @@ function RequestsHistoryModal({
                     {selected.due_date && (
                       <span>
                         Desired date:{' '}
-                        <strong>{new Date(selected.due_date).toLocaleDateString()}</strong>
+                        <strong>{formatDateVancouver(selected.due_date)}</strong>
                       </span>
                     )}
                   </div>
@@ -1766,7 +1767,7 @@ function RequestsHistoryModal({
                         <div key={msg.id} className="rounded border p-3 bg-gray-50">
                           <div className="flex items-center justify-between text-sm text-gray-600">
                             <span>{msg.sender_name || 'System'}</span>
-                            <span>{new Date(msg.created_at).toLocaleString()}</span>
+                            <span>{formatDateTimeVancouver(msg.created_at)}</span>
                           </div>
                           <div className="mt-1 text-sm text-gray-800 whitespace-pre-wrap">{msg.body}</div>
                         </div>
@@ -1795,7 +1796,7 @@ function RequestsHistoryModal({
                           <p className="text-sm text-gray-600">
                             Task created on{' '}
                             {selected.updated_at
-                              ? new Date(selected.updated_at).toLocaleDateString()
+                              ? formatDateVancouver(selected.updated_at)
                               : 'N/A'}
                           </p>
                         )}
@@ -1809,7 +1810,7 @@ function RequestsHistoryModal({
                         </p>
                         {selected.updated_at && (
                           <p className="text-sm text-gray-600">
-                            Refused on {new Date(selected.updated_at).toLocaleDateString()}
+                            Refused on {formatDateVancouver(selected.updated_at)}
                           </p>
                         )}
                       </div>

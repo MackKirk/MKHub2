@@ -7,6 +7,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { BarChart3, Calendar, Check, Search, X } from 'lucide-react';
 
 import { api } from '@/lib/api';
+import { formatDateTimeVancouver } from '@/lib/dateUtils';
 
 import toast from 'react-hot-toast';
 
@@ -138,31 +139,19 @@ function formatDueShort(s: string | null | undefined) {
 
   if (!s) return '—';
 
-  try {
+  return formatDateTimeVancouver(s, {
 
-    const d = new Date(s);
+    month: 'short',
 
-    if (Number.isNaN(d.getTime())) return s;
+    day: 'numeric',
 
-    return d.toLocaleString(undefined, {
+    year: 'numeric',
 
-      month: 'short',
+    hour: '2-digit',
 
-      day: 'numeric',
+    minute: '2-digit',
 
-      year: 'numeric',
-
-      hour: '2-digit',
-
-      minute: '2-digit',
-
-    });
-
-  } catch {
-
-    return s;
-
-  }
+  });
 
 }
 

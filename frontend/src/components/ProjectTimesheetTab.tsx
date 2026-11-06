@@ -4,7 +4,7 @@ import { api, withFileAccessToken } from '@/lib/api';
 import { sortByLabel } from '@/lib/sortOptions';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
-import { formatDateLocal, getCurrentMonthLocal } from '@/lib/dateUtils';
+import { formatDateLocal, getCurrentMonthLocal, formatTimeVancouver, formatDateVancouver } from '@/lib/dateUtils';
 import OverlayPortal from '@/components/OverlayPortal';
 import SubcontractorClockModal from '@/components/SubcontractorClockModal';
 import {
@@ -1286,9 +1286,9 @@ export default function ProjectTimesheetTab({
                   {getStatusBadge(clockIn.status)}
                   <span className="text-gray-700">
                     {clockIn.clock_in_time
-                      ? new Date(clockIn.clock_in_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+                      ? formatTimeVancouver(clockIn.clock_in_time, { hour: 'numeric', minute: '2-digit', hour12: true })
                       : clockIn.time_selected_utc
-                        ? new Date(clockIn.time_selected_utc).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+                        ? formatTimeVancouver(clockIn.time_selected_utc, { hour: 'numeric', minute: '2-digit', hour12: true })
                         : '--'}
                   </span>
                   {clockIn.source === 'supervisor' && <span className="text-gray-600 text-xs">(Supervisor)</span>}
@@ -1304,9 +1304,9 @@ export default function ProjectTimesheetTab({
                   {getStatusBadge(clockOut.status)}
                   <span className="text-gray-700">
                     {clockOut.clock_out_time
-                      ? new Date(clockOut.clock_out_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+                      ? formatTimeVancouver(clockOut.clock_out_time, { hour: 'numeric', minute: '2-digit', hour12: true })
                       : clockOut.time_selected_utc
-                        ? new Date(clockOut.time_selected_utc).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+                        ? formatTimeVancouver(clockOut.time_selected_utc, { hour: 'numeric', minute: '2-digit', hour12: true })
                         : '--'}
                   </span>
                   {clockOut.source === 'supervisor' && <span className="text-gray-600 text-xs">(Supervisor)</span>}
@@ -1383,7 +1383,7 @@ export default function ProjectTimesheetTab({
             className="text-yellow-600"
             title={
               e.shift_deleted_by
-                ? `The shift related to this attendance was deleted by ${e.shift_deleted_by}${e.shift_deleted_at ? ` on ${new Date(e.shift_deleted_at).toLocaleDateString()}` : ''}`
+                ? `The shift related to this attendance was deleted by ${e.shift_deleted_by}${e.shift_deleted_at ? ` on ${formatDateVancouver(e.shift_deleted_at)}` : ''}`
                 : 'The shift related to this attendance was deleted'
             }
           >
@@ -1735,7 +1735,7 @@ export default function ProjectTimesheetTab({
                       className="text-yellow-600 ml-1"
                       title={
                         e.shift_deleted_by
-                          ? `The shift related to this attendance was deleted by ${e.shift_deleted_by}${e.shift_deleted_at ? ` on ${new Date(e.shift_deleted_at).toLocaleDateString()}` : ''}`
+                          ? `The shift related to this attendance was deleted by ${e.shift_deleted_by}${e.shift_deleted_at ? ` on ${formatDateVancouver(e.shift_deleted_at)}` : ''}`
                           : 'The shift related to this attendance was deleted'
                       }
                     >

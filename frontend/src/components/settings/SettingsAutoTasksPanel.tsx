@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import { Pencil } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { api } from '@/lib/api';
+import { formatDateTimeVancouver } from '@/lib/dateUtils';
 import {
   AppBadge,
   AppButton,
@@ -341,7 +342,7 @@ export default function SettingsAutoTasksPanel({ canEdit }: Props) {
             columns={['When', 'Task', 'For', 'Status']}
             emptyState="No auto tasks have fired yet."
             rows={(logsData?.items || []).map((row) => [
-              row.created_at ? new Date(row.created_at).toLocaleString() : '—',
+              row.created_at ? formatDateTimeVancouver(row.created_at) : '—',
               row.tasks[0]?.title || row.task_title || row.trigger_name,
               row.origin_label || '—',
               row.tasks.length ? (

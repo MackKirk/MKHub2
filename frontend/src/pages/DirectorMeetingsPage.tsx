@@ -14,6 +14,7 @@ import DirectorMeetingSlotPicker, {
 import { useConfirm } from '@/components/ConfirmProvider';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import { api } from '@/lib/api';
+import { formatDateTimeVancouver, formatTimeVancouver, formatDateVancouver } from '@/lib/dateUtils';
 import { formModalQuickInfo, uiLabel } from '@/lib/formModalQuickInfo';
 import {
   AppBadge,
@@ -245,36 +246,18 @@ function getDisplacedBookingsByConfigChange(
 }
 
 function formatSlotStartLabel(iso: string) {
-  try {
-    const a = new Date(iso);
-    if (Number.isNaN(a.getTime())) return iso;
-    return a.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-  } catch {
-    return iso;
-  }
+  return formatDateTimeVancouver(iso, { dateStyle: 'medium', timeStyle: 'short' }) || iso;
 }
 
 function formatTimeOnly(isoStart: string, isoEnd: string) {
-  try {
-    const a = new Date(isoStart);
-    const b = new Date(isoEnd);
-    if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return '';
-    return `${a.toLocaleTimeString(undefined, { timeStyle: 'short' })} – ${b.toLocaleTimeString(undefined, {
-      timeStyle: 'short',
-    })}`;
-  } catch {
-    return '';
-  }
+  const a = formatTimeVancouver(isoStart, { timeStyle: 'short' });
+  const b = formatTimeVancouver(isoEnd, { timeStyle: 'short' });
+  if (!a || !b) return '';
+  return `${a} – ${b}`;
 }
 
 function formatDayHeading(isoStart: string) {
-  try {
-    const a = new Date(isoStart);
-    if (Number.isNaN(a.getTime())) return '';
-    return a.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
-  } catch {
-    return '';
-  }
+  return formatDateVancouver(isoStart, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
 }
 
 function newAvailabilityRow(): AvailabilityRow {
@@ -1013,7 +996,7 @@ export default function DirectorMeetingsPage() {
       <AppPageHeader
         icon={<Calendar className="h-4 w-4" />}
         title="Director meeting schedule"
-        subtitle="Publish availability and book director closing 1:1s for the performance review cycle."
+        subtitle="Publish availability and book director closing 1:1s for the performance review cycle."
       />
 
       {!canonicalCycleId ? (

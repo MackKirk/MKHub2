@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import { api, withFileAccessToken } from '@/lib/api';
 import { putFile, rejectOversizedBatch } from '@/lib/fileUploadBatch';
 import { sortByLabel } from '@/lib/sortOptions';
+import { formatDateVancouver } from '@/lib/dateUtils';
 import { useConfirm } from '@/components/ConfirmProvider';
 import {
   FileImagePreviewModal,
@@ -921,7 +922,7 @@ export default function UserDocumentsTabEnhanced({
                             </td>
                             <td className="cursor-pointer px-3 py-2" onClick={() => handleFilePreview(d)}>
                               <div className="text-sm text-gray-600">
-                                {d.created_at ? new Date(d.created_at).toLocaleDateString('pt-BR') : '-'}
+                                {d.created_at ? formatDateVancouver(d.created_at) : '-'}
                               </div>
                             </td>
                             <td className="px-3 py-2">

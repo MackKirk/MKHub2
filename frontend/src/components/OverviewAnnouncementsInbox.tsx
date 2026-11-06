@@ -4,6 +4,7 @@ import { Mail, Paperclip } from 'lucide-react';
 import { api } from '@/lib/api';
 import { AppEmptyState, uiCx, uiTypography } from '@/components/ui';
 import { isUrgentCommunityPost } from '@/lib/communityPostPreview';
+import { VANCOUVER_TIMEZONE, formatTimeVancouver, formatDateVancouver, parseUtcTimestamp } from '@/lib/dateUtils';
 
 type CommunityPostRow = {
   id: string;
@@ -33,18 +34,24 @@ function stripHtml(html?: string): string {
 }
 
 function formatInboxDate(iso: string): string {
-  const d = new Date(iso);
+  const d = parseUtcTimestamp(iso);
   if (Number.isNaN(d.getTime())) return '';
+  const dayKeyFmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: VANCOUVER_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
   const now = new Date();
-  const sameDay =
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate();
+  const sameDay = dayKeyFmt.format(d) === dayKeyFmt.format(now);
   if (sameDay) {
-    return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    return formatTimeVancouver(iso, { hour: 'numeric', minute: '2-digit' });
   }
-  const sameYear = d.getFullYear() === now.getFullYear();
-  return d.toLocaleDateString([], sameYear ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', year: '2-digit' });
+  const sameYear = dayKeyFmt.format(d).slice(0, 4) === dayKeyFmt.format(now).slice(0, 4);
+  return formatDateVancouver(
+    iso,
+    sameYear ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', year: '2-digit' },
+  );
 }
 
 type Props = {

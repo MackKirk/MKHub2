@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Briefcase, ChevronLeft, ChevronRight, Clock, Coffee, Info, LogOut, Zap } from 'lucide-react';
 import { api } from '@/lib/api';
-import { formatDateLocal, getTodayLocal } from '@/lib/dateUtils';
+import { formatDateLocal, getTodayLocal, formatTimeVancouver } from '@/lib/dateUtils';
 import { ClockInOutModalLayer } from '@/components/ClockInOutModalLayer';
 import { MyTimeOffPanel } from '@/pages/clock/MyTimeOffPanel';
 import {
@@ -92,7 +92,7 @@ function formatShortDate(dateStr: string): string {
 }
 
 function formatClockTimestamp(iso: string): string {
-  return new Date(iso).toLocaleTimeString('en-US', {
+  return formatTimeVancouver(iso, {
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,

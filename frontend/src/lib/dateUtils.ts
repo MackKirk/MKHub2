@@ -16,16 +16,66 @@ export function parseUtcTimestamp(iso: string): Date {
   return new Date(normalized.endsWith('Z') ? normalized : `${normalized}Z`);
 }
 
-/** Date and time in Pacific Time (America/Vancouver, PST/PDT). */
-export function formatDateTimeVancouver(iso: string | null | undefined): string {
-  if (!iso) return '—';
+function formatInstantVancouver(
+  iso: string | null | undefined,
+  options: Intl.DateTimeFormatOptions,
+  locale = 'en-CA',
+  empty = '—',
+): string {
+  if (!iso) return empty;
   const d = parseUtcTimestamp(iso);
-  if (Number.isNaN(d.getTime())) return '—';
-  return new Intl.DateTimeFormat('en-CA', {
+  if (Number.isNaN(d.getTime())) return empty;
+  return new Intl.DateTimeFormat(locale, {
     timeZone: VANCOUVER_TIMEZONE,
-    dateStyle: 'short',
-    timeStyle: 'medium',
+    ...options,
   }).format(d);
+}
+
+/** Date and time in Pacific Time (America/Vancouver, PST/PDT). */
+export function formatDateTimeVancouver(
+  iso: string | null | undefined,
+  options?: Intl.DateTimeFormatOptions,
+): string {
+  return formatInstantVancouver(
+    iso,
+    options ?? { dateStyle: 'short', timeStyle: 'medium' },
+  );
+}
+
+/** Date only in Pacific Time. */
+export function formatDateVancouver(
+  iso: string | null | undefined,
+  options?: Intl.DateTimeFormatOptions,
+): string {
+  return formatInstantVancouver(iso, options ?? { dateStyle: 'medium' });
+}
+
+/** Time only in Pacific Time. */
+export function formatTimeVancouver(
+  iso: string | null | undefined,
+  options?: Intl.DateTimeFormatOptions,
+): string {
+  return formatInstantVancouver(iso, options ?? { timeStyle: 'short' });
+}
+
+/**
+ * Activity-feed style datetime in Pacific Time
+ * (e.g. "Nov 6, 2026, 7:28 AM") — same look as Recent Activity, fixed TZ.
+ */
+export function formatDateTimeVancouverFriendly(iso: string | null | undefined): string {
+  return formatInstantVancouver(
+    iso,
+    {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    },
+    'en-US',
+    '',
+  );
 }
 
 /**

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState, type DragEvent } from 'react';
 import toast from 'react-hot-toast';
 import { api, withFileAccessToken } from '@/lib/api';
 import { putFile, rejectOversizedBatch } from '@/lib/fileUploadBatch';
+import { formatDateTimeVancouver, formatDateVancouver } from '@/lib/dateUtils';
 import ImageEditor from '@/components/ImageEditor';
 import OverlayPortal from '@/components/OverlayPortal';
 import { useConfirm } from '@/components/ConfirmProvider';
@@ -717,7 +718,7 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
                               <td className="px-3 py-2 text-sm text-gray-600">{getFileTypeLabel(df)}</td>
                               <td className="px-3 py-2 text-sm text-gray-600">{df.category || '—'}</td>
                               <td className="px-3 py-2 text-sm text-gray-600">
-                                {df.deleted_at ? new Date(df.deleted_at).toLocaleString() : '—'}
+                                {df.deleted_at ? formatDateTimeVancouver(df.deleted_at) : '—'}
                               </td>
                               <td className="px-3 py-2">
                                 <div className="flex flex-wrap items-center gap-1">
@@ -1111,7 +1112,7 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
                                 <div className="text-sm text-gray-600">{getFileTypeLabel(f)}</div>
                               </td>
                               <td className="px-3 py-2 cursor-pointer" onClick={() => handleFilePreview(f)}>
-                                <div className="text-sm text-gray-600">{f.uploaded_at ? new Date(f.uploaded_at).toLocaleDateString('pt-BR') : '-'}</div>
+                                <div className="text-sm text-gray-600">{f.uploaded_at ? formatDateVancouver(f.uploaded_at) : '-'}</div>
                               </td>
                               <td className="px-3 py-2">
                                 <div className="flex items-center justify-end gap-0.5">
