@@ -1307,7 +1307,10 @@ export function ProjectListItem({ project, projectDivisions, projectStatuses, va
   const col6 = (
     <div className="min-w-0 flex items-center">
       {statusLabel ? (
-        <AppBadge variant={getProjectStatusBadgeVariant(statusLabel)} className="max-w-full truncate">
+        <AppBadge
+          variant={getProjectStatusBadgeVariant(statusLabel, projectStatuses)}
+          className="max-w-full truncate"
+        >
           {statusLabel}
         </AppBadge>
       ) : (
@@ -1640,7 +1643,10 @@ function ProjectListCard({ project, projectDivisions, projectStatuses, projectBa
 
           <div className="relative flex-shrink-0">
             {statusLabel ? (
-              <AppBadge variant={getProjectStatusBadgeVariant(statusLabel)} className="max-w-[10rem] truncate">
+              <AppBadge
+                variant={getProjectStatusBadgeVariant(statusLabel, projectStatuses)}
+                className="max-w-[10rem] truncate"
+              >
                 {statusLabel}
               </AppBadge>
             ) : (

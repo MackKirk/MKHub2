@@ -277,7 +277,7 @@ export function isHiddenPermissionKey(key: string): boolean {
   return false;
 }
 
-/** Legacy/shared project permissions (hidden in line UIs; backend fallback). */
+/** Legacy/shared project permissions (hidden in line UIs; retired as access grants). */
 export function isLegacyProjectPermissionKey(key: string): boolean {
   return isLegacySharedProjectPermissionKey(key);
 }

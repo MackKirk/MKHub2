@@ -34,7 +34,7 @@ function StatusLabelBadge({
   if (designSystem) {
     return (
       <AppBadge
-        variant={getProjectStatusBadgeVariant(label)}
+        variant={getProjectStatusBadgeVariant(label, statusColors)}
         className={compact ? 'normal-case !text-[9px]' : 'normal-case'}
       >
         {label}

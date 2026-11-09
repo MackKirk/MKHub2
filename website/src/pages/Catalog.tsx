@@ -37,19 +37,20 @@ export default function Catalog() {
 
   return (
     <div>
-      <section className="bg-metals-ink text-white">
-        <div className="mx-auto max-w-6xl px-4 py-16">
-          <p className="text-xs uppercase tracking-[0.2em] text-white/50">Catalog · British Columbia</p>
-          <h1 className="mt-3 font-display text-5xl font-extrabold uppercase">Product catalog</h1>
-          <p className="mt-3 max-w-2xl text-white/70">
-            Panels, trims, and flashings formed to your run. Browse profiles, then request an estimate or
-            start an order — pricing is quoted to your job.
+      <section className="mk-page-band">
+        <div className="mx-auto max-w-6xl px-4 py-14">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/50">
+            Langley shop · British Columbia
           </p>
-          <Link
-            to="/quote"
-            className="mt-6 inline-block rounded bg-metals-accent px-4 py-2 text-sm font-bold uppercase hover:bg-metals-accentDark"
-          >
-            Get a free estimate
+          <h1 className="mt-3 font-display text-4xl font-extrabold tracking-tight md:text-5xl">
+            Product catalog
+          </h1>
+          <p className="mt-3 max-w-2xl text-white/70">
+            Panels, trims, and flashings formed to your run. Browse profiles, then request an estimate
+            or start an order — pricing is quoted to your job.
+          </p>
+          <Link to="/quote" className="mk-btn-primary mt-6">
+            Free estimate
           </Link>
         </div>
       </section>
@@ -60,8 +61,8 @@ export default function Catalog() {
             <button
               type="button"
               onClick={() => setCategory('all')}
-              className={`rounded px-3 py-1.5 text-xs font-bold uppercase ${
-                category === 'all' ? 'bg-metals-accent text-white' : 'bg-white border border-metals-mist'
+              className={`rounded-sm px-3 py-1.5 text-xs font-bold uppercase ${
+                category === 'all' ? 'bg-metals-accent text-white' : 'border border-metals-mist bg-white'
               }`}
             >
               All
@@ -71,8 +72,8 @@ export default function Catalog() {
                 key={c.slug}
                 type="button"
                 onClick={() => setCategory(c.slug)}
-                className={`rounded px-3 py-1.5 text-xs font-bold uppercase ${
-                  category === c.slug ? 'bg-metals-accent text-white' : 'bg-white border border-metals-mist'
+                className={`rounded-sm px-3 py-1.5 text-xs font-bold uppercase ${
+                  category === c.slug ? 'bg-metals-accent text-white' : 'border border-metals-mist bg-white'
                 }`}
               >
                 {c.name}
@@ -83,7 +84,7 @@ export default function Catalog() {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search products"
-            className="w-full md:w-64 rounded border border-metals-mist bg-white px-3 py-2 text-sm"
+            className="w-full rounded-sm border border-metals-mist bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-metals-accent/30 md:w-64"
           />
         </div>
 
@@ -104,13 +105,17 @@ export default function Catalog() {
             <Link
               key={p.id}
               to={`/catalog/${p.slug}`}
-              className="group border border-metals-mist bg-white overflow-hidden hover:border-metals-accent/50 transition-colors"
+              className="group overflow-hidden border border-metals-mist bg-white transition-colors hover:border-metals-accent/55"
             >
-              <div className="aspect-[4/3] bg-metals-mist/60 flex items-center justify-center overflow-hidden">
+              <div className="flex aspect-[4/3] items-center justify-center overflow-hidden bg-metals-mist/60">
                 {p.image_url ? (
-                  <img src={p.image_url} alt="" className="h-full w-full object-cover" />
+                  <img
+                    src={p.image_url}
+                    alt=""
+                    className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+                  />
                 ) : (
-                  <span className="font-display text-4xl font-bold text-metals-steel/20 uppercase">
+                  <span className="font-display text-4xl font-bold uppercase text-metals-steel/20">
                     {p.name.slice(0, 2)}
                   </span>
                 )}
@@ -121,11 +126,11 @@ export default function Catalog() {
                     {p.category.name}
                   </p>
                 )}
-                <h2 className="mt-1 font-display text-xl font-bold uppercase group-hover:text-metals-accent">
+                <h2 className="mt-1 font-display text-xl font-bold group-hover:text-metals-accent">
                   {p.name}
                 </h2>
                 {p.short_description && (
-                  <p className="mt-1 text-sm text-metals-steel/70 line-clamp-2">{p.short_description}</p>
+                  <p className="mt-1 line-clamp-2 text-sm text-metals-steel/70">{p.short_description}</p>
                 )}
               </div>
             </Link>

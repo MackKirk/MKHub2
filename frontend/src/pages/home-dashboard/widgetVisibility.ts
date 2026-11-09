@@ -36,7 +36,6 @@ export function canAccessBusinessLineForHome(me: MeForHomeWidgets | undefined, l
   if (!me) return false;
   if (isAdminMe(me)) return true;
   const set = permSet(me);
-  if (set.has('business:projects:read')) return true;
   const ln = normalizeBusinessLineForHome(line);
   if (ln === BUSINESS_LINE_CONSTRUCTION) {
     return (

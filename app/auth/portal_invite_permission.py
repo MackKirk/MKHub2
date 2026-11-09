@@ -12,10 +12,8 @@ def staff_can_invite_to_portal(user: User) -> bool:
         return True
     if not _has_permission(user, "business:customers:write"):
         return False
-    return (
-        _has_permission(user, "business:projects:write")
-        or _has_permission(user, "business:construction:projects:write")
-        or _has_permission(user, "business:rm:projects:write")
+    return _has_permission(user, "business:construction:projects:write") or _has_permission(
+        user, "business:rm:projects:write"
     )
 
 

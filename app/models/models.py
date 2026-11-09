@@ -174,6 +174,20 @@ class PasswordReset(Base):
     used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
 
+class PortalPasswordReset(Base):
+    """Password reset tokens for PortalHubUser (Metals / Hub portal customers)."""
+
+    __tablename__ = "portal_password_resets"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    portal_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("portal_hub_users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    token: Mapped[str] = mapped_column(String(128), unique=True, index=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+
 class PortalHubUser(Base):
     """Customer-facing portal identity (never mixed with staff User)."""
 

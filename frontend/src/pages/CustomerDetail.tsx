@@ -143,8 +143,7 @@ export default function CustomerDetail(){
   const canInvitePortal =
     isAdmin ||
     (permissions.has('business:customers:write') &&
-      (permissions.has('business:projects:write') ||
-        permissions.has('business:construction:projects:write') ||
+      (permissions.has('business:construction:projects:write') ||
         permissions.has('business:rm:projects:write')));
   const { data:sites } = useQuery({ queryKey:['clientSites', id], queryFn: ()=>api<Site[]>('GET', `${apiBase}/${id}/sites`) });
   const { data:files, refetch: refetchFiles } = useQuery({ queryKey:['clientFiles', id], queryFn: ()=>api<ClientFile[]>('GET', `${apiBase}/${id}/files`) });

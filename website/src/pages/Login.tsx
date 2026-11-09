@@ -1,6 +1,7 @@
 import { FormEvent, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import PasswordField from '@/components/PasswordField';
 import { ApiError, api, persistTokens } from '@/lib/api';
 
 export default function Login() {
@@ -8,11 +9,13 @@ export default function Login() {
   const location = useLocation();
   const from = (location.state as { from?: string } | null)?.from || '/account';
   const [busy, setBusy] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     setBusy(true);
+    setFormError(null);
     try {
       const data = await api<{ access_token: string; refresh_token: string }>('POST', '/portal/metals/auth/login', {
         email: String(fd.get('email') || ''),
@@ -22,7 +25,8 @@ export default function Login() {
       toast.success('Signed in');
       navigate(from, { replace: true });
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Sign in failed');
+      const message = err instanceof ApiError ? err.message : 'Sign in failed';
+      setFormError(message);
     } finally {
       setBusy(false);
     }
@@ -30,22 +34,35 @@ export default function Login() {
 
   return (
     <div className="mx-auto max-w-md px-4 py-16">
-      <h1 className="font-display text-4xl font-extrabold uppercase">Sign in</h1>
+      <h1 className="font-display text-4xl font-extrabold tracking-tight">Sign in</h1>
       <p className="mt-2 text-sm text-metals-steel/70">Access your Mack Kirk Metals account.</p>
       <form onSubmit={onSubmit} className="mt-8 space-y-4">
         <label className="block text-sm">
           <span className="font-medium">Email</span>
-          <input name="email" type="email" required className="mt-1 w-full rounded border border-metals-mist bg-white px-3 py-2" />
+          <input
+            name="email"
+            type="email"
+            required
+            autoComplete="email"
+            className={`mk-input ${formError ? 'border-red-500' : ''}`}
+            onChange={() => setFormError(null)}
+          />
         </label>
-        <label className="block text-sm">
-          <span className="font-medium">Password</span>
-          <input name="password" type="password" required minLength={8} className="mt-1 w-full rounded border border-metals-mist bg-white px-3 py-2" />
-        </label>
-        <button
-          type="submit"
-          disabled={busy}
-          className="w-full rounded bg-metals-accent py-3 text-sm font-bold uppercase text-white disabled:opacity-60"
-        >
+        <PasswordField
+          label="Password"
+          name="password"
+          required
+          autoComplete="current-password"
+          minLength={8}
+          error={formError}
+          onChange={() => setFormError(null)}
+        />
+        <div className="flex justify-end">
+          <Link to="/forgot-password" className="text-sm text-metals-accent hover:underline">
+            Forgot password?
+          </Link>
+        </div>
+        <button type="submit" disabled={busy} className="mk-btn-primary w-full disabled:opacity-60">
           {busy ? 'Signing in…' : 'Sign in'}
         </button>
       </form>

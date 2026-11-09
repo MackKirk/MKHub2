@@ -14,21 +14,22 @@ export default function SiteShell() {
 
   return (
     <div className="min-h-screen flex flex-col bg-metals-paper text-metals-ink">
-      <header className="sticky top-0 z-40 border-b border-white/10 bg-metals-ink/95 text-white backdrop-blur">
+      <header className="sticky top-0 z-40 border-b border-white/10 bg-gradient-to-r from-[#2a2d31] via-[#222528] to-[#1c1e22] text-white animate-mkFadeUp">
         <div className="mx-auto flex max-w-6xl items-center gap-4 px-4 py-3">
-          <Link to="/" className="flex items-center gap-2 shrink-0">
-            <img src="/assets/brand/mkm-logo.png" alt="Mack Kirk Metals" className="h-9 w-auto" />
-            <span className="font-display text-lg font-bold uppercase tracking-wide hidden sm:inline">
-              Mack Kirk Metals
-            </span>
+          <Link to="/" className="shrink-0">
+            <img
+              src={`${import.meta.env.BASE_URL}assets/brand/mkm-logo.png`}
+              alt="Mack Kirk Metals"
+              className="h-10 w-auto"
+            />
           </Link>
-          <nav className="hidden md:flex items-center gap-5 text-sm font-medium text-white/80 ml-4">
+          <nav className="ml-2 hidden items-center gap-5 text-sm font-medium text-white/75 md:flex">
             {nav.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
                 className={({ isActive }) =>
-                  isActive ? 'text-white' : 'hover:text-white transition-colors'
+                  isActive ? 'text-white' : 'transition-colors hover:text-white'
                 }
               >
                 {item.label}
@@ -40,13 +41,13 @@ export default function SiteShell() {
               <>
                 <Link
                   to="/account"
-                  className="hidden sm:inline text-sm text-white/80 hover:text-white px-2"
+                  className="hidden px-2 text-sm text-white/75 hover:text-white sm:inline"
                 >
                   Account
                 </Link>
                 <button
                   type="button"
-                  className="text-sm text-white/70 hover:text-white px-2"
+                  className="px-2 text-sm text-white/65 hover:text-white"
                   onClick={async () => {
                     await logout();
                     clearTokens();
@@ -57,19 +58,19 @@ export default function SiteShell() {
                 </button>
               </>
             ) : (
-              <Link to="/login" className="hidden sm:inline text-sm text-white/80 hover:text-white px-2">
+              <Link to="/login" className="hidden px-2 text-sm text-white/75 hover:text-white sm:inline">
                 Sign in
               </Link>
             )}
             <Link
               to="/orders"
-              className="rounded border border-white/40 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide hover:bg-white/10"
+              className="rounded-sm border border-white/35 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide hover:bg-white/10"
             >
               Order now
             </Link>
             <Link
               to="/quote"
-              className="rounded bg-metals-accent px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white hover:bg-metals-accentDark"
+              className="rounded-sm bg-metals-accent px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white hover:bg-metals-accentDark"
             >
               Free estimate
             </Link>
@@ -82,13 +83,24 @@ export default function SiteShell() {
       </main>
 
       <footer className="bg-metals-ink text-white/80">
+        <div className="h-px bg-gradient-to-r from-transparent via-metals-gold/70 to-transparent" />
         <div className="mx-auto grid max-w-6xl gap-8 px-4 py-12 md:grid-cols-3">
           <div>
-            <p className="font-display text-xl font-bold uppercase text-white">Mack Kirk Metals</p>
-            <p className="mt-2 text-sm">Custom metal flashings, panels, and forming for BC contractors.</p>
+            <img
+              src={`${import.meta.env.BASE_URL}assets/brand/mkm-logo.png`}
+              alt="Mack Kirk Metals"
+              className="h-10 w-auto"
+            />
+            <p className="mt-3 text-sm leading-relaxed">
+              Custom brake forming, roll-formed panels, and trims for BC contractors — from the Langley
+              shop floor to your job site.
+            </p>
+            <p className="mt-3 text-xs font-semibold uppercase tracking-wider text-metals-gold">
+              Since 1908
+            </p>
           </div>
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-white/50">Explore</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-white/45">Explore</p>
             <ul className="mt-3 space-y-2 text-sm">
               {nav.map((item) => (
                 <li key={item.to}>
@@ -110,9 +122,15 @@ export default function SiteShell() {
             </ul>
           </div>
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-white/50">Contact</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-white/45">Shop & contact</p>
             <ul className="mt-3 space-y-2 text-sm">
-              <li>British Columbia, Canada</li>
+              <li>9552 – 198 St</li>
+              <li>Langley BC V1M 3C8</li>
+              <li>
+                <a href="tel:+16042587121" className="hover:text-white">
+                  (604) 258-7121
+                </a>
+              </li>
               <li>
                 <a href="mailto:metals@mackkirk.com" className="hover:text-white">
                   metals@mackkirk.com
@@ -122,7 +140,16 @@ export default function SiteShell() {
           </div>
         </div>
         <div className="border-t border-white/10 py-4 text-center text-xs text-white/40">
-          © {new Date().getFullYear()} Mack Kirk Metals
+          <p>© {new Date().getFullYear()} Mack Kirk Metals</p>
+          <p className="mt-1 space-x-3">
+            <Link to="/terms" className="hover:text-white/70">
+              Terms
+            </Link>
+            <span aria-hidden>·</span>
+            <Link to="/privacy" className="hover:text-white/70">
+              Privacy
+            </Link>
+          </p>
         </div>
       </footer>
     </div>

@@ -5,7 +5,13 @@ import { api, withFileAccessToken, revokeRefreshOnLogout } from '@/lib/api';
 import { mapEmployeeToAppUserSelect } from '@/lib/clientUi';
 import { sortByLabel } from '@/lib/sortOptions';
 import { PROJECT_DIVISIONS_QUERY_KEY } from '@/lib/businessLine';
-import { attendanceWorkDate, formatDateLocal, getCurrentMonthLocal } from '@/lib/dateUtils';
+import {
+  attendanceWorkDate,
+  formatDateLocal,
+  formatDateTimeVancouver,
+  formatDateVancouver,
+  getCurrentMonthLocal,
+} from '@/lib/dateUtils';
 import {
   formatTimeOffDate,
   formatTimeOffDateRange,

@@ -811,6 +811,14 @@ export default function DispatchTab({
                                       {shift.job_name}
                                     </div>
                                   )}
+                                  {shift.retroactive ? (
+                                    <div
+                                      className="text-[10px] font-semibold mt-0.5 truncate text-amber-800"
+                                      title="Created after the shift date; worker was not notified"
+                                    >
+                                      Backdated
+                                    </div>
+                                  ) : null}
                                   {shiftAckTracked(shift.ack_status) ? (
                                     <div
                                       className={`text-[10px] font-semibold mt-0.5 truncate ${shiftAckMeta(shift.ack_status).tone}`}
@@ -1240,6 +1248,7 @@ export function CreateShiftModal({
   onClose: () => void;
   onSave: () => Promise<void>;
 }) {
+  const confirm = useConfirm();
   const queryClient = useQueryClient();
   const [step, setStep] = useState(1);
   const [selectedWorkers, setSelectedWorkers] = useState<string[]>([]);
@@ -1503,10 +1512,9 @@ export function CreateShiftModal({
       const info = existingShiftInfoByDate.get(dateStr);
       const shiftCount = info?.count ?? 0;
       const inSpan =
-        !isPast &&
-        (dateMode === 'single'
+        dateMode === 'single'
           ? dateStr === date
-          : Boolean(rangeStart && rangeEnd && dateStr >= rangeStart && dateStr <= rangeEnd));
+          : Boolean(rangeStart && rangeEnd && dateStr >= rangeStart && dateStr <= rangeEnd);
       const excludedWeekend =
         dateMode === 'range' && excludeWeekends && isWeekend && inSpan;
       const inSelection = inSpan && !excludedWeekend;
@@ -1533,14 +1541,13 @@ export function CreateShiftModal({
         dateLabel: String(day),
         isToday: dateStr === todayStr,
         isSelected: inSelection,
-        isDisabled: isPast,
         isMuted: isPast || excludedWeekend,
         rangeRole: excludedWeekend ? undefined : rangeRole,
         hasMarker: shiftCount > 0,
         badge: shiftCount > 0 ? shiftCount : undefined,
         badgeTone: shiftCount > 0 ? 'accent' : undefined,
         title: isPast
-          ? 'Past date'
+          ? 'Past date — workers will not be notified'
           : excludedWeekend
             ? 'Weekend excluded'
             : shiftCount > 0
@@ -1548,9 +1555,7 @@ export function CreateShiftModal({
               : dateStr === todayStr
                 ? 'Today'
                 : undefined,
-        onClick: isPast
-          ? undefined
-          : () => {
+        onClick: () => {
               if (dateMode === 'single') {
                 setDate(dateStr);
                 return;
@@ -1890,6 +1895,27 @@ export function CreateShiftModal({
     Array.isArray(selectedDates) &&
     selectedDates.length > 0;
 
+  const hasPastDates = useMemo(
+    () => (Array.isArray(selectedDates) ? selectedDates : []).some((d) => d < todayStr),
+    [selectedDates, todayStr],
+  );
+
+  const backdatedWarning =
+    'You are creating shift(s) on a past date. Workers will not be notified, and confirmation will be marked as accepted automatically. This will be recorded as a backdated shift.';
+
+  const requestCreate = async () => {
+    if (hasPastDates) {
+      const result = await confirm({
+        title: 'Create backdated shift?',
+        message: `${backdatedWarning} Continue?`,
+        confirmText: 'Create anyway',
+        cancelText: 'Cancel',
+      });
+      if (result !== 'confirm') return;
+    }
+    await handleSave();
+  };
+
   const jobOpts = jobTypeOptions ?? jobTypeSelectOptions();
 
   const shiftCount =
@@ -2083,7 +2109,7 @@ export function CreateShiftModal({
                   disabled={!canSubmit || saving}
                   loading={saving}
                   onClick={() => {
-                    void handleSave();
+                    void requestCreate();
                   }}
                 >
                   {saving
@@ -2162,6 +2188,7 @@ export function CreateShiftModal({
                 ]}
               />
 
+              <div className="space-y-3">
               <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-[16.5rem_minmax(0,1fr)]">
                 <div className="min-w-0 space-y-3">
                   <div
@@ -2269,6 +2296,14 @@ export function CreateShiftModal({
                     />
                   </div>
                 </div>
+              </div>
+
+              {hasPastDates ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+                  <div className="font-semibold">Past date selected</div>
+                  <p className="mt-1 text-amber-900">{backdatedWarning}</p>
+                </div>
+              ) : null}
               </div>
 
               {overlapBlock}
@@ -2380,7 +2415,10 @@ export function CreateShiftModal({
         <div className="flex-1 overflow-y-auto p-4">
           <form
             id="create-shift-form"
-            onSubmit={(e) => { e.preventDefault(); handleSave(); }}
+            onSubmit={(e) => {
+              e.preventDefault();
+              void requestCreate();
+            }}
             className="rounded-xl border border-gray-200 bg-white p-4 space-y-4"
           >
             {error && (
@@ -2585,6 +2623,12 @@ export function CreateShiftModal({
                 ) : null}
               </div>
             )}
+            {hasPastDates ? (
+              <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+                <div className="font-semibold">Past date selected</div>
+                <p className="mt-1 text-amber-900">{backdatedWarning}</p>
+              </div>
+            ) : null}
           </div>
 
             {overlapWarnings.length > 0 && (

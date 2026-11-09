@@ -1073,6 +1073,21 @@ def update_setting_item(list_name: str, item_id: str, label: str = None, value: 
             elif list_name == "lead_sources":
                 db.query(Client).filter(Client.lead_source == old_label).update({Client.lead_source: label}, synchronize_session=False)
                 db.commit()
+            elif list_name == "project_statuses":
+                # Prefer status_id match so projects/opportunities keep the same status association.
+                db.query(Project).filter(Project.status_id == it.id).update(
+                    {Project.status_label: label},
+                    synchronize_session=False,
+                )
+                # Legacy rows without status_id: only rewrite exact previous label text.
+                db.query(Project).filter(
+                    Project.status_id.is_(None),
+                    Project.status_label == old_label,
+                ).update(
+                    {Project.status_label: label},
+                    synchronize_session=False,
+                )
+                db.commit()
         except ProgrammingError as e:
             error_msg = str(e.orig) if hasattr(e, 'orig') else str(e)
             if 'is_system' in error_msg and 'does not exist' in error_msg:

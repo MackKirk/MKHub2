@@ -184,7 +184,7 @@ export function hasProjectOwnerWritePermission(
 
 /**
  * Create/update/delete project or opportunity (status, name, convert, etc.).
- * Line-scoped main write, with legacy business:projects:write fallback.
+ * Line-scoped main write only (legacy business:projects:write is retired).
  */
 export function hasProjectLineWritePermission(
   permissions: Set<string> | Record<string, boolean>,
@@ -194,8 +194,7 @@ export function hasProjectLineWritePermission(
 ): boolean {
   if (isAdmin) return true;
   const line = projectLineFromBusinessLine(resolveProjectBusinessLine(businessLine, pathname));
-  if (hasPerm(permissions, `${PROJECT_LINE_PREFIX[line]}:write`)) return true;
-  return hasPerm(permissions, 'business:projects:write');
+  return hasPerm(permissions, `${PROJECT_LINE_PREFIX[line]}:write`);
 }
 
 /** Create/edit/upload: line write only (view-only must not pass). */
@@ -327,8 +326,15 @@ export function isHiddenProjectLinePermissionKey(key: string): boolean {
   return HIDDEN_LINE_PROJECT_SUB_FEATURES.some((feat) => key.includes(`:${feat}:`));
 }
 
+/** Force legacy shared main keys off so line-scoped Projects & Opportunities toggles win. */
+export function clearLegacyProjectMainPermissions(perms: Record<string, boolean | string[]>): void {
+  perms[`${LEGACY_PROJECT_PREFIX}:read`] = false;
+  perms[`${LEGACY_PROJECT_PREFIX}:write`] = false;
+}
+
 /** Clear legacy business:projects:<feature>:* so line-scoped overrides are authoritative. */
 export function clearLegacyProjectSubPermissions(perms: Record<string, boolean | string[]>): void {
+  clearLegacyProjectMainPermissions(perms);
   for (const feat of LEGACY_PROJECT_SUB_FEATURES) {
     perms[`${LEGACY_PROJECT_PREFIX}:${feat}:read`] = false;
     perms[`${LEGACY_PROJECT_PREFIX}:${feat}:write`] = false;

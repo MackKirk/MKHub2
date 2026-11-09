@@ -2225,7 +2225,12 @@ export default function ProjectDetail(){
                       ))}
                   </div>
                   {useDesignSystem ? (
-                    <AppBadge variant={getProjectStatusBadgeVariant(statusLabel)}>
+                    <AppBadge
+                      variant={getProjectStatusBadgeVariant(
+                        statusLabel,
+                        ((settings || {}).project_statuses || []) as any[],
+                      )}
+                    >
                       {statusLabel || '—'}
                     </AppBadge>
                   ) : (

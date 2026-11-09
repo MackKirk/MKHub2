@@ -64,15 +64,9 @@ function canWriteProjectReports(
   if (isAdminRole(roles)) return true;
   const line = businessLine || "construction";
   if (line === "repairs_maintenance" || line === "repairs") {
-    return (
-      permissions.has("business:rm:projects:write") ||
-      permissions.has("business:projects:write")
-    );
+    return permissions.has("business:rm:projects:write");
   }
-  return (
-    permissions.has("business:construction:projects:write") ||
-    permissions.has("business:projects:write")
-  );
+  return permissions.has("business:construction:projects:write");
 }
 
 export const MKProjectNotesSection: React.FC<MKProjectNotesSectionProps> = ({

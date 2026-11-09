@@ -55,12 +55,15 @@ export default function Quote() {
 
   return (
     <div>
-      <section className="bg-metals-ink text-white">
+      <section className="mk-page-band">
         <div className="mx-auto max-w-3xl px-4 py-14">
-          <p className="text-xs uppercase tracking-[0.2em] text-white/50">Free estimate</p>
-          <h1 className="mt-3 font-display text-5xl font-extrabold uppercase">Get a free estimate</h1>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/50">Free estimate</p>
+          <h1 className="mt-3 font-display text-4xl font-extrabold tracking-tight md:text-5xl">
+            Get a free estimate
+          </h1>
           <p className="mt-3 text-white/70">
-            Send your sketch or drawings and a few details. We&apos;ll get you a price — often the same day.
+            Send profiles, run lengths, gauge, and colour — with a sketch or drawing when you have one.
+            We quote to the job, often the same day.
           </p>
         </div>
       </section>
@@ -69,19 +72,19 @@ export default function Quote() {
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="block text-sm">
             <span className="font-medium">Name *</span>
-            <input name="contact_name" required className="mt-1 w-full rounded border border-metals-mist bg-white px-3 py-2" />
+            <input name="contact_name" required className="mk-input" />
           </label>
           <label className="block text-sm">
             <span className="font-medium">Company</span>
-            <input name="company_name" className="mt-1 w-full rounded border border-metals-mist bg-white px-3 py-2" />
+            <input name="company_name" className="mk-input" />
           </label>
           <label className="block text-sm">
             <span className="font-medium">Email *</span>
-            <input name="contact_email" type="email" required className="mt-1 w-full rounded border border-metals-mist bg-white px-3 py-2" />
+            <input name="contact_email" type="email" required className="mk-input" />
           </label>
           <label className="block text-sm">
             <span className="font-medium">Phone *</span>
-            <input name="contact_phone" required className="mt-1 w-full rounded border border-metals-mist bg-white px-3 py-2" />
+            <input name="contact_phone" required className="mk-input" />
           </label>
         </div>
 
@@ -104,7 +107,7 @@ export default function Quote() {
             rows={5}
             defaultValue={initialNotes}
             placeholder="Profiles, quantities, material, colour, timing…"
-            className="mt-1 w-full rounded border border-metals-mist bg-white px-3 py-2"
+            className="mk-input"
           />
         </label>
 
@@ -122,11 +125,7 @@ export default function Quote() {
           </span>
         </label>
 
-        <button
-          type="submit"
-          disabled={busy}
-          className="rounded bg-metals-accent px-5 py-3 text-sm font-bold uppercase text-white hover:bg-metals-accentDark disabled:opacity-60"
-        >
+        <button type="submit" disabled={busy} className="mk-btn-primary disabled:opacity-60">
           {busy ? 'Submitting…' : 'Get a free estimate'}
         </button>
         <p className="text-xs text-metals-steel/60">

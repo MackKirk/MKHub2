@@ -10,10 +10,36 @@ body,
 
 body {
   font-family: theme(fontFamily.sans);
-  background: #f4f5f7;
-  color: #121418;
+  background: #f0f1f3;
+  color: #1c1e22;
 }
 
 .font-display {
-  letter-spacing: 0.02em;
+  letter-spacing: -0.01em;
+}
+
+@layer components {
+  .mk-btn-primary {
+    @apply inline-flex items-center justify-center rounded-sm bg-metals-accent px-5 py-3 text-sm font-bold uppercase tracking-wide text-white transition-colors hover:bg-metals-accentDark focus:outline-none focus-visible:ring-2 focus-visible:ring-metals-accent/40;
+  }
+
+  .mk-btn-ghost {
+    @apply inline-flex items-center justify-center rounded-sm border border-white/35 px-5 py-3 text-sm font-bold uppercase tracking-wide text-white transition-colors hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30;
+  }
+
+  .mk-btn-outline {
+    @apply inline-flex items-center justify-center rounded-sm border border-metals-ink px-5 py-3 text-sm font-bold uppercase tracking-wide text-metals-ink transition-colors hover:bg-metals-ink hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-metals-accent/30;
+  }
+
+  .mk-page-band {
+    @apply bg-gradient-to-r from-[#2a2d31] via-[#222528] to-[#1c1e22] text-white;
+  }
+
+  .mk-input {
+    @apply mt-1 w-full rounded-sm border border-metals-mist bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-metals-accent/30;
+  }
+
+  .mk-hero-slant {
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - 2.5rem), 0 100%);
+  }
 }

@@ -1454,7 +1454,9 @@ export const createShiftQuickInfo = formModalQuickInfo({
       In range mode you can {uiLabel('Exclude weekends')} so Saturday and Sunday are skipped. Each worker × date
       combination becomes its own shift. A note is copied onto every shift in the batch and shown on the worker&apos;s
       schedule. Overlapping times for the same worker show a warning but do not block saving.
-      On-site lead is optional and collapsed by default; when used it only fills empty division slots.
+      Past dates are allowed for backfill: workers are not notified, confirmation is auto-accepted, and the shift is
+      recorded as backdated. On-site lead is optional and collapsed by default; when used it only fills empty division
+      slots.
     </>
   ),
   actions: (

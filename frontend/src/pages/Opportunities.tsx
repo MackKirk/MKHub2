@@ -1330,7 +1330,10 @@ export function OpportunityListItem({ opportunity, onOpenReportModal, projectSta
   const col4 = (
     <div className="min-w-0 flex items-center">
       {statusLabel ? (
-        <AppBadge variant={getProjectStatusBadgeVariant(statusLabel)} className="max-w-full truncate">
+        <AppBadge
+          variant={getProjectStatusBadgeVariant(statusLabel, projectStatuses)}
+          className="max-w-full truncate"
+        >
           {statusLabel}
         </AppBadge>
       ) : (
@@ -1685,7 +1688,10 @@ function OpportunityListCard({ opportunity, onOpenReportModal, projectStatuses, 
 
           <div className="relative flex-shrink-0">
             {statusLabel ? (
-              <AppBadge variant={getProjectStatusBadgeVariant(statusLabel)} className="max-w-[10rem] truncate">
+              <AppBadge
+                variant={getProjectStatusBadgeVariant(statusLabel, projectStatuses)}
+                className="max-w-[10rem] truncate"
+              >
                 {statusLabel}
               </AppBadge>
             ) : (

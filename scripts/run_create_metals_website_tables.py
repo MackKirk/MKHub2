@@ -26,6 +26,7 @@ def main() -> None:
         m.MetalsWebsiteSubmission.__table__,
         m.MetalsWebsiteSubmissionItem.__table__,
         m.MetalsWebsiteSubmissionFile.__table__,
+        m.PortalPasswordReset.__table__,
     ]
     Base.metadata.create_all(bind=engine, tables=tables)
     print(f"Ensured {len(tables)} metals website tables exist.")

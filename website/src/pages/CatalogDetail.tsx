@@ -18,7 +18,7 @@ export default function CatalogDetail() {
     return (
       <div className="mx-auto max-w-3xl px-4 py-16">
         <p className="text-red-600">{error}</p>
-        <Link to="/catalog" className="mt-4 inline-block text-metals-accent">
+        <Link to="/catalog" className="mt-4 inline-block text-metals-accent hover:underline">
           ← Back to catalog
         </Link>
       </div>
@@ -46,11 +46,11 @@ export default function CatalogDetail() {
         ← Catalog
       </Link>
       <div className="mt-6 grid gap-10 md:grid-cols-2">
-        <div className="aspect-square bg-metals-mist/50 border border-metals-mist flex items-center justify-center overflow-hidden">
+        <div className="flex aspect-square items-center justify-center overflow-hidden border border-metals-mist bg-metals-mist/50">
           {product.image_url ? (
             <img src={product.image_url} alt="" className="h-full w-full object-cover" />
           ) : (
-            <span className="font-display text-6xl font-bold text-metals-steel/15 uppercase">
+            <span className="px-6 text-center font-display text-5xl font-bold uppercase text-metals-steel/15">
               {product.name}
             </span>
           )}
@@ -61,7 +61,7 @@ export default function CatalogDetail() {
               {product.category.name}
             </p>
           )}
-          <h1 className="mt-2 font-display text-4xl font-extrabold uppercase">{product.name}</h1>
+          <h1 className="mt-2 font-display text-4xl font-extrabold tracking-tight">{product.name}</h1>
           {product.short_description && (
             <p className="mt-3 text-metals-steel/80">{product.short_description}</p>
           )}
@@ -82,16 +82,10 @@ export default function CatalogDetail() {
             </div>
           )}
           <div className="mt-8 flex flex-wrap gap-3">
-            <Link
-              to={`/quote?${quoteParams.toString()}`}
-              className="rounded bg-metals-accent px-4 py-2.5 text-sm font-bold uppercase text-white hover:bg-metals-accentDark"
-            >
+            <Link to={`/quote?${quoteParams.toString()}`} className="mk-btn-primary">
               Get estimate
             </Link>
-            <Link
-              to={`/orders?${orderParams.toString()}`}
-              className="rounded border border-metals-ink px-4 py-2.5 text-sm font-bold uppercase hover:bg-metals-ink hover:text-white"
-            >
+            <Link to={`/orders?${orderParams.toString()}`} className="mk-btn-outline">
               Add to order
             </Link>
           </div>
