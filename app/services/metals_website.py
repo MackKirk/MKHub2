@@ -23,8 +23,8 @@ from ..models.models import (
     MetalsWebsiteSubmission,
     MetalsWebsiteSubmissionFile,
     MetalsWebsiteSubmissionItem,
-    PortalHubUser,
     PortalMetalsMembership,
+    PortalMetalsUser,
     Quote,
 )
 from ..routes.files import get_storage, unique_upload_key
@@ -253,11 +253,11 @@ def find_or_create_metals_client(
     return client
 
 
-def active_metals_client_ids(db: Session, user: PortalHubUser) -> list[uuid.UUID]:
+def active_metals_client_ids(db: Session, user: PortalMetalsUser) -> list[uuid.UUID]:
     rows = (
         db.query(PortalMetalsMembership.metals_client_id)
         .filter(
-            PortalMetalsMembership.portal_user_id == user.id,
+            PortalMetalsMembership.metals_user_id == user.id,
             PortalMetalsMembership.status == "active",
         )
         .all()
@@ -272,19 +272,19 @@ def metals_client_display_name(db: Session, client_id: uuid.UUID) -> Optional[st
     return c.display_name or c.name
 
 
-def claim_submissions_for_user(db: Session, user: PortalHubUser, metals_client_id: uuid.UUID) -> int:
+def claim_submissions_for_user(db: Session, user: PortalMetalsUser, metals_client_id: uuid.UUID) -> int:
     email = normalize_email(user.email)
     rows = (
         db.query(MetalsWebsiteSubmission)
         .filter(
             func.lower(MetalsWebsiteSubmission.contact_email) == email,
-            MetalsWebsiteSubmission.portal_user_id.is_(None),
+            MetalsWebsiteSubmission.metals_user_id.is_(None),
         )
         .all()
     )
     n = 0
     for row in rows:
-        row.portal_user_id = user.id
+        row.metals_user_id = user.id
         if row.metals_client_id is None:
             row.metals_client_id = metals_client_id
         n += 1
@@ -358,7 +358,7 @@ def serialize_submission(row: MetalsWebsiteSubmission, *, include_internal: bool
         "delivery_address": row.delivery_address,
         "notification_prefs": row.notification_prefs or {},
         "metals_client_id": str(row.metals_client_id) if row.metals_client_id else None,
-        "portal_user_id": str(row.portal_user_id) if row.portal_user_id else None,
+        "metals_user_id": str(row.metals_user_id) if row.metals_user_id else None,
         "converted_quote_id": str(row.converted_quote_id) if row.converted_quote_id else None,
         "source": row.source,
         "created_at": row.created_at.isoformat() if row.created_at else None,

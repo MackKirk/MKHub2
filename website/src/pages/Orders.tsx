@@ -1,6 +1,7 @@
 import { FormEvent, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import MkCheckbox from '@/components/MkCheckbox';
 import { ApiError, apiForm } from '@/lib/api';
 
 type LineItem = {
@@ -17,6 +18,8 @@ export default function Orders() {
   const [busy, setBusy] = useState(false);
   const [files, setFiles] = useState<FileList | null>(null);
   const [delivery, setDelivery] = useState<'pickup' | 'delivery'>('pickup');
+  const [notifyEmail, setNotifyEmail] = useState(true);
+  const [notifySms, setNotifySms] = useState(false);
   const [items, setItems] = useState<LineItem[]>(() => {
     const name = params.get('name');
     const productId = params.get('product_id') || undefined;
@@ -110,15 +113,21 @@ export default function Orders() {
 
         <div>
           <p className="text-sm font-medium">Order status updates</p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            <label className="inline-flex items-center gap-2 rounded-sm border border-metals-ink bg-metals-ink px-3 py-2 text-sm text-white">
-              <input type="checkbox" name="notify_email" value="true" defaultChecked />
-              Email
-            </label>
-            <label className="inline-flex items-center gap-2 rounded-sm border border-metals-mist bg-white px-3 py-2 text-sm">
-              <input type="checkbox" name="notify_sms" value="true" />
-              Text message (SMS)
-            </label>
+          <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:gap-6">
+            <MkCheckbox
+              name="notify_email"
+              value="true"
+              checked={notifyEmail}
+              onChange={setNotifyEmail}
+              label="Email"
+            />
+            <MkCheckbox
+              name="notify_sms"
+              value="true"
+              checked={notifySms}
+              onChange={setNotifySms}
+              label="Text message (SMS)"
+            />
           </div>
         </div>
 

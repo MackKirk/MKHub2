@@ -1,6 +1,7 @@
 import { FormEvent, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import MkCheckbox from '@/components/MkCheckbox';
 import PasswordField from '@/components/PasswordField';
 import PasswordStrength from '@/components/PasswordStrength';
 import { ApiError, api, persistTokens } from '@/lib/api';
@@ -148,28 +149,26 @@ export default function Register() {
           error={confirmError}
         />
 
-        <label className="flex items-start gap-2 text-sm">
-          <input
-            type="checkbox"
-            className="mt-1"
-            checked={terms}
-            onChange={(e) => {
-              setTerms(e.target.checked);
-              setErrors((err) => ({ ...err, terms: undefined }));
-            }}
-          />
-          <span>
-            I agree to the{' '}
-            <Link to="/terms" className="text-metals-accent underline">
-              Terms
-            </Link>{' '}
-            and{' '}
-            <Link to="/privacy" className="text-metals-accent underline">
-              Privacy Policy
-            </Link>
-            .
-          </span>
-        </label>
+        <MkCheckbox
+          checked={terms}
+          onChange={(v) => {
+            setTerms(v);
+            setErrors((err) => ({ ...err, terms: undefined }));
+          }}
+          label={
+            <>
+              I agree to the{' '}
+              <Link to="/terms" className="text-metals-accent underline">
+                Terms
+              </Link>{' '}
+              and{' '}
+              <Link to="/privacy" className="text-metals-accent underline">
+                Privacy Policy
+              </Link>
+              .
+            </>
+          }
+        />
         {errors.terms && <p className="text-xs text-red-600">{errors.terms}</p>}
 
         <button type="submit" disabled={!canSubmit} className="mk-btn-primary w-full disabled:opacity-60">

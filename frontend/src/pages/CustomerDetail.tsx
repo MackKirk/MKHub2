@@ -19,6 +19,7 @@ import { OpportunityListItem, CreateReportModal, OPPORTUNITY_LIST_GRID_CLASS, OP
 import { ProjectListItem, PROJECT_LIST_GRID_CLASS, PROJECT_LIST_MIN_WIDTH, SHOW_PROJECT_LIST_SHORTCUTS } from './Projects';
 import NewContactModal from '@/components/NewContactModal';
 import EditContactModal, { type ClientContactRecord } from '@/components/EditContactModal';
+import { ContactNotesModal } from '@/components/customer/ContactNotesModal';
 import SiteFormModal, { type ClientSiteRecord } from '@/components/SiteFormModal';
 import EditCustomerGeneralModal, {
   type CustomerGeneralEditSection,
@@ -53,7 +54,7 @@ import {
   uiSpacing,
   uiTypography,
 } from '@/components/ui';
-import { Users, ChevronDown, ChevronUp, CalendarDays, GripVertical, Mail, Phone, MapPin, Camera } from 'lucide-react';
+import { Users, ChevronDown, ChevronUp, CalendarDays, GripVertical, Mail, Phone, MapPin, Camera, StickyNote } from 'lucide-react';
 import {
   canViewCustomerTab as canViewCustomerTabFn,
   type CustomerTab as CustomerTabId,
@@ -701,8 +702,12 @@ export default function CustomerDetail(){
                 <ContactsCard
                   id={String(id)}
                   hasEditPermission={hasContactsEdit}
+                  hasNotesView={hasNotesView}
+                  hasNotesEdit={hasNotesEdit}
                   clientDisplayName={client?.display_name || client?.name || ''}
                   apiBase={apiBase}
+                  reportCategories={reportCategories}
+                  projects={notesProjectOptions}
                 />
               )}
               {tab==='sites' && hasSitesView && (
@@ -725,6 +730,10 @@ export default function CustomerDetail(){
                   canWrite={hasNotesEdit}
                   reportCategories={reportCategories}
                   projects={notesProjectOptions}
+                  contacts={(contacts || []).map((c: any) => ({
+                    id: String(c.id),
+                    name: c.name || null,
+                  }))}
                   apiBase={apiBase}
                 />
               )}
@@ -1678,7 +1687,25 @@ function SitesCard({ apiBase = '/clients',
   );
 }
 
-function ContactsCard({ id, hasEditPermission, clientDisplayName, apiBase = '/clients' }: { id: string, hasEditPermission?: boolean, clientDisplayName?: string, apiBase?: string }){
+function ContactsCard({
+  id,
+  hasEditPermission,
+  hasNotesView,
+  hasNotesEdit,
+  clientDisplayName,
+  apiBase = '/clients',
+  reportCategories = [],
+  projects = [],
+}: {
+  id: string;
+  hasEditPermission?: boolean;
+  hasNotesView?: boolean;
+  hasNotesEdit?: boolean;
+  clientDisplayName?: string;
+  apiBase?: string;
+  reportCategories?: any[];
+  projects?: Array<{ id: string; code?: string; name?: string; is_bidding?: boolean }>;
+}){
   const queryClient = useQueryClient();
   const { data, refetch } = useQuery({ queryKey:['clientContacts', id], queryFn: ()=>api<any[]>('GET', `${apiBase}/${id}/contacts`) });
   const { data:files } = useQuery({ queryKey:['clientFilesForContacts', id], queryFn: ()=>api<any[]>('GET', `${apiBase}/${id}/files`) });
@@ -1686,6 +1713,7 @@ function ContactsCard({ id, hasEditPermission, clientDisplayName, apiBase = '/cl
   useEffect(()=>{ setList(data||[]); }, [data]);
   const [editContact, setEditContact] = useState<ClientContactRecord | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [notesContact, setNotesContact] = useState<{ id: string; name?: string | null } | null>(null);
 
   const avatarByContactId = useMemo(() => {
     const map = new Map<string, string>();
@@ -1702,7 +1730,7 @@ function ContactsCard({ id, hasEditPermission, clientDisplayName, apiBase = '/cl
 
   const contactMetaLine = (c: any) => {
     const parts = [c.role_title, c.department].filter(Boolean);
-    return parts.length ? parts.join(' Â· ') : null;
+    return parts.length ? parts.join(' · ') : null;
   };
 
   const refreshContacts = () => {
@@ -1857,6 +1885,21 @@ function ContactsCard({ id, hasEditPermission, clientDisplayName, apiBase = '/cl
                   ) : null}
                 </div>
               </div>
+              {hasNotesView ? (
+                <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
+                  <AppButton
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={() =>
+                      setNotesContact({ id: String(c.id), name: c.name || null })
+                    }
+                  >
+                    <StickyNote className="h-3.5 w-3.5" aria-hidden />
+                    Notes
+                  </AppButton>
+                </div>
+              ) : null}
             </div>
           );
         })}
@@ -1881,6 +1924,19 @@ function ContactsCard({ id, hasEditPermission, clientDisplayName, apiBase = '/cl
         onSaved={() => refreshContacts()}
         onDeleted={() => refreshContacts()}
       />
+      {notesContact ? (
+        <ContactNotesModal
+          open
+          onClose={() => setNotesContact(null)}
+          clientId={id}
+          apiBase={apiBase}
+          contact={notesContact}
+          contacts={list.map((c) => ({ id: String(c.id), name: c.name || null }))}
+          canWrite={!!hasNotesEdit}
+          reportCategories={reportCategories}
+          projects={projects}
+        />
+      ) : null}
     </div>
   );
 }

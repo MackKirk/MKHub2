@@ -69,7 +69,9 @@ PUBLIC_PATH_PATTERNS: Tuple[re.Pattern, ...] = (
     re.compile(r"^/portal/hub/auth/accept-invite/?$"),
     re.compile(r"^/portal/hub/auth/invite/[^/]+/?$"),
     re.compile(r"^/portal/hub/auth/logout/?$"),
-    re.compile(r"^/portal/metals/auth/(register|login|refresh|logout)/?$"),
+    re.compile(
+        r"^/portal/metals/auth/(register|login|refresh|logout|forgot-password|reset-password)/?$"
+    ),
     re.compile(r"^/public/metals(/.*)?$"),
 )
 

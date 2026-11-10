@@ -24,10 +24,18 @@ Ensure website tables exist:
 
 ```bash
 python scripts/run_create_metals_website_tables.py
-python scripts/run_create_portal_password_resets.py
 python scripts/seed_metals_catalog.py
 python scripts/seed_product_metals_permissions.py
 ```
+
+Metals website accounts are **separate** from Hub customer portal (`portal_hub_users`).
+On an existing DB that still shared identities, run once:
+
+```bash
+python scripts/separate_metals_portal_auth.py
+```
+
+That clears old Metals memberships (re-register on the website) and keeps Hub portal users intact.
 
 ### Password reset email (local)
 

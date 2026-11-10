@@ -174,22 +174,8 @@ class PasswordReset(Base):
     used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
 
-class PortalPasswordReset(Base):
-    """Password reset tokens for PortalHubUser (Metals / Hub portal customers)."""
-
-    __tablename__ = "portal_password_resets"
-
-    id: Mapped[uuid.UUID] = uuid_pk()
-    portal_user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("portal_hub_users.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    token: Mapped[str] = mapped_column(String(128), unique=True, index=True, nullable=False)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-
-
 class PortalHubUser(Base):
-    """Customer-facing portal identity (never mixed with staff User)."""
+    """Hub customer portal identity (never mixed with staff User or Metals website accounts)."""
 
     __tablename__ = "portal_hub_users"
 
@@ -201,6 +187,46 @@ class PortalHubUser(Base):
     session_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+
+class PortalMetalsUser(Base):
+    """Mack Kirk Metals website customer identity (isolated from Hub portal)."""
+
+    __tablename__ = "portal_metals_users"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    name: Mapped[Optional[str]] = mapped_column(String(255))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    session_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+
+class PortalMetalsRefreshToken(Base):
+    __tablename__ = "portal_metals_refresh_tokens"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    metals_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("portal_metals_users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    jti: Mapped[str] = mapped_column(String(128), unique=True, nullable=False, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class PortalMetalsPasswordReset(Base):
+    """Password reset tokens for Metals website accounts only."""
+
+    __tablename__ = "portal_metals_password_resets"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    metals_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("portal_metals_users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    token: Mapped[str] = mapped_column(String(128), unique=True, index=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
 
 class PortalHubMembership(Base):
@@ -254,16 +280,16 @@ class PortalHubRefreshToken(Base):
 
 
 class PortalMetalsMembership(Base):
-    """Links a portal user to a Mack Kirk Metals CRM client (metals_clients)."""
+    """Links a Metals website user to a Mack Kirk Metals CRM client (metals_clients)."""
 
     __tablename__ = "portal_metals_memberships"
     __table_args__ = (
-        UniqueConstraint("portal_user_id", "metals_client_id", name="uq_portal_metals_membership_user_client"),
+        UniqueConstraint("metals_user_id", "metals_client_id", name="uq_portal_metals_membership_user_client"),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()
-    portal_user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("portal_hub_users.id", ondelete="CASCADE"), nullable=False, index=True
+    metals_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("portal_metals_users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     metals_client_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("metals_clients.id", ondelete="CASCADE"), nullable=False, index=True
@@ -499,6 +525,7 @@ class ClientNote(Base):
     __table_args__ = (
         Index("ix_client_notes_client_created", "client_id", "created_at"),
         Index("ix_client_notes_project_id", "project_id"),
+        Index("ix_client_notes_contact_id", "contact_id"),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()
@@ -508,6 +535,11 @@ class ClientNote(Base):
     project_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="SET NULL"), nullable=True
     )
+    contact_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("client_contacts.id", ondelete="SET NULL"), nullable=True
+    )
+    # Snapshot of contact name at link time; retained after contact delete (contact_id cleared).
+    contact_name: Mapped[Optional[str]] = mapped_column(String(255))
     title: Mapped[Optional[str]] = mapped_column(String(255))
     category_id: Mapped[Optional[str]] = mapped_column(String(100))
     description: Mapped[Optional[str]] = mapped_column(Text())
@@ -1593,8 +1625,8 @@ class MetalsWebsiteSubmission(Base):
     metals_client_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("metals_clients.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    portal_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("portal_hub_users.id", ondelete="SET NULL"), nullable=True, index=True
+    metals_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("portal_metals_users.id", ondelete="SET NULL"), nullable=True, index=True
     )
     converted_quote_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("quotes.id", ondelete="SET NULL"), nullable=True, index=True

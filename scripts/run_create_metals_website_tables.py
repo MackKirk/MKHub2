@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create MK Metals website tables (catalog, memberships, submissions). Non-destructive."""
+"""Create MK Metals website tables (catalog, Metals auth, memberships, submissions). Non-destructive."""
 from __future__ import annotations
 
 import os
@@ -20,13 +20,15 @@ def main() -> None:
     from app.models import models as m
 
     tables = [
+        m.PortalMetalsUser.__table__,
+        m.PortalMetalsRefreshToken.__table__,
+        m.PortalMetalsPasswordReset.__table__,
         m.PortalMetalsMembership.__table__,
         m.MetalsCatalogCategory.__table__,
         m.MetalsCatalogProduct.__table__,
         m.MetalsWebsiteSubmission.__table__,
         m.MetalsWebsiteSubmissionItem.__table__,
         m.MetalsWebsiteSubmissionFile.__table__,
-        m.PortalPasswordReset.__table__,
     ]
     Base.metadata.create_all(bind=engine, tables=tables)
     print(f"Ensured {len(tables)} metals website tables exist.")

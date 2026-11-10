@@ -1,4 +1,4 @@
-"""Portal APIs for MK Metals customer accounts (self-register + submissions)."""
+"""Portal APIs for MK Metals website customer accounts (isolated from Hub portal)."""
 from __future__ import annotations
 
 import logging
@@ -16,22 +16,23 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
-from ..auth.portal_security import (
-    create_portal_access_token,
-    create_portal_refresh_token,
-    get_current_portal_user,
+from ..auth.metals_portal_security import (
+    METALS_PORTAL_PRINCIPAL,
+    create_metals_access_token,
+    create_metals_refresh_token,
+    get_current_metals_portal_user,
     get_password_hash,
     http_bearer,
-    portal_user_session_version,
+    metals_user_session_version,
     verify_password,
 )
 from ..config import settings
 from ..db import get_db
 from ..models.models import (
     MetalsWebsiteSubmission,
-    PortalHubUser,
     PortalMetalsMembership,
-    PortalPasswordReset,
+    PortalMetalsPasswordReset,
+    PortalMetalsUser,
 )
 from ..services.metals_website import (
     active_metals_client_ids,
@@ -42,11 +43,11 @@ from ..services.metals_website import (
     serialize_submission,
     submission_query,
 )
-from ..services.portal_hub_refresh_tokens import (
-    bump_portal_session_and_revoke,
-    clear_portal_refresh_tokens,
-    persist_portal_refresh_token,
-    validate_and_rotate_portal_refresh,
+from ..services.portal_metals_refresh_tokens import (
+    bump_metals_session_and_revoke,
+    clear_metals_refresh_tokens,
+    persist_metals_refresh_token,
+    validate_and_rotate_metals_refresh,
 )
 
 logger = logging.getLogger(__name__)
@@ -144,20 +145,20 @@ Mack Kirk Metals
         return False
 
 
-def _issue_tokens(db: Session, user: PortalHubUser) -> TokenResponse:
-    access = create_portal_access_token(str(user.id), session_version=portal_user_session_version(user))
-    refresh = create_portal_refresh_token(str(user.id))
-    clear_portal_refresh_tokens(db, user.id)
-    persist_portal_refresh_token(db, user.id, refresh)
+def _issue_tokens(db: Session, user: PortalMetalsUser) -> TokenResponse:
+    access = create_metals_access_token(str(user.id), session_version=metals_user_session_version(user))
+    refresh = create_metals_refresh_token(str(user.id))
+    clear_metals_refresh_tokens(db, user.id)
+    persist_metals_refresh_token(db, user.id, refresh)
     db.commit()
     return TokenResponse(access_token=access, refresh_token=refresh)
 
 
-def _serialize_me(db: Session, user: PortalHubUser) -> dict:
+def _serialize_me(db: Session, user: PortalMetalsUser) -> dict:
     memberships = (
         db.query(PortalMetalsMembership)
         .filter(
-            PortalMetalsMembership.portal_user_id == user.id,
+            PortalMetalsMembership.metals_user_id == user.id,
             PortalMetalsMembership.status == "active",
         )
         .all()
@@ -183,7 +184,7 @@ def _serialize_me(db: Session, user: PortalHubUser) -> dict:
 @router.post("/auth/register", response_model=TokenResponse)
 def register(req: RegisterRequest, db: Session = Depends(get_db)):
     email = normalize_email(str(req.email))
-    existing = db.query(PortalHubUser).filter(func.lower(PortalHubUser.email) == email).first()
+    existing = db.query(PortalMetalsUser).filter(func.lower(PortalMetalsUser.email) == email).first()
     if existing:
         raise HTTPException(
             status_code=400,
@@ -194,7 +195,7 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)):
     company = (req.company_name or "").strip() or None
     phone = (req.phone or "").strip() or None
 
-    user = PortalHubUser(
+    user = PortalMetalsUser(
         email=email,
         password_hash=get_password_hash(req.password),
         name=name,
@@ -213,7 +214,7 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)):
     )
     db.add(
         PortalMetalsMembership(
-            portal_user_id=user.id,
+            metals_user_id=user.id,
             metals_client_id=client.id,
             role="admin",
             status="active",
@@ -230,12 +231,12 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)):
 def forgot_password(req: ForgotPasswordRequest, db: Session = Depends(get_db)):
     """Always returns ok to avoid email enumeration."""
     email = normalize_email(str(req.email))
-    user = db.query(PortalHubUser).filter(func.lower(PortalHubUser.email) == email).first()
+    user = db.query(PortalMetalsUser).filter(func.lower(PortalMetalsUser.email) == email).first()
     if user and user.is_active:
         token = secrets.token_urlsafe(32)
         db.add(
-            PortalPasswordReset(
-                portal_user_id=user.id,
+            PortalMetalsPasswordReset(
+                metals_user_id=user.id,
                 token=token,
                 expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
             )
@@ -248,7 +249,7 @@ def forgot_password(req: ForgotPasswordRequest, db: Session = Depends(get_db)):
 
 @router.post("/auth/reset-password")
 def reset_password(req: ResetPasswordRequest, db: Session = Depends(get_db)):
-    pr = db.query(PortalPasswordReset).filter(PortalPasswordReset.token == req.token).first()
+    pr = db.query(PortalMetalsPasswordReset).filter(PortalMetalsPasswordReset.token == req.token).first()
     if not pr:
         raise HTTPException(status_code=400, detail="Invalid or expired token")
     now_utc = datetime.now(timezone.utc)
@@ -260,30 +261,28 @@ def reset_password(req: ResetPasswordRequest, db: Session = Depends(get_db)):
         used_at = used_at.replace(tzinfo=timezone.utc)
     if used_at is not None or (expires_at and expires_at < now_utc):
         raise HTTPException(status_code=400, detail="Invalid or expired token")
-    user = db.query(PortalHubUser).filter(PortalHubUser.id == pr.portal_user_id).first()
+    user = db.query(PortalMetalsUser).filter(PortalMetalsUser.id == pr.metals_user_id).first()
     if not user or not user.is_active:
         raise HTTPException(status_code=400, detail="Invalid or expired token")
     user.password_hash = get_password_hash(req.new_password)
     pr.used_at = now_utc
-    bump_portal_session_and_revoke(db, user.id, None)
-    db.commit()
+    bump_metals_session_and_revoke(db, user.id, None)
     return {"status": "ok"}
 
 
 @router.post("/auth/login", response_model=TokenResponse)
 def login(req: LoginRequest, db: Session = Depends(get_db)):
     email = normalize_email(str(req.email))
-    user = db.query(PortalHubUser).filter(func.lower(PortalHubUser.email) == email).first()
+    user = db.query(PortalMetalsUser).filter(func.lower(PortalMetalsUser.email) == email).first()
     if not user or not verify_password(req.password, user.password_hash):
         raise HTTPException(status_code=400, detail="Incorrect email or password")
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account deactivated")
 
-    # Ensure metals membership exists (Hub-only portal users can gain Metals access)
     has_membership = (
         db.query(PortalMetalsMembership.id)
         .filter(
-            PortalMetalsMembership.portal_user_id == user.id,
+            PortalMetalsMembership.metals_user_id == user.id,
             PortalMetalsMembership.status == "active",
         )
         .first()
@@ -299,7 +298,7 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
         )
         db.add(
             PortalMetalsMembership(
-                portal_user_id=user.id,
+                metals_user_id=user.id,
                 metals_client_id=client.id,
                 role="admin",
                 status="active",
@@ -314,7 +313,7 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
 
 @router.post("/auth/refresh", response_model=TokenResponse)
 def refresh(req: RefreshRequest, db: Session = Depends(get_db)):
-    access, refresh_tok = validate_and_rotate_portal_refresh(db, req.refresh_token)
+    access, refresh_tok = validate_and_rotate_metals_refresh(db, req.refresh_token)
     return TokenResponse(access_token=access, refresh_token=refresh_tok)
 
 
@@ -330,17 +329,17 @@ def logout(
             from ..auth.security import decode_token
 
             payload = decode_token(creds.credentials)
-            if payload.get("principal") == "hub_portal":
+            if payload.get("principal") == METALS_PORTAL_PRINCIPAL:
                 user_id = uuid.UUID(str(payload.get("sub")))
         except Exception:
             pass
     if user_id:
-        bump_portal_session_and_revoke(db, user_id, req.refresh_token or None)
+        bump_metals_session_and_revoke(db, user_id, req.refresh_token or None)
     return {"ok": True}
 
 
 @router.get("/me")
-def me(user: PortalHubUser = Depends(get_current_portal_user), db: Session = Depends(get_db)):
+def me(user: PortalMetalsUser = Depends(get_current_metals_portal_user), db: Session = Depends(get_db)):
     return _serialize_me(db, user)
 
 
@@ -348,13 +347,13 @@ def me(user: PortalHubUser = Depends(get_current_portal_user), db: Session = Dep
 def list_submissions(
     kind: Optional[str] = None,
     status: Optional[str] = None,
-    user: PortalHubUser = Depends(get_current_portal_user),
+    user: PortalMetalsUser = Depends(get_current_metals_portal_user),
     db: Session = Depends(get_db),
 ):
     client_ids = active_metals_client_ids(db, user)
     email = normalize_email(user.email)
     clauses = [
-        MetalsWebsiteSubmission.portal_user_id == user.id,
+        MetalsWebsiteSubmission.metals_user_id == user.id,
         func.lower(MetalsWebsiteSubmission.contact_email) == email,
     ]
     if client_ids:
@@ -372,7 +371,7 @@ def list_submissions(
 @router.get("/submissions/{submission_id}")
 def get_submission(
     submission_id: str,
-    user: PortalHubUser = Depends(get_current_portal_user),
+    user: PortalMetalsUser = Depends(get_current_metals_portal_user),
     db: Session = Depends(get_db),
 ):
     try:
@@ -385,7 +384,7 @@ def get_submission(
     client_ids = set(active_metals_client_ids(db, user))
     email = normalize_email(user.email)
     allowed = (
-        row.portal_user_id == user.id
+        row.metals_user_id == user.id
         or (row.metals_client_id in client_ids)
         or normalize_email(row.contact_email) == email
     )

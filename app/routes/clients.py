@@ -850,6 +850,14 @@ def delete_contact(client_id: str, contact_id: str, db: Session = Depends(get_db
     c = db.query(ClientContact).filter(ClientContact.id == contact_id, ClientContact.client_id == client_id).first()
     if not c:
         return {"status": "ok"}
+    # Ensure notes keep a readable contact snapshot before FK SET NULL clears contact_id.
+    snapshot_name = (c.name or "").strip() or None
+    if snapshot_name:
+        db.query(ClientNote).filter(
+            ClientNote.client_id == client_id,
+            ClientNote.contact_id == c.id,
+            or_(ClientNote.contact_name.is_(None), ClientNote.contact_name == ""),
+        ).update({ClientNote.contact_name: snapshot_name}, synchronize_session=False)
     db.delete(c)
     db.commit()
     return {"status": "ok"}
@@ -1663,17 +1671,46 @@ def _validate_optional_project_for_client(db: Session, client_id: str, project_i
     return pid
 
 
+def _resolve_optional_contact_for_client(
+    db: Session,
+    client_id: str,
+    contact_id: Optional[str],
+) -> tuple[Optional[uuid.UUID], Optional[str]]:
+    """Return (contact_uuid, live_contact_name). Empty/None clears the link."""
+    if contact_id is None or str(contact_id).strip() == "":
+        return None, None
+    try:
+        cid = uuid.UUID(str(contact_id))
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid contact_id")
+    contact = (
+        db.query(ClientContact)
+        .filter(ClientContact.id == cid, ClientContact.client_id == client_id)
+        .first()
+    )
+    if not contact:
+        raise HTTPException(status_code=400, detail="Contact not found for this customer")
+    return cid, (contact.name or "").strip() or None
+
+
 # ---- Client Notes / Communication Log ----
 @router.get("/{client_id}/notes")
-def list_client_notes(client_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def list_client_notes(
+    client_id: str,
+    contact_id: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     assert_customer_tab(user, "notes", "read")
     _get_client_or_404(db, client_id)
-    rows = (
-        db.query(ClientNote)
-        .filter(ClientNote.client_id == client_id)
-        .order_by(ClientNote.created_at.desc())
-        .all()
-    )
+    query = db.query(ClientNote).filter(ClientNote.client_id == client_id)
+    if contact_id:
+        try:
+            cid = uuid.UUID(str(contact_id))
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="Invalid contact_id")
+        query = query.filter(ClientNote.contact_id == cid)
+    rows = query.order_by(ClientNote.created_at.desc()).all()
     project_ids = [r.project_id for r in rows if r.project_id]
     projects_by_id: dict[str, Project] = {}
     if project_ids:
@@ -1708,9 +1745,14 @@ def create_client_note(
         # Allow any category on the client tab, but steer toward communication categories
         pass
     project_uuid = _validate_optional_project_for_client(db, client_id, payload.get("project_id"))
+    contact_uuid, contact_name = _resolve_optional_contact_for_client(
+        db, client_id, payload.get("contact_id")
+    )
     row = ClientNote(
         client_id=client_id,
         project_id=project_uuid,
+        contact_id=contact_uuid,
+        contact_name=contact_name if contact_uuid else None,
         title=payload.get("title"),
         category_id=category_id,
         description=payload.get("description"),
@@ -1736,6 +1778,8 @@ def create_client_note(
                 "title": payload.get("title"),
                 "category_id": category_id,
                 "project_id": str(project_uuid) if project_uuid else None,
+                "contact_id": str(contact_uuid) if contact_uuid else None,
+                "contact_name": row.contact_name,
             },
             context={"client_id": client_id},
         )
@@ -1767,6 +1811,8 @@ def update_client_note(
         "category_id": row.category_id,
         "description": row.description,
         "project_id": str(row.project_id) if row.project_id else None,
+        "contact_id": str(row.contact_id) if row.contact_id else None,
+        "contact_name": row.contact_name,
     }
 
     if "title" in payload:
@@ -1779,6 +1825,16 @@ def update_client_note(
         row.status = payload.get("status")
     if "project_id" in payload:
         row.project_id = _validate_optional_project_for_client(db, client_id, payload.get("project_id"))
+    if "contact_id" in payload:
+        contact_uuid, contact_name = _resolve_optional_contact_for_client(
+            db, client_id, payload.get("contact_id")
+        )
+        row.contact_id = contact_uuid
+        if contact_uuid:
+            row.contact_name = contact_name
+        elif "contact_name" in payload and payload.get("contact_name") is None:
+            row.contact_name = None
+        # else: clearing contact_id keeps existing contact_name snapshot
     if "images" in payload:
         incoming_images = payload.get("images")
         if isinstance(incoming_images, dict):
@@ -1810,6 +1866,8 @@ def update_client_note(
                     "category_id": row.category_id,
                     "description": row.description,
                     "project_id": str(row.project_id) if row.project_id else None,
+                    "contact_id": str(row.contact_id) if row.contact_id else None,
+                    "contact_name": row.contact_name,
                 },
             },
             context={"client_id": client_id},

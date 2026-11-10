@@ -21,6 +21,8 @@ export type ClientNote = {
   project_id?: string | null;
   project_code?: string | null;
   project_name?: string | null;
+  contact_id?: string | null;
+  contact_name?: string | null;
   title?: string;
   category_id?: string;
   description?: string;
@@ -44,4 +46,17 @@ export function clientNoteProjectLabel(note: ClientNote): string | null {
   const name = (note.project_name || '').trim();
   if (code && name) return `${code} · ${name}`;
   return code || name || 'Linked project';
+}
+
+export function clientNoteContactLabel(
+  note: ClientNote,
+  contacts?: Array<{ id?: string; name?: string | null }> | null,
+): string | null {
+  const snapshot = (note.contact_name || '').trim();
+  if (snapshot) return snapshot;
+  const cid = note.contact_id ? String(note.contact_id) : '';
+  if (!cid || !contacts?.length) return null;
+  const match = contacts.find((c) => String(c.id) === cid);
+  const live = (match?.name || '').trim();
+  return live || null;
 }

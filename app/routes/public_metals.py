@@ -11,7 +11,7 @@ from typing import Deque, Dict, List, Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from sqlalchemy.orm import Session, joinedload
 
-from ..auth.portal_security import get_optional_portal_user
+from ..auth.metals_portal_security import get_optional_metals_portal_user
 from ..db import get_db
 from ..models.models import (
     MetalsCatalogCategory,
@@ -19,8 +19,8 @@ from ..models.models import (
     MetalsWebsiteSubmission,
     MetalsWebsiteSubmissionFile,
     MetalsWebsiteSubmissionItem,
-    PortalHubUser,
     PortalMetalsMembership,
+    PortalMetalsUser,
 )
 from ..services.metals_website import (
     ALLOWED_KINDS,
@@ -86,21 +86,21 @@ def _parse_bool_pref(raw: Optional[str], default: bool = True) -> bool:
     return str(raw).strip().lower() in ("1", "true", "yes", "on")
 
 
-def _resolve_portal_link(
-    db: Session, portal_user: Optional[PortalHubUser]
+def _resolve_metals_link(
+    db: Session, metals_user: Optional[PortalMetalsUser]
 ) -> tuple[Optional[uuid.UUID], Optional[uuid.UUID]]:
-    if not portal_user:
+    if not metals_user:
         return None, None
     m = (
         db.query(PortalMetalsMembership)
         .filter(
-            PortalMetalsMembership.portal_user_id == portal_user.id,
+            PortalMetalsMembership.metals_user_id == metals_user.id,
             PortalMetalsMembership.status == "active",
         )
         .order_by(PortalMetalsMembership.created_at.asc())
         .first()
     )
-    return portal_user.id, (m.metals_client_id if m else None)
+    return metals_user.id, (m.metals_client_id if m else None)
 
 
 async def _create_submission(
@@ -121,7 +121,7 @@ async def _create_submission(
     items_json: str,
     files: List[UploadFile],
     db: Session,
-    portal_user: Optional[PortalHubUser],
+    portal_user: Optional[PortalMetalsUser],
 ) -> dict:
     _check_rate_limit(_client_ip(request))
     if kind not in ALLOWED_KINDS:
@@ -141,7 +141,7 @@ async def _create_submission(
     if len(files) > MAX_FILES:
         raise HTTPException(status_code=400, detail=f"Too many files (max {MAX_FILES})")
 
-    portal_user_id, membership_client_id = _resolve_portal_link(db, portal_user)
+    metals_user_id, membership_client_id = _resolve_metals_link(db, portal_user)
     client = find_or_create_metals_client(
         db,
         email=email,
@@ -176,7 +176,7 @@ async def _create_submission(
             "sms": _parse_bool_pref(notify_sms, False),
         },
         metals_client_id=client_id,
-        portal_user_id=portal_user_id,
+        metals_user_id=metals_user_id,
         source="website",
         created_at=utcnow(),
         status_updated_at=utcnow(),
@@ -362,7 +362,7 @@ async def create_estimate(
     items_json: str = Form("[]"),
     files: List[UploadFile] = File(default=[]),
     db: Session = Depends(get_db),
-    portal_user: Optional[PortalHubUser] = Depends(get_optional_portal_user),
+    portal_user: Optional[PortalMetalsUser] = Depends(get_optional_metals_portal_user),
 ):
     # Collect all files under field name "files"
     form = await request.form()
@@ -411,7 +411,7 @@ async def create_order(
     items_json: str = Form("[]"),
     files: List[UploadFile] = File(default=[]),
     db: Session = Depends(get_db),
-    portal_user: Optional[PortalHubUser] = Depends(get_optional_portal_user),
+    portal_user: Optional[PortalMetalsUser] = Depends(get_optional_metals_portal_user),
 ):
     form = await request.form()
     upload_files: List[UploadFile] = []

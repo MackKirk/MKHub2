@@ -652,6 +652,9 @@ def create_app() -> FastAPI:
                         )
 
                         from .models.models import (
+                            PortalMetalsUser,
+                            PortalMetalsRefreshToken,
+                            PortalMetalsPasswordReset,
                             PortalMetalsMembership,
                             MetalsCatalogCategory,
                             MetalsCatalogProduct,
@@ -667,6 +670,9 @@ def create_app() -> FastAPI:
                                 PortalHubMembership.__table__,
                                 PortalHubInvite.__table__,
                                 PortalHubRefreshToken.__table__,
+                                PortalMetalsUser.__table__,
+                                PortalMetalsRefreshToken.__table__,
+                                PortalMetalsPasswordReset.__table__,
                                 PortalMetalsMembership.__table__,
                                 MetalsCatalogCategory.__table__,
                                 MetalsCatalogProduct.__table__,
