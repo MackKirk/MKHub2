@@ -274,6 +274,9 @@ export default function App(){
           <Route path="/documents/form-templates" element={shell(<FormTemplatesPage />)} />
           <Route path="/documents/form-templates/:id" element={shell(<FormTemplateEditorPage />)} />
           <Route path="/documents/form-custom-lists" element={shell(<FormCustomListsPage />)} />
+          <Route path="/rm-fieldwork/form-templates" element={shell(<FormTemplatesPage variant="fieldwork" />)} />
+          <Route path="/rm-fieldwork/form-templates/:id" element={shell(<FormTemplateEditorPage />)} />
+          <Route path="/rm-fieldwork/form-custom-lists" element={shell(<FormCustomListsPage variant="fieldwork" />)} />
           <Route path="/log-hours" element={shell(<LogHours/>)} />
           <Route path="/users" element={shell(<Users/>)} />
           <Route path="/human-resources/overview" element={shell(<HrDataQualityOverview />)} />

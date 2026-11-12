@@ -120,6 +120,7 @@ def invite_user(
     if not (has_admin or has_perm):
         raise HTTPException(status_code=403, detail="Forbidden")
 
+    from ..services.employment_type import employment_type_for_storage
     from ..services.invite_hire import resolve_invite_org_and_title, _opt_str
 
     try:
@@ -210,7 +211,7 @@ def invite_user(
         manager_user_id=_opt_str(req.manager_user_id),
         pay_rate=_opt_str(req.pay_rate),
         pay_type=_opt_str(req.pay_type),
-        employment_type=_opt_str(req.employment_type),
+        employment_type=employment_type_for_storage(_opt_str(req.employment_type)),
         created_from_ip=(login_client_ip(request) or "").strip() or None,
     )
     db.add(inv)
@@ -1890,6 +1891,14 @@ def update_user_profile(
         data["pay_type"] = normalized_pay_type
         if normalized_pay_type != "salary":
             data["needs_register_hours"] = False
+    if "employment_type" in data:
+        from ..services.employment_type import employment_type_for_storage
+
+        raw_employment_type = data.get("employment_type")
+        if raw_employment_type is None or not str(raw_employment_type).strip():
+            data["employment_type"] = None
+        else:
+            data["employment_type"] = employment_type_for_storage(str(raw_employment_type))
     data.pop("drivers_license_updated_at", None)
     if "drivers_license_last_requested_at" in data:
         data["drivers_license_last_requested_at"] = _parse_optional_profile_ts(

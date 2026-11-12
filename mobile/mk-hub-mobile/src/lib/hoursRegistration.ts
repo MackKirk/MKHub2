@@ -23,6 +23,29 @@ export function isSalaryPayType(payType?: string | null): boolean {
   return canonicalPayType(payType) === "salary";
 }
 
+const EMPLOYMENT_ALIASES: Record<string, string> = {
+  salary: "Salary",
+  salaried: "Salary",
+  hourly: "Hourly",
+  hour: "Hourly",
+  hours: "Hourly",
+  "full-time": "Full-time",
+  "full time": "Full-time",
+  fulltime: "Full-time",
+  "part-time": "Part-time",
+  "part time": "Part-time",
+  parttime: "Part-time"
+};
+
+/** Map free-text employment type onto Full-time | Hourly | Part-time | Salary. */
+export function employmentTypeLabel(raw?: string | null): string {
+  const text = String(raw || "").trim();
+  if (!text) return "";
+  if (text === "Full-time" || text === "Hourly" || text === "Part-time" || text === "Salary") return text;
+  const key = text.toLowerCase().replace(/[_/]+/g, " ").replace(/\s+/g, " ");
+  return EMPLOYMENT_ALIASES[key] || EMPLOYMENT_ALIASES[key.replace(/ /g, "-")] || text;
+}
+
 export function payTypeLabel(payType?: string | null): string {
   const canonical = canonicalPayType(payType);
   if (canonical === "hourly") return "Hourly";

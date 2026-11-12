@@ -102,6 +102,7 @@ import {
   userTimeOffBalanceAdjustQuickInfo,
   scWorkerManualAttendanceQuickInfo,
 } from '@/lib/formModalQuickInfo';
+import { EMPLOYMENT_TYPE_OPTIONS, employmentTypeFormValue, employmentTypeLabel } from '@/lib/employmentType';
 import { canonicalPayType, PAY_TYPE_OPTIONS, payTypeLabel } from '@/lib/payType';
 import { userProfileFieldHint } from '@/lib/userProfileFieldHints';
 
@@ -4496,7 +4497,7 @@ function OrganizationSection({ p, editable, userId, collectChanges, usersOptions
   const [form, setForm] = useState<any>(()=>({
     job_title: p.job_title||'',
     manager_user_id: p.manager_user_id||'',
-    employment_type: p.employment_type||'',
+    employment_type: employmentTypeFormValue(p.employment_type),
     hire_date: p.hire_date||'',
     termination_date: p.termination_date||'',
     work_email: p.work_email||'',
@@ -4506,14 +4507,14 @@ function OrganizationSection({ p, editable, userId, collectChanges, usersOptions
   
   useEffect(() => {
     if (editable && !prevEditableRef.current) {
-      setForm({ job_title: p.job_title||'', manager_user_id: p.manager_user_id||'', employment_type: p.employment_type||'', hire_date: p.hire_date||'', termination_date: p.termination_date||'', work_email: p.work_email||'', work_phone: p.work_phone||'' });
+      setForm({ job_title: p.job_title||'', manager_user_id: p.manager_user_id||'', employment_type: employmentTypeFormValue(p.employment_type), hire_date: p.hire_date||'', termination_date: p.termination_date||'', work_email: p.work_email||'', work_phone: p.work_phone||'' });
       if (onProjectDivisionsChange) {
         const projectDivs = Array.isArray(p.project_division_ids) ? p.project_division_ids.map((id: any) => String(id)) : [];
         onProjectDivisionsChange(projectDivs);
       }
     }
     if (!editable && prevEditableRef.current) {
-      setForm({ job_title: p.job_title||'', manager_user_id: p.manager_user_id||'', employment_type: p.employment_type||'', hire_date: p.hire_date||'', termination_date: p.termination_date||'', work_email: p.work_email||'', work_phone: p.work_phone||'' });
+      setForm({ job_title: p.job_title||'', manager_user_id: p.manager_user_id||'', employment_type: employmentTypeFormValue(p.employment_type), hire_date: p.hire_date||'', termination_date: p.termination_date||'', work_email: p.work_email||'', work_phone: p.work_phone||'' });
       if (onProjectDivisionsChange) {
         const projectDivs = Array.isArray(p.project_division_ids) ? p.project_division_ids.map((id: any) => String(id)) : [];
         onProjectDivisionsChange(projectDivs);
@@ -4615,15 +4616,10 @@ function OrganizationSection({ p, editable, userId, collectChanges, usersOptions
             value={form.employment_type}
             onChange={(e) => onField('employment_type', e.target.value)}
             fieldHint={showFieldHints ? userProfileFieldHint('employment_type') : undefined}
-            options={[
-              { value: 'Full-time', label: 'Full-time' },
-              { value: 'Hourly', label: 'Hourly' },
-              { value: 'Part-time', label: 'Part-time' },
-              { value: 'Salary', label: 'Salary' },
-            ]}
+            options={EMPLOYMENT_TYPE_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
           />
         ) : (
-          <UserInfoReadOnlyField label="Employment Type" value={String(p.employment_type || '')} />
+          <UserInfoReadOnlyField label="Employment Type" value={employmentTypeLabel(p.employment_type)} />
         )}
         {isEditable ? (
           <AppUserSelect

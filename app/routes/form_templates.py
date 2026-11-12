@@ -1,4 +1,4 @@
-"""Safety form templates: single editable definition per template (last save wins)."""
+"""Shared form templates (Safety, Employee Review, Fieldwork). Definition JSON is domain-agnostic."""
 
 from __future__ import annotations
 
@@ -15,6 +15,20 @@ from ..auth.security import (
     get_current_user,
     _has_permission,
     user_has_any_project_safety_permission,
+    user_has_any_rm_fieldwork_permission,
+)
+from ..services.form_engine import (
+    EMPLOYEE_REVIEW_CATEGORY,
+    FIELDWORK_TEMPLATE_CATEGORIES,
+    FOLLOW_UP_CATEGORY,
+    INSPECTION_CATEGORY,
+    SAFETY_TEMPLATE_CATEGORIES,
+    is_employee_review_category,
+    is_fieldwork_template_category,
+    is_inspection_like_category,
+    is_known_template_category,
+    is_safety_template_category,
+    normalized_template_category,
 )
 from ..services.safety_sign_request_access import assert_safety_read_or_pending_sign_session
 from ..db import get_db
@@ -22,29 +36,38 @@ from ..models.models import FormCustomList, FormTemplate, FleetAsset, User
 
 router = APIRouter(prefix="/form-templates", tags=["form-templates"])
 
-# Form template categories (same JSON definition; distinct usage)
-INSPECTION_CATEGORY = "inspection"
-FOLLOW_UP_CATEGORY = "follow_up"
-# Employee review templates (same JSON definition as safety; distinct category)
-EMPLOYEE_REVIEW_CATEGORY = "employee_review"
-
-_SAFETY_TEMPLATE_CATEGORIES = frozenset({INSPECTION_CATEGORY, FOLLOW_UP_CATEGORY})
-
-
-def _normalized_template_category(raw: Optional[str]) -> str:
-    """Null/empty category is treated as inspection."""
-    cat = (raw or "").strip().lower()
-    if not cat:
-        return INSPECTION_CATEGORY
-    return cat
-
-
-def _is_inspection_like_category(raw: Optional[str]) -> bool:
-    return _normalized_template_category(raw) == INSPECTION_CATEGORY
+# Re-export names used by older imports / tests
+_normalized_template_category = normalized_template_category
+_is_inspection_like_category = is_inspection_like_category
+_SAFETY_TEMPLATE_CATEGORIES = SAFETY_TEMPLATE_CATEGORIES
 
 
 def _hr_can_manage_employee_review_templates(user: User) -> bool:
     return _has_permission(user, "hr:reviews:admin") or _has_permission(user, "reviews:admin")
+
+
+def _can_read_template_category(user: User, category: Optional[str]) -> bool:
+    cat = normalized_template_category(category)
+    if is_employee_review_category(cat):
+        return user_has_any_project_safety_permission(user, "read") or _hr_can_manage_employee_review_templates(
+            user
+        )
+    if is_fieldwork_template_category(cat):
+        return user_has_any_rm_fieldwork_permission(user, "read")
+    if is_safety_template_category(cat):
+        return user_has_any_project_safety_permission(user, "read")
+    return False
+
+
+def _can_write_template_category(user: User, category: Optional[str]) -> bool:
+    cat = normalized_template_category(category)
+    if is_employee_review_category(cat):
+        return _hr_can_manage_employee_review_templates(user)
+    if is_fieldwork_template_category(cat):
+        return user_has_any_rm_fieldwork_permission(user, "write")
+    if is_safety_template_category(cat):
+        return user_has_any_project_safety_permission(user, "write")
+    return False
 
 
 def _ensure_form_template_read(
@@ -55,26 +78,46 @@ def _ensure_form_template_read(
     sign_project_id: Optional[str],
     sign_inspection_id: Optional[str],
 ) -> None:
-    """Safety users (or sign session) for inspection templates; HR admins for employee_review only."""
-    cat = (t.category or "").strip().lower()
-    if cat == EMPLOYEE_REVIEW_CATEGORY:
-        if user_has_any_project_safety_permission(user, "read") or _hr_can_manage_employee_review_templates(user):
+    """Domain-isolated read: Safety (or sign session), HR, or Fieldwork."""
+    cat = normalized_template_category(t.category)
+    if is_employee_review_category(cat):
+        if _can_read_template_category(user, cat):
             return
         raise HTTPException(status_code=403, detail="Forbidden")
+    if is_fieldwork_template_category(cat):
+        if _can_read_template_category(user, cat):
+            return
+        raise HTTPException(status_code=403, detail="Forbidden")
+    # Safety templates: allow pending signers via sign session
     assert_safety_read_or_pending_sign_session(
         user, db, sign_project_id=sign_project_id, sign_inspection_id=sign_inspection_id
     )
 
 
-def _ensure_form_template_write(user: User, t: Optional[FormTemplate], *, new_category: Optional[str] = None) -> None:
-    if user_has_any_project_safety_permission(user, "write"):
+def _ensure_form_template_write(
+    user: User, t: Optional[FormTemplate], *, new_category: Optional[str] = None
+) -> None:
+    """Writers may only mutate templates in their domain (Safety / HR / Fieldwork)."""
+    if t is not None and new_category is not None:
+        current = normalized_template_category(t.category)
+        nxt = normalized_template_category(new_category)
+        if current != nxt and (
+            is_employee_review_category(current)
+            or is_employee_review_category(nxt)
+            or is_fieldwork_template_category(current)
+            or is_fieldwork_template_category(nxt)
+            or is_safety_template_category(current)
+            or is_safety_template_category(nxt)
+        ):
+            # Cross-domain category changes require write on both sides
+            if not (_can_write_template_category(user, current) and _can_write_template_category(user, nxt)):
+                raise HTTPException(status_code=403, detail="Cannot move template across domains")
+    target = new_category if new_category is not None else (t.category if t else INSPECTION_CATEGORY)
+    if not is_known_template_category(target):
+        raise HTTPException(status_code=400, detail="Unknown template category")
+    if _can_write_template_category(user, target):
         return
-    if not _hr_can_manage_employee_review_templates(user):
-        raise HTTPException(status_code=403, detail="Forbidden")
-    if t is not None and (t.category or "").strip().lower() != EMPLOYEE_REVIEW_CATEGORY:
-        raise HTTPException(status_code=403, detail="HR can only edit employee review templates")
-    if new_category is not None and new_category.strip().lower() != EMPLOYEE_REVIEW_CATEGORY:
-        raise HTTPException(status_code=403, detail="HR templates must use category employee_review")
+    raise HTTPException(status_code=403, detail="Forbidden")
 
 ALLOWED_FIELD_TYPES = frozenset(
     {
@@ -111,6 +154,38 @@ def default_definition() -> dict:
     return {"sections": [], "signature_policy": {"worker": {"required": False}}}
 
 
+def _normalize_fieldwork_settings(raw: Any) -> Optional[dict]:
+    """Sanitize optional definition.fieldwork_settings for Site Assessment / Work Report."""
+    from ..services.form_engine import FIELDWORK_TECHNICAL_PHOTO_FOLDER_NAMES
+
+    if not isinstance(raw, dict):
+        return None
+    out: dict = {}
+    if "require_final_comments" in raw:
+        out["require_final_comments"] = bool(raw["require_final_comments"])
+    if "require_min_photos" in raw:
+        try:
+            out["require_min_photos"] = max(0, int(raw["require_min_photos"]))
+        except Exception:
+            out["require_min_photos"] = 0
+    folder = raw.get("default_pictures_folder")
+    if isinstance(folder, str) and folder.strip():
+        name = folder.strip()
+        slug_map = {
+            "proposal_photos": "Proposal Photos",
+            "invoice_photos": "Invoice Photos",
+        }
+        name = slug_map.get(name.lower(), name)
+        if name not in FIELDWORK_TECHNICAL_PHOTO_FOLDER_NAMES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"fieldwork_settings.default_pictures_folder must be one of: "
+                f"{', '.join(sorted(FIELDWORK_TECHNICAL_PHOTO_FOLDER_NAMES))}",
+            )
+        out["default_pictures_folder"] = name
+    return out or None
+
+
 def _normalize_definition(raw: Any) -> dict:
     if not isinstance(raw, dict):
         return default_definition()
@@ -119,6 +194,9 @@ def _normalize_definition(raw: Any) -> dict:
         base["sections"] = raw["sections"]
     if "signature_policy" in raw and isinstance(raw["signature_policy"], dict):
         base["signature_policy"] = raw["signature_policy"]
+    fw = _normalize_fieldwork_settings(raw.get("fieldwork_settings"))
+    if fw is not None:
+        base["fieldwork_settings"] = fw
     return base
 
 
@@ -262,13 +340,15 @@ def _resolve_user_name(db: Session, user_id: Optional[uuid.UUID]) -> Optional[st
 
 def _template_to_dict(db: Session, t: FormTemplate, *, include_definition: bool = False) -> dict:
     created_by_name = _resolve_user_name(db, t.created_by)
+    def_ver = int(getattr(t, "definition_version", None) or 1)
     out = {
         "id": str(t.id),
         "name": t.name or "",
         "description": t.description or "",
-        "category": _normalized_template_category(t.category),
+        "category": normalized_template_category(t.category),
         "status": t.status or "active",
         "version_label": (t.version_label or "").strip() if getattr(t, "version_label", None) is not None else "",
+        "definition_version": def_ver,
         "created_at": t.created_at.isoformat() if t.created_at else None,
         "updated_at": t.updated_at.isoformat() if t.updated_at else None,
         "created_by": str(t.created_by) if t.created_by else None,
@@ -297,6 +377,10 @@ class FormTemplateUpdate(BaseModel):
     status: Optional[str] = Field(None, max_length=20)
     definition: Optional[dict] = None
     version_label: Optional[str] = Field(None, max_length=100)
+    # Optimistic concurrency: when set with definition, must match current definition_version.
+    expected_definition_version: Optional[int] = Field(
+        None, description="Reject save with 409 if definition_version differs"
+    )
 
 
 def _definition_has_sections(definition: dict) -> bool:
@@ -309,20 +393,76 @@ def list_form_templates(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     category: Optional[str] = Query(None),
+    domain: Optional[str] = Query(
+        None, description="Optional domain scope: safety | employee_review | fieldwork"
+    ),
     status: Optional[str] = Query(None),
     schedulable: bool = Query(False, description="If true, only templates usable for new inspections"),
     sort: str = Query("name", description="name | created_at | updated_at"),
     sort_dir: str = Query("asc", description="asc | desc"),
 ):
-    if not user_has_any_project_safety_permission(user, "read"):
-        if not _hr_can_manage_employee_review_templates(user):
+    has_safety = user_has_any_project_safety_permission(user, "read")
+    has_hr = _hr_can_manage_employee_review_templates(user)
+    has_fieldwork = user_has_any_rm_fieldwork_permission(user, "read")
+    if not (has_safety or has_hr or has_fieldwork):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    explicit_domain = (domain or "").strip().lower() if domain else ""
+    if explicit_domain:
+        if explicit_domain not in {"safety", "employee_review", "fieldwork"}:
+            raise HTTPException(status_code=400, detail="Unknown template domain")
+        if explicit_domain == "safety" and not has_safety:
             raise HTTPException(status_code=403, detail="Forbidden")
-        category = EMPLOYEE_REVIEW_CATEGORY
-    q = db.query(FormTemplate)
+        if explicit_domain == "employee_review" and not has_hr:
+            raise HTTPException(status_code=403, detail="Forbidden")
+        if explicit_domain == "fieldwork" and not has_fieldwork:
+            raise HTTPException(status_code=403, detail="Forbidden")
+
     explicit_category = (category or "").strip().lower() if category else ""
-    if explicit_category:
+    if explicit_category and not is_known_template_category(explicit_category):
+        raise HTTPException(status_code=400, detail="Unknown template category")
+    if explicit_category and not _can_read_template_category(user, explicit_category):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    # Domain-only users without an explicit category are scoped to their domain
+    if not explicit_category and not explicit_domain:
+        if has_safety:
+            pass  # safety default list below
+        elif has_hr and not has_fieldwork:
+            explicit_category = EMPLOYEE_REVIEW_CATEGORY
+        elif has_fieldwork and not has_hr:
+            # Return both fieldwork kinds; filter after query
+            pass
+        elif has_hr and has_fieldwork:
+            pass
+
+    q = db.query(FormTemplate)
+    if explicit_domain == "fieldwork":
+        q = q.filter(func.lower(FormTemplate.category).in_(tuple(FIELDWORK_TEMPLATE_CATEGORIES)))
+        if explicit_category:
+            q = q.filter(func.lower(FormTemplate.category) == explicit_category)
+    elif explicit_domain == "employee_review":
+        q = q.filter(func.lower(FormTemplate.category) == EMPLOYEE_REVIEW_CATEGORY)
+    elif explicit_domain == "safety":
+        q = q.filter(
+            or_(
+                FormTemplate.category.is_(None),
+                FormTemplate.category == "",
+                func.lower(FormTemplate.category).in_(tuple(SAFETY_TEMPLATE_CATEGORIES)),
+            )
+        )
+        if explicit_category == FOLLOW_UP_CATEGORY:
+            q = q.filter(func.lower(FormTemplate.category) == FOLLOW_UP_CATEGORY)
+        elif explicit_category == INSPECTION_CATEGORY:
+            q = q.filter(
+                or_(
+                    FormTemplate.category.is_(None),
+                    FormTemplate.category == "",
+                    func.lower(FormTemplate.category) == INSPECTION_CATEGORY,
+                )
+            )
+    elif explicit_category:
         if explicit_category == INSPECTION_CATEGORY:
-            # Null/empty category is treated as inspection
             q = q.filter(
                 or_(
                     FormTemplate.category.is_(None),
@@ -332,18 +472,34 @@ def list_form_templates(
             )
         else:
             q = q.filter(func.lower(FormTemplate.category) == explicit_category)
-    elif user_has_any_project_safety_permission(user, "read"):
-        # General safety lists (e.g. /safety/form-templates, schedulable picker) must not include
-        # HR employee-review templates — same URL stores both; only explicit ?category=employee_review shows them.
+    elif has_safety:
+        # Safety hub lists: inspection + follow_up only (exclude HR + Fieldwork)
         q = q.filter(
             or_(
                 FormTemplate.category.is_(None),
-                func.lower(FormTemplate.category) != EMPLOYEE_REVIEW_CATEGORY,
+                FormTemplate.category == "",
+                func.lower(FormTemplate.category).in_(tuple(SAFETY_TEMPLATE_CATEGORIES)),
             )
         )
+    elif has_fieldwork and not has_hr:
+        q = q.filter(func.lower(FormTemplate.category).in_(tuple(FIELDWORK_TEMPLATE_CATEGORIES)))
+    elif has_hr and not has_fieldwork:
+        q = q.filter(func.lower(FormTemplate.category) == EMPLOYEE_REVIEW_CATEGORY)
+    else:
+        # HR + Fieldwork (no safety): both domains
+        q = q.filter(
+            or_(
+                func.lower(FormTemplate.category) == EMPLOYEE_REVIEW_CATEGORY,
+                func.lower(FormTemplate.category).in_(tuple(FIELDWORK_TEMPLATE_CATEGORIES)),
+            )
+        )
+
     if status and status.strip():
         q = q.filter(FormTemplate.status == status.strip())
     rows: List[FormTemplate] = q.all()
+
+    # Drop rows the user cannot read (belt-and-suspenders)
+    rows = [t for t in rows if _can_read_template_category(user, t.category)]
 
     if schedulable:
         rows = [
@@ -354,8 +510,8 @@ def list_form_templates(
         ]
         # Default New Inspection / schedule picker: inspections only (exclude follow_up).
         # Explicit ?category=follow_up&schedulable=true keeps follow-up templates for Flag modal.
-        if not explicit_category:
-            rows = [t for t in rows if _is_inspection_like_category(t.category)]
+        if not (category or "").strip():
+            rows = [t for t in rows if is_inspection_like_category(t.category)]
 
     sort_key = (sort or "name").strip().lower()
     asc_dir = (sort_dir or "asc").lower() != "desc"
@@ -375,20 +531,21 @@ def create_form_template(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user_has_any_project_safety_permission(user, "write"):
-        pass
-    else:
-        _ensure_form_template_write(user, None, new_category=body.category or "")
+    cat = normalized_template_category(body.category or INSPECTION_CATEGORY)
+    if not is_known_template_category(cat):
+        raise HTTPException(status_code=400, detail="Unknown template category")
+    _ensure_form_template_write(user, None, new_category=cat)
     st = (body.status or "active").strip().lower()
     if st not in ("active", "inactive"):
         raise HTTPException(status_code=400, detail="status must be active or inactive")
     t = FormTemplate(
         name=body.name.strip(),
         description=(body.description or "").strip() or None,
-        category=(body.category or "inspection").strip() or "inspection",
+        category=cat,
         status=st,
         definition=default_definition(),
         version_label="",
+        definition_version=1,
         created_by=user.id,
     )
     db.add(t)
@@ -444,18 +601,16 @@ def duplicate_form_template(
     src = db.query(FormTemplate).filter(FormTemplate.id == tid).first()
     if not src:
         raise HTTPException(status_code=404, detail="Template not found")
-    if user_has_any_project_safety_permission(user, "write"):
-        pass
-    else:
-        _ensure_form_template_write(user, src)
+    _ensure_form_template_write(user, src)
     base_name = (src.name or "Untitled").strip() or "Untitled"
     dup = FormTemplate(
         name=f"{base_name} (copy)",
         description=src.description,
-        category=src.category or "inspection",
+        category=normalized_template_category(src.category),
         status=src.status or "active",
         definition=_normalize_definition(src.definition or {}),
         version_label="",
+        definition_version=1,
         created_by=user.id,
     )
     db.add(dup)
@@ -491,24 +646,33 @@ def update_form_template(
     t = db.query(FormTemplate).filter(FormTemplate.id == tid).first()
     if not t:
         raise HTTPException(status_code=404, detail="Template not found")
-    if user_has_any_project_safety_permission(user, "write"):
-        pass
+    if body.category is not None:
+        _ensure_form_template_write(user, t, new_category=body.category)
     else:
         _ensure_form_template_write(user, t)
-        if body.category is not None and body.category.strip().lower() != EMPLOYEE_REVIEW_CATEGORY:
-            raise HTTPException(status_code=403, detail="HR templates must remain category employee_review")
     if body.name is not None:
         t.name = body.name.strip()
     if body.description is not None:
         t.description = body.description.strip() or None
     if body.category is not None:
-        next_cat = _normalized_template_category(body.category)
-        current_cat = _normalized_template_category(t.category)
-        if current_cat == EMPLOYEE_REVIEW_CATEGORY or next_cat == EMPLOYEE_REVIEW_CATEGORY:
+        next_cat = normalized_template_category(body.category)
+        current_cat = normalized_template_category(t.category)
+        if not is_known_template_category(next_cat):
+            raise HTTPException(status_code=400, detail="Unknown template category")
+        # Keep HR templates locked to employee_review
+        if is_employee_review_category(current_cat) or is_employee_review_category(next_cat):
             if next_cat != EMPLOYEE_REVIEW_CATEGORY:
                 raise HTTPException(status_code=400, detail="HR templates must remain category employee_review")
             t.category = EMPLOYEE_REVIEW_CATEGORY
-        elif next_cat not in _SAFETY_TEMPLATE_CATEGORIES:
+        # Keep Fieldwork within fieldwork kinds
+        elif is_fieldwork_template_category(current_cat):
+            if not is_fieldwork_template_category(next_cat):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Fieldwork templates must remain site_assessment or work_report",
+                )
+            t.category = next_cat
+        elif not is_safety_template_category(next_cat):
             raise HTTPException(
                 status_code=400,
                 detail="category must be inspection or follow_up",
@@ -523,10 +687,32 @@ def update_form_template(
     if body.version_label is not None:
         t.version_label = (body.version_label or "")[:100]
     if body.definition is not None:
+        current_ver = int(getattr(t, "definition_version", None) or 1)
+        if body.expected_definition_version is not None:
+            if int(body.expected_definition_version) != current_ver:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "message": "Template definition was modified by another save",
+                        "definition_version": current_ver,
+                    },
+                )
         definition = _normalize_definition(body.definition)
         _validate_definition_structure(definition)
         _validate_dropdown_custom_lists(db, definition)
         t.definition = definition
+        t.definition_version = current_ver + 1
+    elif body.expected_definition_version is not None:
+        # Meta-only updates may still assert version when client cares about staleness.
+        current_ver = int(getattr(t, "definition_version", None) or 1)
+        if int(body.expected_definition_version) != current_ver:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "message": "Template was modified by another save",
+                    "definition_version": current_ver,
+                },
+            )
     t.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(t)
@@ -543,10 +729,7 @@ def delete_form_template(
     t = db.query(FormTemplate).filter(FormTemplate.id == tid).first()
     if not t:
         raise HTTPException(status_code=404, detail="Template not found")
-    if user_has_any_project_safety_permission(user, "write"):
-        pass
-    else:
-        _ensure_form_template_write(user, t)
+    _ensure_form_template_write(user, t)
     db.delete(t)
     db.commit()
     return {"ok": True}

@@ -35,7 +35,7 @@ import {
   hubUserInitials,
   hubUserPhotoUrl
 } from "../../lib/userUi";
-import { isSalaryPayType, payTypeLabel } from "../../lib/hoursRegistration";
+import { employmentTypeLabel, isSalaryPayType, payTypeLabel } from "../../lib/hoursRegistration";
 import { getUserProfile } from "../../services/users";
 import { toApiError } from "../../services/api";
 import { MKUserPermissionsSection } from "../../components/users/MKUserPermissionsSection";
@@ -335,7 +335,7 @@ export const UserDetailScreen: React.FC = () => {
         {
           icon: "time-outline",
           label: "Employment type",
-          value: displayValue(p.employment_type) ?? ""
+          value: displayValue(employmentTypeLabel(p.employment_type)) ?? ""
         },
         {
           icon: "card-outline",

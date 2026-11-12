@@ -117,7 +117,7 @@ class TestApplyInviteFieldsToProfile(unittest.TestCase):
         self.assertEqual(ep.hire_date.date().isoformat(), "2026-10-01")
         self.assertEqual(ep.pay_rate, "45")
         self.assertEqual(ep.pay_type, "hourly")
-        self.assertEqual(ep.employment_type, "full-time")
+        self.assertEqual(ep.employment_type, "Full-time")
         self.assertEqual(ep.work_email, "sam.work@mk.com")
         self.assertEqual(ep.work_phone, "555-0200")
         self.assertEqual(ep.manager_user_id, uuid.UUID(mgr))

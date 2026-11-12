@@ -54,6 +54,7 @@ type CustomListPickerRow = {
   id: string;
   name: string;
   status: string;
+  domain?: string;
   include_other?: boolean;
 };
 
@@ -64,8 +65,27 @@ type TemplateDetail = {
   category: string;
   status: string;
   version_label: string;
+  definition_version?: number;
   definition: SafetyFormDefinition;
 };
+
+const FIELDWORK_PICTURES_FOLDER_OPTIONS = [
+  { value: 'Proposal Photos', label: 'Proposal Photos' },
+  { value: 'Unused Extra Proposal Photos', label: 'Unused Extra Proposal Photos' },
+  { value: 'Invoice Photos', label: 'Invoice Photos' },
+  { value: 'Unused Extra Invoicing Photos', label: 'Unused Extra Invoicing Photos' },
+  { value: 'Photos for Additional Recommendations', label: 'Photos for Additional Recommendations' },
+];
+
+function defaultFieldworkSettings(category: string): NonNullable<SafetyFormDefinition['fieldwork_settings']> {
+  const cat = (category || '').toLowerCase();
+  return {
+    require_final_comments: true,
+    require_min_photos: 0,
+    default_pictures_folder: cat === 'work_report' ? 'Invoice Photos' : 'Proposal Photos',
+  };
+}
+
 
 function buildPersistedDefinition(def: SafetyFormDefinition, sigRequired: boolean): SafetyFormDefinition {
   return {
@@ -88,10 +108,19 @@ function serializePersistedFormState(
   description: string,
   category: string,
   status: string,
-  versionLabel: string
+  versionLabel: string,
+  fieldworkSettings?: SafetyFormDefinition['fieldwork_settings'] | null
 ): string {
+  const definition = buildPersistedDefinition(def, sigRequired);
+  if (fieldworkSettings) {
+    definition.fieldwork_settings = {
+      require_final_comments: Boolean(fieldworkSettings.require_final_comments),
+      require_min_photos: Math.max(0, Number(fieldworkSettings.require_min_photos) || 0),
+      default_pictures_folder: fieldworkSettings.default_pictures_folder || undefined,
+    };
+  }
   return JSON.stringify({
-    definition: buildPersistedDefinition(def, sigRequired),
+    definition,
     name: (name || '').trim(),
     description: (description || '').trim() || null,
     category: (category || '').trim() || 'inspection',
@@ -100,13 +129,24 @@ function serializePersistedFormState(
   });
 }
 
-function snapshotFormFromTmpl(t: TemplateDetail): string | null {
+function snapshotFormFromTmpl(t: TemplateDetail, includeFieldworkSettings = false): string | null {
   if (!t.definition) return null;
   const d = normalizeDefinition(t.definition);
   const wr = t.definition?.signature_policy?.worker;
   const descRaw = t.description;
   const desc = descRaw != null && String(descRaw).trim() !== '' ? String(descRaw).trim() : null;
   const st = (t.status || 'active').toLowerCase() === 'inactive' ? 'inactive' : 'active';
+  const defaults = defaultFieldworkSettings(t.category || 'site_assessment');
+  const fw = d.fieldwork_settings || {};
+  const fieldworkSettings = includeFieldworkSettings
+    ? {
+        require_final_comments:
+          fw.require_final_comments !== undefined ? Boolean(fw.require_final_comments) : defaults.require_final_comments,
+        require_min_photos:
+          typeof fw.require_min_photos === 'number' ? Math.max(0, fw.require_min_photos) : defaults.require_min_photos,
+        default_pictures_folder: fw.default_pictures_folder || defaults.default_pictures_folder,
+      }
+    : null;
   return serializePersistedFormState(
     d,
     Boolean(wr?.required),
@@ -114,7 +154,8 @@ function snapshotFormFromTmpl(t: TemplateDetail): string | null {
     desc ?? '',
     t.category || 'inspection',
     st,
-    t.version_label || ''
+    t.version_label || '',
+    fieldworkSettings
   );
 }
 
@@ -265,7 +306,13 @@ export default function FormTemplateEditorPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const isEmployeeReviewEditor = location.pathname.startsWith('/reviews/form-templates');
-  const listPath = isEmployeeReviewEditor ? '/reviews/form-templates' : '/documents/form-templates';
+  const isFieldworkEditor = location.pathname.startsWith('/rm-fieldwork/form-templates');
+  const listPath = isEmployeeReviewEditor
+    ? '/reviews/form-templates'
+    : isFieldworkEditor
+      ? '/rm-fieldwork/form-templates'
+      : '/documents/form-templates';
+  const customListsPath = isFieldworkEditor ? '/rm-fieldwork/form-custom-lists' : '/documents/form-custom-lists';
   const qc = useQueryClient();
   const confirm = useConfirm();
   const [localName, setLocalName] = useState('');
@@ -275,6 +322,7 @@ export default function FormTemplateEditorPage() {
   const [category, setCategory] = useState('inspection');
   const [status, setStatus] = useState('active');
   const [definition, setDefinition] = useState<SafetyFormDefinition>(DEFAULT_DEFINITION);
+  const [fieldworkSettings, setFieldworkSettings] = useState(() => defaultFieldworkSettings('site_assessment'));
   const [versionLabel, setVersionLabel] = useState('');
   const [previewPayload, setPreviewPayload] = useState<Record<string, unknown>>({});
   const [tab, setTab] = useState<'build' | 'preview'>('build');
@@ -311,12 +359,23 @@ export default function FormTemplateEditorPage() {
   });
 
   const { data: customListsForPicker = [] } = useQuery({
-    queryKey: ['formCustomLists'],
-    queryFn: () => api<CustomListPickerRow[]>('GET', '/form-custom-lists'),
+    queryKey: ['formCustomLists', isFieldworkEditor ? 'fieldwork-picker' : 'default'],
+    queryFn: () =>
+      isFieldworkEditor
+        ? api<CustomListPickerRow[]>('GET', '/form-custom-lists?domain=fieldwork')
+        : api<CustomListPickerRow[]>('GET', '/form-custom-lists'),
   });
   const activeCustomLists = useMemo(
-    () => customListsForPicker.filter((l) => (l.status || '').toLowerCase() === 'active'),
-    [customListsForPicker]
+    () =>
+      customListsForPicker.filter((l) => {
+        if ((l.status || '').toLowerCase() !== 'active') return false;
+        if (!isFieldworkEditor) {
+          const d = (l.domain || 'shared').toLowerCase();
+          return d === 'shared' || d === 'safety';
+        }
+        return true;
+      }),
+    [customListsForPicker, isFieldworkEditor]
   );
 
   const customListSelectOptions = useMemo(
@@ -332,14 +391,30 @@ export default function FormTemplateEditorPage() {
     setLocalName(tmpl.name || '');
     setVersionLabel(tmpl.version_label || '');
     setDescription(tmpl.description || '');
-    setCategory(tmpl.category || 'inspection');
+    setCategory(tmpl.category || (isFieldworkEditor ? 'site_assessment' : 'inspection'));
     setStatus((tmpl.status || 'active').toLowerCase() === 'inactive' ? 'inactive' : 'active');
-    setDefinition(normalizeDefinition(tmpl.definition || DEFAULT_DEFINITION));
+    const normalized = normalizeDefinition(tmpl.definition || DEFAULT_DEFINITION);
+    setDefinition(normalized);
     const wr = tmpl.definition?.signature_policy?.worker;
     setSigRequired(Boolean(wr?.required));
-  }, [tmpl?.id, tmpl?.name, tmpl?.version_label, tmpl?.description, tmpl?.category, tmpl?.status, tmpl?.definition]);
+    const defaults = defaultFieldworkSettings(tmpl.category || 'site_assessment');
+    const fw = normalized.fieldwork_settings || {};
+    setFieldworkSettings({
+      require_final_comments:
+        fw.require_final_comments !== undefined ? Boolean(fw.require_final_comments) : defaults.require_final_comments,
+      require_min_photos:
+        typeof fw.require_min_photos === 'number' ? Math.max(0, fw.require_min_photos) : defaults.require_min_photos,
+      default_pictures_folder: fw.default_pictures_folder || defaults.default_pictures_folder,
+    });
+  }, [tmpl?.id, tmpl?.name, tmpl?.version_label, tmpl?.description, tmpl?.category, tmpl?.status, tmpl?.definition, isFieldworkEditor]);
 
-  const categoryForSave = isEmployeeReviewEditor ? 'employee_review' : category.trim() || 'inspection';
+  const categoryForSave = isEmployeeReviewEditor
+    ? 'employee_review'
+    : isFieldworkEditor
+      ? category.trim() === 'work_report'
+        ? 'work_report'
+        : 'site_assessment'
+      : category.trim() || 'inspection';
 
   const saveFormMut = useMutation({
     mutationFn: async () => {
@@ -354,6 +429,15 @@ export default function FormTemplateEditorPage() {
             mode: 'drawn',
           },
         },
+        ...(isFieldworkEditor
+          ? {
+              fieldwork_settings: {
+                require_final_comments: Boolean(fieldworkSettings.require_final_comments),
+                require_min_photos: Math.max(0, Number(fieldworkSettings.require_min_photos) || 0),
+                default_pictures_folder: fieldworkSettings.default_pictures_folder || defaultFieldworkSettings(categoryForSave).default_pictures_folder,
+              },
+            }
+          : {}),
       };
       return api<TemplateDetail>('PUT', `/form-templates/${encodeURIComponent(templateId)}`, {
         definition: def,
@@ -362,6 +446,8 @@ export default function FormTemplateEditorPage() {
         description: description.trim() || null,
         category: categoryForSave,
         status,
+        expected_definition_version:
+          typeof tmpl?.definition_version === 'number' ? tmpl.definition_version : undefined,
       });
     },
     onSuccess: () => {
@@ -369,7 +455,16 @@ export default function FormTemplateEditorPage() {
       qc.invalidateQueries({ queryKey: ['formTemplates'] });
       toast.success('Saved');
     },
-    onError: () => toast.error('Could not save'),
+    onError: (err: unknown) => {
+      const statusCode = (err as { status?: number; response?: { status?: number } })?.status
+        ?? (err as { response?: { status?: number } })?.response?.status;
+      if (statusCode === 409) {
+        qc.invalidateQueries({ queryKey: ['formTemplate', templateId] });
+        toast.error('This template was changed elsewhere. Reloaded — review and save again.');
+        return;
+      }
+      toast.error('Could not save');
+    },
   });
 
   const saveMetaMut = useMutation({
@@ -507,7 +602,7 @@ export default function FormTemplateEditorPage() {
 
   const hasUnsavedChanges = useMemo(() => {
     if (!tmpl?.definition) return false;
-    const remote = snapshotFormFromTmpl(tmpl);
+    const remote = snapshotFormFromTmpl(tmpl, isFieldworkEditor);
     if (remote === null) return false;
     const local = serializePersistedFormState(
       definition,
@@ -516,10 +611,11 @@ export default function FormTemplateEditorPage() {
       description,
       categoryForSave,
       status,
-      versionLabel
+      versionLabel,
+      isFieldworkEditor ? fieldworkSettings : null
     );
     return local !== remote;
-  }, [tmpl, definition, sigRequired, localName, description, categoryForSave, status, versionLabel]);
+  }, [tmpl, definition, sigRequired, localName, description, categoryForSave, status, versionLabel, isFieldworkEditor, fieldworkSettings]);
 
   const flushSaveAll = useCallback(async () => {
     if (!templateId) throw new Error('Cannot save');
@@ -535,12 +631,24 @@ export default function FormTemplateEditorPage() {
     setVersionLabel(tmpl.version_label || '');
     const td = tmpl.description;
     setDescription(td != null && String(td).trim() !== '' ? String(td) : '');
-    setCategory(tmpl.category || 'inspection');
+    setCategory(tmpl.category || (isFieldworkEditor ? 'site_assessment' : 'inspection'));
     setStatus((tmpl.status || 'active').toLowerCase() === 'inactive' ? 'inactive' : 'active');
-    setDefinition(normalizeDefinition(tmpl.definition));
+    const normalized = normalizeDefinition(tmpl.definition);
+    setDefinition(normalized);
     const wr = tmpl.definition?.signature_policy?.worker;
     setSigRequired(Boolean(wr?.required));
-  }, [tmpl]);
+    if (isFieldworkEditor) {
+      const defaults = defaultFieldworkSettings(tmpl.category || 'site_assessment');
+      const fw = normalized.fieldwork_settings || {};
+      setFieldworkSettings({
+        require_final_comments:
+          fw.require_final_comments !== undefined ? Boolean(fw.require_final_comments) : defaults.require_final_comments,
+        require_min_photos:
+          typeof fw.require_min_photos === 'number' ? Math.max(0, fw.require_min_photos) : defaults.require_min_photos,
+        default_pictures_folder: fw.default_pictures_folder || defaults.default_pictures_folder,
+      });
+    }
+  }, [tmpl, isFieldworkEditor]);
 
   useUnsavedChangesGuard(hasUnsavedChanges, flushSaveAll, handleGuardDiscard);
 
@@ -925,12 +1033,26 @@ export default function FormTemplateEditorPage() {
           <AppPageHeader
             icon={<FileStack className="h-4 w-4" />}
             onBack={navigateBackToTemplateList}
-            backLabel={isEmployeeReviewEditor ? 'Employee review templates' : 'Form templates'}
-            title={isEmployeeReviewEditor ? 'Employee review templates' : 'Form Templates'}
+            backLabel={
+              isEmployeeReviewEditor
+                ? 'Employee review templates'
+                : isFieldworkEditor
+                  ? 'Fieldwork templates'
+                  : 'Form templates'
+            }
+            title={
+              isEmployeeReviewEditor
+                ? 'Employee review templates'
+                : isFieldworkEditor
+                  ? 'Fieldwork templates'
+                  : 'Form Templates'
+            }
             subtitle={
               isEmployeeReviewEditor
                 ? 'Build sections in the Builder tab. Save Form stores the definition used for employee reviews.'
-                : 'Build sections in the Builder tab. Save Form stores the current definition for inspections.'
+                : isFieldworkEditor
+                  ? 'Build the form definition and Fieldwork settings (photos, final comments, suggested Pictures folder).'
+                  : 'Build sections in the Builder tab. Save Form stores the current definition for inspections.'
             }
           />
           <AppCard bodyClassName="!p-0">
@@ -1020,6 +1142,14 @@ export default function FormTemplateEditorPage() {
                           )}
                         </button>
                       )}
+                      {typeof tmpl?.definition_version === 'number' ? (
+                        <span
+                          className="text-xs text-gray-500 tabular-nums whitespace-nowrap"
+                          title="Internal definition revision (increments on each definition save)"
+                        >
+                          rev {tmpl.definition_version}
+                        </span>
+                      ) : null}
                     </div>
                   </div>
                   {/* Row 2: required hint (left) | Type + Active (right) */}
@@ -1034,21 +1164,50 @@ export default function FormTemplateEditorPage() {
                       {!isEmployeeReviewEditor ? (
                         <div className="flex items-center gap-2">
                           <span className="text-sm text-gray-700 whitespace-nowrap">Type</span>
-                          <AppSelect
-                            value={(category || 'inspection').toLowerCase() === 'follow_up' ? 'follow_up' : 'inspection'}
-                            onChange={(e) => {
-                              const next = e.target.value === 'follow_up' ? 'follow_up' : 'inspection';
-                              setCategory(next);
-                              saveMetaMut.mutate({ category: next });
-                            }}
-                            disabled={saveMetaMut.isPending}
-                            aria-label="Template type"
-                            className="min-w-[9rem]"
-                            options={[
-                              { value: 'inspection', label: 'Inspection' },
-                              { value: 'follow_up', label: 'Follow-up' },
-                            ]}
-                          />
+                          {isFieldworkEditor ? (
+                            <AppSelect
+                              value={(category || 'site_assessment').toLowerCase() === 'work_report' ? 'work_report' : 'site_assessment'}
+                              onChange={(e) => {
+                                const next = e.target.value === 'work_report' ? 'work_report' : 'site_assessment';
+                                setCategory(next);
+                                setFieldworkSettings((prev) => ({
+                                  ...prev,
+                                  default_pictures_folder:
+                                    prev.default_pictures_folder &&
+                                    prev.default_pictures_folder !== 'Proposal Photos' &&
+                                    prev.default_pictures_folder !== 'Invoice Photos'
+                                      ? prev.default_pictures_folder
+                                      : next === 'work_report'
+                                        ? 'Invoice Photos'
+                                        : 'Proposal Photos',
+                                }));
+                                saveMetaMut.mutate({ category: next });
+                              }}
+                              disabled={saveMetaMut.isPending}
+                              aria-label="Template type"
+                              className="min-w-[11rem]"
+                              options={[
+                                { value: 'site_assessment', label: 'Site Assessment' },
+                                { value: 'work_report', label: 'Work Report' },
+                              ]}
+                            />
+                          ) : (
+                            <AppSelect
+                              value={(category || 'inspection').toLowerCase() === 'follow_up' ? 'follow_up' : 'inspection'}
+                              onChange={(e) => {
+                                const next = e.target.value === 'follow_up' ? 'follow_up' : 'inspection';
+                                setCategory(next);
+                                saveMetaMut.mutate({ category: next });
+                              }}
+                              disabled={saveMetaMut.isPending}
+                              aria-label="Template type"
+                              className="min-w-[9rem]"
+                              options={[
+                                { value: 'inspection', label: 'Inspection' },
+                                { value: 'follow_up', label: 'Follow-up' },
+                              ]}
+                            />
+                          )}
                         </div>
                       ) : null}
                       <label
@@ -1095,6 +1254,71 @@ export default function FormTemplateEditorPage() {
                 </div>
               </div>
           </AppCard>
+
+          {isFieldworkEditor ? (
+            <AppCard bodyClassName={uiSpacing.cardPadding}>
+              <div className="space-y-3">
+                <div>
+                  <h3 className={uiTypography.sectionTitle}>Fieldwork settings</h3>
+                  <p className={uiCx(uiTypography.helper, 'mt-1')}>
+                    Applied when a Site Assessment or Work Report record is created from this template. Required form
+                    fields are marked on each field below.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <AppCheckbox
+                    label="Require final comments"
+                    checked={Boolean(fieldworkSettings.require_final_comments)}
+                    onChange={(checked) =>
+                      setFieldworkSettings((prev) => ({
+                        ...prev,
+                        require_final_comments: checked,
+                      }))
+                    }
+                  />
+                  <div className="flex flex-col gap-1 min-w-0">
+                    <label htmlFor="fw-min-photos" className="text-sm text-gray-700">
+                      Minimum photos
+                    </label>
+                    <AppInput
+                      id="fw-min-photos"
+                      type="number"
+                      min={0}
+                      value={String(fieldworkSettings.require_min_photos ?? 0)}
+                      onChange={(e) => {
+                        const n = Number(e.target.value);
+                        setFieldworkSettings((prev) => ({
+                          ...prev,
+                          require_min_photos: Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0,
+                        }));
+                      }}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1 min-w-0">
+                    <span className="text-sm text-gray-700">Suggested Pictures folder</span>
+                    <AppSelect
+                      id="fw-pictures-folder"
+                      value={fieldworkSettings.default_pictures_folder || ''}
+                      onChange={(e) =>
+                        setFieldworkSettings((prev) => ({
+                          ...prev,
+                          default_pictures_folder: e.target.value,
+                        }))
+                      }
+                      options={FIELDWORK_PICTURES_FOLDER_OPTIONS}
+                      aria-label="Suggested Pictures folder"
+                    />
+                  </div>
+                </div>
+                <p className={uiCx(uiTypography.helper)}>
+                  Phrase libraries:{' '}
+                  <Link to={customListsPath} className="text-brand-red hover:underline">
+                    R&amp;M Observed Conditions / Work Performed
+                  </Link>
+                </p>
+              </div>
+            </AppCard>
+          ) : null}
 
           <AppTabs
             tabs={[
@@ -1479,7 +1703,7 @@ export default function FormTemplateEditorPage() {
           />
           <p className={uiTypography.helper}>
             Create or edit lists under{' '}
-            <Link to="/documents/form-custom-lists" className="text-brand-red hover:underline" onClick={(e) => e.stopPropagation()}>
+            <Link to={customListsPath} className="text-brand-red hover:underline" onClick={(e) => e.stopPropagation()}>
               Form Custom Lists
             </Link>
             .
@@ -1735,7 +1959,7 @@ export default function FormTemplateEditorPage() {
                       />
                       <p className={uiTypography.helper}>
                         Create lists under{' '}
-                        <Link to="/documents/form-custom-lists" className="text-brand-red hover:underline" onClick={(e) => e.stopPropagation()}>
+                        <Link to={customListsPath} className="text-brand-red hover:underline" onClick={(e) => e.stopPropagation()}>
                           Form Custom Lists
                         </Link>{' '}
                         if none appear here.

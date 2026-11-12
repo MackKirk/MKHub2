@@ -16,7 +16,8 @@ export type ProjectDetailTabKey =
   | "files"
   | "documents"
   | "pricing"
-  | "safety";
+  | "safety"
+  | "fieldwork";
 
 export interface ProjectDetailTabItem {
   key: ProjectDetailTabKey;

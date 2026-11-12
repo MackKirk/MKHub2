@@ -22,10 +22,11 @@ export type ProjectDetailTabKey =
   | 'pricing'
   | 'estimate'
   | 'orders'
-  | 'safety';
+  | 'safety'
+  | 'fieldwork';
 
 export type ProjectTabCounts = Partial<
-  Record<'reports' | 'dispatch' | 'timesheet' | 'files' | 'documents' | 'pricing' | 'safety', number>
+  Record<'reports' | 'dispatch' | 'timesheet' | 'files' | 'documents' | 'pricing' | 'safety' | 'fieldwork', number>
 >;
 
 function visibleCount(n: number): number | undefined {
@@ -63,6 +64,7 @@ export function useProjectTabCounts({
   const wantsDocuments = tabIsAvailable(availableTabs, 'documents');
   const wantsPricing = tabIsAvailable(availableTabs, 'pricing');
   const wantsSafety = tabIsAvailable(availableTabs, 'safety');
+  const wantsFieldwork = tabIsAvailable(availableTabs, 'fieldwork');
 
   const { data: documents } = useQuery({
     queryKey: ['document-creator-documents', projectIdStr],
@@ -88,6 +90,13 @@ export function useProjectTabCounts({
     queryFn: () =>
       api<unknown[]>('GET', `/projects/${encodeURIComponent(projectIdStr)}/safety-inspections`),
     enabled: enabled && wantsSafety,
+  });
+
+  const { data: fieldworkRecords } = useQuery({
+    queryKey: ['fieldworkRecords', projectIdStr],
+    queryFn: () =>
+      api<unknown[]>('GET', `/projects/${encodeURIComponent(projectIdStr)}/fieldwork-records`),
+    enabled: enabled && wantsFieldwork,
   });
 
   return useMemo(() => {
@@ -123,6 +132,11 @@ export function useProjectTabCounts({
       if (count !== undefined) counts.safety = count;
     }
 
+    if (wantsFieldwork && fieldworkRecords) {
+      const count = visibleCount(fieldworkRecords.length);
+      if (count !== undefined) counts.fieldwork = count;
+    }
+
     if (wantsPricing && proposals) {
       const original = proposals.find((p) => !p.is_change_order);
       const costs = original?.data?.additional_costs;
@@ -139,6 +153,7 @@ export function useProjectTabCounts({
     wantsDispatch,
     wantsTimesheet,
     wantsSafety,
+    wantsFieldwork,
     wantsPricing,
     reports,
     files,
@@ -146,6 +161,7 @@ export function useProjectTabCounts({
     shifts,
     timesheetEntries,
     safetyInspections,
+    fieldworkRecords,
     proposals,
   ]);
 }

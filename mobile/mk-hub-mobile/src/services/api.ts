@@ -19,13 +19,39 @@ export interface ApiErrorShape {
   status?: number;
 }
 
+function formatDetail(detail: unknown): string {
+  if (detail == null) return "";
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => {
+        if (typeof item === "string") return item;
+        if (item && typeof item === "object" && "msg" in item) {
+          return String((item as { msg: unknown }).msg);
+        }
+        return "";
+      })
+      .filter(Boolean)
+      .join("; ");
+  }
+  if (typeof detail === "object") {
+    if ("message" in detail && (detail as { message: unknown }).message != null) {
+      return String((detail as { message: unknown }).message);
+    }
+    try {
+      return JSON.stringify(detail);
+    } catch {
+      return String(detail);
+    }
+  }
+  return String(detail);
+}
+
 export const toApiError = (error: unknown): ApiErrorShape => {
   if (axios.isAxiosError(error)) {
     const status = error.response?.status;
-    const detail =
-      (error.response?.data as { detail?: string })?.detail ??
-      error.message ??
-      "Unknown error";
+    const rawDetail = (error.response?.data as { detail?: unknown } | undefined)?.detail;
+    const detail = formatDetail(rawDetail) || error.message || "Unknown error";
 
     if (!status) {
       return { message: "Connection error, please try again." };
@@ -34,5 +60,15 @@ export const toApiError = (error: unknown): ApiErrorShape => {
   }
   return { message: "Unexpected error, please try again." };
 };
+
+export function getApiErrorRowVersion(error: unknown): number | null {
+  if (!axios.isAxiosError(error)) return null;
+  const detail = (error.response?.data as { detail?: unknown } | undefined)?.detail;
+  if (detail && typeof detail === "object" && !Array.isArray(detail) && "row_version" in detail) {
+    const n = Number((detail as { row_version: unknown }).row_version);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
 
 

@@ -10,6 +10,7 @@ import FilterBuilderModal from '@/components/FilterBuilder/FilterBuilderModal';
 import FilterChip from '@/components/FilterBuilder/FilterChip';
 import { FilterRule, FieldConfig } from '@/components/FilterBuilder/types';
 import { mapEmployeeToAppUserSelect } from '@/lib/clientUi';
+import { EMPLOYMENT_TYPE_OPTIONS } from '@/lib/employmentType';
 import { employeesDirectoryQueryKey, fetchEmployeesDirectory } from '@/lib/employeesQuery';
 import { getUserDisplayName } from '@/lib/userDisplay';
 import { PROJECT_DIVISIONS_QUERY_KEY } from '@/lib/businessLine';
@@ -106,12 +107,10 @@ const STATUS_OPTIONS = [
   { value: 'inactive', label: 'Inactive' },
 ];
 
-const EMPLOYMENT_TYPE_FALLBACK = [
-  { value: 'Full-time', label: 'Full-time' },
-  { value: 'Hourly', label: 'Hourly' },
-  { value: 'Part-time', label: 'Part-time' },
-  { value: 'Salary', label: 'Salary' },
-];
+const EMPLOYMENT_TYPE_FALLBACK = EMPLOYMENT_TYPE_OPTIONS.map((option) => ({
+  value: option.value,
+  label: option.label,
+}));
 
 const USER_LIST_PRESERVED_KEYS = ['q', 'view', 'sort', 'dir'] as const;
 

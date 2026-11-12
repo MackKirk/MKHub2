@@ -84,6 +84,7 @@ export const PROJECT_SECTION_FEATURES = [
   'warranties',
   'orders',
   'safety',
+  'fieldwork',
 ] as const;
 
 /** True if the user can open project detail (main Projects & Opportunities or a section tab). */
@@ -354,6 +355,7 @@ export function isLegacySharedProjectPermissionKey(key: string): boolean {
     rest.startsWith('costs:') ||
     rest.startsWith('orders:') ||
     rest.startsWith('safety:') ||
+    rest.startsWith('fieldwork:') ||
     rest.startsWith('warranties:') ||
     rest === 'members:write'
   );

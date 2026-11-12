@@ -39,7 +39,9 @@ import ProjectFilesTabEnhanced from '@/components/ProjectFilesTabEnhanced';
 import OrdersTab from '@/components/OrdersTab';
 import ProjectDocumentsTab, { type ProjectDocumentsTabHandle } from '@/components/ProjectDocumentsTab';
 import ProjectSafetyTab from '@/components/ProjectSafetyTab';
+import ProjectFieldworkTab from '@/components/ProjectFieldworkTab';
 import ProjectWarrantiesTab from '@/components/ProjectWarrantiesTab';
+
 import ChangeProjectOwnerModal from '@/components/ChangeProjectOwnerModal';
 import ProjectFieldBriefCard from '@/components/ProjectFieldBriefCard';
 import ProjectTeamCard from '@/components/ProjectTeamCard';
@@ -1249,9 +1251,11 @@ export default function ProjectDetail(){
     | 'estimate'
     | 'warranties'
     | 'orders'
-    | 'safety';
+    | 'safety'
+    | 'fieldwork';
   const initialTab = (searchParams.get('tab') as ProjectDetailTab | null) || null;
   const [tab, setTab] = useState<ProjectDetailTab | null>(initialTab);
+
   /** Primary overview (no tab, or the overview tab). */
   const onOverview = !signOnlySafetySession && (tab === null || tab === 'overview');
   const loadFiles = !signOnlySafetySession && (onOverview || tab === 'files' || tab === 'photos' || tab === 'general');
@@ -1326,6 +1330,7 @@ export default function ProjectDetail(){
   const documentsTabRef = useRef<ProjectDocumentsTabHandle>(null);
   const proposalFormSaveRef = useRef<(() => Promise<void>) | undefined>(undefined);
   const safetyTabSaveRef = useRef<(() => Promise<void>) | undefined>(undefined);
+  const fieldworkTabSaveRef = useRef<(() => Promise<void>) | undefined>(undefined);
   const { hasUnsavedChanges, getHasUnsavedChanges } = useUnsavedChanges();
   
   // Check user permissions (moved before useEffect that uses them)
@@ -1402,11 +1407,19 @@ export default function ProjectDetail(){
       warranties: 'warranties',
       orders: 'orders',
       safety: 'safety',
+      fieldwork: 'fieldwork',
     };
     return (tabKey: string): boolean => {
       const feature = featureByTab[tabKey];
       if (!feature) return true;
       if (hasProjectFeaturePermission(permissions, bl, feature, isAdmin, location.pathname)) return true;
+      // Fieldwork review-only users must still open the tab to approve / request changes.
+      if (
+        tabKey === 'fieldwork' &&
+        (permissions.has('business:rm:projects:fieldwork:review') || isAdmin)
+      ) {
+        return true;
+      }
       if (fromWarrantyReview) {
         return hasProjectFeaturePermission(permissions, BUSINESS_LINE_REPAIRS_MAINTENANCE, feature, isAdmin);
       }
@@ -1419,10 +1432,10 @@ export default function ProjectDetail(){
     if (me === undefined) return;
 
     const sp = new URLSearchParams(location.search);
-    const tabParam = sp.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'pricing'|'estimate'|'warranties'|'orders'|'safety'|null;
+    const tabParam = sp.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'pricing'|'estimate'|'warranties'|'orders'|'safety'|'fieldwork'|null;
     const signOnly =
       sp.get('sign_only') === '1' && Boolean(sp.get('safety_inspection')?.trim());
-    const validTabs = ['overview','general','reports','dispatch','timesheet','files','photos','documents','proposal','pricing','estimate','warranties','orders','safety'];
+    const validTabs = ['overview','general','reports','dispatch','timesheet','files','photos','documents','proposal','pricing','estimate','warranties','orders','safety','fieldwork'];
     if (tabParam && validTabs.includes(tabParam)) {
       if (tabParam === 'safety' && signOnly) {
         setTab('safety');
@@ -1560,10 +1573,38 @@ export default function ProjectDetail(){
   const [showConvertModal, setShowConvertModal] = useState(false);
   const [workloadEventCreateOpen, setWorkloadEventCreateOpen] = useState(false);
 
+  const isRmBusinessLine = projectBusinessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE;
+
   // Base available tabs (leak investigations use the same strip as opportunities)
+  // Fieldwork is R&M-only and available on both Opportunity and awarded Project.
   const baseAvailableTabs = isOpportunityStyleTabs
-    ? (['overview','reports','dispatch','timesheet','files','documents','proposal','pricing','estimate'] as const)
-    : (['overview','reports','dispatch','timesheet','files','documents','proposal','pricing','estimate','warranties','orders','safety'] as const);
+    ? ([
+        'overview',
+        'reports',
+        'dispatch',
+        'timesheet',
+        'files',
+        'documents',
+        'proposal',
+        'pricing',
+        'estimate',
+        ...(isRmBusinessLine ? (['fieldwork'] as const) : []),
+      ] as const)
+    : ([
+        'overview',
+        'reports',
+        'dispatch',
+        'timesheet',
+        'files',
+        'documents',
+        'proposal',
+        'pricing',
+        'estimate',
+        'warranties',
+        'orders',
+        'safety',
+        ...(isRmBusinessLine ? (['fieldwork'] as const) : []),
+      ] as const);
   
   // Filter tabs based on permissions (only when user data is loaded)
   const availableTabs = useMemo(() => {
@@ -1663,6 +1704,10 @@ export default function ProjectDetail(){
         queryClient.invalidateQueries({ queryKey: ['safetyInspections'] });
         queryClient.invalidateQueries({ queryKey: ['safetyInspectionsCalendar'] });
         break;
+      case 'fieldwork':
+        queryClient.invalidateQueries({ queryKey: ['fieldworkRecords', projectId] });
+        queryClient.invalidateQueries({ queryKey: ['fieldworkRecord', projectId] });
+        break;
       case 'warranties':
         queryClient.invalidateQueries({ queryKey: ['projectWarrantySummary', projectId] });
         queryClient.invalidateQueries({ queryKey: ['projectWarranties', projectId] });
@@ -1726,16 +1771,24 @@ export default function ProjectDetail(){
     // Show confirmation when leaving Proposal or Pricing (including switching between Proposal ↔ Pricing) with unsaved changes
     const leavingProposalPricingWithUnsaved = (tab === 'proposal' || tab === 'pricing') && newTab !== tab && proposalPricingUnsaved;
     const leavingSafetyWithUnsaved = tab === 'safety' && newTab !== 'safety' && proposalPricingUnsaved;
+    const leavingFieldworkWithUnsaved = tab === 'fieldwork' && newTab !== 'fieldwork' && proposalPricingUnsaved;
 
-    if (leavingEstimateWithUnsaved || leavingProposalPricingWithUnsaved || leavingSafetyWithUnsaved) {
+    if (
+      leavingEstimateWithUnsaved ||
+      leavingProposalPricingWithUnsaved ||
+      leavingSafetyWithUnsaved ||
+      leavingFieldworkWithUnsaved
+    ) {
       const tabLabel =
         tab === 'estimate'
           ? 'Costs'
           : tab === 'safety'
             ? 'Safety'
-            : tab === 'pricing'
-              ? 'Pricing'
-              : 'Proposal';
+            : tab === 'fieldwork'
+              ? 'Fieldwork'
+              : tab === 'pricing'
+                ? 'Pricing'
+                : 'Proposal';
       const result = await confirm({
         title: 'Unsaved Changes',
         message: `You have unsaved changes in the ${tabLabel} tab. What would you like to do?`,
@@ -1752,6 +1805,13 @@ export default function ProjectDetail(){
         } else if (leavingSafetyWithUnsaved) {
           try {
             await safetyTabSaveRef.current?.();
+          } catch {
+            return;
+          }
+          doTabSwitch(newTab);
+        } else if (leavingFieldworkWithUnsaved) {
+          try {
+            await fieldworkTabSaveRef.current?.();
           } catch {
             return;
           }
@@ -1797,6 +1857,7 @@ export default function ProjectDetail(){
       'warranties': 'Warranties',
       'orders': 'Orders',
       'safety': 'Safety',
+      'fieldwork': 'Fieldwork',
     };
     const tabTitle = tabTitles[activeTab] || activeTab;
     return `${baseTitle} • ${tabTitle}`;
@@ -1827,6 +1888,7 @@ export default function ProjectDetail(){
       'warranties': 'Warranty coverage, maintenance, documents and claims',
       'orders': 'Purchase orders and supplies',
       'safety': 'Site safety inspections',
+      'fieldwork': 'Site assessments and work reports',
     };
     return tabDescriptions[activeTab] || '';
   };
@@ -3589,6 +3651,33 @@ export default function ProjectDetail(){
                   initialSafetyFollowUpId={safetyFollowUpFromUrl}
                   flushSaveRef={safetyTabSaveRef}
                   signOnlySession={signOnlySafetySession}
+                />
+              )}
+
+              {tab === 'fieldwork' && isRmBusinessLine && (
+                <ProjectFieldworkTab
+                  projectId={String(id)}
+                  isOpportunity={!!isOpportunityStyleTabs}
+                  canRead={
+                    hasProjectFeatureReadPermission(
+                      permissions,
+                      projectBusinessLine,
+                      'fieldwork',
+                      isAdmin,
+                      location.pathname
+                    ) ||
+                    permissions.has('business:rm:projects:fieldwork:review') ||
+                    isAdmin
+                  }
+                  canWrite={hasProjectFeatureWritePermission(
+                    permissions,
+                    projectBusinessLine,
+                    'fieldwork',
+                    isAdmin,
+                    location.pathname
+                  )}
+                  canReview={permissions.has('business:rm:projects:fieldwork:review') || isAdmin}
+                  flushSaveRef={fieldworkTabSaveRef}
                 />
               )}
             </>
@@ -8735,7 +8824,7 @@ function ProjectTabCards({ availableTabs, tabCounts, onTabClick, proj, currentTa
   tabCounts?: Partial<Record<string, number>>,
   onTabClick: (tab: typeof availableTabs[number] | 'overview' | null) => void,
   proj: any,
-  currentTab: 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'pricing'|'estimate'|'warranties'|'orders'|'safety'|null,
+  currentTab: 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'pricing'|'estimate'|'warranties'|'orders'|'safety'|'fieldwork'|null,
   useDesignSystem?: boolean,
   isHeroCollapsed?: boolean,
   headerEnd?: ReactNode,
@@ -8753,6 +8842,7 @@ function ProjectTabCards({ availableTabs, tabCounts, onTabClick, proj, currentTa
     warranties: { label: 'Warranties', icon: '🛡️' },
     orders: { label: 'Orders', icon: '🛒' },
     safety: { label: 'Safety', icon: '🦺' },
+    fieldwork: { label: 'Fieldwork', icon: '📋' },
   };
 
   // Include 'overview' and filter available tabs (hide 'orders' tab from UI)

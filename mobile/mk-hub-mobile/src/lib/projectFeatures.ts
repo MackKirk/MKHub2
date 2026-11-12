@@ -14,7 +14,8 @@ export const PROJECT_SECTION_FEATURES = [
   "costs",
   "warranties",
   "orders",
-  "safety"
+  "safety",
+  "fieldwork"
 ] as const;
 
 export type ProjectSectionFeature = (typeof PROJECT_SECTION_FEATURES)[number];
@@ -108,7 +109,7 @@ export function hasAnyProjectSectionPermission(
 export function hasProjectFeatureRead(
   permissions: Set<string>,
   roles: string[],
-  feature: "documents" | "proposal" | "pricing" | "safety" | "files" | "reports",
+  feature: "documents" | "proposal" | "pricing" | "safety" | "files" | "reports" | "fieldwork",
   businessLine?: string | null
 ): boolean {
   if (isAdminRole(roles)) return true;
@@ -121,17 +122,30 @@ export function hasProjectFeatureRead(
   if (feature === "reports") {
     return hasProjectSectionRead(permissions, roles, "reports", businessLine);
   }
+  if (feature === "fieldwork") {
+    // review-only users must open Fieldwork to see submitted reports.
+    if (permissions.has("business:rm:projects:fieldwork:review")) return true;
+    return hasProjectSectionRead(permissions, roles, "fieldwork", businessLine);
+  }
   return hasProjectSectionRead(permissions, roles, feature, businessLine);
 }
 
 export function hasProjectFeatureWrite(
   permissions: Set<string>,
   roles: string[],
-  feature: "safety",
+  feature: "safety" | "fieldwork",
   businessLine?: string | null
 ): boolean {
   if (isAdminRole(roles)) return true;
-  return hasLineFeature(permissions, "safety", "write", businessLine);
+  return hasLineFeature(permissions, feature, "write", businessLine);
+}
+
+export function hasFieldworkReview(
+  permissions: Set<string>,
+  roles: string[]
+): boolean {
+  if (isAdminRole(roles)) return true;
+  return permissions.has("business:rm:projects:fieldwork:review");
 }
 
 export interface ProposalPricingItem {

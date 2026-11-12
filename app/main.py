@@ -72,6 +72,7 @@ from .routes.fuel_cards import router as fuel_cards_router
 from .routes.safety import router as safety_router
 from .routes.form_templates import router as form_templates_router
 from .routes.form_custom_lists import router as form_custom_lists_router
+from .routes.fieldwork import router as fieldwork_router
 from .routes.training import router as training_router
 from .routes.tutorials import router as tutorials_router
 from .routes.bug_report import router as bug_report_router
@@ -313,6 +314,7 @@ def create_app() -> FastAPI:
     app.include_router(safety_router, dependencies=_hub)
     app.include_router(form_custom_lists_router, dependencies=_hub)
     app.include_router(form_templates_router, dependencies=_hub)
+    app.include_router(fieldwork_router, dependencies=_hub)
     app.include_router(training_router, dependencies=_hub)
     app.include_router(tutorials_router, dependencies=_hub)
     app.include_router(bug_report_router, dependencies=_hub)
@@ -939,12 +941,21 @@ def create_app() -> FastAPI:
                             added_version_label = _add_column_if_missing(
                                 db, "form_templates", "version_label", "VARCHAR(100) DEFAULT ''"
                             )
+                            added_definition_version = _add_column_if_missing(
+                                db, "form_templates", "definition_version", "INTEGER NOT NULL DEFAULT 1"
+                            )
                             if added_definition or _pg_column_is_nullable(db, "form_templates", "definition"):
                                 db.execute(text("UPDATE form_templates SET definition = '{}'::jsonb WHERE definition IS NULL"))
                                 db.execute(text("ALTER TABLE form_templates ALTER COLUMN definition SET NOT NULL"))
                             if added_version_label or _pg_column_is_nullable(db, "form_templates", "version_label"):
                                 db.execute(text("UPDATE form_templates SET version_label = COALESCE(version_label, '')"))
                                 db.execute(text("ALTER TABLE form_templates ALTER COLUMN version_label SET NOT NULL"))
+                            if added_definition_version:
+                                db.execute(
+                                    text(
+                                        "UPDATE form_templates SET definition_version = 1 WHERE definition_version IS NULL"
+                                    )
+                                )
                             db.commit()
                             if _add_column_if_missing(
                                 db, "project_safety_inspections", "form_template_id", "UUID NULL"
@@ -1100,6 +1111,67 @@ def create_app() -> FastAPI:
                     except Exception as e:
                         db.rollback()
                         print(f"[startup] form_custom_lists include_other migration (non-critical): {e}")
+                    try:
+                        if db.execute(
+                            text(
+                                """
+                                SELECT 1 FROM information_schema.columns
+                                WHERE table_schema = 'public' AND table_name = 'form_custom_lists'
+                                  AND column_name = 'domain'
+                                """
+                            )
+                        ).fetchall():
+                            pass
+                        else:
+                            if db.execute(
+                                text(
+                                    """
+                                    SELECT 1 FROM information_schema.tables
+                                    WHERE table_schema = 'public' AND table_name = 'form_custom_lists'
+                                    """
+                                )
+                            ).fetchall():
+                                db.execute(
+                                    text(
+                                        "ALTER TABLE form_custom_lists "
+                                        "ADD COLUMN domain VARCHAR(40) NOT NULL DEFAULT 'shared'"
+                                    )
+                                )
+                                db.commit()
+                                print("[startup] Added form_custom_lists.domain (default shared)")
+                    except Exception as e:
+                        db.rollback()
+                        print(f"[startup] form_custom_lists domain migration (non-critical): {e}")
+
+                    try:
+                        from .models.models import (
+                            FieldworkPhotoObservation,
+                            FieldworkRecord,
+                            FieldworkRecordEvent,
+                        )
+
+                        Base.metadata.create_all(
+                            bind=engine,
+                            tables=[
+                                FieldworkRecord.__table__,
+                                FieldworkPhotoObservation.__table__,
+                                FieldworkRecordEvent.__table__,
+                            ],
+                        )
+                        db.commit()
+                        print("[startup] Ensured fieldwork_records / photos / events")
+                    except Exception as e:
+                        db.rollback()
+                        print(f"[startup] fieldwork tables create_all (non-critical): {e}")
+
+                    try:
+                        from .services.fieldwork_phrases import ensure_fieldwork_phrase_lists
+
+                        ensure_fieldwork_phrase_lists(db, commit=True)
+                        print("[startup] Ensured Fieldwork phrase catalogs")
+                    except Exception as e:
+                        db.rollback()
+                        print(f"[startup] Fieldwork phrase catalog seed (non-critical): {e}")
 
                     # Employee review: assignment snapshot + review_cycles.form_template_id (additive only)
                     try:
@@ -1470,6 +1542,17 @@ def create_app() -> FastAPI:
                             print(f"[startup] Added {_tbl}.{_col}")
 
                     db.commit()
+
+                    try:
+                        from .services.employment_type import backfill_employment_type_aliases
+
+                        n_employment = backfill_employment_type_aliases(db)
+                        db.commit()
+                        if n_employment:
+                            print(f"[startup] normalized {n_employment} employment_type values to select options")
+                    except Exception as e:
+                        print(f"[startup] employment_type backfill (non-critical): {e}")
+                        db.rollback()
 
                     # Check for project_division_percentages column in projects
                     rows = db.execute(

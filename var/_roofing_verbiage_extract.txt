@@ -1,0 +1,106 @@
+[0|Normal] Asphalt Shingles
+[1|Normal] 
+[2|Normal] Damage/Punctures/Tears
+[3|Normal] Ripped/torn asphalt shingles were observed throughout the roof areas.
+[4|Normal] Several shingles were observed to be punctured.
+[5|Normal] Debris
+[6|Normal] Various types of debris were found on the roof surfaces.
+[7|Normal] Animal feces accumulated in a corner.
+[8|Normal] Organic debris was observed throughout.
+[9|Normal] A build up of general debris has accumulated within the debris strainers, causing blockages.
+[10|Normal] Granular Loss
+[11|Normal] Granular loss was noted on the asphalt shingles.
+[12|Normal] The asphalt shingles are suffering from severe granule loss.
+[13|Normal] Gutters
+[14|Normal] Damaged gutters were noted in multiple areas.
+[15|Normal] The gutter was damaged.
+[16|Normal] Debris was noted within some of the gutters.
+[17|Normal] The loose granules have accumulated within the gutters, causing blockages at the downpipe elbow/s.
+[18|Normal] Organic Growth
+[19|Normal] Organic growth was observed throughout.
+[20|Normal] Several well-established concentrations of organic growth were seen.
+[21|Normal] The roof is suffering from large pockets of organic growth.
+[22|Normal] Plumbing Stacks
+[23|Normal] A settlement cap is missing. The flashing is also too high and needs to be cut down.
+[24|Normal] The 5 in 1 flashing for the plumbing stack is severely degraded.
+[25|Normal] The lead flashing that encapsulates the plumbing stack has degraded and needs replacing.
+[26|Normal] Punctures
+[27|Normal] Multiple punctures were observed throughout the roof areas.
+[28|Normal] 
+[29|Normal] 
+[30|Normal] Ridge Caps
+[31|Normal] All the ridge caps are cracked.
+[32|Normal] Several of the ridge caps are cracked.
+[33|Normal] Several of the ridge caps are either missing or needs to be replaced.
+[34|Normal] Safety
+[35|Normal] Temporary safety anchors are fixed through the roof surface throughout.
+[36|Normal] A temporary roof anchor has been left.
+[37|Normal] 
+[38|Normal] SBS
+[39|Normal] 
+[40|Normal] Alligatoring/Crazing
+[41|Normal] Crazing or ‘Alligatoring’ is characterized by a pattern of cracks resembling an alligator's skin, caused by the sun's UV rays drying out and damaging the roof's surface.
+[42|Normal] Crazing or ‘alligatioring’ was observed throughout.
+[43|Normal] 
+[44|Normal] Blisters
+[45|Normal] Severe granular loss and minor blisters were observed throughout.
+[46|Normal] 
+[47|Normal] BUR vent/Dryer Vent
+[48|Normal] 
+[49|Normal] A dryer/BUR vent was noted to have an additional modified opening on it. This is far below the industry standard of a minimum 8" flood plain/finished roof surface height.
+[50|Normal] 
+[51|Normal] 
+[52|Normal] Damage/Punctures/Tears
+[53|Normal] The roof has been damaged in multiple locations.
+[54|Normal] Damaged gutters were noted in multiple areas.
+[55|Normal] Debris (General)
+[56|Normal] Various types of debris were found on the roof surfaces.
+[57|Normal] Animal feces accumulated in a corner.
+[58|Normal] Debris (Organic)
+[59|Normal] The internal roof drain sumps are packed with organic debris. This impedes water flow.
+[60|Normal] Granular Loss
+[61|Normal] Granular loss was observed on the roof surface throughout.
+[62|Normal] Severe granular loss and minor blisters were observed throughout.
+[63|Normal] Gutters
+[64|Normal] Damaged gutters were noted in multiple areas.
+[65|Normal] The gutter was damaged.
+[66|Normal] Debris was noted within some of the gutters.
+[67|Normal] Membrane
+[68|Normal] The membrane was not trimmed back when initially installed.
+[69|Normal] 
+[70|Normal] 
+[71|Normal] Metal Flashings
+[72|Normal] Several of the metal skirt flashings around the RTU’s are loose or open to water ingress.
+[73|Normal] Menzie/Plumbing stack
+[74|Normal] A settlement cap was observed to be missing from a plumbing stack.
+[75|Normal] All the penetrations require a new layer of liquid membrane and granules.
+[76|Normal] A plumbing stack has a cap that is the incorrect size. It can cause moisture to enter the roof system and building.
+[77|Normal] Organic Growth
+[78|Normal] Organic growth was observed throughout.
+[79|Normal] Organic debris was observed throughout.
+[80|Normal] Organic debris was observed throughout. Especially at the low spots of the roof.
+[81|Normal] Paving Slabs
+[82|Normal] There is an excessive amount of paving slabs on the roof areas.
+[83|Normal] Paving slabs are also surrounding the internal roof drains.
+[84|Normal] The membrane is unprotected underneath this paving stone. They can become imbedded into the membrane and in some cases cause punctures.
+[85|Normal] It should be removed, the roof be reviewed, repaired if applicable and a sacrificial sheet of SBS installed underneath.
+[86|Normal] Ponding Water
+[87|Normal] Ponding water was observed in several locations.
+[88|Normal] Punctures
+[89|Normal] Multiple punctures were observed throughout the roof areas.
+[90|Normal] An open corner was observed at an extraction fan curb. It requires to be repaired.
+[91|Normal] Rust/Corrosion
+[92|Normal] Corrosion was observed to be well established on the roof hatch.
+[93|Normal] Solution - It requires to be treated with a rust inhibiting paint.
+[94|Normal] Vinyl Decking
+[95|Normal] Corners
+[96|Normal] A few corners are open to water ingress.
+[97|Normal] Trim
+[98|Normal] The outer trim was observed to be damaged on approximately 30% of the vinyl decks.
+[99|Normal] 
+[100|Normal] 
+[101|Normal] 
+[102|Normal] 
+[103|Normal] 
+[104|Normal] 
+[105|Normal] 

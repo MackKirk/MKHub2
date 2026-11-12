@@ -60,6 +60,7 @@ type CustomListRow = {
   name: string;
   description?: string | null;
   status: string;
+  domain?: string;
   /** When true, adding this list to a dropdown in a form template also adds a Long Answer field "Other:" below. */
   include_other?: boolean;
   created_at?: string | null;
@@ -256,18 +257,42 @@ function listStatusBadge(status: string) {
   return <AppBadge variant="neutral">Inactive</AppBadge>;
 }
 
-export default function FormCustomListsPage() {
+export type FormCustomListsPageVariant = 'safety' | 'fieldwork';
+
+type FormCustomListsPageProps = {
+  variant?: FormCustomListsPageVariant;
+};
+
+const SEEDED_FIELDWORK_LIST_NAMES = new Set(['R&M Observed Conditions', 'R&M Work Performed']);
+
+export default function FormCustomListsPage({ variant = 'safety' }: FormCustomListsPageProps) {
   const confirm = useConfirm();
   const qc = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName] = useState('');
   const [listsSearch, setListsSearch] = useState('');
+  const isFieldwork = variant === 'fieldwork';
+  const templatesLink = isFieldwork ? '/rm-fieldwork/form-templates' : '/documents/form-templates';
+  const createDomain = isFieldwork ? 'fieldwork' : 'safety';
 
-  const { data: lists, isLoading } = useQuery({
-    queryKey: ['formCustomLists'],
-    queryFn: () => api<CustomListRow[]>('GET', '/form-custom-lists'),
+  const { data: listsRaw, isLoading } = useQuery({
+    queryKey: ['formCustomLists', variant],
+    queryFn: () =>
+      isFieldwork
+        ? api<CustomListRow[]>('GET', '/form-custom-lists?domain=fieldwork')
+        : api<CustomListRow[]>('GET', '/form-custom-lists'),
   });
+
+  const lists = useMemo(() => {
+    const rows = listsRaw || [];
+    if (isFieldwork) return rows;
+    // Safety Documents hub: shared + safety only (never Fieldwork / HR exclusive lists).
+    return rows.filter((r) => {
+      const d = (r.domain || 'shared').toLowerCase();
+      return d === 'shared' || d === 'safety';
+    });
+  }, [listsRaw, isFieldwork]);
 
   const { data: detail, isLoading: detailLoading } = useQuery({
     queryKey: ['formCustomList', selectedId],
@@ -280,6 +305,7 @@ export default function FormCustomListsPage() {
     mutationFn: () =>
       api<CustomListRow>('POST', '/form-custom-lists', {
         name: newName.trim(),
+        domain: createDomain,
         description: null,
         status: 'active',
       }),
@@ -403,14 +429,24 @@ export default function FormCustomListsPage() {
     >
       <AppPageHeader
         className="shrink-0"
-        title="Form Custom Lists"
+        title={isFieldwork ? 'Fieldwork phrase libraries' : 'Form Custom Lists'}
         subtitle={
-          <>
-            Reusable hierarchical lists for drop-down fields in form templates.{' '}
-            <Link to="/documents/form-templates" className="text-brand-red hover:underline">
-              Form Templates
-            </Link>
-          </>
+          isFieldwork ? (
+            <>
+              R&amp;M Observed Conditions and R&amp;M Work Performed catalogs (Form Engine lists). Organize categories,
+              search, add, edit, and deactivate phrases — no separate list system.{' '}
+              <Link to={templatesLink} className="text-brand-red hover:underline">
+                Fieldwork templates
+              </Link>
+            </>
+          ) : (
+            <>
+              Reusable hierarchical lists for drop-down fields in form templates.{' '}
+              <Link to={templatesLink} className="text-brand-red hover:underline">
+                Form Templates
+              </Link>
+            </>
+          )
         }
         icon={<ListTree className="h-4 w-4" />}
       />
@@ -456,7 +492,8 @@ export default function FormCustomListsPage() {
             <ul className="flex-1 min-h-0 overflow-y-auto overscroll-contain list-none">
               {filteredLists.map((row) => {
                 const usedCount = row.used_in_form_count ?? 0;
-                const deleteBlocked = usedCount > 0;
+                const seededCatalog = SEEDED_FIELDWORK_LIST_NAMES.has((row.name || '').trim());
+                const deleteBlocked = usedCount > 0 || seededCatalog;
                 const selected = selectedId === row.id;
                 return (
                   <li key={row.id} className="flex items-stretch min-w-0">
@@ -474,9 +511,11 @@ export default function FormCustomListsPage() {
                       <AppListRowIconButton
                         preset="delete"
                         label={
-                          deleteBlocked
-                            ? `Delete list (disabled: used in ${usedCount} form template(s))`
-                            : `Delete list ${row.name}`
+                          seededCatalog
+                            ? 'Seeded Fieldwork phrase catalog cannot be deleted'
+                            : deleteBlocked
+                              ? `Delete list (disabled: used in ${usedCount} form template(s))`
+                              : `Delete list ${row.name}`
                         }
                         disabled={deleteBlocked || deleteListMut.isPending}
                         onClick={(e) => {

@@ -1388,6 +1388,29 @@ def user_has_any_project_safety_permission(
     return any(_has_permission(user, k) for k in keys)
 
 
+def user_has_any_rm_fieldwork_permission(
+    user: User, action: Literal["read", "write", "review"]
+) -> bool:
+    """R&M Fieldwork module (templates / records). Construction is out of scope for MVP.
+
+    Privilege escalation rules (intentional):
+    - read: satisfied by read OR write OR review (writers/reviewers can open lists)
+    - write: write only (review-only cannot mutate)
+    - review: review only (write-only cannot approve)
+    """
+    if _user_is_admin(user):
+        return True
+    keys = [f"business:rm:projects:fieldwork:{action}"]
+    if action == "read":
+        keys.extend(
+            [
+                "business:rm:projects:fieldwork:write",
+                "business:rm:projects:fieldwork:review",
+            ]
+        )
+    return any(_has_permission(user, k) for k in keys)
+
+
 def _project_category_allow_list(
     perm_map: dict,
     line: Optional[str],

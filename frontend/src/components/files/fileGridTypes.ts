@@ -4,6 +4,10 @@ export type FileGridFileItem = {
   name: string;
   isImage: boolean;
   uploadedAt?: string;
+  /** Derived from PhotoObservation / technical folder policy (PR5–PR6). */
+  needsClassification?: boolean;
+  fieldworkPhrase?: string | null;
+  fieldworkProtected?: boolean;
 };
 
 export type FileGridFolderItem = {
@@ -28,13 +32,24 @@ export function toGridFileFromClientLike(file: {
   uploaded_at?: string | null;
   is_image?: boolean;
   content_type?: string;
+  needs_classification?: boolean;
+  fieldwork?: {
+    needs_classification?: boolean;
+    phrase_text_snapshot?: string | null;
+    protected?: boolean;
+  } | null;
 }): FileGridFileItem {
+  const needs =
+    Boolean(file.needs_classification) || Boolean(file.fieldwork?.needs_classification);
   return {
     id: file.id,
     fileObjectId: file.file_object_id,
     name: file.original_name || file.file_object_id,
     isImage: isFileGridImage(file),
     uploadedAt: file.uploaded_at || undefined,
+    needsClassification: needs || undefined,
+    fieldworkPhrase: file.fieldwork?.phrase_text_snapshot || null,
+    fieldworkProtected: Boolean(file.fieldwork?.protected) || undefined,
   };
 }
 

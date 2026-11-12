@@ -70,9 +70,17 @@ export type SignatureRolePolicy = {
   mode?: 'typed' | 'drawn' | 'any';
 };
 
+/** Optional R&M Fieldwork template settings (Site Assessment / Work Report). */
+export type FieldworkTemplateSettings = {
+  require_final_comments?: boolean;
+  require_min_photos?: number;
+  default_pictures_folder?: string;
+};
+
 export type SafetyFormDefinition = {
   sections: SafetyFormSection[];
   signature_policy?: { worker?: SignatureRolePolicy; supervisor?: SignatureRolePolicy };
+  fieldwork_settings?: FieldworkTemplateSettings;
 };
 
 export const DEFAULT_DEFINITION: SafetyFormDefinition = {
@@ -253,6 +261,21 @@ export function normalizeDefinition(raw: unknown): SafetyFormDefinition {
   }
   const sigIn = o.signature_policy && typeof o.signature_policy === 'object' ? (o.signature_policy as Record<string, unknown>) : {};
   const wIn = sigIn.worker && typeof sigIn.worker === 'object' ? (sigIn.worker as Record<string, unknown>) : {};
+  let fieldwork_settings: FieldworkTemplateSettings | undefined;
+  const fwRaw = o.fieldwork_settings;
+  if (fwRaw && typeof fwRaw === 'object' && !Array.isArray(fwRaw)) {
+    const fw = fwRaw as Record<string, unknown>;
+    fieldwork_settings = {};
+    if ('require_final_comments' in fw) fieldwork_settings.require_final_comments = Boolean(fw.require_final_comments);
+    if ('require_min_photos' in fw) {
+      const n = Number(fw.require_min_photos);
+      fieldwork_settings.require_min_photos = Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
+    }
+    if (typeof fw.default_pictures_folder === 'string' && fw.default_pictures_folder.trim()) {
+      fieldwork_settings.default_pictures_folder = fw.default_pictures_folder.trim();
+    }
+    if (Object.keys(fieldwork_settings).length === 0) fieldwork_settings = undefined;
+  }
   return {
     sections: out,
     signature_policy: {
@@ -263,6 +286,7 @@ export function normalizeDefinition(raw: unknown): SafetyFormDefinition {
         mode: 'drawn',
       },
     } as SafetyFormDefinition['signature_policy'],
+    ...(fieldwork_settings ? { fieldwork_settings } : {}),
   };
 }
 

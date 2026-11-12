@@ -15,6 +15,7 @@ import {
   uiTypography,
 } from '@/components/ui';
 import { UserWorkEligibilityDocumentsSection } from '@/components/users/UserWorkEligibilityDocumentsSection';
+import { EMPLOYMENT_TYPE_OPTIONS, employmentTypeFormValue } from '@/lib/employmentType';
 import { userProfileFieldHint } from '@/lib/userProfileFieldHints';
 
 const ADDRESS_INPUT_CLASS =
@@ -25,7 +26,7 @@ const MARITAL_OPTIONS = ['Single', 'Married', 'Common-law', 'Divorced', 'Widowed
   value: v,
   label: v,
 }));
-const EMPLOYMENT_OPTIONS = ['Full-time', 'Hourly', 'Part-time', 'Salary'].map((v) => ({ value: v, label: v }));
+const EMPLOYMENT_OPTIONS = EMPLOYMENT_TYPE_OPTIONS.map((option) => ({ value: option.value, label: option.label }));
 
 function formatPhone(v: string) {
   const d = String(v || '')
@@ -300,7 +301,7 @@ export function ProfileOrganizationForm({
 }) {
   const [form, setForm] = useState({
     job_title: String(p.job_title || ''),
-    employment_type: String(p.employment_type || ''),
+    employment_type: employmentTypeFormValue(p.employment_type as string),
     hire_date: String(p.hire_date || '').slice(0, 10),
     termination_date: String(p.termination_date || '').slice(0, 10),
     work_email: String(p.work_email || ''),
@@ -312,7 +313,7 @@ export function ProfileOrganizationForm({
     if (prevOpen.current) {
       setForm({
         job_title: String(p.job_title || ''),
-        employment_type: String(p.employment_type || ''),
+        employment_type: employmentTypeFormValue(p.employment_type as string),
         hire_date: String(p.hire_date || '').slice(0, 10),
         termination_date: String(p.termination_date || '').slice(0, 10),
         work_email: String(p.work_email || ''),

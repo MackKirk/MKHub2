@@ -708,6 +708,8 @@ export default function AppShell({ children }: PropsWithChildren){
         { id: 'rm-opportunities', label: 'Opportunities', path: '/rm-opportunities', icon: <IconOpportunities />, requiredPermission: 'business:rm:projects:read' },
         { id: 'rm-projects', label: 'Projects', path: '/rm-projects', icon: <IconProjects />, requiredPermission: 'business:rm:projects:read' },
         { id: 'rm-warranty-review', label: 'Warranty Review', path: '/rm-warranty-review', icon: <IconClipboard />, requiredPermission: 'business:rm:projects:read' },
+        { id: 'rm-fieldwork-form-templates', label: 'Fieldwork Templates', path: '/rm-fieldwork/form-templates', icon: <IconDocument />, requiredPermission: 'business:rm:projects:fieldwork:read' },
+        { id: 'rm-fieldwork-phrase-lists', label: 'Fieldwork Phrases', path: '/rm-fieldwork/form-custom-lists', icon: <IconDocument />, requiredPermission: 'business:rm:projects:fieldwork:read' },
       ]
     },
     {

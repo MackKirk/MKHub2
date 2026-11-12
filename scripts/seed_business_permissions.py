@@ -412,6 +412,34 @@ def seed_business_permissions():
                 "description": "Allows changing the project owner (primary customer) and reassigning site, contact, and related fields",
                 "sort_index": base_sort + 20,
             })
+
+        # R&M Fieldwork (Form Engine domain + future records). Construction out of MVP scope.
+        for action, label, desc in (
+            (
+                "read",
+                "View Fieldwork",
+                "Allows viewing R&M Fieldwork templates and records on opportunities and projects",
+            ),
+            (
+                "write",
+                "Edit Fieldwork",
+                "Allows creating and editing R&M Fieldwork templates and field reports",
+            ),
+            (
+                "review",
+                "Review Fieldwork",
+                "Allows approving or requesting changes on R&M Fieldwork reports",
+            ),
+        ):
+            business_permissions.append(
+                {
+                    "key": f"business:rm:projects:fieldwork:{action}",
+                    "label": label,
+                    "description": desc,
+                    "sort_index": sort,
+                }
+            )
+            sort += 1
         
         for perm_data in business_permissions:
             # Find or create permission

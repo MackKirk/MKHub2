@@ -1,0 +1,1027 @@
+{
+  "mode": "dry_run_offline_faithful",
+  "database_connection": null,
+  "database_writes": false,
+  "apply_production": false,
+  "mapping_finalized": true,
+  "policy": {
+    "verbatim_text": true,
+    "all_57_active": true,
+    "no_spelling_fixes": true,
+    "no_splits": true,
+    "no_recommended_actions_list": true,
+    "no_work_performed_invention": true,
+    "source_of_truth": "R&M Word document"
+  },
+  "source_pack": "rvt1",
+  "target_list_observed": "R&M Observed Conditions",
+  "target_list_work_performed": "R&M Work Performed",
+  "work_performed_import_count": 0,
+  "summary": {
+    "source_doc": "Roofing Verbiage Templates .docx",
+    "source_pack": "rvt1",
+    "target_list_observed": "R&M Observed Conditions",
+    "target_list_work_performed": "R&M Work Performed",
+    "work_performed_entries": 0,
+    "original_entries": 57,
+    "selectable_active_leaves": 57,
+    "reference_inactive_leaves": 0,
+    "by_roof_type": {
+      "Asphalt Shingles": 24,
+      "SBS": 31,
+      "Vinyl Decking": 2
+    },
+    "max_phrase_chars": 170,
+    "name_column_limit": 500,
+    "fits_name_column": true,
+    "hierarchy": "Roof type (L1) → Category (L2) → Phrase (L3)",
+    "max_depth_supported": 3
+  },
+  "scope_guard": {
+    "writes_allowed_to": [
+      "R&M Observed Conditions"
+    ],
+    "writes_forbidden_to": [
+      "R&M Work Performed",
+      "*any_other_form_custom_list*"
+    ]
+  },
+  "idempotency": {
+    "key": "origin_id",
+    "format": "rvt1|{roof_type}|{category}|p{source_para_index}",
+    "leaf_dedupe": "find-or-create by parent path + exact leaf name",
+    "manual_edit_guard": "If provenance origin_id → item_id exists and Hub name != imported_original, skip",
+    "re_run_safe": true
+  },
+  "entries": [
+    {
+      "origin_id": "rvt1|Asphalt Shingles|Damage/Punctures/Tears|p3",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 3,
+      "roof_type": "Asphalt Shingles",
+      "category": "Damage/Punctures/Tears",
+      "position_in_category": 0,
+      "original_text": "Ripped/torn asphalt shingles were observed throughout the roof areas.",
+      "import_path": [
+        "Asphalt Shingles",
+        "Damage/Punctures/Tears",
+        "Ripped/torn asphalt shingles were observed throughout the roof areas."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|Asphalt Shingles|Damage/Punctures/Tears|p4",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 4,
+      "roof_type": "Asphalt Shingles",
+      "category": "Damage/Punctures/Tears",
+      "position_in_category": 1,
+      "original_text": "Several shingles were observed to be punctured.",
+      "import_path": [
+        "Asphalt Shingles",
+        "Damage/Punctures/Tears",
+        "Several shingles were observed to be punctured."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|Asphalt Shingles|Debris|p6",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 6,
+      "roof_type": "Asphalt Shingles",
+      "category": "Debris",
+      "position_in_category": 0,
+      "original_text": "Various types of debris were found on the roof surfaces.",
+      "import_path": [
+        "Asphalt Shingles",
+        "Debris",
+        "Various types of debris were found on the roof surfaces."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|Asphalt Shingles|Debris|p7",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 7,
+      "roof_type": "Asphalt Shingles",
+      "category": "Debris",
+      "position_in_category": 1,
+      "original_text": "Animal feces accumulated in a corner.",
+      "import_path": [
+        "Asphalt Shingles",
+        "Debris",
+        "Animal feces accumulated in a corner."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|Asphalt Shingles|Debris|p8",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 8,
+      "roof_type": "Asphalt Shingles",
+      "category": "Debris",
+      "position_in_category": 2,
+      "original_text": "Organic debris was observed throughout.",
+      "import_path": [
+        "Asphalt Shingles",
+        "Debris",
+        "Organic debris was observed throughout."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|Asphalt Shingles|Debris|p9",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 9,
+      "roof_type": "Asphalt Shingles",
+      "category": "Debris",
+      "position_in_category": 3,
+      "original_text": "A build up of general debris has accumulated within the debris strainers, causing blockages.",
+      "import_path": [
+        "Asphalt Shingles",
+        "Debris",
+        "A build up of general debris has accumulated within the debris strainers, causing blockages."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|Asphalt Shingles|Granular Loss|p11",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 11,
+      "roof_type": "Asphalt Shingles",
+      "category": "Granular Loss",
+      "position_in_category": 0,
+      "original_text": "Granular loss was noted on the asphalt shingles.",
+      "import_path": [
+        "Asphalt Shingles",
+        "Granular Loss",
+        "Granular loss was noted on the asphalt shingles."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|Asphalt Shingles|Granular Loss|p12",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 12,
+      "roof_type": "Asphalt Shingles",
+      "category": "Granular Loss",
+      "position_in_category": 1,
+      "original_text": "The asphalt shingles are suffering from severe granule loss.",
+      "import_path": [
+        "Asphalt Shingles",
+        "Granular Loss",
+        "The asphalt shingles are suffering from severe granule loss."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|Asphalt Shingles|Gutters|p14",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 14,
+      "roof_type": "Asphalt Shingles",
+      "category": "Gutters",
+      "position_in_category": 0,
+      "original_text": "Damaged gutters were noted in multiple areas.",
+      "import_path": [
+        "Asphalt Shingles",
+        "Gutters",
+        "Damaged gutters were noted in multiple areas."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|Asphalt Shingles|Gutters|p15",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 15,
+      "roof_type": "Asphalt Shingles",
+      "category": "Gutters",
+      "position_in_category": 1,
+      "original_text": "The gutter was damaged.",
+      "import_path": [
+        "Asphalt Shingles",
+        "Gutters",
+        "The gutter was damaged."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|Asphalt Shingles|Gutters|p16",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 16,
+      "roof_type": "Asphalt Shingles",
+      "category": "Gutters",
+      "position_in_category": 2,
+      "original_text": "Debris was noted within some of the gutters.",
+      "import_path": [
+        "Asphalt Shingles",
+        "Gutters",
+        "Debris was noted within some of the gutters."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|Asphalt Shingles|Gutters|p17",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 17,
+      "roof_type": "Asphalt Shingles",
+      "category": "Gutters",
+      "position_in_category": 3,
+      "original_text": "The loose granules have accumulated within the gutters, causing blockages at the downpipe elbow/s.",
+      "import_path": [
+        "Asphalt Shingles",
+        "Gutters",
+        "The loose granules have accumulated within the gutters, causing blockages at the downpipe elbow/s."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|Asphalt Shingles|Organic Growth|p19",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 19,
+      "roof_type": "Asphalt Shingles",
+      "category": "Organic Growth",
+      "position_in_category": 0,
+      "original_text": "Organic growth was observed throughout.",
+      "import_path": [
+        "Asphalt Shingles",
+        "Organic Growth",
+        "Organic growth was observed throughout."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|Asphalt Shingles|Organic Growth|p20",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 20,
+      "roof_type": "Asphalt Shingles",
+      "category": "Organic Growth",
+      "position_in_category": 1,
+      "original_text": "Several well-established concentrations of organic growth were seen.",
+      "import_path": [
+        "Asphalt Shingles",
+        "Organic Growth",
+        "Several well-established concentrations of organic growth were seen."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|Asphalt Shingles|Organic Growth|p21",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 21,
+      "roof_type": "Asphalt Shingles",
+      "category": "Organic Growth",
+      "position_in_category": 2,
+      "original_text": "The roof is suffering from large pockets of organic growth.",
+      "import_path": [
+        "Asphalt Shingles",
+        "Organic Growth",
+        "The roof is suffering from large pockets of organic growth."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|Asphalt Shingles|Plumbing Stacks|p23",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 23,
+      "roof_type": "Asphalt Shingles",
+      "category": "Plumbing Stacks",
+      "position_in_category": 0,
+      "original_text": "A settlement cap is missing. The flashing is also too high and needs to be cut down.",
+      "import_path": [
+        "Asphalt Shingles",
+        "Plumbing Stacks",
+        "A settlement cap is missing. The flashing is also too high and needs to be cut down."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|Asphalt Shingles|Plumbing Stacks|p24",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 24,
+      "roof_type": "Asphalt Shingles",
+      "category": "Plumbing Stacks",
+      "position_in_category": 1,
+      "original_text": "The 5 in 1 flashing for the plumbing stack is severely degraded.",
+      "import_path": [
+        "Asphalt Shingles",
+        "Plumbing Stacks",
+        "The 5 in 1 flashing for the plumbing stack is severely degraded."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|Asphalt Shingles|Plumbing Stacks|p25",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 25,
+      "roof_type": "Asphalt Shingles",
+      "category": "Plumbing Stacks",
+      "position_in_category": 2,
+      "original_text": "The lead flashing that encapsulates the plumbing stack has degraded and needs replacing.",
+      "import_path": [
+        "Asphalt Shingles",
+        "Plumbing Stacks",
+        "The lead flashing that encapsulates the plumbing stack has degraded and needs replacing."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|Asphalt Shingles|Punctures|p27",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 27,
+      "roof_type": "Asphalt Shingles",
+      "category": "Punctures",
+      "position_in_category": 0,
+      "original_text": "Multiple punctures were observed throughout the roof areas.",
+      "import_path": [
+        "Asphalt Shingles",
+        "Punctures",
+        "Multiple punctures were observed throughout the roof areas."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|Asphalt Shingles|Ridge Caps|p31",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 31,
+      "roof_type": "Asphalt Shingles",
+      "category": "Ridge Caps",
+      "position_in_category": 0,
+      "original_text": "All the ridge caps are cracked.",
+      "import_path": [
+        "Asphalt Shingles",
+        "Ridge Caps",
+        "All the ridge caps are cracked."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|Asphalt Shingles|Ridge Caps|p32",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 32,
+      "roof_type": "Asphalt Shingles",
+      "category": "Ridge Caps",
+      "position_in_category": 1,
+      "original_text": "Several of the ridge caps are cracked.",
+      "import_path": [
+        "Asphalt Shingles",
+        "Ridge Caps",
+        "Several of the ridge caps are cracked."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|Asphalt Shingles|Ridge Caps|p33",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 33,
+      "roof_type": "Asphalt Shingles",
+      "category": "Ridge Caps",
+      "position_in_category": 2,
+      "original_text": "Several of the ridge caps are either missing or needs to be replaced.",
+      "import_path": [
+        "Asphalt Shingles",
+        "Ridge Caps",
+        "Several of the ridge caps are either missing or needs to be replaced."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|Asphalt Shingles|Safety|p35",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 35,
+      "roof_type": "Asphalt Shingles",
+      "category": "Safety",
+      "position_in_category": 0,
+      "original_text": "Temporary safety anchors are fixed through the roof surface throughout.",
+      "import_path": [
+        "Asphalt Shingles",
+        "Safety",
+        "Temporary safety anchors are fixed through the roof surface throughout."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|Asphalt Shingles|Safety|p36",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 36,
+      "roof_type": "Asphalt Shingles",
+      "category": "Safety",
+      "position_in_category": 1,
+      "original_text": "A temporary roof anchor has been left.",
+      "import_path": [
+        "Asphalt Shingles",
+        "Safety",
+        "A temporary roof anchor has been left."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|SBS|Alligatoring/Crazing|p41",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 41,
+      "roof_type": "SBS",
+      "category": "Alligatoring/Crazing",
+      "position_in_category": 0,
+      "original_text": "Crazing or ‘Alligatoring’ is characterized by a pattern of cracks resembling an alligator's skin, caused by the sun's UV rays drying out and damaging the roof's surface.",
+      "import_path": [
+        "SBS",
+        "Alligatoring/Crazing",
+        "Crazing or ‘Alligatoring’ is characterized by a pattern of cracks resembling an alligator's skin, caused by the sun's UV rays drying out and damaging the roof's surface."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|SBS|Alligatoring/Crazing|p42",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 42,
+      "roof_type": "SBS",
+      "category": "Alligatoring/Crazing",
+      "position_in_category": 1,
+      "original_text": "Crazing or ‘alligatioring’ was observed throughout.",
+      "import_path": [
+        "SBS",
+        "Alligatoring/Crazing",
+        "Crazing or ‘alligatioring’ was observed throughout."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|SBS|Blisters|p45",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 45,
+      "roof_type": "SBS",
+      "category": "Blisters",
+      "position_in_category": 0,
+      "original_text": "Severe granular loss and minor blisters were observed throughout.",
+      "import_path": [
+        "SBS",
+        "Blisters",
+        "Severe granular loss and minor blisters were observed throughout."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|SBS|BUR vent/Dryer Vent|p49",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 49,
+      "roof_type": "SBS",
+      "category": "BUR vent/Dryer Vent",
+      "position_in_category": 0,
+      "original_text": "A dryer/BUR vent was noted to have an additional modified opening on it. This is far below the industry standard of a minimum 8\" flood plain/finished roof surface height.",
+      "import_path": [
+        "SBS",
+        "BUR vent/Dryer Vent",
+        "A dryer/BUR vent was noted to have an additional modified opening on it. This is far below the industry standard of a minimum 8\" flood plain/finished roof surface height."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|SBS|Damage/Punctures/Tears|p53",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 53,
+      "roof_type": "SBS",
+      "category": "Damage/Punctures/Tears",
+      "position_in_category": 0,
+      "original_text": "The roof has been damaged in multiple locations.",
+      "import_path": [
+        "SBS",
+        "Damage/Punctures/Tears",
+        "The roof has been damaged in multiple locations."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|SBS|Damage/Punctures/Tears|p54",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 54,
+      "roof_type": "SBS",
+      "category": "Damage/Punctures/Tears",
+      "position_in_category": 1,
+      "original_text": "Damaged gutters were noted in multiple areas.",
+      "import_path": [
+        "SBS",
+        "Damage/Punctures/Tears",
+        "Damaged gutters were noted in multiple areas."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|SBS|Debris (General)|p56",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 56,
+      "roof_type": "SBS",
+      "category": "Debris (General)",
+      "position_in_category": 0,
+      "original_text": "Various types of debris were found on the roof surfaces.",
+      "import_path": [
+        "SBS",
+        "Debris (General)",
+        "Various types of debris were found on the roof surfaces."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|SBS|Debris (General)|p57",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 57,
+      "roof_type": "SBS",
+      "category": "Debris (General)",
+      "position_in_category": 1,
+      "original_text": "Animal feces accumulated in a corner.",
+      "import_path": [
+        "SBS",
+        "Debris (General)",
+        "Animal feces accumulated in a corner."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|SBS|Debris (Organic)|p59",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 59,
+      "roof_type": "SBS",
+      "category": "Debris (Organic)",
+      "position_in_category": 0,
+      "original_text": "The internal roof drain sumps are packed with organic debris. This impedes water flow.",
+      "import_path": [
+        "SBS",
+        "Debris (Organic)",
+        "The internal roof drain sumps are packed with organic debris. This impedes water flow."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|SBS|Granular Loss|p61",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 61,
+      "roof_type": "SBS",
+      "category": "Granular Loss",
+      "position_in_category": 0,
+      "original_text": "Granular loss was observed on the roof surface throughout.",
+      "import_path": [
+        "SBS",
+        "Granular Loss",
+        "Granular loss was observed on the roof surface throughout."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|SBS|Granular Loss|p62",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 62,
+      "roof_type": "SBS",
+      "category": "Granular Loss",
+      "position_in_category": 1,
+      "original_text": "Severe granular loss and minor blisters were observed throughout.",
+      "import_path": [
+        "SBS",
+        "Granular Loss",
+        "Severe granular loss and minor blisters were observed throughout."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|SBS|Gutters|p64",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 64,
+      "roof_type": "SBS",
+      "category": "Gutters",
+      "position_in_category": 0,
+      "original_text": "Damaged gutters were noted in multiple areas.",
+      "import_path": [
+        "SBS",
+        "Gutters",
+        "Damaged gutters were noted in multiple areas."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|SBS|Gutters|p65",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 65,
+      "roof_type": "SBS",
+      "category": "Gutters",
+      "position_in_category": 1,
+      "original_text": "The gutter was damaged.",
+      "import_path": [
+        "SBS",
+        "Gutters",
+        "The gutter was damaged."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|SBS|Gutters|p66",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 66,
+      "roof_type": "SBS",
+      "category": "Gutters",
+      "position_in_category": 2,
+      "original_text": "Debris was noted within some of the gutters.",
+      "import_path": [
+        "SBS",
+        "Gutters",
+        "Debris was noted within some of the gutters."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|SBS|Membrane|p68",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 68,
+      "roof_type": "SBS",
+      "category": "Membrane",
+      "position_in_category": 0,
+      "original_text": "The membrane was not trimmed back when initially installed.",
+      "import_path": [
+        "SBS",
+        "Membrane",
+        "The membrane was not trimmed back when initially installed."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|SBS|Metal Flashings|p72",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 72,
+      "roof_type": "SBS",
+      "category": "Metal Flashings",
+      "position_in_category": 0,
+      "original_text": "Several of the metal skirt flashings around the RTU’s are loose or open to water ingress.",
+      "import_path": [
+        "SBS",
+        "Metal Flashings",
+        "Several of the metal skirt flashings around the RTU’s are loose or open to water ingress."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|SBS|Menzie/Plumbing stack|p74",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 74,
+      "roof_type": "SBS",
+      "category": "Menzie/Plumbing stack",
+      "position_in_category": 0,
+      "original_text": "A settlement cap was observed to be missing from a plumbing stack.",
+      "import_path": [
+        "SBS",
+        "Menzie/Plumbing stack",
+        "A settlement cap was observed to be missing from a plumbing stack."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|SBS|Menzie/Plumbing stack|p75",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 75,
+      "roof_type": "SBS",
+      "category": "Menzie/Plumbing stack",
+      "position_in_category": 1,
+      "original_text": "All the penetrations require a new layer of liquid membrane and granules.",
+      "import_path": [
+        "SBS",
+        "Menzie/Plumbing stack",
+        "All the penetrations require a new layer of liquid membrane and granules."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|SBS|Menzie/Plumbing stack|p76",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 76,
+      "roof_type": "SBS",
+      "category": "Menzie/Plumbing stack",
+      "position_in_category": 2,
+      "original_text": "A plumbing stack has a cap that is the incorrect size. It can cause moisture to enter the roof system and building.",
+      "import_path": [
+        "SBS",
+        "Menzie/Plumbing stack",
+        "A plumbing stack has a cap that is the incorrect size. It can cause moisture to enter the roof system and building."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|SBS|Organic Growth|p78",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 78,
+      "roof_type": "SBS",
+      "category": "Organic Growth",
+      "position_in_category": 0,
+      "original_text": "Organic growth was observed throughout.",
+      "import_path": [
+        "SBS",
+        "Organic Growth",
+        "Organic growth was observed throughout."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|SBS|Organic Growth|p79",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 79,
+      "roof_type": "SBS",
+      "category": "Organic Growth",
+      "position_in_category": 1,
+      "original_text": "Organic debris was observed throughout.",
+      "import_path": [
+        "SBS",
+        "Organic Growth",
+        "Organic debris was observed throughout."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|SBS|Organic Growth|p80",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 80,
+      "roof_type": "SBS",
+      "category": "Organic Growth",
+      "position_in_category": 2,
+      "original_text": "Organic debris was observed throughout. Especially at the low spots of the roof.",
+      "import_path": [
+        "SBS",
+        "Organic Growth",
+        "Organic debris was observed throughout. Especially at the low spots of the roof."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|SBS|Paving Slabs|p82",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 82,
+      "roof_type": "SBS",
+      "category": "Paving Slabs",
+      "position_in_category": 0,
+      "original_text": "There is an excessive amount of paving slabs on the roof areas.",
+      "import_path": [
+        "SBS",
+        "Paving Slabs",
+        "There is an excessive amount of paving slabs on the roof areas."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|SBS|Paving Slabs|p83",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 83,
+      "roof_type": "SBS",
+      "category": "Paving Slabs",
+      "position_in_category": 1,
+      "original_text": "Paving slabs are also surrounding the internal roof drains.",
+      "import_path": [
+        "SBS",
+        "Paving Slabs",
+        "Paving slabs are also surrounding the internal roof drains."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|SBS|Paving Slabs|p84",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 84,
+      "roof_type": "SBS",
+      "category": "Paving Slabs",
+      "position_in_category": 2,
+      "original_text": "The membrane is unprotected underneath this paving stone. They can become imbedded into the membrane and in some cases cause punctures.",
+      "import_path": [
+        "SBS",
+        "Paving Slabs",
+        "The membrane is unprotected underneath this paving stone. They can become imbedded into the membrane and in some cases cause punctures."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|SBS|Paving Slabs|p85",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 85,
+      "roof_type": "SBS",
+      "category": "Paving Slabs",
+      "position_in_category": 3,
+      "original_text": "It should be removed, the roof be reviewed, repaired if applicable and a sacrificial sheet of SBS installed underneath.",
+      "import_path": [
+        "SBS",
+        "Paving Slabs",
+        "It should be removed, the roof be reviewed, repaired if applicable and a sacrificial sheet of SBS installed underneath."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|SBS|Ponding Water|p87",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 87,
+      "roof_type": "SBS",
+      "category": "Ponding Water",
+      "position_in_category": 0,
+      "original_text": "Ponding water was observed in several locations.",
+      "import_path": [
+        "SBS",
+        "Ponding Water",
+        "Ponding water was observed in several locations."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|SBS|Punctures|p89",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 89,
+      "roof_type": "SBS",
+      "category": "Punctures",
+      "position_in_category": 0,
+      "original_text": "Multiple punctures were observed throughout the roof areas.",
+      "import_path": [
+        "SBS",
+        "Punctures",
+        "Multiple punctures were observed throughout the roof areas."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|SBS|Punctures|p90",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 90,
+      "roof_type": "SBS",
+      "category": "Punctures",
+      "position_in_category": 1,
+      "original_text": "An open corner was observed at an extraction fan curb. It requires to be repaired.",
+      "import_path": [
+        "SBS",
+        "Punctures",
+        "An open corner was observed at an extraction fan curb. It requires to be repaired."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|SBS|Rust/Corrosion|p92",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 92,
+      "roof_type": "SBS",
+      "category": "Rust/Corrosion",
+      "position_in_category": 0,
+      "original_text": "Corrosion was observed to be well established on the roof hatch.",
+      "import_path": [
+        "SBS",
+        "Rust/Corrosion",
+        "Corrosion was observed to be well established on the roof hatch."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|SBS|Rust/Corrosion|p93",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 93,
+      "roof_type": "SBS",
+      "category": "Rust/Corrosion",
+      "position_in_category": 1,
+      "original_text": "Solution - It requires to be treated with a rust inhibiting paint.",
+      "import_path": [
+        "SBS",
+        "Rust/Corrosion",
+        "Solution - It requires to be treated with a rust inhibiting paint."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|Vinyl Decking|Corners|p96",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 96,
+      "roof_type": "Vinyl Decking",
+      "category": "Corners",
+      "position_in_category": 0,
+      "original_text": "A few corners are open to water ingress.",
+      "import_path": [
+        "Vinyl Decking",
+        "Corners",
+        "A few corners are open to water ingress."
+      ],
+      "item_status": "active",
+      "notes": ""
+    },
+    {
+      "origin_id": "rvt1|Vinyl Decking|Trim|p98",
+      "source_pack": "rvt1",
+      "source_doc": "Roofing Verbiage Templates .docx",
+      "source_para_index": 98,
+      "roof_type": "Vinyl Decking",
+      "category": "Trim",
+      "position_in_category": 0,
+      "original_text": "The outer trim was observed to be damaged on approximately 30% of the vinyl decks.",
+      "import_path": [
+        "Vinyl Decking",
+        "Trim",
+        "The outer trim was observed to be damaged on approximately 30% of the vinyl decks."
+      ],
+      "item_status": "active",
+      "notes": ""
+    }
+  ]
+}

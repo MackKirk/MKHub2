@@ -474,7 +474,7 @@ class ClientNote(Base):
 
 
 class FormTemplate(Base):
-    """Configurable safety (or other) form; single editable definition (last save wins)."""
+    """Shared form definition (Safety, Employee Review, Fieldwork). Category isolates domains."""
     __tablename__ = "form_templates"
 
     id: Mapped[uuid.UUID] = uuid_pk()
@@ -484,6 +484,8 @@ class FormTemplate(Base):
     status: Mapped[str] = mapped_column(String(20), default="active", nullable=False, index=True)  # active | inactive
     definition: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     version_label: Mapped[str] = mapped_column(String(100), default="", nullable=False)
+    # Monotonic counter bumped whenever definition JSON is saved (instance snapshots stay immutable).
+    definition_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
@@ -500,6 +502,8 @@ class FormCustomList(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(20), default="active", nullable=False, index=True)
+    # Domain isolation: shared | safety | employee_review | fieldwork (existing rows → shared).
+    domain: Mapped[str] = mapped_column(String(40), default="shared", nullable=False, index=True)
     # When True, adding this list to a dropdown field auto-adds a Long Answer field labeled "Other:" below it.
     include_other: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
@@ -534,6 +538,132 @@ class FormCustomListItem(Base):
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     list = relationship("FormCustomList", back_populates="items")
+
+
+class FieldworkRecord(Base):
+    """R&M Fieldwork report (Site Assessment or Work Report) on an Opportunity or Project."""
+
+    __tablename__ = "fieldwork_records"
+    __table_args__ = (
+        Index("idx_fieldwork_records_project_kind_status", "project_id", "kind", "status"),
+        Index("idx_fieldwork_records_revision_of", "revision_of_id"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # site_assessment | work_report
+    kind: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    form_template_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("form_templates.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    form_definition_snapshot: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    form_payload: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    # Copied from template settings at create (require_final_comments, require_min_photos, default folder, …)
+    settings_snapshot: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    # draft | submitted | changes_requested | approved | superseded
+    status: Mapped[str] = mapped_column(String(40), default="draft", nullable=False, index=True)
+    final_comments: Mapped[Optional[str]] = mapped_column(Text)
+    review_note: Mapped[Optional[str]] = mapped_column(Text)
+    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    revision_of_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("fieldwork_records.id", ondelete="SET NULL"), nullable=True
+    )
+    superseded_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("fieldwork_records.id", ondelete="SET NULL"), nullable=True
+    )
+    # Optimistic concurrency for autosave / PATCH
+    row_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    submitted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    submitted_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    reviewed_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+    # Optional future signature payload (unused in MVP)
+    signature_payload: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+
+
+class FieldworkPhotoObservation(Base):
+    """Classified technical photo linked to a Fieldwork record and Project Files."""
+
+    __tablename__ = "fieldwork_photo_observations"
+    __table_args__ = (
+        Index("idx_fieldwork_photos_record_sort", "record_id", "sort_order"),
+        UniqueConstraint("record_id", "client_mutation_id", name="uq_fieldwork_photo_mutation"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    record_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("fieldwork_records.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    file_object_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    client_file_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("client_files.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # observation | work_performed
+    entry_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    classification_item_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("form_custom_list_items.id", ondelete="SET NULL"), nullable=True
+    )
+    phrase_item_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("form_custom_list_items.id", ondelete="SET NULL"), nullable=True
+    )
+    classification_snapshot: Mapped[Optional[str]] = mapped_column(String(1000))
+    phrase_text_snapshot: Mapped[Optional[str]] = mapped_column(Text)
+    extra_notes: Mapped[Optional[str]] = mapped_column(String(2000))
+    # Idempotent create from mobile retries
+    client_mutation_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+
+class FieldworkRecordEvent(Base):
+    """Append-only workflow / audit trail for a Fieldwork record."""
+
+    __tablename__ = "fieldwork_record_events"
+    __table_args__ = (Index("idx_fieldwork_events_record_created", "record_id", "created_at"),)
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    record_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("fieldwork_records.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    event_type: Mapped[str] = mapped_column(String(60), nullable=False)
+    from_status: Mapped[Optional[str]] = mapped_column(String(40))
+    to_status: Mapped[Optional[str]] = mapped_column(String(40))
+    message: Mapped[Optional[str]] = mapped_column(Text)
+    meta: Mapped[Optional[dict]] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
 
 
 class ProjectSafetyInspection(Base):
@@ -1888,7 +2018,7 @@ class EmployeeProfile(Base):
     # Financeiro & Contratual
     pay_rate: Mapped[Optional[str]] = mapped_column(String(100))
     pay_type: Mapped[Optional[str]] = mapped_column(String(50))  # hourly|salary|contract
-    employment_type: Mapped[Optional[str]] = mapped_column(String(50))  # full-time|part-time|contract
+    employment_type: Mapped[Optional[str]] = mapped_column(String(50))  # Full-time|Hourly|Part-time|Salary
     # Salary staff skip hours by default; set True when a salary role still must clock in.
     needs_register_hours: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 

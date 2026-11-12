@@ -25,6 +25,7 @@ import {
   uiTypography,
   type AppListSortDirection,
 } from '@/components/ui';
+import { FIELDWORK_TEMPLATE_CATEGORIES } from '@/types/formTemplate';
 
 type TemplateRow = {
   id: string;
@@ -33,6 +34,7 @@ type TemplateRow = {
   category: string;
   status: string;
   version_label: string;
+  definition_version?: number;
   created_at?: string | null;
   updated_at?: string | null;
   created_by_name?: string | null;
@@ -41,7 +43,7 @@ type TemplateRow = {
 
 type SortCol = 'name' | 'created_at' | 'updated_at';
 
-export type FormTemplatesPageVariant = 'safety' | 'employee_review';
+export type FormTemplatesPageVariant = 'safety' | 'employee_review' | 'fieldwork';
 
 type FormTemplatesPageProps = {
   variant?: FormTemplatesPageVariant;
@@ -54,6 +56,7 @@ const LIST_GRID_COLS_SAFETY =
 const LIST_GRID_COLS_HR = 'grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto_auto]';
 const LIST_MIN_WIDTH = 'min-w-[720px]';
 
+
 function templateStatusBadge(status: string) {
   if (status === 'active') {
     return <AppBadge variant="success">Active</AppBadge>;
@@ -65,6 +68,8 @@ function templateTypeLabel(category: string | null | undefined): string {
   const cat = (category || '').trim().toLowerCase();
   if (cat === 'follow_up') return 'Follow-up';
   if (cat === 'employee_review') return 'Employee review';
+  if (cat === 'site_assessment') return 'Site assessment';
+  if (cat === 'work_report') return 'Work report';
   return 'Inspection';
 }
 
@@ -75,7 +80,12 @@ export default function FormTemplatesPage({ variant = 'safety', embedded = false
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState('');
   const isHr = variant === 'employee_review';
-  const editorBasePath = isHr ? '/reviews/form-templates' : '/documents/form-templates';
+  const isFieldwork = variant === 'fieldwork';
+  const editorBasePath = isHr
+    ? '/reviews/form-templates'
+    : isFieldwork
+      ? '/rm-fieldwork/form-templates'
+      : '/documents/form-templates';
 
   const sortBy = (searchParams.get('sort') as SortCol) || 'name';
   const sortDir: AppListSortDirection = searchParams.get('dir') === 'desc' ? 'desc' : 'asc';
@@ -95,27 +105,37 @@ export default function FormTemplatesPage({ variant = 'safety', embedded = false
       params.set('sort', sortBy);
       params.set('sort_dir', sortDir);
       if (isHr) params.set('category', 'employee_review');
+      if (isFieldwork) params.set('domain', 'fieldwork');
       return api<TemplateRow[]>('GET', `/form-templates?${params.toString()}`);
     },
   });
 
   const filteredRows = useMemo(() => {
+    // Safety Documents hub must never list Fieldwork templates (API also filters).
+    const domainRows = isHr || isFieldwork
+      ? rows
+      : rows.filter((r) => !FIELDWORK_TEMPLATE_CATEGORIES.has(String(r.category || '').toLowerCase()));
     const s = searchQuery.trim().toLowerCase();
-    if (!s) return rows;
-    return rows.filter((r) => {
+    if (!s) return domainRows;
+    return domainRows.filter((r) => {
       const name = (r.name || '').toLowerCase();
       const cat = (r.category || '').toLowerCase();
       const desc = (r.description || '').toLowerCase();
       const ver = (r.version_label || '').toLowerCase();
-      return name.includes(s) || cat.includes(s) || desc.includes(s) || ver.includes(s);
+      const defVer = String(r.definition_version ?? '');
+      return name.includes(s) || cat.includes(s) || desc.includes(s) || ver.includes(s) || defVer.includes(s);
     });
-  }, [rows, searchQuery]);
+  }, [rows, searchQuery, isHr, isFieldwork]);
 
   const createMut = useMutation({
     mutationFn: () =>
       api<{ id: string }>('POST', '/form-templates', {
-        name: isHr ? 'New employee review template' : 'New form template',
-        category: isHr ? 'employee_review' : 'inspection',
+        name: isHr
+          ? 'New employee review template'
+          : isFieldwork
+            ? 'New site assessment template'
+            : 'New form template',
+        category: isHr ? 'employee_review' : isFieldwork ? 'site_assessment' : 'inspection',
         status: 'active',
       }),
     onSuccess: (r) => {
@@ -175,14 +195,21 @@ export default function FormTemplatesPage({ variant = 'safety', embedded = false
 
 
 
-  const pageTitle = isHr ? 'Employee review form templates' : 'Form Templates';
+  const pageTitle = isHr
+    ? 'Employee review form templates'
+    : isFieldwork
+      ? 'Fieldwork form templates'
+      : 'Form Templates';
   const pageSubtitle = isHr
     ? 'Build reusable employee review forms (same builder as Safety). Save in the editor updates what employees see for review cycles.'
-    : 'Build reusable safety forms. Save in the editor updates what users see when starting inspections.';
+    : isFieldwork
+      ? 'Site Assessment (Opportunity / quote) and Work Report (Project / execution) templates. Configure required fields, photos, and final comments in the editor.'
+      : 'Build reusable safety forms. Save in the editor updates what users see when starting inspections.';
 
   const showEmptyList = !isLoading && rows.length === 0;
   const showNoMatches = !isLoading && rows.length > 0 && filteredRows.length === 0;
   const listGridCols = isHr ? LIST_GRID_COLS_HR : LIST_GRID_COLS_SAFETY;
+  const showTypeColumn = !isHr;
 
   const listContent = (
     <AppCard className={uiShadows.card} bodyClassName="!p-0">
@@ -218,7 +245,7 @@ export default function FormTemplatesPage({ variant = 'safety', embedded = false
               sortDir={sortDir}
               onSort={setListSort}
             />
-            {!isHr ? (
+            {showTypeColumn ? (
               <AppSortableEntityListSortColumn
                 label="Type"
                 column="name"
@@ -290,7 +317,7 @@ export default function FormTemplatesPage({ variant = 'safety', embedded = false
                   >
                     {r.name}
                   </Link>
-                  {!isHr ? (
+                  {showTypeColumn ? (
                     <span className={uiCx(uiTypography.body, 'truncate')} title={templateTypeLabel(r.category)}>
                       {templateTypeLabel(r.category)}
                     </span>

@@ -1,4 +1,4 @@
-"""Global reusable custom lists for safety form template dropdown fields."""
+"""Global reusable custom lists for shared form template dropdown fields."""
 
 from __future__ import annotations
 
@@ -10,7 +10,21 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from ..auth.security import get_current_user, require_permissions
+from ..auth.security import (
+    _has_permission,
+    _user_is_admin,
+    get_current_user,
+    user_has_any_project_safety_permission,
+    user_has_any_rm_fieldwork_permission,
+)
+from ..services.form_engine import (
+    ALL_LIST_DOMAINS,
+    LIST_DOMAIN_EMPLOYEE_REVIEW,
+    LIST_DOMAIN_FIELDWORK,
+    LIST_DOMAIN_SAFETY,
+    LIST_DOMAIN_SHARED,
+    normalized_list_domain,
+)
 from ..services.safety_sign_request_access import assert_safety_read_or_pending_sign_session
 from ..db import get_db
 from ..models.models import FormCustomList, FormCustomListItem, FormTemplate, User
@@ -18,6 +32,114 @@ from ..models.models import FormCustomList, FormCustomListItem, FormTemplate, Us
 router = APIRouter(prefix="/form-custom-lists", tags=["form-custom-lists"])
 
 MAX_DEPTH = 3
+
+
+def _hr_can_manage_form_lists(user: User) -> bool:
+    return _has_permission(user, "hr:reviews:admin") or _has_permission(user, "reviews:admin")
+
+
+def _readable_list_domains(user: User) -> Set[str]:
+    if _user_is_admin(user):
+        return set(ALL_LIST_DOMAINS)
+    out: Set[str] = set()
+    if user_has_any_project_safety_permission(user, "read"):
+        out.update({LIST_DOMAIN_SHARED, LIST_DOMAIN_SAFETY})
+    if user_has_any_rm_fieldwork_permission(user, "read"):
+        out.update({LIST_DOMAIN_SHARED, LIST_DOMAIN_FIELDWORK})
+    if _hr_can_manage_form_lists(user):
+        out.update({LIST_DOMAIN_SHARED, LIST_DOMAIN_EMPLOYEE_REVIEW})
+    return out
+
+
+def _can_write_list_domain(user: User, domain: Optional[str]) -> bool:
+    if _user_is_admin(user):
+        return True
+    d = normalized_list_domain(domain)
+    if d == LIST_DOMAIN_SHARED:
+        return (
+            user_has_any_project_safety_permission(user, "write")
+            or user_has_any_rm_fieldwork_permission(user, "write")
+            or _hr_can_manage_form_lists(user)
+        )
+    if d == LIST_DOMAIN_SAFETY:
+        return user_has_any_project_safety_permission(user, "write")
+    if d == LIST_DOMAIN_EMPLOYEE_REVIEW:
+        return _hr_can_manage_form_lists(user)
+    if d == LIST_DOMAIN_FIELDWORK:
+        return user_has_any_rm_fieldwork_permission(user, "write")
+    return False
+
+
+def _assert_can_read_list(
+    user: User,
+    lst: FormCustomList,
+    *,
+    sign_project_id: Optional[str] = None,
+    sign_inspection_id: Optional[str] = None,
+    db: Optional[Session] = None,
+) -> None:
+    domain = normalized_list_domain(getattr(lst, "domain", None))
+    if domain in _readable_list_domains(user):
+        return
+    # Pending Safety signers may load shared/safety lists used by the form runtime.
+    if domain in {LIST_DOMAIN_SHARED, LIST_DOMAIN_SAFETY} and db is not None:
+        try:
+            assert_safety_read_or_pending_sign_session(
+                user, db, sign_project_id=sign_project_id, sign_inspection_id=sign_inspection_id
+            )
+            return
+        except HTTPException:
+            pass
+    raise HTTPException(status_code=403, detail="Forbidden")
+
+
+def _assert_can_write_list(user: User, lst: FormCustomList) -> None:
+    if _can_write_list_domain(user, getattr(lst, "domain", None)):
+        return
+    raise HTTPException(status_code=403, detail="Forbidden")
+
+
+def _default_create_domain(user: User, requested: Optional[str]) -> str:
+    """Pick domain for new lists; exclusive domains require matching write permission."""
+    if requested is not None and str(requested).strip():
+        d = normalized_list_domain(requested)
+        if d not in ALL_LIST_DOMAINS:
+            raise HTTPException(status_code=400, detail="Invalid list domain")
+        if not _can_write_list_domain(user, d):
+            raise HTTPException(status_code=403, detail="Cannot create list in this domain")
+        return d
+    # Infer from the caller's strongest exclusive write; fall back to shared if multiple.
+    writers = []
+    if user_has_any_project_safety_permission(user, "write"):
+        writers.append(LIST_DOMAIN_SAFETY)
+    if user_has_any_rm_fieldwork_permission(user, "write"):
+        writers.append(LIST_DOMAIN_FIELDWORK)
+    if _hr_can_manage_form_lists(user):
+        writers.append(LIST_DOMAIN_EMPLOYEE_REVIEW)
+    if len(writers) == 1:
+        return writers[0]
+    if len(writers) > 1:
+        return LIST_DOMAIN_SHARED
+    raise HTTPException(status_code=403, detail="Forbidden")
+
+
+def require_form_custom_lists_read(user: User = Depends(get_current_user)) -> User:
+    if _readable_list_domains(user):
+        return user
+    raise HTTPException(status_code=403, detail="Forbidden")
+
+
+def require_form_custom_lists_write(user: User = Depends(get_current_user)) -> User:
+    """Gate that the user can write at least one list domain (per-list checks still apply)."""
+    if _user_is_admin(user):
+        return user
+    if (
+        user_has_any_project_safety_permission(user, "write")
+        or user_has_any_rm_fieldwork_permission(user, "write")
+        or _hr_can_manage_form_lists(user)
+    ):
+        return user
+    raise HTTPException(status_code=403, detail="Forbidden")
 
 
 def _definition_references_custom_list(definition: Any, list_id: uuid.UUID) -> bool:
@@ -88,6 +210,7 @@ def _list_to_dict(
         "name": lst.name or "",
         "description": lst.description or "",
         "status": lst.status or "active",
+        "domain": normalized_list_domain(getattr(lst, "domain", None)),
         "include_other": bool(getattr(lst, "include_other", False)),
         "created_at": lst.created_at.isoformat() if lst.created_at else None,
         "updated_at": lst.updated_at.isoformat() if lst.updated_at else None,
@@ -171,6 +294,9 @@ class FormCustomListCreate(BaseModel):
     description: Optional[str] = None
     status: str = Field(default="active", max_length=20)
     include_other: bool = False
+    domain: Optional[str] = Field(
+        None, max_length=40, description="shared | safety | employee_review | fieldwork"
+    )
 
 
 class FormCustomListUpdate(BaseModel):
@@ -178,6 +304,7 @@ class FormCustomListUpdate(BaseModel):
     description: Optional[str] = None
     status: Optional[str] = Field(None, max_length=20)
     include_other: Optional[bool] = None
+    # Domain reassignment is intentionally omitted — move across domains is a separate admin concern.
 
 
 class ItemCreate(BaseModel):
@@ -202,12 +329,22 @@ class ReorderBody(BaseModel):
 def list_custom_lists(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("business:projects:safety:read")),
+    _=Depends(require_form_custom_lists_read),
     include_counts: bool = Query(True),
+    domain: Optional[str] = Query(None, description="Optional domain filter"),
 ):
-    rows = db.query(FormCustomList).order_by(FormCustomList.name.asc()).all()
+    allowed = _readable_list_domains(user)
+    q = db.query(FormCustomList)
+    if domain and str(domain).strip():
+        d = normalized_list_domain(domain)
+        if d not in allowed:
+            raise HTTPException(status_code=403, detail="Forbidden")
+        q = q.filter(FormCustomList.domain == d)
+    rows = q.order_by(FormCustomList.name.asc()).all()
     out: List[dict] = []
     for lst in rows:
+        if normalized_list_domain(getattr(lst, "domain", None)) not in allowed:
+            continue
         uc = count_forms_using_list(db, lst.id) if include_counts else None
         out.append(_list_to_dict(lst, used_count=uc))
     return out
@@ -218,15 +355,17 @@ def create_custom_list(
     body: FormCustomListCreate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("business:projects:safety:write")),
+    _=Depends(require_form_custom_lists_write),
 ):
     st = (body.status or "active").strip().lower()
     if st not in ("active", "inactive"):
         raise HTTPException(status_code=400, detail="status must be active or inactive")
+    domain = _default_create_domain(user, body.domain)
     lst = FormCustomList(
         name=body.name.strip(),
         description=(body.description or "").strip() or None,
         status=st,
+        domain=domain,
         include_other=bool(body.include_other),
         created_by=user.id,
     )
@@ -245,13 +384,17 @@ def get_custom_list(
     sign_project_id: Optional[str] = Query(None),
     sign_inspection_id: Optional[str] = Query(None),
 ):
-    assert_safety_read_or_pending_sign_session(
-        user, db, sign_project_id=sign_project_id, sign_inspection_id=sign_inspection_id
-    )
     lid = uuid.UUID(str(list_id))
     lst = db.query(FormCustomList).filter(FormCustomList.id == lid).first()
     if not lst:
         raise HTTPException(status_code=404, detail="List not found")
+    _assert_can_read_list(
+        user,
+        lst,
+        sign_project_id=sign_project_id,
+        sign_inspection_id=sign_inspection_id,
+        db=db,
+    )
     items = (
         db.query(FormCustomListItem)
         .filter(FormCustomListItem.list_id == lid)
@@ -270,26 +413,46 @@ def get_custom_list(
     }
 
 
+def _is_seeded_fieldwork_phrase_catalog(lst: FormCustomList) -> bool:
+    from ..services.fieldwork_phrases import ENTRY_TYPE_TO_LIST_NAME
+
+    if normalized_list_domain(getattr(lst, "domain", None)) != LIST_DOMAIN_FIELDWORK:
+        return False
+    return (lst.name or "").strip() in set(ENTRY_TYPE_TO_LIST_NAME.values())
+
+
 @router.patch("/{list_id}")
 def update_custom_list_meta(
     list_id: str,
     body: FormCustomListUpdate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("business:projects:safety:write")),
+    _=Depends(require_form_custom_lists_write),
 ):
     lid = uuid.UUID(str(list_id))
     lst = db.query(FormCustomList).filter(FormCustomList.id == lid).first()
     if not lst:
         raise HTTPException(status_code=404, detail="List not found")
+    _assert_can_write_list(user, lst)
     if body.name is not None:
-        lst.name = body.name.strip()
+        next_name = body.name.strip()
+        if _is_seeded_fieldwork_phrase_catalog(lst) and next_name != (lst.name or "").strip():
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot rename the seeded R&M Fieldwork phrase catalogs",
+            )
+        lst.name = next_name
     if body.description is not None:
         lst.description = body.description.strip() or None
     if body.status is not None:
         st = body.status.strip().lower()
         if st not in ("active", "inactive"):
             raise HTTPException(status_code=400, detail="status must be active or inactive")
+        if _is_seeded_fieldwork_phrase_catalog(lst) and st == "inactive":
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot deactivate the seeded R&M Fieldwork phrase catalogs; deactivate individual phrases instead",
+            )
         lst.status = st
     if body.include_other is not None:
         lst.include_other = bool(body.include_other)
@@ -306,12 +469,18 @@ def delete_custom_list(
     list_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("business:projects:safety:write")),
+    _=Depends(require_form_custom_lists_write),
 ):
     lid = uuid.UUID(str(list_id))
     lst = db.query(FormCustomList).filter(FormCustomList.id == lid).first()
     if not lst:
         raise HTTPException(status_code=404, detail="List not found")
+    _assert_can_write_list(user, lst)
+    if _is_seeded_fieldwork_phrase_catalog(lst):
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete the seeded R&M Fieldwork phrase catalogs",
+        )
     if count_forms_using_list(db, lid) > 0:
         raise HTTPException(status_code=400, detail="Cannot delete a list that is used in form templates")
     db.delete(lst)
@@ -325,12 +494,13 @@ def create_item(
     body: ItemCreate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("business:projects:safety:write")),
+    _=Depends(require_form_custom_lists_write),
 ):
     lid = uuid.UUID(str(list_id))
     lst = db.query(FormCustomList).filter(FormCustomList.id == lid).first()
     if not lst:
         raise HTTPException(status_code=404, detail="List not found")
+    _assert_can_write_list(user, lst)
     depth = 1
     parent: Optional[FormCustomListItem] = None
     if body.parent_id:
@@ -392,13 +562,16 @@ def update_item(
     body: ItemUpdate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("business:projects:safety:write")),
+    _=Depends(require_form_custom_lists_write),
 ):
     iid = uuid.UUID(str(item_id))
     row = db.query(FormCustomListItem).filter(FormCustomListItem.id == iid).first()
     if not row:
         raise HTTPException(status_code=404, detail="Item not found")
     lst = db.query(FormCustomList).filter(FormCustomList.id == row.list_id).first()
+    if not lst:
+        raise HTTPException(status_code=404, detail="List not found")
+    _assert_can_write_list(user, lst)
     patch = body.model_dump(exclude_unset=True)
     if "parent_id" in patch:
         new_pid = patch["parent_id"]
@@ -454,16 +627,18 @@ def delete_item(
     item_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("business:projects:safety:write")),
+    _=Depends(require_form_custom_lists_write),
 ):
     iid = uuid.UUID(str(item_id))
     row = db.query(FormCustomListItem).filter(FormCustomListItem.id == iid).first()
     if not row:
         raise HTTPException(status_code=404, detail="Item not found")
     lst = db.query(FormCustomList).filter(FormCustomList.id == row.list_id).first()
+    if not lst:
+        raise HTTPException(status_code=404, detail="List not found")
+    _assert_can_write_list(user, lst)
     db.delete(row)
-    if lst:
-        lst.updated_at = datetime.now(timezone.utc)
+    lst.updated_at = datetime.now(timezone.utc)
     db.commit()
     return {"ok": True}
 
@@ -474,13 +649,14 @@ def reorder_items(
     body: ReorderBody,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("business:projects:safety:write")),
+    _=Depends(require_form_custom_lists_write),
     parent_id: Optional[str] = Query(None, description="Parent item id for sibling group; omit for roots"),
 ):
     lid = uuid.UUID(str(list_id))
     lst = db.query(FormCustomList).filter(FormCustomList.id == lid).first()
     if not lst:
         raise HTTPException(status_code=404, detail="List not found")
+    _assert_can_write_list(user, lst)
     pid = uuid.UUID(parent_id) if parent_id else None
     rows = (
         db.query(FormCustomListItem)
@@ -504,10 +680,11 @@ def get_usage_count(
     list_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("business:projects:safety:read")),
+    _=Depends(require_form_custom_lists_read),
 ):
     lid = uuid.UUID(str(list_id))
     lst = db.query(FormCustomList).filter(FormCustomList.id == lid).first()
     if not lst:
         raise HTTPException(status_code=404, detail="List not found")
+    _assert_can_read_list(user, lst, db=db)
     return {"used_in_form_count": count_forms_using_list(db, lid)}

@@ -191,5 +191,12 @@ export function evaluatePermission(
       permissionsSet.has('business:rm:projects:safety:write')
     );
   }
+  if (requiredPermission === 'business:rm:projects:fieldwork:read') {
+    return (
+      has ||
+      permissionsSet.has('business:rm:projects:fieldwork:write') ||
+      permissionsSet.has('business:rm:projects:fieldwork:review')
+    );
+  }
   return has;
 }

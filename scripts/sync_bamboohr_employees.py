@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from app.db import SessionLocal
 from app.models.models import User, EmployeeProfile, FileObject, EmployeeVisa, EmployeeEmergencyContact
 from app.services.bamboohr_client import BambooHRClient
+from app.services.employment_type import employment_type_for_storage
 from app.auth.security import get_password_hash
 from app.config import settings
 from app.storage.local_provider import LocalStorageProvider
@@ -1294,7 +1295,7 @@ def create_or_update_user(
         "work_phone": employee_data.get("workPhone"),
         "pay_rate": str(pay_rate_value) if pay_rate_value else None,
         "pay_type": final_pay_type if final_pay_type else (pay_type if pay_type else None),
-        "employment_type": employee_data.get("employmentHistoryStatus", "").lower() if employee_data.get("employmentHistoryStatus") else None,
+        "employment_type": employment_type_for_storage(employee_data.get("employmentHistoryStatus")),
         "sin_number": employee_data.get("sin") or employee_data.get("ssn"),
         "work_permit_status": employee_data.get("workPermitStatus"),
         "visa_status": employee_data.get("visaStatus"),

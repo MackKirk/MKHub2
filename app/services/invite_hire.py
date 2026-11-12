@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Any, List, Optional, Tuple
 
 from ..schemas.auth import InviteRequest
+from .employment_type import employment_type_for_storage
 
 
 def _opt_str(value: Optional[str]) -> Optional[str]:
@@ -104,6 +105,8 @@ def apply_invite_fields_to_profile(
 
     for attr in ("pay_rate", "pay_type", "employment_type", "work_email", "work_phone"):
         val = _opt_str(getattr(inv, attr, None))
+        if attr == "employment_type":
+            val = employment_type_for_storage(val)
         if val:
             setattr(ep, attr, val)
 

@@ -2,7 +2,7 @@ import { useLocation } from 'react-router-dom';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { api, withFileAccessToken } from '@/lib/api';
+import { ApiError, api, formatApiErrorDetail, withFileAccessToken } from '@/lib/api';
 import { putFile, rejectOversizedBatch } from '@/lib/fileUploadBatch';
 import { UploadProgressPanel } from '@/components/files/UploadProgressPanel';
 import {
@@ -56,6 +56,7 @@ import {
   type FilesLibraryHomeFile,
 } from '@/components/files';
 import { useConfirm } from '@/components/ConfirmProvider';
+import FieldworkClassifyFileModal from '@/components/fieldwork/FieldworkClassifyFileModal';
 import {
   hasProjectFeatureWritePermission,
   isAdminRole,
@@ -89,6 +90,21 @@ import {
   uiTypography,
 } from '@/components/ui';
 
+export type ProjectFileFieldworkMeta = {
+  photo_observation_id?: string | null;
+  record_id?: string | null;
+  record_status?: string | null;
+  record_kind?: string | null;
+  entry_type?: string | null;
+  classification_snapshot?: string | null;
+  phrase_text_snapshot?: string | null;
+  extra_notes?: string | null;
+  classification_state?: string | null;
+  needs_classification?: boolean;
+  is_technical_folder?: boolean;
+  protected?: boolean;
+};
+
 export type ProjectFile = {
   id: string;
   file_object_id: string;
@@ -99,6 +115,8 @@ export type ProjectFile = {
   original_name?: string;
   notes?: string | null;
   uploaded_at?: string;
+  fieldwork?: ProjectFileFieldworkMeta | null;
+  needs_classification?: boolean;
 };
 
 export type ProjectFilesTabEnhancedProps = {
@@ -167,6 +185,8 @@ export default function ProjectFilesTabEnhanced({
   const [sortBy, setSortBy] = useState<'uploaded_at' | 'name' | 'type'>('uploaded_at');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [fileSearchQuery, setFileSearchQuery] = useState('');
+  const [needsClassificationOnly, setNeedsClassificationOnly] = useState(false);
+  const [classifyTarget, setClassifyTarget] = useState<ProjectFile | null>(null);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [newFolderName, setNewFolderName] = useState('');
   const [showNewFolderModal, setShowNewFolderModal] = useState(false);
@@ -429,9 +449,15 @@ export default function ProjectFilesTabEnhanced({
       }
     }
     const q = fileSearchQuery.trim().toLowerCase();
-    const filtered = q
+    let filtered = q
       ? files.filter((f: ProjectFile) => (f.original_name || f.file_object_id || '').toLowerCase().includes(q))
       : files;
+    if (needsClassificationOnly) {
+      filtered = filtered.filter(
+        (f: ProjectFile) =>
+          Boolean(f.needs_classification) || Boolean(f.fieldwork?.needs_classification)
+      );
+    }
     const sorted = [...filtered].sort((a, b) => {
       let aVal: any;
       let bVal: any;
@@ -453,7 +479,23 @@ export default function ProjectFilesTabEnhanced({
     });
     
     return sorted;
-  }, [filesByCategory, selectedCategory, selectedFolderId, sortBy, sortOrder, fileSearchQuery]);
+  }, [
+    filesByCategory,
+    selectedCategory,
+    selectedFolderId,
+    sortBy,
+    sortOrder,
+    fileSearchQuery,
+    needsClassificationOnly,
+  ]);
+
+  const needsClassificationCount = useMemo(
+    () =>
+      files.filter(
+        (f) => Boolean(f.needs_classification) || Boolean(f.fieldwork?.needs_classification)
+      ).length,
+    [files]
+  );
 
   const visibleFileIds = useMemo(() => currentFiles.map(f => f.id), [currentFiles]);
   const { allSelected: allVisibleSelected, someSelected: someVisibleSelected } =
@@ -1175,16 +1217,24 @@ export default function ProjectFilesTabEnhanced({
   };
 
   const handleDeleteFile = async (fileId: string) => {
+    const file = files.find((f) => f.id === fileId);
+    if (file?.fieldwork?.protected) {
+      toast.error(
+        'This file is evidence on a submitted or approved Fieldwork report and cannot be deleted from Files.'
+      );
+      return;
+    }
     const result = await confirm({
       title: 'Delete file',
-      message: 'Are you sure you want to remove this file from the project library?',
+      message: file?.fieldwork?.photo_observation_id
+        ? 'This image is linked to a Fieldwork report. Removing it from Files hides it in the library; the FileObject remains available to the report while the report is editable.'
+        : 'Are you sure you want to remove this file from the project library?',
       confirmText: 'Delete',
       cancelText: 'Cancel',
     });
     if (result !== 'confirm') return;
     try {
-      const file = files.find(f => f.id === fileId);
-      const cat = (file?.category || 'uncategorized');
+      const cat = file?.category || 'uncategorized';
       if (!canWriteFiles || !isWriteCategoryAllowed(cat)) {
         toast.error('You do not have permission to delete files in this category');
         return;
@@ -1193,8 +1243,12 @@ export default function ProjectFilesTabEnhanced({
       await queryClient.invalidateQueries({ queryKey: ['projectDeletedFiles', projectId] });
       await onRefresh();
       toast.success('Removed from project');
-    } catch (_e) {
-      toast.error('Failed to delete file');
+    } catch (e: unknown) {
+      toast.error(
+        formatApiErrorDetail((e as ApiError)?.detail) ||
+          (e instanceof Error ? e.message : null) ||
+          'Failed to delete file'
+      );
     }
   };
 
@@ -1802,6 +1856,17 @@ export default function ProjectFilesTabEnhanced({
                    visibleCategories.find((c: any) => c.id === selectedCategory)?.name || 'Files'}
                   <span className="ml-1 text-gray-600">({currentFiles.length})</span>
                 </div>
+                {needsClassificationCount > 0 ? (
+                  <AppButton
+                    type="button"
+                    variant={needsClassificationOnly ? 'primary' : 'secondary'}
+                    size="sm"
+                    onClick={() => setNeedsClassificationOnly((v) => !v)}
+                    title="Show R&M technical photos that still need a Fieldwork phrase"
+                  >
+                    Needs Classification ({needsClassificationCount})
+                  </AppButton>
+                ) : null}
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
                 <FileViewModeToolbar
@@ -2003,6 +2068,27 @@ export default function ProjectFilesTabEnhanced({
                         ...handlers,
                         isDropActive: isDropActive('folder', folderId),
                       };
+                    }}
+                    renderFileActions={(file) => {
+                      const original = projectFileById.get(file.id);
+                      if (!original || !canWriteFiles) return null;
+                      if (file.needsClassification) {
+                        return (
+                          <AppButton
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            className="!bg-white/95 shadow-sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setClassifyTarget(original);
+                            }}
+                          >
+                            Classify
+                          </AppButton>
+                        );
+                      }
+                      return null;
                     }}
                     renderFolderActions={(folder) =>
                       canWriteFiles ? (
@@ -2379,6 +2465,50 @@ export default function ProjectFilesTabEnhanced({
                                   >
                                     Cancel
                                   </AppButton>
+                                </div>
+                              ) : f.fieldwork?.phrase_text_snapshot ? (
+                                <div className="min-w-0 space-y-0.5">
+                                  <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                    Fieldwork
+                                    {f.fieldwork.entry_type
+                                      ? ` · ${String(f.fieldwork.entry_type).replace('_', ' ')}`
+                                      : ''}
+                                  </div>
+                                  <div
+                                    className="text-sm leading-5 text-gray-800 break-words"
+                                    title="Derived from PhotoObservation (not an independent Files caption)"
+                                  >
+                                    {f.fieldwork.phrase_text_snapshot}
+                                  </div>
+                                  {f.fieldwork.classification_snapshot ? (
+                                    <div className={uiCx(uiTypography.helper)}>
+                                      {f.fieldwork.classification_snapshot}
+                                    </div>
+                                  ) : null}
+                                  {(f.notes || '').trim() ? (
+                                    <div className={uiCx(uiTypography.helper, 'italic')}>
+                                      File note: {(f.notes || '').trim()}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              ) : f.needs_classification || f.fieldwork?.needs_classification ? (
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-900 ring-1 ring-inset ring-amber-200">
+                                    Needs Classification
+                                  </span>
+                                  {canWriteFiles ? (
+                                    <AppButton
+                                      type="button"
+                                      variant="secondary"
+                                      size="sm"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setClassifyTarget(f);
+                                      }}
+                                    >
+                                      Classify
+                                    </AppButton>
+                                  ) : null}
                                 </div>
                               ) : (
                                 <div className="inline-flex max-w-full items-center gap-1">
@@ -2790,6 +2920,18 @@ export default function ProjectFilesTabEnhanced({
           </div>
         </AppFormModal>
       )}
+
+      <FieldworkClassifyFileModal
+        open={!!classifyTarget}
+        onClose={() => {
+          setClassifyTarget(null);
+          void onRefresh();
+        }}
+        projectId={projectId}
+        clientFileId={classifyTarget?.id || ''}
+        fileObjectId={classifyTarget?.file_object_id || ''}
+        fileName={classifyTarget?.original_name}
+      />
 
       {/* Image Preview Modal */}
       <FileImagePreviewModal

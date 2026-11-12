@@ -45,6 +45,7 @@ const backendProxyPrefixes = [
   '/employees',
   '/estimate',
   '/files',
+  '/fieldwork',
   '/fleet',
   '/form-custom-lists',
   '/form-templates',

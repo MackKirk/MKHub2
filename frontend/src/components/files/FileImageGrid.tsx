@@ -140,12 +140,33 @@ export function FileImageGrid({
                   onDragStart={(e) => e.preventDefault()}
                   className="pointer-events-none h-full w-full object-cover select-none"
                 />
+                {file.needsClassification ? (
+                  <div className="pointer-events-none absolute left-2 top-2 z-[5]">
+                    <span className="inline-flex max-w-[9rem] truncate rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900 ring-1 ring-inset ring-amber-200 shadow-sm">
+                      Needs Classification
+                    </span>
+                  </div>
+                ) : file.fieldworkPhrase ? (
+                  <div className="pointer-events-none absolute left-2 top-2 z-[5]">
+                    <span
+                      className="inline-flex max-w-[9rem] truncate rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-900 ring-1 ring-inset ring-emerald-200 shadow-sm"
+                      title={file.fieldworkPhrase}
+                    >
+                      Classified
+                    </span>
+                  </div>
+                ) : null}
                 <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2 py-2">
                   <div className="truncate text-xs font-semibold text-white">{file.name}</div>
+                  {file.fieldworkPhrase ? (
+                    <div className="mt-0.5 truncate text-[10px] text-white/90" title={file.fieldworkPhrase}>
+                      {file.fieldworkPhrase}
+                    </div>
+                  ) : null}
                 </div>
                 {renderFileActions ? (
                   <div
-                    className="absolute right-2 top-2 opacity-0 transition-opacity group-hover:opacity-100"
+                    className="absolute right-2 top-2 opacity-100 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100"
                     onClick={(e) => e.stopPropagation()}
                   >
                     {renderFileActions(file)}

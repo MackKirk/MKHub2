@@ -74,6 +74,8 @@ export const ROUTE_PERMISSION_RULES: RoutePermissionRule[] = [
   { path: '/documents/templates', permission: 'document_hub:templates:read' },
   { path: '/documents/form-templates', permission: 'business:projects:safety:read' },
   { path: '/documents/form-custom-lists', permission: 'business:projects:safety:read' },
+  { path: '/rm-fieldwork/form-templates', permission: 'business:rm:projects:fieldwork:read' },
+  { path: '/rm-fieldwork/form-custom-lists', permission: 'business:rm:projects:fieldwork:read' },
 
   // Company files
   { path: '/company-files', permission: 'documents:read' },

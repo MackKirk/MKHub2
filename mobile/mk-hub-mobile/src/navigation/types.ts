@@ -51,7 +51,7 @@ export type RootStackParamList = {
   MainTabs: NavigatorScreenParams<AppTabParamList> | undefined;
   ProjectDetail: {
     project: ProjectListItem;
-    initialTab?: ProjectQuickTab | "notes" | "documents" | "safety";
+    initialTab?: ProjectQuickTab | "notes" | "documents" | "safety" | "fieldwork";
   };
   SafetyInspectionDetail: {
     projectId: string;
@@ -63,6 +63,11 @@ export type RootStackParamList = {
     projectAddress?: string;
     projectAddressCity?: string;
     projectAddressProvince?: string;
+  };
+  FieldworkRecordDetail: {
+    projectId: string;
+    recordId: string;
+    canWrite?: boolean;
   };
   SafetyFollowUps: undefined;
   FleetAssetDetail: {

@@ -29,11 +29,13 @@ import { MKProjectFilesSection } from "../../components/MKProjectFilesSection";
 import { MKProjectDocumentsSection } from "../../components/MKProjectDocumentsSection";
 import { MKProjectPricingSection } from "../../components/MKProjectPricingSection";
 import { MKProjectSafetySection } from "../../components/MKProjectSafetySection";
+import { MKProjectFieldworkSection } from "../../components/MKProjectFieldworkSection";
 import {
   hasAnyProjectSectionPermission,
   hasProjectFeatureRead,
   hasProjectFeatureWrite
 } from "../../lib/projectFeatures";
+import { BUSINESS_LINE_REPAIRS } from "../../lib/permissions";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api, toApiError } from "../../services/api";
 import { useAuth } from "../../hooks/useAuth";
@@ -101,7 +103,8 @@ const ALL_TABS: Array<{ key: DetailTabKey; label: string; icon: keyof typeof Ion
   { key: "files", label: "Files", icon: "folder-open-outline" },
   { key: "documents", label: "Documents", icon: "reader-outline" },
   { key: "pricing", label: "Pricing", icon: "cash-outline" },
-  { key: "safety", label: "Safety", icon: "shield-checkmark-outline" }
+  { key: "safety", label: "Safety", icon: "shield-checkmark-outline" },
+  { key: "fieldwork", label: "Fieldwork", icon: "clipboard-outline" }
 ];
 
 const GLOBE_BG = require("../../../assets/brand/globe.png");
@@ -125,6 +128,7 @@ export const ProjectDetailScreen: React.FC = () => {
     if (tab === "files") return "files";
     if (tab === "documents") return "documents";
     if (tab === "safety") return "safety";
+    if (tab === "fieldwork") return "fieldwork";
     if (tab === "notes") return "notes";
     return "overview";
   };
@@ -268,6 +272,7 @@ export const ProjectDetailScreen: React.FC = () => {
     return ALL_TABS.filter((tab) => {
       if (tab.key === "overview") return true;
       if (tab.key === "safety" && isBidding) return false;
+      if (tab.key === "fieldwork" && businessLine !== BUSINESS_LINE_REPAIRS) return false;
       if (
         tab.key === "notes" &&
         !hasProjectFeatureRead(permissionsSet, roles, "reports", businessLine)
@@ -298,6 +303,12 @@ export const ProjectDetailScreen: React.FC = () => {
       ) {
         return false;
       }
+      if (
+        tab.key === "fieldwork" &&
+        !hasProjectFeatureRead(permissionsSet, roles, "fieldwork", businessLine)
+      ) {
+        return false;
+      }
       return true;
     });
   }, [businessLine, isBidding, permissionsSet, roles]);
@@ -306,6 +317,12 @@ export const ProjectDetailScreen: React.FC = () => {
     permissionsSet,
     roles,
     "safety",
+    businessLine
+  );
+  const canWriteFieldwork = hasProjectFeatureWrite(
+    permissionsSet,
+    roles,
+    "fieldwork",
     businessLine
   );
 
@@ -389,6 +406,16 @@ export const ProjectDetailScreen: React.FC = () => {
         return (
           <View style={styles.tabContent}>
             <MKProjectSafetySection projectId={projectId} canWrite={canWriteSafety} />
+          </View>
+        );
+      case "fieldwork":
+        return (
+          <View style={styles.tabContent}>
+            <MKProjectFieldworkSection
+              projectId={projectId}
+              isOpportunity={isBidding}
+              canWrite={canWriteFieldwork}
+            />
           </View>
         );
       default:

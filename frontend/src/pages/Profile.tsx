@@ -23,6 +23,7 @@ import UserDocumentsTabEnhanced from '@/components/users/UserDocumentsTabEnhance
 import { UserEducationSection } from '@/components/users/UserEducationSection';
 import { UserEmergencyContactsSection } from '@/components/users/UserEmergencyContactsSection';
 import { UserWorkEligibilityDocumentsSection } from '@/components/users/UserWorkEligibilityDocumentsSection';
+import { employmentTypeLabel } from '@/lib/employmentType';
 import {
   ProfileAddressForm,
   ProfileBasicInfoForm,
@@ -615,7 +616,7 @@ export default function Profile(){
                     <ProfileReadOnlyGrid
                       fields={[
                         { label: 'Job Title', value: p.job_title },
-                        { label: 'Employment Type', value: p.employment_type },
+                        { label: 'Employment Type', value: employmentTypeLabel(p.employment_type) },
                         { label: 'Supervisor', value: supervisorName },
                         { label: 'Hire Date', value: p.hire_date ? String(p.hire_date).slice(0, 10) : '' },
                         {

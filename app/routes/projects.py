@@ -873,6 +873,11 @@ def _try_remove_orphan_file_object(db: Session, file_object_id: uuid.UUID) -> No
 
     if db.query(WorkOrderFile).filter(WorkOrderFile.file_object_id == file_object_id).count() > 0:
         return
+    from ..services.fieldwork_files import file_object_referenced_by_fieldwork
+
+    # Never destroy bytes still referenced as Fieldwork evidence (RESTRICT + soft guard).
+    if file_object_referenced_by_fieldwork(db, file_object_id):
+        return
     fo = db.query(FileObject).filter(FileObject.id == file_object_id).first()
     if not fo:
         return
@@ -3121,7 +3126,7 @@ def list_project_files(
         .order_by(ClientFile.uploaded_at.desc())
         .all()
     )
-    out = []
+    visible_pairs = []
     for cf, fo in rows:
         if str(getattr(fo, "project_id", "") or "") != str(project_id):
             continue
@@ -3144,12 +3149,20 @@ def list_project_files(
                 )
             ):
                 continue
+        visible_pairs.append((cf, fo))
+
+    from ..services.fieldwork_files import batch_fieldwork_file_meta
+
+    fw_meta = batch_fieldwork_file_meta(db, project_id=proj.id, pairs=visible_pairs)
+
+    out = []
+    for cf, fo in visible_pairs:
         ct = getattr(fo, 'content_type', None)
         name = cf.original_name or cf.key or ''
         ext = (name.rsplit('.', 1)[-1] if '.' in name else '').lower()
         is_img_ext = ext in { 'png','jpg','jpeg','webp','gif','bmp','heic','heif' }
         is_image = (ct or '').startswith('image/') or is_img_ext
-        out.append({
+        item = {
             "id": str(cf.id),
             "file_object_id": str(cf.file_object_id),
             "category": cf.category,
@@ -3160,7 +3173,12 @@ def list_project_files(
             "uploaded_at": cf.uploaded_at.isoformat() if cf.uploaded_at else None,
             "content_type": ct,
             "is_image": is_image,
-        })
+        }
+        meta = fw_meta.get(str(cf.id))
+        if meta:
+            item["fieldwork"] = meta
+            item["needs_classification"] = bool(meta.get("needs_classification"))
+        out.append(item)
     return out
 
 
@@ -3279,6 +3297,22 @@ def permanently_delete_project_file_admin(
     fo = db.query(FileObject).filter(FileObject.id == cf.file_object_id).first()
     if not fo or str(getattr(fo, "project_id", "") or "") != str(project_id):
         raise HTTPException(status_code=404, detail="Deleted file not found")
+
+    from ..services.fieldwork_files import (
+        assert_client_file_not_protected_fieldwork_evidence,
+        file_object_referenced_by_fieldwork,
+    )
+
+    assert_client_file_not_protected_fieldwork_evidence(db, cf, action="delete")
+    if file_object_referenced_by_fieldwork(db, fo.id):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "This file is still linked to a Fieldwork photo observation. "
+                "Remove the observation from an editable report before permanently deleting storage."
+            ),
+        )
+
     fo_id = fo.id
     file_info = {
         "file_name": getattr(cf, "original_name", None) or getattr(cf, "key", None),
@@ -3349,6 +3383,25 @@ def attach_project_file(
         raise HTTPException(status_code=404, detail="File not found")
     # Stamp project_id on FileObject to enable filtering
     fo.project_id = proj.id
+
+    # Idempotent attach: reuse existing ClientFile for the same FileObject (no duplicate library rows).
+    if not related_warranty_id and not related_warranty_claim_id:
+        from ..services.fieldwork_files import find_existing_client_file_for_object
+
+        existing_cf = find_existing_client_file_for_object(db, project=proj, file_object_id=fo.id)
+        if existing_cf:
+            if category and not existing_cf.category:
+                existing_cf.category = category
+            if folder_id:
+                try:
+                    existing_cf.folder_id = uuid.UUID(str(folder_id))
+                except ValueError:
+                    pass
+            if original_name and not existing_cf.original_name:
+                existing_cf.original_name = original_name
+            db.commit()
+            return {"id": str(existing_cf.id), "reused": True}
+
     cf_folder_id = uuid.UUID(str(folder_id)) if folder_id else None
     rw_id = None
     rwc_id = None
@@ -3443,6 +3496,12 @@ def update_project_file(
     fo = db.query(FileObject).filter(FileObject.id == cf.file_object_id).first()
     if not fo or str(getattr(fo, 'project_id', '') or '') != str(project_id):
         raise HTTPException(status_code=404, detail="File not found in project")
+
+    moving = "category" in payload or "folder_id" in payload
+    if moving:
+        from ..services.fieldwork_files import assert_client_file_not_protected_fieldwork_evidence
+
+        assert_client_file_not_protected_fieldwork_evidence(db, cf, action="move")
     
     # Capture before state for audit log
     before_state = {
@@ -3543,6 +3602,10 @@ def delete_project_file(
     fo = db.query(FileObject).filter(FileObject.id == cf.file_object_id).first()
     if not fo or str(getattr(fo, 'project_id', '') or '') != str(project_id):
         raise HTTPException(status_code=404, detail="File not found in project")
+
+    from ..services.fieldwork_files import assert_client_file_not_protected_fieldwork_evidence
+
+    assert_client_file_not_protected_fieldwork_evidence(db, cf, action="delete")
     
     # Capture file info before deletion for audit log
     file_info = {
@@ -7192,7 +7255,12 @@ def convert_to_project(
     payload: Optional[dict] = Body(None),
     user=Depends(get_current_user),
 ):
-    """Convert a bidding to an active project. Sets date_awarded to conversion day (UTC). Optional body: project_admin_id, division_onsite_leads, date_eta, date_start, lead_source, pricing_item_approvals, optional_service_approvals, awarded_related_client_ids (subset of related_client_ids; may be empty). Legacy awarded_related_client_id (single) is still accepted."""
+    """Convert a bidding to an active project. Sets date_awarded to conversion day (UTC). Optional body: project_admin_id, division_onsite_leads, date_eta, date_start, lead_source, pricing_item_approvals, optional_service_approvals, awarded_related_client_ids (subset of related_client_ids; may be empty). Legacy awarded_related_client_id (single) is still accepted.
+
+    Opportunity and Project share the same project row / FileObject.project_id / ClientFile links /
+    Fieldwork records — conversion flips is_bidding and status; it does not relocate or rewrite
+    historical photographs.
+    """
     p = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
     if not p:
         raise HTTPException(status_code=404, detail="Not found")
