@@ -64,10 +64,8 @@ function has(permissions: Set<string>, key: string): boolean {
 
 function hasAnyProjectLineRead(permissions: Set<string>): boolean {
   return (
-    has(permissions, 'business:projects:read') ||
     has(permissions, 'business:construction:projects:read') ||
     has(permissions, 'business:rm:projects:read') ||
-    has(permissions, 'business:projects:write') ||
     has(permissions, 'business:construction:projects:write') ||
     has(permissions, 'business:rm:projects:write')
   );
@@ -189,8 +187,7 @@ export function canWriteCustomerTab(
   }
   if (
     (tab === 'opportunities' || tab === 'projects') &&
-    (has(permissions, 'business:projects:write') ||
-      has(permissions, 'business:construction:projects:write') ||
+    (has(permissions, 'business:construction:projects:write') ||
       has(permissions, 'business:rm:projects:write'))
   ) {
     return true;

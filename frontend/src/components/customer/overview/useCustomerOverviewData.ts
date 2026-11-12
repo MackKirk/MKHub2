@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { computeDelta } from '@/components/community/insights/insightsTypes';
+import { formatDateVancouver } from '@/lib/dateUtils';
 import type { SparklinePoint } from '@/components/insights';
 import type {
   ActivityEvent,
@@ -109,11 +110,7 @@ function buildRelationshipSnapshot(
 }
 
 function formatDateShort(dateStr: string): string {
-  try {
-    return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  } catch {
-    return dateStr;
-  }
+  return formatDateVancouver(dateStr, { month: 'short', day: 'numeric' }) || dateStr;
 }
 
 export function useCustomerOverviewData(

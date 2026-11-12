@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api } from '@/lib/api';
+import { formatDateTimeVancouver } from '@/lib/dateUtils';
 import {
   SCHEDULE_PENDING_ACK_QUERY_KEY,
   shiftAckMeta,
@@ -42,9 +43,7 @@ type ResponsePayload = {
 
 function formatWhen(value?: string | null): string {
   if (!value) return '';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleString('en-US', {
+  return formatDateTimeVancouver(value, {
     month: 'short',
     day: 'numeric',
     hour: 'numeric',

@@ -2,6 +2,7 @@ import { useMemo, useState, useEffect, useLayoutEffect, useRef, useCallback, use
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation } from 'react-router-dom';
 import { api } from '@/lib/api';
+import { formatDateVancouver } from '@/lib/dateUtils';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
 import {
@@ -499,7 +500,7 @@ function EstimateProductListRow({
                   <div className="pointer-events-none absolute bottom-full left-0 z-50 mb-2 whitespace-nowrap rounded-lg bg-gray-900 px-3 py-2 text-sm text-white opacity-0 shadow-lg transition-opacity group-hover/alert:opacity-100">
                     Added via Report (Estimate Changes) on{' '}
                     {item.added_via_report_date
-                      ? new Date(item.added_via_report_date).toLocaleDateString()
+                      ? formatDateVancouver(item.added_via_report_date)
                       : 'unknown date'}
                     <div className="absolute -bottom-1 left-4 h-2 w-2 rotate-45 bg-gray-900" />
                   </div>
@@ -681,7 +682,7 @@ function EstimateLabourStyleListRow({
                   <div className="pointer-events-none absolute bottom-full left-0 z-50 mb-2 whitespace-nowrap rounded-lg bg-gray-900 px-3 py-2 text-sm text-white opacity-0 shadow-lg transition-opacity group-hover/alert:opacity-100">
                     Added via Report (Estimate Changes) on{' '}
                     {item.added_via_report_date
-                      ? new Date(item.added_via_report_date).toLocaleDateString()
+                      ? formatDateVancouver(item.added_via_report_date)
                       : 'unknown date'}
                     <div className="absolute -bottom-1 left-4 h-2 w-2 rotate-45 bg-gray-900" />
                   </div>
@@ -2631,7 +2632,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                                   <div className="relative group/alert inline-flex items-center">
                                     <EstimateChangesAlertIcon />
                                     <div className="absolute left-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg whitespace-nowrap opacity-0 group-hover/alert:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
-                                      Added via Report (Estimate Changes) on {it.added_via_report_date ? new Date(it.added_via_report_date).toLocaleDateString() : 'unknown date'}
+                                      Added via Report (Estimate Changes) on {it.added_via_report_date ? formatDateVancouver(it.added_via_report_date) : 'unknown date'}
                                       <div className="absolute -bottom-1 left-4 w-2 h-2 bg-gray-900 rotate-45"></div>
                                     </div>
                                   </div>
@@ -2841,7 +2842,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                                   <div className="relative group/alert inline-flex items-center">
                                     <EstimateChangesAlertIcon />
                                     <div className="absolute left-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg whitespace-nowrap opacity-0 group-hover/alert:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
-                                      Added via Report (Estimate Changes) on {it.added_via_report_date ? new Date(it.added_via_report_date).toLocaleDateString() : 'unknown date'}
+                                      Added via Report (Estimate Changes) on {it.added_via_report_date ? formatDateVancouver(it.added_via_report_date) : 'unknown date'}
                                       <div className="absolute -bottom-1 left-4 w-2 h-2 bg-gray-900 rotate-45"></div>
                                     </div>
                                   </div>

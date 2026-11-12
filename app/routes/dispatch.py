@@ -261,12 +261,30 @@ def _can_read_shift_ack(user: User, shift: Shift, project: Optional[Project], db
         return False
 
 
+def _local_today(timezone_str: Optional[str] = None) -> date:
+    tz = timezone_str or settings.tz_default
+    return utc_to_local(datetime.now(timezone.utc), tz).date()
+
+
+def _is_retroactive_shift(shift: Shift, timezone_str: Optional[str] = None) -> bool:
+    """True when the shift calendar day is before the local day it was created."""
+    if not shift.date or not shift.created_at:
+        return False
+    tz = timezone_str or settings.tz_default
+    created_at = shift.created_at
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+    created_local = utc_to_local(created_at, tz).date()
+    return shift.date < created_local
+
+
 def _shift_to_dict(
     shift: Shift,
     *,
     geofences: list,
     project_name: Optional[str] = None,
     conflicts: Optional[List[Dict]] = None,
+    timezone_str: Optional[str] = None,
 ) -> dict:
     payload = {
         "id": str(shift.id),
@@ -287,6 +305,7 @@ def _shift_to_dict(
         "ack_note": shift.ack_note,
         "created_by": str(shift.created_by),
         "created_at": shift.created_at.isoformat() if shift.created_at else None,
+        "retroactive": _is_retroactive_shift(shift, timezone_str),
         "conflicts": conflicts if conflicts is not None else [],
     }
     if project_name is not None:
@@ -374,6 +393,10 @@ def create_shift(
     job_name = job_type or payload.get("job_name")  # Use job_type if available, otherwise job_name
     notes = _normalize_shift_notes(payload.get("notes")) if "notes" in payload else None
     
+    project_timezone = project.timezone or settings.tz_default
+    is_retroactive = shift_date < _local_today(project_timezone)
+    now_utc = datetime.now(timezone.utc)
+
     # Create shift
     shift = Shift(
         project_id=project_id,
@@ -388,6 +411,8 @@ def create_shift(
         job_name=job_name,  # Store the job type name
         notes=notes,
         created_by=user.id,
+        ack_status="accepted" if is_retroactive else "pending",
+        ack_responded_at=now_utc if is_retroactive else None,
     )
     
     db.add(shift)
@@ -402,6 +427,19 @@ def create_shift(
     if not worker_name:
         worker_name = worker.username if worker else None
     
+    after_changes = {
+        "project_id": str(project_id),
+        "worker_id": worker_id,
+        "date": date_str,
+        "start_time": start_time_str,
+        "end_time": end_time_str,
+        "notes": notes,
+    }
+    if is_retroactive:
+        after_changes["retroactive"] = True
+        after_changes["notification_skipped"] = True
+        after_changes["ack_auto_accepted"] = True
+
     # Create audit log with names
     create_audit_log(
         db=db,
@@ -411,45 +449,42 @@ def create_shift(
         actor_id=str(user.id),
         actor_role=get_user_role(user, db),
         source="api",
-        changes_json={"after": {
-            "project_id": str(project_id),
-            "worker_id": worker_id,
-            "date": date_str,
-            "start_time": start_time_str,
-            "end_time": end_time_str,
-            "notes": notes,
-        }},
+        changes_json={"after": after_changes},
         context={
             "project_id": project_id,
             "project_name": project.name,
             "worker_id": worker_id,
             "affected_user_id": worker_id,
             "affected_user_name": worker_name,
+            "retroactive": is_retroactive,
+            "notification_skipped": is_retroactive,
+            "ack_auto_accepted": is_retroactive,
         }
     )
     
-    # Send notification to worker
-    project_timezone = project.timezone or settings.tz_default
-    send_shift_notification(
-        db=db,
-        user_id=worker_id,
-        notification_type="created",
-        shift_data={
-            "id": str(shift.id),
-            "project_id": project_id,
-            "date": date_str,
-            "start_time": start_time_str,
-            "end_time": end_time_str,
-            "notes": notes,
-        },
-        timezone_str=project_timezone
-    )
+    # Past-dated shifts are backfills: skip worker notification.
+    if not is_retroactive:
+        send_shift_notification(
+            db=db,
+            user_id=worker_id,
+            notification_type="created",
+            shift_data={
+                "id": str(shift.id),
+                "project_id": project_id,
+                "date": date_str,
+                "start_time": start_time_str,
+                "end_time": end_time_str,
+                "notes": notes,
+            },
+            timezone_str=project_timezone
+        )
     
     return _shift_to_dict(
         shift,
         geofences=get_geofences_for_shift(shift, project, db),
         project_name=project.name,
         conflicts=conflict_payload,
+        timezone_str=project_timezone,
     )
 
 
@@ -528,6 +563,9 @@ def create_shift_without_project(
     conflict_shifts = get_conflicting_shifts(db, worker_id, shift_date, start_time, end_time)
     conflict_payload = serialize_conflicts(db, conflict_shifts)
     
+    is_retroactive = shift_date < _local_today(settings.tz_default)
+    now_utc = datetime.now(timezone.utc)
+
     # Create shift with "General" project but store job_type to indicate it's not project-specific
     shift = Shift(
         project_id=project_id,  # Use General project as placeholder
@@ -541,6 +579,8 @@ def create_shift_without_project(
         job_id=None,
         job_name=job_type,  # Store the job type name (e.g., "0", "37", "47", etc.)
         created_by=user.id,
+        ack_status="accepted" if is_retroactive else "pending",
+        ack_responded_at=now_utc if is_retroactive else None,
     )
     
     db.add(shift)
@@ -556,6 +596,18 @@ def create_shift_without_project(
         worker_user = db.query(User).filter(User.id == worker_id).first()
         worker_name = worker_user.username if worker_user else None
     
+    after_changes = {
+        "worker_id": worker_id,
+        "date": date_str,
+        "start_time": start_time_str,
+        "end_time": end_time_str,
+        "job_name": job_type,
+    }
+    if is_retroactive:
+        after_changes["retroactive"] = True
+        after_changes["notification_skipped"] = True
+        after_changes["ack_auto_accepted"] = True
+
     # Create audit log with names
     create_audit_log(
         db=db,
@@ -565,18 +617,15 @@ def create_shift_without_project(
         actor_id=str(user.id),
         actor_role=get_user_role(user, db),
         source="api",
-        changes_json={"after": {
-            "worker_id": worker_id,
-            "date": date_str,
-            "start_time": start_time_str,
-            "end_time": end_time_str,
-            "job_name": job_type,
-        }},
+        changes_json={"after": after_changes},
         context={
             "worker_id": worker_id,
             "affected_user_id": worker_id,
             "affected_user_name": worker_name,
             "job_type": job_type,
+            "retroactive": is_retroactive,
+            "notification_skipped": is_retroactive,
+            "ack_auto_accepted": is_retroactive,
         }
     )
     
@@ -590,7 +639,9 @@ def create_shift_without_project(
         "status": shift.status,
         "job_name": shift.job_name,
         "notes": shift.notes,
+        "ack_status": shift.ack_status or "pending",
         "created_at": shift.created_at.isoformat() if shift.created_at else None,
+        "retroactive": _is_retroactive_shift(shift, settings.tz_default),
         "conflicts": conflict_payload,
     }
 
@@ -700,7 +751,14 @@ def list_shifts(
         # Get geofences (from shift or project)
         geofences = get_geofences_for_shift(s, project, db)
         
-        result.append(_shift_to_dict(s, geofences=geofences, project_name=project.name if project else None))
+        result.append(
+            _shift_to_dict(
+                s,
+                geofences=geofences,
+                project_name=project.name if project else None,
+                timezone_str=(project.timezone if project and project.timezone else settings.tz_default),
+            )
+        )
     
     return result
 
@@ -767,7 +825,14 @@ def list_all_shifts(
         # Get geofences (from shift or project)
         geofences = get_geofences_for_shift(s, project, db)
         
-        result.append(_shift_to_dict(s, geofences=geofences, project_name=project.name if project else None))
+        result.append(
+            _shift_to_dict(
+                s,
+                geofences=geofences,
+                project_name=project.name if project else None,
+                timezone_str=(project.timezone if project and project.timezone else settings.tz_default),
+            )
+        )
     
     return result
 
@@ -800,7 +865,12 @@ def get_shift(
     # Get project name
     project_name = project.name if project else None
     
-    return _shift_to_dict(shift, geofences=geofences, project_name=project_name)
+    return _shift_to_dict(
+        shift,
+        geofences=geofences,
+        project_name=project_name,
+        timezone_str=(project.timezone if project and project.timezone else settings.tz_default),
+    )
 
 
 @router.get("/shifts/{shift_id}/responses")
@@ -944,6 +1014,7 @@ def respond_to_shift(
         shift,
         geofences=get_geofences_for_shift(shift, project, db) if project else (shift.geofences or []),
         project_name=project.name if project else None,
+        timezone_str=(project.timezone if project and project.timezone else settings.tz_default),
     )
 
 
@@ -1154,7 +1225,12 @@ def update_shift(
     # Get geofences (from shift or project)
     geofences = get_geofences_for_shift(shift, project, db)
     
-    return _shift_to_dict(shift, geofences=geofences, conflicts=conflict_payload)
+    return _shift_to_dict(
+        shift,
+        geofences=geofences,
+        conflicts=conflict_payload,
+        timezone_str=(project.timezone if project and project.timezone else settings.tz_default),
+    )
 
 
 @router.delete("/shifts/{shift_id}")

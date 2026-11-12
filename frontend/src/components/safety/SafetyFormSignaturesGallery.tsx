@@ -1,5 +1,6 @@
 import { withFileAccessToken } from '@/lib/api';
 import { getCustomSignaturesFromPayload } from '@/lib/customSafetySignatures';
+import { formatDateTimeVancouver } from '@/lib/dateUtils';
 
 export type SafetyFormAdditionalSignedRequest = {
   id: string;
@@ -12,7 +13,7 @@ export type SafetyFormAdditionalSignedRequest = {
 
 function formatSignedAt(iso: string | undefined | null): string {
   if (!iso || Number.isNaN(Date.parse(iso))) return '—';
-  return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  return formatDateTimeVancouver(iso);
 }
 
 type Props = {

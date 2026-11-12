@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
-import { formatDateLocal } from '@/lib/dateUtils';
+import { formatDateLocal, formatDateVancouver } from '@/lib/dateUtils';
 import { useConfirm } from '@/components/ConfirmProvider';
 import {
   employeeLoanCreateQuickInfo,
@@ -108,12 +108,7 @@ function formatCurrency(value: number): string {
 
 function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '—';
-  try {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-  } catch {
-    return dateStr;
-  }
+  return formatDateVancouver(dateStr, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
 function loanStatusVariant(status: string): 'success' | 'neutral' | 'danger' {

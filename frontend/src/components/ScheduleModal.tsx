@@ -2,8 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
-import { formatDateLocal } from '@/lib/dateUtils';
-import { formatDateLocal } from '@/lib/dateUtils';
+import { formatDateLocal, formatTimeVancouver } from '@/lib/dateUtils';
 import OverlayPortal from '@/components/OverlayPortal';
 
 // Helper function to convert 24h time (HH:MM:SS or HH:MM) to 12h format (h:mm AM/PM)
@@ -17,6 +16,16 @@ function formatTime12h(timeStr: string | null | undefined): string {
   const period = hours >= 12 ? 'PM' : 'AM';
   const hours12 = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
   return `${hours12}:${minutes} ${period}`;
+}
+
+/** Clock-in/out API instants in Pacific Time. */
+function formatClockInstant(iso: string | null | undefined): string {
+  if (!iso) return '--';
+  return formatTimeVancouver(iso, {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
 }
 
 
@@ -901,15 +910,7 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                                         shiftClockIn.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
                                         'bg-red-100 text-red-800'
                                       }`}>
-                                        In: {shiftClockIn.clock_in_time ? new Date(shiftClockIn.clock_in_time).toLocaleTimeString('en-US', {
-                                          hour: 'numeric',
-                                          minute: '2-digit',
-                                          hour12: true,
-                                        }) : (shiftClockIn.time_selected_utc ? new Date(shiftClockIn.time_selected_utc).toLocaleTimeString('en-US', {
-                                          hour: 'numeric',
-                                          minute: '2-digit',
-                                          hour12: true,
-                                        }) : '--')}
+                                        In: {shiftClockIn.clock_in_time ? formatClockInstant(shiftClockIn.clock_in_time) : (shiftClockIn.time_selected_utc ? formatClockInstant(shiftClockIn.time_selected_utc) : '--')}
                                       </span>
                                     </div>
                                   )}
@@ -920,15 +921,7 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                                         shiftClockOut.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
                                         'bg-red-100 text-red-800'
                                       }`}>
-                                        Out: {shiftClockOut.clock_out_time ? new Date(shiftClockOut.clock_out_time).toLocaleTimeString('en-US', {
-                                          hour: 'numeric',
-                                          minute: '2-digit',
-                                          hour12: true,
-                                        }) : (shiftClockOut.time_selected_utc ? new Date(shiftClockOut.time_selected_utc).toLocaleTimeString('en-US', {
-                                          hour: 'numeric',
-                                          minute: '2-digit',
-                                          hour12: true,
-                                        }) : '--')}
+                                        Out: {shiftClockOut.clock_out_time ? formatClockInstant(shiftClockOut.clock_out_time) : (shiftClockOut.time_selected_utc ? formatClockInstant(shiftClockOut.time_selected_utc) : '--')}
                                       </span>
                                     </div>
                                   )}
@@ -1052,15 +1045,7 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                           <div className="flex items-center gap-2">
                             {getStatusBadge(clockIn.status)}
                             <span className="text-sm text-gray-900">
-                              {clockIn.clock_in_time ? new Date(clockIn.clock_in_time).toLocaleTimeString('en-US', {
-                                hour: 'numeric',
-                                minute: '2-digit',
-                                hour12: true,
-                              }) : (clockIn.time_selected_utc ? new Date(clockIn.time_selected_utc).toLocaleTimeString('en-US', {
-                                hour: 'numeric',
-                                minute: '2-digit',
-                                hour12: true,
-                              }) : '--')}
+                              {clockIn.clock_in_time ? formatClockInstant(clockIn.clock_in_time) : (clockIn.time_selected_utc ? formatClockInstant(clockIn.time_selected_utc) : '--')}
                             </span>
                             {clockIn.source === 'supervisor' && (
                               <span className="text-sm text-gray-600">(Supervisor)</span>
@@ -1076,15 +1061,7 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                           <div className="flex items-center gap-2">
                             {getStatusBadge(clockOut.status)}
                             <span className="text-sm text-gray-900">
-                              {clockOut.clock_out_time ? new Date(clockOut.clock_out_time).toLocaleTimeString('en-US', {
-                                hour: 'numeric',
-                                minute: '2-digit',
-                                hour12: true,
-                              }) : (clockOut.time_selected_utc ? new Date(clockOut.time_selected_utc).toLocaleTimeString('en-US', {
-                                hour: 'numeric',
-                                minute: '2-digit',
-                                hour12: true,
-                              }) : '--')}
+                              {clockOut.clock_out_time ? formatClockInstant(clockOut.clock_out_time) : (clockOut.time_selected_utc ? formatClockInstant(clockOut.time_selected_utc) : '--')}
                             </span>
                             {clockOut.source === 'supervisor' && (
                               <span className="text-sm text-gray-600">(Supervisor)</span>
@@ -1218,15 +1195,7 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                                 <div className="flex items-center gap-2">
                                   {getStatusBadge(finalClockIn.status)}
                                   <span className="text-gray-900">
-                                    {finalClockIn.clock_in_time ? new Date(finalClockIn.clock_in_time).toLocaleTimeString('en-US', {
-                                      hour: 'numeric',
-                                      minute: '2-digit',
-                                      hour12: true,
-                                    }) : (finalClockIn.time_selected_utc ? new Date(finalClockIn.time_selected_utc).toLocaleTimeString('en-US', {
-                                      hour: 'numeric',
-                                      minute: '2-digit',
-                                      hour12: true,
-                                    }) : '--')}
+                                    {finalClockIn.clock_in_time ? formatClockInstant(finalClockIn.clock_in_time) : (finalClockIn.time_selected_utc ? formatClockInstant(finalClockIn.time_selected_utc) : '--')}
                                   </span>
                                 </div>
                               </div>
@@ -1236,15 +1205,7 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                                   <div className="flex items-center gap-2">
                                     {getStatusBadge(finalClockOut.status)}
                                     <span className="text-gray-900">
-                                      {finalClockOut.clock_out_time ? new Date(finalClockOut.clock_out_time).toLocaleTimeString('en-US', {
-                                        hour: 'numeric',
-                                        minute: '2-digit',
-                                        hour12: true,
-                                      }) : (finalClockOut.time_selected_utc ? new Date(finalClockOut.time_selected_utc).toLocaleTimeString('en-US', {
-                                        hour: 'numeric',
-                                        minute: '2-digit',
-                                        hour12: true,
-                                      }) : '--')}
+                                      {finalClockOut.clock_out_time ? formatClockInstant(finalClockOut.clock_out_time) : (finalClockOut.time_selected_utc ? formatClockInstant(finalClockOut.time_selected_utc) : '--')}
                                     </span>
                                   </div>
                                 </div>

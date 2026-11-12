@@ -74,10 +74,13 @@ def serialize_client_note(
     created_by = getattr(row, "created_by", None)
     project_id = getattr(row, "project_id", None)
     client_id = getattr(row, "client_id", None)
+    contact_id = getattr(row, "contact_id", None)
     out = {
         "id": str(row.id),
         "source": "client_note",
         "client_id": str(client_id) if client_id else None,
+        "contact_id": str(contact_id) if contact_id else None,
+        "contact_name": getattr(row, "contact_name", None),
         "title": getattr(row, "title", None),
         "category_id": getattr(row, "category_id", None),
         "description": getattr(row, "description", None),

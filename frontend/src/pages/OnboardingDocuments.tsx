@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { logoutSession } from '@/lib/logoutSession';
 import { api, getToken } from '@/lib/api';
+import { formatDateVancouver } from '@/lib/dateUtils';
 import toast from 'react-hot-toast';
 import OnboardingSignModal from '@/components/OnboardingSignModal';
 import OverlayPortal from '@/components/OverlayPortal';
@@ -258,7 +259,7 @@ export default function OnboardingDocuments() {
                     <td className="px-4 py-3.5 text-sm text-gray-600 whitespace-nowrap">
                       {d.deadline_at ? (
                         <>
-                          {new Date(d.deadline_at).toLocaleDateString()}
+                          {formatDateVancouver(d.deadline_at)}
                           {d.remaining_days != null && <span className="text-gray-600"> · {d.remaining_days}d left</span>}
                         </>
                       ) : (

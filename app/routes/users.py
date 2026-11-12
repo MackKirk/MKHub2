@@ -19,6 +19,7 @@ from ..models.models import (
     Role,
     EmployeeProfile,
     UserHomeDashboard,
+    UserListPreferences,
     FileObject,
     Invite,
     ProjectReport,
@@ -33,6 +34,11 @@ from ..models.models import (
     TimeOffHistory,
     TimeOffRequest,
     EmployeeDocument,
+)
+from ..services.user_list_preferences import (
+    empty_list_preferences,
+    merge_list_preferences,
+    normalize_list_preferences_data,
 )
 from ..services.audit_log_entries import audit_rows_to_entry_dicts
 from ..services.user_display import employee_name_match, profile_search_label
@@ -111,6 +117,15 @@ class PageViewRequest(BaseModel):
     path: str
 
 
+class ListPreferencesUpdate(BaseModel):
+    """Partial update for PUT /users/me/list-preferences.
+
+    Per line (opportunity or project): null = all statuses, [] = none, [ids] = subset.
+    """
+    opportunity_status_ids: Optional[Dict[str, Optional[List[str]]]] = None
+    project_status_ids: Optional[Dict[str, Optional[List[str]]]] = None
+
+
 def _home_dashboard_json_equal(a: list, b: list) -> bool:
     try:
         return json.dumps(a, sort_keys=True, default=str) == json.dumps(b, sort_keys=True, default=str)
@@ -151,6 +166,37 @@ def post_my_page_view(
 ):
     """Record SPA navigation (pathname only; deduped server-side within 10 minutes)."""
     return record_user_page_view(db, user.id, payload.path)
+
+
+@router.get("/me/list-preferences")
+def get_my_list_preferences(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Per-user list preferences (opportunity/project status chips by business line)."""
+    row = db.query(UserListPreferences).filter(UserListPreferences.user_id == user.id).first()
+    if not row:
+        return empty_list_preferences()
+    return normalize_list_preferences_data(row.data if isinstance(row.data, dict) else {})
+
+
+@router.put("/me/list-preferences")
+def put_my_list_preferences(
+    payload: ListPreferencesUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Merge list preferences for the current user (only provided line keys are updated)."""
+    patch = payload.model_dump(exclude_unset=True) if hasattr(payload, "model_dump") else payload.dict(exclude_unset=True)
+    row = db.query(UserListPreferences).filter(UserListPreferences.user_id == user.id).first()
+    existing = row.data if row and isinstance(row.data, dict) else {}
+    merged = merge_list_preferences(existing, patch)
+    if row:
+        row.data = merged
+        row.updated_at = datetime.now(timezone.utc)
+    else:
+        row = UserListPreferences(user_id=user.id, data=merged)
+        db.add(row)
+    db.commit()
+    db.refresh(row)
+    return normalize_list_preferences_data(row.data if isinstance(row.data, dict) else {})
 
 
 @router.put("/me/home-dashboard")

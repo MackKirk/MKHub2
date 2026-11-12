@@ -52,6 +52,9 @@ class Settings(BaseSettings):
 
     # Mail / Public
     public_base_url: str = Field(default="http://localhost:8000", alias="PUBLIC_BASE_URL")
+    # Public origin of the Metals website SPA (no trailing slash). Default: {PUBLIC_BASE_URL}/website
+    # Local Vite: METALS_WEBSITE_PUBLIC_URL=http://localhost:5175/website
+    metals_website_public_url: Optional[str] = Field(default=None, alias="METALS_WEBSITE_PUBLIC_URL")
     smtp_host: Optional[str] = Field(default=None, alias="SMTP_HOST")
     smtp_port: int = Field(default=587, alias="SMTP_PORT")
     smtp_username: Optional[str] = Field(default=None, alias="SMTP_USERNAME")

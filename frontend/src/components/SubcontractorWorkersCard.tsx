@@ -14,6 +14,7 @@ import {
 } from '@/components/ui';
 import { withFileAccessTokenIfNeeded } from '@/lib/api';
 import { formatAddressDisplay } from '@/lib/addressUtils';
+import { formatDateVancouver } from '@/lib/dateUtils';
 
 const EM_DASH = '\u2014';
 
@@ -63,9 +64,8 @@ function sortIndicator(active: boolean, dir: 'asc' | 'desc') {
 function formatCreatedAt(value?: string | null) {
   const raw = String(value || '').trim();
   if (!raw) return EM_DASH;
-  const d = new Date(raw);
-  if (Number.isNaN(d.getTime())) return raw.slice(0, 10) || EM_DASH;
-  return d.toLocaleDateString('en-CA', { year: 'numeric', month: 'short', day: 'numeric' });
+  const formatted = formatDateVancouver(raw, { year: 'numeric', month: 'short', day: 'numeric' });
+  return formatted === '—' ? raw.slice(0, 10) || EM_DASH : formatted;
 }
 
 function WorkerListRow({ worker, returnTo }: { worker: SubcontractorWorkerRow; returnTo: string }) {

@@ -1,6 +1,7 @@
 ﻿import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessToken } from '@/lib/api';
 import { sortByLabel } from '@/lib/sortOptions';
+import { formatDateVancouver } from '@/lib/dateUtils';
 import { queryClient } from '@/lib/queryClient';
 import { useRef, useState, useMemo, useEffect, type ChangeEvent, type ReactNode } from 'react';
 import toast from 'react-hot-toast';
@@ -1271,7 +1272,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                   const days = hoursToDays(r.hours);
                   return (
                     <tr key={r.id} className="border-b">
-                      <td className="py-2 px-2">{new Date(r.requested_at).toLocaleDateString()}</td>
+                      <td className="py-2 px-2">{formatDateVancouver(r.requested_at)}</td>
                       <td className="py-2 px-2">
                         {r.policy_name} - {r.status}
                         {r.notes && <div className="text-sm text-gray-600">{r.notes}</div>}

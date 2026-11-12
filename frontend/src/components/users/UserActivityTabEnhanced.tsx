@@ -26,25 +26,7 @@ import {
   uiTypography,
 } from '@/components/ui';
 
-const USER_ACTIVITY_LOG_TZ = 'America/Vancouver';
-
-function parseUtcForUserActivity(iso: string): Date {
-  const s = iso.trim();
-  if (!s) return new Date(NaN);
-  if (/[zZ]$|[+-]\d{2}:?\d{2}$/.test(s)) return new Date(s);
-  const normalized = s.includes('T') ? s : s.replace(' ', 'T');
-  return new Date(normalized.endsWith('Z') ? normalized : `${normalized}Z`);
-}
-
-function formatUserActivityTime(iso: string): string {
-  const d = parseUtcForUserActivity(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: USER_ACTIVITY_LOG_TZ,
-    dateStyle: 'short',
-    timeStyle: 'medium',
-  }).format(d);
-}
+import { formatDateTimeVancouver } from '@/lib/dateUtils';
 
 type ActivityPaginated<T> = {
   items: T[];
@@ -300,7 +282,7 @@ export function UserActivitySection({ userId }: UserActivityTabProps) {
           <AppCard className="mt-4" bodyClassName={uiCx(uiSpacing.cardPadding, 'min-w-0')}>
             <AppSectionHeader title="Last sign-in" description="Most recent successful sign-in (Vancouver time)." />
             <p className={uiCx(uiTypography.body, 'mt-2 font-semibold text-gray-900')}>
-              {data.last_login_at ? formatUserActivityTime(data.last_login_at) : '—'}
+              {data.last_login_at ? formatDateTimeVancouver(data.last_login_at) : '—'}
             </p>
           </AppCard>
 
@@ -366,7 +348,7 @@ export function UserActivitySection({ userId }: UserActivityTabProps) {
                                 {row.title}
                               </span>
                               <span className={uiCx(uiTypography.helper, 'min-w-0 truncate')}>
-                                {formatUserActivityTime(row.timestamp_utc)}
+                                {formatDateTimeVancouver(row.timestamp_utc)}
                               </span>
                             </AppSortableEntityListRow>
                           ))}
@@ -447,7 +429,7 @@ export function UserActivitySection({ userId }: UserActivityTabProps) {
                                 {row.title}
                               </span>
                               <span className={uiCx(uiTypography.helper, 'min-w-0 truncate')}>
-                                {formatUserActivityTime(row.timestamp_utc)}
+                                {formatDateTimeVancouver(row.timestamp_utc)}
                               </span>
                             </AppSortableEntityListRow>
                           ))}
@@ -528,7 +510,7 @@ export function UserActivitySection({ userId }: UserActivityTabProps) {
                                 {activityAuditTitle(row)}
                               </span>
                               <span className={uiCx(uiTypography.helper, 'min-w-0 truncate')}>
-                                {formatUserActivityTime(row.timestamp_utc)}
+                                {formatDateTimeVancouver(row.timestamp_utc)}
                               </span>
                             </AppSortableEntityListRow>
                           ))}
@@ -571,7 +553,7 @@ export function UserActivitySection({ userId }: UserActivityTabProps) {
           <AppCard bodyClassName={uiCx(uiSpacing.cardPadding, 'min-w-0')}>
             <dl className="min-w-0">
               <ActivityDetailField label="Time (Vancouver)">
-                <span className="font-mono font-normal">{formatUserActivityTime(loginModal.timestamp_utc)}</span>
+                <span className="font-mono font-normal">{formatDateTimeVancouver(loginModal.timestamp_utc)}</span>
               </ActivityDetailField>
               <ActivityDetailField label="Path">
                 <span className="break-all font-mono font-normal text-sm">{loginModal.path || '—'}</span>
@@ -606,7 +588,7 @@ export function UserActivitySection({ userId }: UserActivityTabProps) {
           <AppCard bodyClassName={uiCx(uiSpacing.cardPadding, 'min-w-0')}>
             <dl className="min-w-0">
               <ActivityDetailField label="Time (Vancouver)">
-                <span className="font-mono font-normal">{formatUserActivityTime(pageModal.timestamp_utc)}</span>
+                <span className="font-mono font-normal">{formatDateTimeVancouver(pageModal.timestamp_utc)}</span>
               </ActivityDetailField>
               <ActivityDetailField label="Page">{pageModal.title}</ActivityDetailField>
               <ActivityDetailField label="Path">
@@ -656,7 +638,7 @@ export function UserActivitySection({ userId }: UserActivityTabProps) {
             <div className="space-y-4">
               <AppCard bodyClassName={uiCx(uiSpacing.cardPadding, 'min-w-0')}>
                 <dl className="min-w-0">
-                  <ActivityDetailField label="Time">{formatUserActivityTime(auditDetail.timestamp_utc)}</ActivityDetailField>
+                  <ActivityDetailField label="Time">{formatDateTimeVancouver(auditDetail.timestamp_utc)}</ActivityDetailField>
                   <ActivityDetailField label="Action">{auditDetail.action}</ActivityDetailField>
                   <ActivityDetailField label="Entity">
                     {auditDetail.entity_display || auditDetail.entity_type}{' '}

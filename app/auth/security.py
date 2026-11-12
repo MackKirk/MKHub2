@@ -369,6 +369,9 @@ def granted_permission_keys_from_map(perm_map: dict) -> List[str]:
             continue
         if _legacy_project_sub_feature_key(key):
             continue
+        # Retired shared main keys — line-scoped Projects & Opportunities only.
+        if key in ("business:projects:read", "business:projects:write"):
+            continue
         if key == "settings:access":
             continue
         if is_granted_perm_value(value):
@@ -378,10 +381,7 @@ def granted_permission_keys_from_map(perm_map: dict) -> List[str]:
 
 def _line_has_any_project_access(perm_map: dict, line: Optional[str]) -> bool:
     """Line access from main read/write or any sub-permission (e.g. files:read only)."""
-    if is_granted_perm_value(perm_map.get("business:projects:read")) or is_granted_perm_value(
-        perm_map.get("business:projects:write")
-    ):
-        return True
+    # Legacy business:projects:read/write are retired — line-scoped keys only.
     prefix = _project_line_perm_prefix(line)
     if is_granted_perm_value(perm_map.get(f"{prefix}:read")) or is_granted_perm_value(
         perm_map.get(f"{prefix}:write")
@@ -396,8 +396,10 @@ def _line_has_any_project_access(perm_map: dict, line: Optional[str]) -> bool:
 
 
 def _line_has_project_write(perm_map: dict, line: Optional[str]) -> bool:
-    if is_granted_perm_value(perm_map.get("business:projects:write")):
-        return True
+    """
+    Main line write, or any line-scoped *:write sub-permission (files/costs/etc.).
+    Legacy business:projects:write is retired — does not grant access.
+    """
     prefix = _project_line_perm_prefix(line)
     if is_granted_perm_value(perm_map.get(f"{prefix}:write")):
         return True
@@ -816,12 +818,10 @@ CUSTOMER_TAB_KEYS: tuple[str, ...] = (
 
 def _has_any_project_line_read_permission(user: User) -> bool:
     return bool(
-        _has_permission(user, "business:projects:read")
-        or _has_permission(user, "business:construction:projects:read")
+        _has_permission(user, "business:construction:projects:read")
         or _has_permission(user, "business:rm:projects:read")
         or _has_permission(user, "business:construction:projects:write")
         or _has_permission(user, "business:rm:projects:write")
-        or _has_permission(user, "business:projects:write")
     )
 
 

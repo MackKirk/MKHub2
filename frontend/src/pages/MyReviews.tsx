@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { formatDateVancouver } from '@/lib/dateUtils';
 import { useState, useMemo, useEffect, type ReactNode } from 'react';
 import toast from 'react-hot-toast';
 import DynamicSafetyForm from '@/components/DynamicSafetyForm';
@@ -68,9 +69,7 @@ type AssignmentRow = {
 
 function formatFriendlyDate(iso: string | null | undefined) {
   if (!iso) return '—';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return String(iso);
-  return d.toLocaleDateString(undefined, {
+  return formatDateVancouver(iso, {
     weekday: 'short',
     year: 'numeric',
     month: 'short',

@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { formatDateTimeVancouver } from '@/lib/dateUtils';
 import { WORK_ORDER_STATUS_LABELS } from '@/lib/fleetBadges';
 import { getFleetHistoryEntryBadgeVariant } from '@/lib/fleetUi';
 import {
@@ -149,7 +150,7 @@ export function WorkOrderActivityTab({ workOrderId }: Props) {
                       </p>
                     </div>
                     <p className={uiCx(uiTypography.body, 'shrink-0 text-right text-gray-600')}>
-                      {entry.created_at ? new Date(entry.created_at).toLocaleString() : EM_DASH}
+                      {entry.created_at ? formatDateTimeVancouver(entry.created_at) : EM_DASH}
                     </p>
                   </div>
                 </div>

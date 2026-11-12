@@ -69,6 +69,30 @@ describe('evaluatePermission', () => {
     expect(evaluatePermission('business:rm:projects:read', perms, false)).toBe(true);
   });
 
+  it('does not grant line write from retired legacy business:projects:write', () => {
+    const legacy = new Set(['business:projects:write']);
+    expect(evaluatePermission('business:rm:projects:write', legacy, false)).toBe(false);
+    expect(evaluatePermission('business:construction:projects:write', legacy, false)).toBe(false);
+  });
+
+  it('maps retired business:projects:write to any line-scoped write', () => {
+    expect(
+      evaluatePermission(
+        'business:projects:write',
+        new Set(['business:rm:projects:write']),
+        false,
+      ),
+    ).toBe(true);
+    expect(
+      evaluatePermission(
+        'business:projects:write',
+        new Set(['business:construction:projects:write']),
+        false,
+      ),
+    ).toBe(true);
+    expect(evaluatePermission('business:projects:write', new Set(), false)).toBe(false);
+  });
+
   it('allows document builder via hub builder read', () => {
     const perms = new Set([DOCUMENT_HUB_BUILDER_READ]);
     expect(evaluatePermission('document_hub:builder:read', perms, false)).toBe(true);

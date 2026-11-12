@@ -7,6 +7,7 @@ import {
 } from '@/lib/fleetActivityLabels';
 import { formatFleetHistoryPerformedBy } from '@/lib/fleetHistoryActor';
 import { fleetHistoryAuditChangeQuickInfo } from '@/lib/fleetHistoryQuickInfo';
+import { formatDateTimeVancouver } from '@/lib/dateUtils';
 import {
   AppButton,
   AppFormModal,
@@ -46,7 +47,7 @@ export default function FleetHistoryAuditChangeModal({ open, detail, onClose }: 
   const headline = `${formatFleetAuditEntityTitle(detail.entityType)} · ${formatFleetAuditActionVerb(detail.auditAction)}`;
 
   const occurredDisplay = detail.occurredAt
-    ? new Date(detail.occurredAt).toLocaleString()
+    ? formatDateTimeVancouver(detail.occurredAt)
     : null;
 
   return (

@@ -5,6 +5,7 @@ import {
   userDocumentBuilderPath,
   type ProjectRouteMeta,
 } from '@/lib/documentCreateScope';
+import { VANCOUVER_TIMEZONE, formatDateVancouver, parseUtcTimestamp } from '@/lib/dateUtils';
 
 export type DocumentScope = 'standalone' | 'project' | 'user';
 
@@ -69,19 +70,20 @@ export function scopeMetaLabel(doc: DocumentHubSummary): string {
 
 export function formatRelativeUpdated(iso: string | null | undefined): string {
   if (!iso) return '—';
-  try {
-    const d = new Date(iso);
-    const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const startOfYesterday = new Date(startOfToday);
-    startOfYesterday.setDate(startOfYesterday.getDate() - 1);
-    const startOfTarget = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    if (startOfTarget.getTime() === startOfToday.getTime()) return 'today';
-    if (startOfTarget.getTime() === startOfYesterday.getTime()) return 'yesterday';
-    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-  } catch {
-    return '—';
-  }
+  const d = parseUtcTimestamp(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  const dayKeyFmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: VANCOUVER_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const now = new Date();
+  const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const targetKey = dayKeyFmt.format(d);
+  if (targetKey === dayKeyFmt.format(now)) return 'today';
+  if (targetKey === dayKeyFmt.format(yesterday)) return 'yesterday';
+  return formatDateVancouver(iso, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 export function updatedByLine(doc: DocumentHubSummary): string {

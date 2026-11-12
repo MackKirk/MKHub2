@@ -13,10 +13,12 @@ from sqlalchemy.orm import Session
 from ..auth.security import (
     User,
     _forbidden,
+    _has_any_project_line_read_permission,
     _has_permission,
     _has_project_feature_permission,
     _user_is_admin,
     can_read_metals_client_for_quotes,
+    expand_project_permission_aliases,
     has_project_files_category_permission,
     has_customer_tab_permission,
     has_metals_customer_list_permission,
@@ -960,10 +962,19 @@ def assert_can_read_file_object(user: User, db: Session, fo: FileObject) -> None
         if not can_access_project_for_proposal_assets(user, proj_img):
             raise _forbidden("no access to project image")
         if not (
-            _has_permission(user, "business:projects:read")
-            or _has_permission(user, "business:projects:files:read")
-            or _has_permission(user, "business:projects:files:write")
-            or _has_permission(user, "business:projects:proposal:read")
+            _has_any_project_line_read_permission(user)
+            or any(
+                _has_permission(user, k)
+                for k in expand_project_permission_aliases("business:projects:files:read")
+            )
+            or any(
+                _has_permission(user, k)
+                for k in expand_project_permission_aliases("business:projects:files:write")
+            )
+            or any(
+                _has_permission(user, k)
+                for k in expand_project_permission_aliases("business:projects:proposal:read")
+            )
         ):
             raise _forbidden("missing permission to read project image")
         return
@@ -998,9 +1009,15 @@ def assert_can_read_file_object(user: User, db: Session, fo: FileObject) -> None
     _, _, _, cat_slug = infer_scope_from_storage_key(db, fo.key)
     if cat_slug == "form-template-reference":
         if (
-            _has_permission(user, "business:projects:read")
-            or _has_permission(user, "business:projects:files:read")
-            or _has_permission(user, "business:projects:files:write")
+            _has_any_project_line_read_permission(user)
+            or any(
+                _has_permission(user, k)
+                for k in expand_project_permission_aliases("business:projects:files:read")
+            )
+            or any(
+                _has_permission(user, k)
+                for k in expand_project_permission_aliases("business:projects:files:write")
+            )
             or _has_permission(user, "documents:read")
         ):
             return

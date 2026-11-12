@@ -11,6 +11,11 @@ import {
   Megaphone,
   MessageSquare,
 } from 'lucide-react';
+import {
+  formatDateTimeVancouver,
+  formatDateVancouver,
+  parseUtcTimestamp,
+} from '@/lib/dateUtils';
 
 export interface NotificationRecord {
   id: string;
@@ -45,7 +50,8 @@ export function getNotificationIconMeta(type: string) {
 }
 
 export function formatNotificationTimeAgo(dateStr: string) {
-  const date = new Date(dateStr);
+  const date = parseUtcTimestamp(dateStr);
+  if (Number.isNaN(date.getTime())) return formatDateVancouver(dateStr);
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffMins = Math.floor(diffMs / 60000);
@@ -56,12 +62,11 @@ export function formatNotificationTimeAgo(dateStr: string) {
   if (diffMins < 60) return `${diffMins}m ago`;
   if (diffHours < 24) return `${diffHours}h ago`;
   if (diffDays < 7) return `${diffDays}d ago`;
-  return date.toLocaleDateString();
+  return formatDateVancouver(dateStr);
 }
 
 export function formatNotificationDateTime(dateStr: string) {
-  const date = new Date(dateStr);
-  return date.toLocaleDateString('en-US', {
+  return formatDateTimeVancouver(dateStr, {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
@@ -73,7 +78,7 @@ export function formatNotificationDateTime(dateStr: string) {
 
 export function groupNotificationsByDate(notifications: NotificationRecord[]) {
   return notifications.reduce<Record<string, NotificationRecord[]>>((acc, notif) => {
-    const dateKey = new Date(notif.created_at).toLocaleDateString('en-US', {
+    const dateKey = formatDateVancouver(notif.created_at, {
       year: 'numeric',
       month: 'long',
       day: 'numeric',

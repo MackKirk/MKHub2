@@ -20,9 +20,7 @@ function canAccessProjectLine(
   if (line === "construction") {
     return (
       permissions.has("business:construction:projects:read") ||
-      permissions.has("business:construction:projects:write") ||
-      permissions.has("business:projects:read") ||
-      permissions.has("business:projects:write")
+      permissions.has("business:construction:projects:write")
     );
   }
   return (

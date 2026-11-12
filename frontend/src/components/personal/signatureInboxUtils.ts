@@ -1,3 +1,5 @@
+import { formatDateVancouver } from '@/lib/dateUtils';
+
 export type SignatureInboxItem = {
   id: string;
   source: 'onboarding' | 'document_builder';
@@ -44,15 +46,12 @@ export function sourceLabel(item: SignatureInboxItem): string {
 
 export function formatDueDate(iso: string | null | undefined): string | null {
   if (!iso) return null;
-  try {
-    return new Date(iso).toLocaleDateString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  } catch {
-    return null;
-  }
+  const formatted = formatDateVancouver(iso, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+  return formatted === '—' ? null : formatted;
 }
 
 export function daysOverdueLabel(deadlineIso: string | null | undefined): string | null {

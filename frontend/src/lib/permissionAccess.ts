@@ -29,7 +29,6 @@ export function evaluatePermission(
   if (isAdmin) return true;
 
   const has = permissionsSet.has(requiredPermission);
-  const legacyBizWrite = permissionsSet.has('business:projects:write');
 
   if (requiredPermission === 'business:construction:projects:read') {
     return hasConstructionProjectsOpportunitiesPermission(permissionsSet, isAdmin);
@@ -38,16 +37,21 @@ export function evaluatePermission(
     return hasRmProjectsOpportunitiesPermission(permissionsSet, isAdmin);
   }
   if (requiredPermission === 'business:projects:read') {
+    // Retired shared key — treat as Production Projects & Opportunities read.
     return hasConstructionProjectsOpportunitiesPermission(permissionsSet, isAdmin);
   }
-  if (
-    requiredPermission === 'business:construction:projects:write' ||
-    requiredPermission === 'business:projects:write'
-  ) {
-    return has || legacyBizWrite || permissionsSet.has('business:construction:projects:write');
+  if (requiredPermission === 'business:construction:projects:write') {
+    return permissionsSet.has('business:construction:projects:write');
   }
   if (requiredPermission === 'business:rm:projects:write') {
-    return has || legacyBizWrite || permissionsSet.has('business:rm:projects:write');
+    return permissionsSet.has('business:rm:projects:write');
+  }
+  if (requiredPermission === 'business:projects:write') {
+    // Retired shared key — any line-scoped Projects & Opportunities write.
+    return (
+      permissionsSet.has('business:construction:projects:write') ||
+      permissionsSet.has('business:rm:projects:write')
+    );
   }
   if (requiredPermission.startsWith('hr:')) {
     const legacyPerm = requiredPermission.replace('hr:', '');

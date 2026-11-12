@@ -80,12 +80,26 @@ def get_current_portal_user(
     return _portal_user_from_access_payload(db, payload)
 
 
+def get_optional_portal_user(
+    creds: Optional[HTTPAuthorizationCredentials] = Depends(http_bearer),
+    db: Session = Depends(get_db),
+) -> Optional[PortalHubUser]:
+    if creds is None or not creds.credentials:
+        return None
+    try:
+        payload = decode_token(creds.credentials)
+        return _portal_user_from_access_payload(db, payload)
+    except Exception:
+        return None
+
+
 # Re-export password helpers for portal routes
 __all__ = [
     "PORTAL_PRINCIPAL",
     "create_portal_access_token",
     "create_portal_refresh_token",
     "get_current_portal_user",
+    "get_optional_portal_user",
     "get_password_hash",
     "portal_user_session_version",
     "verify_password",

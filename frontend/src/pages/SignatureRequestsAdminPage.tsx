@@ -8,6 +8,7 @@ import FilterChip from '@/components/FilterBuilder/FilterChip';
 import { FilterRule, FieldConfig } from '@/components/FilterBuilder/types';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { api, fetchAuthorizedBinary } from '@/lib/api';
+import { formatDateTimeVancouver } from '@/lib/dateUtils';
 import { canManageSignatureRequests } from '@/lib/documentHubPermissions';
 import { mapEmployeeToAppUserSelect } from '@/lib/clientUi';
 import { employeesDirectoryQueryKey, fetchEmployeesDirectory } from '@/lib/employeesQuery';
@@ -282,14 +283,7 @@ function SortHeader({
 
 function fmtDateTime(iso: string | null | undefined): string {
   if (!iso) return '—';
-  try {
-    return new Date(iso).toLocaleString(undefined, {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    });
-  } catch {
-    return iso;
-  }
+  return formatDateTimeVancouver(iso);
 }
 
 function sentToNames(row: AdminSignatureRow): string {

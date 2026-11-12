@@ -59,7 +59,7 @@ export function returnStatusLabel(status: string): string {
   return map[status] || status;
 }
 
-import { parseApiDateForDisplay } from '@/lib/dateUtils';
+import { parseApiDateForDisplay, formatDateTimeVancouver } from '@/lib/dateUtils';
 
 export function fmtDate(iso: string | null | undefined): string {
   const d = parseApiDateForDisplay(iso);
@@ -69,9 +69,7 @@ export function fmtDate(iso: string | null | undefined): string {
 
 export function fmtDateTime(iso: string | null | undefined): string {
   if (!iso) return '—';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  return formatDateTimeVancouver(iso);
 }
 
 /** Company-local scheduled revocation datetime from API (`access_revoke_at_local`). */

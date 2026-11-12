@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api, withFileAccessToken } from '@/lib/api';
+import { formatDateVancouver, formatDateTimeVancouver } from '@/lib/dateUtils';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { ReportNoteBody } from '@/components/ReportNoteBody';
 import { ReportAttachmentAreaMultiple } from '@/components/ReportAttachmentArea';
@@ -26,6 +27,7 @@ import {
   uiUserSelect,
 } from '@/components/ui';
 import {
+  clientNoteContactLabel,
   clientNoteProjectLabel,
   isClientCommunicationCategory,
   type ClientNote,
@@ -36,6 +38,11 @@ type ProjectOption = {
   code?: string;
   name?: string;
   is_bidding?: boolean;
+};
+
+export type CustomerNoteContactOption = {
+  id: string;
+  name?: string | null;
 };
 
 type ReportCategory = {
@@ -54,6 +61,7 @@ type CustomerNotesTabProps = {
   canWrite: boolean;
   reportCategories: ReportCategory[];
   projects: ProjectOption[];
+  contacts?: CustomerNoteContactOption[];
 };
 
 function getAuthorInfo(createdBy: string | null | undefined, createdByName?: string | null): AuthorInfo {
@@ -81,6 +89,7 @@ export function CustomerNotesTab({ apiBase = '/clients',
   canWrite,
   reportCategories,
   projects,
+  contacts = [],
 }: CustomerNotesTabProps) {
   const confirm = useConfirm();
   const queryClient = useQueryClient();
@@ -88,6 +97,7 @@ export function CustomerNotesTab({ apiBase = '/clients',
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<ClientNote | null>(null);
   const [categoryFilter, setCategoryFilter] = useState('');
+  const [contactFilter, setContactFilter] = useState('');
 
   const { data: notes = [], refetch, isLoading } = useQuery({
     queryKey: ['clientNotes', clientId],
@@ -129,10 +139,65 @@ export function CustomerNotesTab({ apiBase = '/clients',
     ];
   }, [notes, categoryOptions]);
 
+  const contactFilterOptions = useMemo(() => {
+    const counts: Record<string, number> = { '': notes.length, __none__: 0 };
+    notes.forEach((n) => {
+      if (!n.contact_id && !(n.contact_name || '').trim()) {
+        counts.__none__ = (counts.__none__ || 0) + 1;
+        return;
+      }
+      const key = n.contact_id ? String(n.contact_id) : `__name__:${(n.contact_name || '').trim()}`;
+      counts[key] = (counts[key] || 0) + 1;
+    });
+    const opts = [
+      { value: '', label: `All contacts (${counts[''] || 0})` },
+      { value: '__none__', label: `No contact (${counts.__none__ || 0})` },
+    ];
+    contacts.forEach((c) => {
+      const id = String(c.id);
+      opts.push({
+        value: id,
+        label: `${(c.name || 'Contact').trim() || 'Contact'} (${counts[id] || 0})`,
+      });
+    });
+    // Snapshot-only contacts (deleted) that still appear on notes
+    notes.forEach((n) => {
+      if (n.contact_id) return;
+      const name = (n.contact_name || '').trim();
+      if (!name) return;
+      const key = `__name__:${name}`;
+      if (opts.some((o) => o.value === key)) return;
+      opts.push({ value: key, label: `${name} (${counts[key] || 0})` });
+    });
+    return opts;
+  }, [notes, contacts]);
+
+  const contactSelectOptions = useMemo(
+    () => [
+      { value: '', label: 'No contact (firm-level note)' },
+      ...contacts.map((c) => ({
+        value: String(c.id),
+        label: (c.name || '').trim() || 'Contact',
+      })),
+    ],
+    [contacts],
+  );
+
   const filteredNotes = useMemo(() => {
-    if (!categoryFilter) return notes;
-    return notes.filter((n) => n.category_id === categoryFilter);
-  }, [notes, categoryFilter]);
+    let rows = notes;
+    if (categoryFilter) {
+      rows = rows.filter((n) => n.category_id === categoryFilter);
+    }
+    if (contactFilter === '__none__') {
+      rows = rows.filter((n) => !n.contact_id && !(n.contact_name || '').trim());
+    } else if (contactFilter.startsWith('__name__:')) {
+      const name = contactFilter.slice('__name__:'.length);
+      rows = rows.filter((n) => !n.contact_id && (n.contact_name || '').trim() === name);
+    } else if (contactFilter) {
+      rows = rows.filter((n) => String(n.contact_id || '') === contactFilter);
+    }
+    return rows;
+  }, [notes, categoryFilter, contactFilter]);
 
   const selected = useMemo(
     () => (selectedId ? filteredNotes.find((n) => n.id === selectedId) || notes.find((n) => n.id === selectedId) : null),
@@ -185,13 +250,21 @@ export function CustomerNotesTab({ apiBase = '/clients',
             uiColors.surface,
           )}
         >
-          <div className={uiCx('border-b p-3', uiBorders.subtle)}>
+          <div className={uiCx('space-y-2 border-b p-3', uiBorders.subtle)}>
             <AppSelect
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value)}
               options={filterOptions}
               sortOptions={false}
             />
+            {contactFilterOptions.length > 2 ? (
+              <AppSelect
+                value={contactFilter}
+                onChange={(e) => setContactFilter(e.target.value)}
+                options={contactFilterOptions}
+                sortOptions={false}
+              />
+            ) : null}
           </div>
           {canWrite && (
             <div className={uiCx('border-b p-2', uiBorders.subtle)}>
@@ -225,6 +298,7 @@ export function CustomerNotesTab({ apiBase = '/clients',
                   note.category_id ||
                   'General';
                 const projectLabel = clientNoteProjectLabel(note);
+                const contactLabel = clientNoteContactLabel(note, contacts);
                 const active = selectedId === note.id;
                 return (
                   <button
@@ -242,6 +316,7 @@ export function CustomerNotesTab({ apiBase = '/clients',
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
                       <AppBadge variant="info">{catLabel}</AppBadge>
+                      {contactLabel ? <AppBadge variant="neutral">{contactLabel}</AppBadge> : null}
                       {projectLabel ? <AppBadge variant="neutral">{projectLabel}</AppBadge> : null}
                     </div>
                     <div className={uiCx(uiTypography.helper, 'mt-1 line-clamp-2')}>
@@ -252,7 +327,7 @@ export function CustomerNotesTab({ apiBase = '/clients',
                       <span>
                         {author.name}
                         {note.created_at
-                          ? ` · ${new Date(note.created_at).toLocaleDateString('en-US', {
+                          ? ` · ${formatDateVancouver(note.created_at, {
                               month: 'short',
                               day: 'numeric',
                               year: 'numeric',
@@ -287,6 +362,7 @@ export function CustomerNotesTab({ apiBase = '/clients',
                 selected.category_id ||
                 'General'
               }
+              contactLabel={clientNoteContactLabel(selected, contacts)}
               canWrite={canWrite}
               onEdit={() => {
                 setEditing(selected);
@@ -317,9 +393,11 @@ export function CustomerNotesTab({ apiBase = '/clients',
       {modalOpen && (
         <ClientNoteModal
           clientId={clientId}
+          apiBase={apiBase}
           note={editing}
           categoryOptions={categoryOptions}
           projectOptions={projectSelectOptions}
+          contactOptions={contactSelectOptions}
           onClose={() => {
             setModalOpen(false);
             setEditing(null);
@@ -340,12 +418,14 @@ export function CustomerNotesTab({ apiBase = '/clients',
 function NoteDetail({
   note,
   categoryLabel,
+  contactLabel,
   canWrite,
   onEdit,
   onDelete,
 }: {
   note: ClientNote;
   categoryLabel: string;
+  contactLabel?: string | null;
   canWrite: boolean;
   onEdit: () => void;
   onDelete: () => void;
@@ -372,7 +452,7 @@ function NoteDetail({
                   <div className={uiCx(uiTypography.body, 'font-semibold')}>{author.name}</div>
                   <div className={uiTypography.helper}>
                     {reportDate
-                      ? reportDate.toLocaleDateString('en-US', {
+                      ? formatDateTimeVancouver(note.created_at, {
                           weekday: 'long',
                           month: 'long',
                           day: 'numeric',
@@ -385,6 +465,7 @@ function NoteDetail({
                 </div>
               </div>
               <AppBadge variant="info">{categoryLabel}</AppBadge>
+              {contactLabel ? <AppBadge variant="neutral">{contactLabel}</AppBadge> : null}
               {projectLabel ? <AppBadge variant="neutral">{projectLabel}</AppBadge> : null}
             </div>
           </div>
@@ -456,18 +537,26 @@ function NoteDetail({
   );
 }
 
-function ClientNoteModal({
+export function ClientNoteModal({
   clientId,
+  apiBase = '/clients',
   note,
   categoryOptions,
   projectOptions,
+  contactOptions = [],
+  initialContactId = '',
+  lockContact = false,
   onClose,
   onSuccess,
 }: {
   clientId: string;
+  apiBase?: string;
   note: ClientNote | null;
   categoryOptions: { value: string; label: string }[];
   projectOptions: { value: string; label: string }[];
+  contactOptions?: { value: string; label: string }[];
+  initialContactId?: string;
+  lockContact?: boolean;
   onClose: () => void;
   onSuccess: () => Promise<void>;
 }) {
@@ -475,6 +564,7 @@ function ClientNoteModal({
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('');
   const [projectId, setProjectId] = useState('');
+  const [contactId, setContactId] = useState('');
   const [desc, setDesc] = useState('');
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -484,6 +574,7 @@ function ClientNoteModal({
       setTitle(note.title || '');
       setCategory(note.category_id || '');
       setProjectId(note.project_id || '');
+      setContactId(note.contact_id || '');
       setDesc(note.description || '');
       setFiles([]);
       return;
@@ -491,9 +582,10 @@ function ClientNoteModal({
     setTitle('');
     setCategory(categoryOptions[0]?.value || 'client-communication-log');
     setProjectId('');
+    setContactId(initialContactId || '');
     setDesc('');
     setFiles([]);
-  }, [note, categoryOptions]);
+  }, [note, categoryOptions, initialContactId]);
 
   const existingAttachments = useMemo(() => {
     const attachments = note?.images?.attachments;
@@ -551,6 +643,7 @@ function ClientNoteModal({
         category_id: category || null,
         description: desc,
         project_id: projectId || null,
+        contact_id: contactId || null,
       };
 
       if (isEditing && note) {
@@ -611,13 +704,24 @@ function ClientNoteModal({
           options={categoryOptions}
           sortOptions={false}
         />
+        {contactOptions.length > 0 ? (
+          <AppSelect
+            label="Contact (optional)"
+            value={contactId}
+            onChange={(e) => setContactId(e.target.value)}
+            options={contactOptions}
+            sortOptions={false}
+            disabled={lockContact}
+            fieldHint="Optional. Links this note to a person at the firm."
+          />
+        ) : null}
         <AppSelect
           label="Related project (optional)"
           value={projectId}
           onChange={(e) => setProjectId(e.target.value)}
           options={projectOptions}
           sortOptions={false}
-          fieldHint="Optional. Links this contact to a project so it also appears on that project's Notes/History."
+          fieldHint="Optional. Links this note to a project so it also appears on that project's Notes/History."
         />
         <AppTextarea
           label="Description"

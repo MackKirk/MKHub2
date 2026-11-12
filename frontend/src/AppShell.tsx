@@ -2,6 +2,7 @@ import { PropsWithChildren, useState, useMemo, useEffect, useLayoutEffect, useRe
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, revokeRefreshOnLogout } from '@/lib/api';
+import { formatDateVancouver } from '@/lib/dateUtils';
 import {
   computeIsProfileComplete,
   isExemptFromProfileWizardRedirect,
@@ -741,6 +742,7 @@ export default function AppShell({ children }: PropsWithChildren){
       icon: <IconSales />,
       items: [
         { id: 'quotations', label: 'Quotations', path: '/quotes', icon: <IconQuotations />, requiredPermission: 'sales:quotations:read' },
+        { id: 'metals-website', label: 'Website inbox', path: '/metals/website', icon: <IconQuotations />, requiredPermission: 'metals:website:read' },
       ]
     },
     {
@@ -1884,7 +1886,7 @@ export default function AppShell({ children }: PropsWithChildren){
                       You have {signatureStatus.pending_count} document
                       {signatureStatus.pending_count !== 1 ? 's' : ''} to sign
                       {signatureStatus.earliest_deadline
-                        ? ` (deadline ${new Date(signatureStatus.earliest_deadline).toLocaleDateString()})`
+                        ? ` (deadline ${formatDateVancouver(signatureStatus.earliest_deadline)})`
                         : ''}
                       .
                     </span>

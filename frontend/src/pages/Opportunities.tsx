@@ -1,4 +1,4 @@
-﻿import { keepPreviousData, useQuery } from '@tanstack/react-query';
+﻿import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessTokenIfNeeded } from '@/lib/api';
 import { useMemo, useState, useEffect, useRef, lazy, Suspense } from 'react';
 import type { ReactNode } from 'react';
@@ -23,9 +23,23 @@ import {
   convertRulesToParams,
   isRelatedToMeParamActive,
   OPPORTUNITY_FIELD_LABELS,
-  resolveOpportunityQuickStatusFilters,
   setRelatedToMeParam,
 } from '@/lib/opportunityFilters';
+import {
+  applyCreatedWithinPreset,
+  CREATED_WITHIN_PRESETS,
+  detectCreatedWithinPreset,
+  isNoneStatusMode,
+  LIST_PREFERENCES_QUERY_KEY,
+  normalizeUserListPreferences,
+  type OpportunityStatusSelection,
+  putListPreferencesBodyForLine,
+  resolveEffectiveStatusIds,
+  setAllStatusSelection,
+  statusSelectionForBusinessLine,
+  toggleStatusSelection,
+  urlHasStatusFilterRules,
+} from '@/lib/opportunityListPreferences';
 import {
   effectiveListPageLimit,
   listPageSizeSelectOptions,
@@ -55,6 +69,7 @@ import {
   AppTooltip,
   AppTabCountBadge,
   getAppTabButtonClassName,
+  SelectDropdownCheckbox,
   AppUserAvatar,
   AppSortableEntityList,
   AppSortableEntityListHeader,
@@ -161,6 +176,7 @@ const ProjectMapLoading = lazy(() => import('@/features/projects/components/map/
 export default function Opportunities() {
   const location = useLocation();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryParam = searchParams.get('q') || '';
   const businessLine = useBusinessLine();
@@ -173,6 +189,9 @@ export default function Opportunities() {
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [hasAnimated, setHasAnimated] = useState(false);
   const [animationComplete, setAnimationComplete] = useState(false);
+  /** null = all statuses; [] = none; string[] = subset. Persisted per business line. */
+  const [statusSelection, setStatusSelection] = useState<OpportunityStatusSelection>(null);
+  const statusPrefsHydratedLine = useRef<string | null>(null);
   
   // View mode state with persistence
   const [viewMode, setViewMode] = useState<ProjectViewMode>(() =>
@@ -234,21 +253,63 @@ export default function Opportunities() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
   
-  // Build query string from URL params (filters + pagination)
+  const { data: listPrefs, isFetched: listPrefsFetched } = useQuery({
+    queryKey: LIST_PREFERENCES_QUERY_KEY,
+    queryFn: async () =>
+      normalizeUserListPreferences(await api<unknown>('GET', '/users/me/list-preferences')),
+    staleTime: 60_000,
+  });
+
+  useEffect(() => {
+    statusPrefsHydratedLine.current = null;
+  }, [businessLine]);
+
+  useEffect(() => {
+    if (!listPrefsFetched || !listPrefs) return;
+    if (statusPrefsHydratedLine.current === businessLine) return;
+    statusPrefsHydratedLine.current = businessLine;
+    setStatusSelection(statusSelectionForBusinessLine(listPrefs, businessLine));
+  }, [listPrefsFetched, listPrefs, businessLine]);
+
+  const saveStatusPrefsMutation = useMutation({
+    mutationFn: (selection: OpportunityStatusSelection) =>
+      api<unknown>(
+        'PUT',
+        '/users/me/list-preferences',
+        putListPreferencesBodyForLine(businessLine, selection),
+      ),
+    onSuccess: (data) => {
+      queryClient.setQueryData(LIST_PREFERENCES_QUERY_KEY, normalizeUserListPreferences(data));
+    },
+  });
+
+  const statusNoneSelected = isNoneStatusMode(statusSelection);
+
+  // Build query string from URL params (filters + pagination) + saved status prefs when URL has no status rules
   const qs = useMemo(() => {
     const params = buildOpportunityListSearchParams(searchParams, businessLine, {
       page: Number(searchParams.get('page') || '1') || 1,
       limit: effectiveListPageLimit(viewMode, searchParams.get('limit')),
     });
+    if (
+      !urlHasStatusFilterRules(searchParams) &&
+      Array.isArray(statusSelection) &&
+      statusSelection.length > 0
+    ) {
+      for (const id of statusSelection) {
+        params.append('status', id);
+      }
+    }
     const s = params.toString();
     return s ? `?${s}` : '';
-  }, [searchParams, businessLine, viewMode]);
+  }, [searchParams, businessLine, viewMode, statusSelection]);
+  // Note: stale ids are fine in query; hydrate filters against known options in UI.
   
   const listEndpoint = '/projects/business/opportunities';
   const { data, isLoading, isFetching, isError, error, refetch } = useQuery({ 
     queryKey: ['opportunities', businessLine, qs],
     queryFn: ()=> api<{ items: Opportunity[]; total: number; page: number; limit: number } | Opportunity[]>('GET', `${listEndpoint}${qs}`),
-    enabled: viewMode !== 'map',
+    enabled: viewMode !== 'map' && listPrefsFetched && !statusNoneSelected,
     placeholderData: keepPreviousData,
   });
   
@@ -263,8 +324,11 @@ export default function Opportunities() {
     [projectDivisions, businessLine]
   );
   
-  // Show loading until list API returns (divisions load in parallel for icons)
-  const isInitialLoading = viewMode !== 'map' && isLoading && !data;
+  // Show loading until prefs + list API return (divisions load in parallel for icons)
+  const isInitialLoading =
+    viewMode !== 'map' &&
+    !statusNoneSelected &&
+    (!listPrefsFetched || (isLoading && !data));
   
   // Track when animation completes to remove inline styles for hover to work
   useEffect(() => {
@@ -343,58 +407,63 @@ export default function Opportunities() {
   );
 
   const hasRuleFilters = currentRules.length > 0;
+  const createdWithinPreset = useMemo(
+    () => detectCreatedWithinPreset(searchParams),
+    [searchParams],
+  );
   const hasActiveFilters = useMemo(() => {
-    return hasRuleFilters || isRelatedToMeParamActive(searchParams);
-  }, [hasRuleFilters, searchParams]);
+    return (
+      hasRuleFilters ||
+      isRelatedToMeParamActive(searchParams) ||
+      statusSelection !== null ||
+      !!createdWithinPreset
+    );
+  }, [hasRuleFilters, searchParams, statusSelection, createdWithinPreset]);
 
-  const opportunityQuickStatusFilters = useMemo(
-    () => resolveOpportunityQuickStatusFilters(projectStatuses),
-    [projectStatuses],
+  const opportunityStatusOptions = useMemo(() => {
+    return filterStatusesForOpportunity(projectStatuses)
+      .map((s: { id?: unknown; label?: unknown }) => ({
+        id: String(s.id || ''),
+        label: String(s.label || ''),
+      }))
+      .filter((s) => s.id && s.label)
+      .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
+  }, [projectStatuses]);
+
+  const allStatusOptionIds = useMemo(
+    () => opportunityStatusOptions.map((s) => s.id),
+    [opportunityStatusOptions],
   );
 
-  const toggleStatusQuickFilter = (statusId: string | undefined) => {
-    if (!statusId) return;
+  const effectiveStatusSelection = useMemo(
+    () => resolveEffectiveStatusIds(statusSelection, allStatusOptionIds),
+    [statusSelection, allStatusOptionIds],
+  );
+
+  const persistStatusSelection = (next: OpportunityStatusSelection) => {
+    setStatusSelection(next);
+    statusPrefsHydratedLine.current = businessLine;
+    saveStatusPrefsMutation.mutate(next);
+  };
+
+  const clearStatusRulesFromUrl = () => {
     const params = new URLSearchParams(searchParams);
-    const cur = params.get('status');
-    if (cur === statusId) {
-      params.delete('status');
-    } else {
-      params.delete('status_not');
-      params.set('status', statusId);
-    }
+    params.delete('status');
+    params.delete('status_not');
     params.set('page', '1');
     setSearchParams(params, { replace: true });
   };
 
-  const quickFilterSegments = useMemo(() => {
-    const segments: Array<{ key: string; label: string; active: boolean; onClick: () => void }> = [
-      {
-        key: 'related_to_me',
-        label: 'Related to Me',
-        active: isRelatedToMeParamActive(searchParams),
-        onClick: () => {
-          const params = new URLSearchParams(searchParams);
-          const enabling = !isRelatedToMeParamActive(searchParams);
-          setRelatedToMeParam(params, enabling);
-          if (enabling) {
-            params.delete('status');
-            params.delete('status_not');
-          }
-          params.set('page', '1');
-          setSearchParams(params, { replace: true });
-        },
-      },
-    ];
-    for (const filter of opportunityQuickStatusFilters) {
-      segments.push({
-        key: filter.key,
-        label: filter.label,
-        active: searchParams.get('status') === filter.statusId,
-        onClick: () => toggleStatusQuickFilter(filter.statusId),
-      });
-    }
-    return segments;
-  }, [searchParams, opportunityQuickStatusFilters, setSearchParams]);
+  const onToggleAllStatuses = () => {
+    clearStatusRulesFromUrl();
+    // All active → clear to none; otherwise select all
+    persistStatusSelection(setAllStatusSelection(statusSelection !== null));
+  };
+
+  const onToggleStatus = (statusId: string) => {
+    clearStatusRulesFromUrl();
+    persistStatusSelection(toggleStatusSelection(statusSelection, statusId, allStatusOptionIds));
+  };
 
   const quickFilterCountBaseParams = useMemo(
     () =>
@@ -415,7 +484,8 @@ export default function Opportunities() {
     staleTime: 60_000,
   });
 
-  const quickFilterCountsByKey = tabCounts || {};
+  const relatedToMeCount = tabCounts?.related_to_me;
+  const statusCountsByKey = tabCounts || {};
 
   const filterFields: FieldConfig[] = useMemo(() => {
     const statusOptions = filterStatusesForOpportunity(projectStatuses)
@@ -627,7 +697,10 @@ export default function Opportunities() {
                 onClick={() => {
                   const params = new URLSearchParams();
                   if (q) params.set('q', q);
+                  if (viewMode === 'list') params.set('view', 'list');
+                  else if (viewMode === 'map') params.set('view', 'map');
                   setSearchParams(params);
+                  persistStatusSelection(null);
                   refetch();
                 }}
               >
@@ -636,23 +709,97 @@ export default function Opportunities() {
             )}
             <ViewTutorialLink tutorialId={OPPORTUNITIES_LIST_TUTORIAL_ID} />
           </div>
-          <div className={uiCx('mt-3 border-t border-gray-100 pt-3', uiLayout.actionsRow, 'flex-wrap items-center gap-2')}>
-            <span className={uiCx(uiTypography.overline, 'shrink-0')}>Quick filters:</span>
-            <div className="flex flex-wrap gap-2">
-              {quickFilterSegments.map((segment) => (
+          <div className={uiCx('mt-3 border-t border-gray-100 pt-3', uiSpacing.sectionStack)}>
+            <div className={uiCx(uiLayout.actionsRow, 'flex-wrap items-center gap-2')}>
+              <span className={uiCx(uiTypography.overline, 'shrink-0')}>Statuses:</span>
+              <div className="flex flex-wrap gap-2">
                 <button
-                  key={segment.key}
                   type="button"
-                  onClick={segment.onClick}
-                  className={getAppTabButtonClassName(segment.active)}
-                  aria-pressed={segment.active}
+                  role="checkbox"
+                  aria-checked={statusSelection === null}
+                  onClick={onToggleAllStatuses}
+                  className={uiCx(
+                    getAppTabButtonClassName(false),
+                    statusSelection === null && 'border-gray-400 bg-gray-50',
+                  )}
                 >
-                  <span>{segment.label}</span>
-                  {typeof quickFilterCountsByKey[segment.key] === 'number' ? (
-                    <AppTabCountBadge count={quickFilterCountsByKey[segment.key]} isActive={segment.active} />
+                  <SelectDropdownCheckbox checked={statusSelection === null} />
+                  <span>All</span>
+                </button>
+                {opportunityStatusOptions.map((status) => {
+                  const active =
+                    statusSelection === null ||
+                    (Array.isArray(effectiveStatusSelection) &&
+                      effectiveStatusSelection.includes(status.id));
+                  const count =
+                    typeof statusCountsByKey[status.id] === 'number'
+                      ? statusCountsByKey[status.id]
+                      : undefined;
+                  return (
+                    <button
+                      key={status.id}
+                      type="button"
+                      role="checkbox"
+                      aria-checked={active}
+                      onClick={() => onToggleStatus(status.id)}
+                      className={uiCx(
+                        getAppTabButtonClassName(false),
+                        active && 'border-gray-400 bg-gray-50',
+                      )}
+                    >
+                      <SelectDropdownCheckbox checked={active} />
+                      <span>{status.label}</span>
+                      {typeof count === 'number' ? (
+                        <AppTabCountBadge count={count} isActive={false} />
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className={uiCx(uiLayout.actionsRow, 'flex-wrap items-center gap-2')}>
+              <span className={uiCx(uiTypography.overline, 'shrink-0')}>Quick filters:</span>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const params = new URLSearchParams(searchParams);
+                    const enabling = !isRelatedToMeParamActive(searchParams);
+                    setRelatedToMeParam(params, enabling);
+                    params.set('page', '1');
+                    setSearchParams(params, { replace: true });
+                  }}
+                  className={getAppTabButtonClassName(isRelatedToMeParamActive(searchParams))}
+                  aria-pressed={isRelatedToMeParamActive(searchParams)}
+                >
+                  <span>Related to Me</span>
+                  {typeof relatedToMeCount === 'number' ? (
+                    <AppTabCountBadge
+                      count={relatedToMeCount}
+                      isActive={isRelatedToMeParamActive(searchParams)}
+                    />
                   ) : null}
                 </button>
-              ))}
+                {CREATED_WITHIN_PRESETS.map((preset) => {
+                  const active = createdWithinPreset === preset.key;
+                  return (
+                    <button
+                      key={preset.key}
+                      type="button"
+                      onClick={() => {
+                        const params = new URLSearchParams(searchParams);
+                        applyCreatedWithinPreset(params, active ? null : preset.key);
+                        params.set('page', '1');
+                        setSearchParams(params, { replace: true });
+                      }}
+                      className={getAppTabButtonClassName(active)}
+                      aria-pressed={active}
+                    >
+                      <span>{preset.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </AppCard>
@@ -690,7 +837,7 @@ export default function Opportunities() {
               labels={OPPORTUNITY_MAP_LABELS}
             />
           </Suspense>
-        ) : viewMode === 'cards' ? (
+        ) : statusNoneSelected ? null : viewMode === 'cards' ? (
           <div className={uiCx('grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-3', listCardAnimClass, isFetching && arr.length > 0 ? 'opacity-60 pointer-events-none' : undefined)}>
             {hasEditPermission && (
               <Link
@@ -799,14 +946,21 @@ export default function Opportunities() {
             ))}
           </AppSortableEntityList>
         )}
-        {!isInitialLoading && viewMode !== 'map' && isError && arr.length === 0 && (
+        {!isInitialLoading && viewMode !== 'map' && statusNoneSelected && (
+          <AppEmptyState
+            className="py-8"
+            title="No statuses selected"
+            description="Select at least one status above to view opportunities."
+          />
+        )}
+        {!isInitialLoading && viewMode !== 'map' && !statusNoneSelected && isError && arr.length === 0 && (
           <AppEmptyState
             className="py-8"
             title="Could not load opportunities"
             description={(error as Error)?.message || 'Something went wrong while loading opportunities. Try again.'}
           />
         )}
-        {!isInitialLoading && viewMode !== 'map' && !isError && arr.length === 0 && (
+        {!isInitialLoading && viewMode !== 'map' && !statusNoneSelected && !isError && arr.length === 0 && (
           <AppEmptyState
             className="py-8"
             title="No opportunities found"
@@ -1176,7 +1330,10 @@ export function OpportunityListItem({ opportunity, onOpenReportModal, projectSta
   const col4 = (
     <div className="min-w-0 flex items-center">
       {statusLabel ? (
-        <AppBadge variant={getProjectStatusBadgeVariant(statusLabel)} className="max-w-full truncate">
+        <AppBadge
+          variant={getProjectStatusBadgeVariant(statusLabel, projectStatuses)}
+          className="max-w-full truncate"
+        >
           {statusLabel}
         </AppBadge>
       ) : (
@@ -1531,7 +1688,10 @@ function OpportunityListCard({ opportunity, onOpenReportModal, projectStatuses, 
 
           <div className="relative flex-shrink-0">
             {statusLabel ? (
-              <AppBadge variant={getProjectStatusBadgeVariant(statusLabel)} className="max-w-[10rem] truncate">
+              <AppBadge
+                variant={getProjectStatusBadgeVariant(statusLabel, projectStatuses)}
+                className="max-w-[10rem] truncate"
+              >
                 {statusLabel}
               </AppBadge>
             ) : (

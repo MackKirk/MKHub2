@@ -3,6 +3,7 @@ import { CheckCircle2, Paperclip } from 'lucide-react';
 import { CommunityPostBanner } from '@/components/community/CommunityPostBanner';
 import { CommunityPostBody } from '@/components/community/CommunityPostBody';
 import { withFileAccessTokenIfNeeded } from '@/lib/api';
+import { formatDateVancouver } from '@/lib/dateUtils';
 import {
   communityOrphanImageAttachments,
   communityPostRailColors,
@@ -60,7 +61,7 @@ function formatTimeAgo(dateString: string) {
   if (diffHours < 1) return 'Just now';
   if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
   if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
-  return date.toLocaleDateString();
+  return formatDateVancouver(dateString);
 }
 
 function plainTextLength(html: string | undefined): number {

@@ -1,5 +1,5 @@
 import { Truck } from 'lucide-react';
-import { formatDateLocal } from '@/lib/dateUtils';
+import { formatDateLocal, formatDateVancouver } from '@/lib/dateUtils';
 import { CATEGORY_LABELS, SCHEDULE_STATUS_LABELS, URGENCY_LABELS } from '@/lib/fleetBadges';
 import {
   getInspectionScheduleStatusBadgeVariant,
@@ -85,7 +85,7 @@ export function InspectionScheduleHero({ schedule, asset, assetPhotoUrl, onViewA
           </FleetHeroStat>
           <FleetHeroStat label="Created">
             <span className="text-sm font-semibold text-gray-900">
-              {schedule.created_at ? new Date(schedule.created_at).toLocaleDateString() : '—'}
+              {schedule.created_at ? formatDateVancouver(schedule.created_at) : '—'}
             </span>
           </FleetHeroStat>
         </div>

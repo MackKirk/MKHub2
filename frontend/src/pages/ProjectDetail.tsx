@@ -48,7 +48,7 @@ import ProjectTeamCard from '@/components/ProjectTeamCard';
 import SiteFormModal, { type ClientSiteRecord } from '@/components/SiteFormModal';
 import NewContactModal from '@/components/NewContactModal';
 import ProjectBillingSection from '@/components/ProjectBillingSection';
-import { formatDateLocal, getCurrentMonthLocal } from '@/lib/dateUtils';
+import { formatDateLocal, formatDateTimeVancouverFriendly, formatDateTimeVancouver, formatDateVancouver, getCurrentMonthLocal } from '@/lib/dateUtils';
 import { DivisionIcon } from '@/components/DivisionIcon';
 import { ReportAttachmentAreaMultiple } from '@/components/ReportAttachmentArea';
 import OverlayPortal from '@/components/OverlayPortal';
@@ -631,21 +631,7 @@ function ProjectRecentActivity({
     queryFn: () => api<any[]>('GET', `/projects/${encodeURIComponent(projectId)}/audit-logs?limit=15&offset=0`),
   });
 
-  const formatTimestamp = (ts: string) => {
-    if (!ts) return '';
-    try {
-      return new Date(ts).toLocaleString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true,
-      });
-    } catch {
-      return ts;
-    }
-  };
+  const formatTimestamp = (ts: string) => formatDateTimeVancouverFriendly(ts) || ts;
 
   const activityList = (
     <div
@@ -2301,7 +2287,12 @@ export default function ProjectDetail(){
                       ))}
                   </div>
                   {useDesignSystem ? (
-                    <AppBadge variant={getProjectStatusBadgeVariant(statusLabel)}>
+                    <AppBadge
+                      variant={getProjectStatusBadgeVariant(
+                        statusLabel,
+                        ((settings || {}).project_statuses || []) as any[],
+                      )}
+                    >
                       {statusLabel || '—'}
                     </AppBadge>
                   ) : (
@@ -6919,7 +6910,7 @@ function ReportsTabEnhanced({
                       )}
                       <div className="flex items-center gap-2 text-xs text-gray-600 mt-1">
                         <span>
-                          {reportDate ? reportDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
+                          {reportDate ? formatDateVancouver(r.created_at, { month: 'short', day: 'numeric' }) : ''}
                         </span>
                         {attachments.length > 0 && (
                           <>
@@ -6985,7 +6976,7 @@ function ReportsTabEnhanced({
                           <div>
                             <div className="text-sm font-semibold text-gray-900">{authorInfo.name}</div>
                             <div className="text-xs text-gray-600">
-                              {reportDate ? reportDate.toLocaleDateString('en-US', { 
+                              {reportDate ? formatDateTimeVancouver(selectedReport.created_at, { 
                                 weekday: 'long',
                                 month: 'long', 
                                 day: 'numeric', 
@@ -7955,14 +7946,7 @@ function AuditLogEntry({ log }: { log: any }) {
               {log.action?.replace('_', ' ') || 'ACTION'}
             </span>
             <span className="text-sm text-gray-600">
-              {log.timestamp ? new Date(log.timestamp).toLocaleString('en-US', {
-                month: 'short',
-                day: 'numeric',
-                year: 'numeric',
-                hour: 'numeric',
-                minute: '2-digit',
-                hour12: true
-              }) : '-'}
+              {log.timestamp ? formatDateTimeVancouverFriendly(log.timestamp) || '-' : '-'}
             </span>
             {log.actor_name && (
               <>
@@ -8732,7 +8716,7 @@ function LastReportsCard({ reports, useDesignSystem }: { reports: Report[]; useD
             )}
             {report.created_at && (
               <div className={uiCx(uiTypography.helper, 'mt-1')}>
-                {new Date(report.created_at).toLocaleDateString()}
+                {formatDateVancouver(report.created_at)}
               </div>
             )}
           </div>

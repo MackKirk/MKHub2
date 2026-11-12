@@ -57,6 +57,7 @@ import ProposalEdit from './pages/ProposalEdit';
 import Quotes from './pages/Quotes';
 import QuoteNew from './pages/QuoteNew';
 import QuoteDetail from './pages/QuoteDetail';
+import MetalsWebsiteInbox from './pages/MetalsWebsiteInbox';
 import SiteDetail from './pages/SiteDetail';
 import Projects from './pages/Projects';
 import WarrantyReview from './pages/WarrantyReview';
@@ -233,6 +234,8 @@ export default function App(){
           <Route path="/metals/customers/new" element={shell(<CustomerNew/>)} />
           <Route path="/metals/customers/:id" element={shell(<CustomerDetail/>)} />
           <Route path="/metals/customers/:customerId/sites/:siteId" element={shell(<SiteDetail/>)} />
+          <Route path="/metals/website" element={shell(<MetalsWebsiteInbox/>)} />
+          <Route path="/metals/website/:id" element={shell(<MetalsWebsiteInbox/>)} />
           <Route path="/inventory" element={shell(<Inventory/>)} />
           <Route path="/inventory/suppliers" element={shell(<InventorySuppliers/>)} />
           <Route path="/inventory/products" element={shell(<InventoryProducts/>)} />

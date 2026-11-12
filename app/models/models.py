@@ -104,6 +104,17 @@ class UserHomeDashboard(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
 
+class UserListPreferences(Base):
+    """Per-user list UI preferences (e.g. opportunity status chip selection by business line)."""
+    __tablename__ = "user_list_preferences"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, nullable=False
+    )
+    data: Mapped[Optional[dict]] = mapped_column(JSON)  # { opportunity_status_ids: { construction: [], repairs: [] } }
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+
 class UsernameReservation(Base):
     __tablename__ = "username_reservations"
 
@@ -164,7 +175,7 @@ class PasswordReset(Base):
 
 
 class PortalHubUser(Base):
-    """Customer-facing portal identity (never mixed with staff User)."""
+    """Hub customer portal identity (never mixed with staff User or Metals website accounts)."""
 
     __tablename__ = "portal_hub_users"
 
@@ -176,6 +187,46 @@ class PortalHubUser(Base):
     session_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+
+class PortalMetalsUser(Base):
+    """Mack Kirk Metals website customer identity (isolated from Hub portal)."""
+
+    __tablename__ = "portal_metals_users"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    name: Mapped[Optional[str]] = mapped_column(String(255))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    session_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+
+class PortalMetalsRefreshToken(Base):
+    __tablename__ = "portal_metals_refresh_tokens"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    metals_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("portal_metals_users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    jti: Mapped[str] = mapped_column(String(128), unique=True, nullable=False, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class PortalMetalsPasswordReset(Base):
+    """Password reset tokens for Metals website accounts only."""
+
+    __tablename__ = "portal_metals_password_resets"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    metals_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("portal_metals_users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    token: Mapped[str] = mapped_column(String(128), unique=True, index=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
 
 class PortalHubMembership(Base):
@@ -226,6 +277,27 @@ class PortalHubRefreshToken(Base):
     )
     jti: Mapped[str] = mapped_column(String(128), unique=True, nullable=False, index=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class PortalMetalsMembership(Base):
+    """Links a Metals website user to a Mack Kirk Metals CRM client (metals_clients)."""
+
+    __tablename__ = "portal_metals_memberships"
+    __table_args__ = (
+        UniqueConstraint("metals_user_id", "metals_client_id", name="uq_portal_metals_membership_user_client"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    metals_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("portal_metals_users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    metals_client_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("metals_clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    role: Mapped[str] = mapped_column(String(50), nullable=False, default="member")
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="active")  # active|revoked
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
 
 class FileObject(Base):
@@ -453,6 +525,7 @@ class ClientNote(Base):
     __table_args__ = (
         Index("ix_client_notes_client_created", "client_id", "created_at"),
         Index("ix_client_notes_project_id", "project_id"),
+        Index("ix_client_notes_contact_id", "contact_id"),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()
@@ -462,6 +535,11 @@ class ClientNote(Base):
     project_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="SET NULL"), nullable=True
     )
+    contact_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("client_contacts.id", ondelete="SET NULL"), nullable=True
+    )
+    # Snapshot of contact name at link time; retained after contact delete (contact_id cleared).
+    contact_name: Mapped[Optional[str]] = mapped_column(String(255))
     title: Mapped[Optional[str]] = mapped_column(String(255))
     category_id: Mapped[Optional[str]] = mapped_column(String(100))
     description: Mapped[Optional[str]] = mapped_column(Text())
@@ -1599,6 +1677,152 @@ class MetalsNoteIdMap(Base):
     batch_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("metals_migration_batches.id", ondelete="SET NULL")
     )
+
+
+# =====================
+# MK Metals public website / catalog
+# =====================
+
+
+class MetalsCatalogCategory(Base):
+    __tablename__ = "metals_catalog_categories"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    slug: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text())
+    sort_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_published: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+    products = relationship("MetalsCatalogProduct", back_populates="category")
+
+
+class MetalsCatalogProduct(Base):
+    """Public catalog product (no public price — quote-driven)."""
+
+    __tablename__ = "metals_catalog_products"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    category_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("metals_catalog_categories.id", ondelete="SET NULL"), index=True
+    )
+    slug: Mapped[str] = mapped_column(String(150), unique=True, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    short_description: Mapped[Optional[str]] = mapped_column(String(500))
+    description: Mapped[Optional[str]] = mapped_column(Text())
+    # specs: { gauges: [], materials: [], colours_note: str, ... }
+    specs: Mapped[Optional[dict]] = mapped_column(JSON)
+    image_url: Mapped[Optional[str]] = mapped_column(String(1024))
+    image_file_object_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="SET NULL"), nullable=True
+    )
+    is_published: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
+    sort_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+    category = relationship("MetalsCatalogCategory", back_populates="products")
+
+
+class MetalsWebsiteSubmission(Base):
+    """Inbound estimate or order from the public MK Metals website."""
+
+    __tablename__ = "metals_website_submissions"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    submission_code: Mapped[str] = mapped_column(String(40), unique=True, nullable=False, index=True)
+    # estimate | order
+    kind: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    # new | in_review | quoted | confirmed | in_production | ready | shipped | cancelled
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="new", index=True)
+
+    contact_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    contact_email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    contact_phone: Mapped[Optional[str]] = mapped_column(String(100))
+    company_name: Mapped[Optional[str]] = mapped_column(String(255))
+    customer_type: Mapped[Optional[str]] = mapped_column(String(50))
+    project_po: Mapped[Optional[str]] = mapped_column(String(100))
+    notes: Mapped[Optional[str]] = mapped_column(Text())
+
+    # pickup | delivery
+    delivery_method: Mapped[Optional[str]] = mapped_column(String(20))
+    delivery_address: Mapped[Optional[str]] = mapped_column(Text())
+    # { email: bool, sms: bool }
+    notification_prefs: Mapped[Optional[dict]] = mapped_column(JSON)
+
+    metals_client_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("metals_clients.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    metals_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("portal_metals_users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    converted_quote_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("quotes.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
+    internal_notes: Mapped[Optional[str]] = mapped_column(Text())
+    source: Mapped[Optional[str]] = mapped_column(String(50), default="website")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, index=True)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    status_updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+    items = relationship(
+        "MetalsWebsiteSubmissionItem",
+        back_populates="submission",
+        cascade="all, delete-orphan",
+        order_by="MetalsWebsiteSubmissionItem.sort_index",
+    )
+    files = relationship(
+        "MetalsWebsiteSubmissionFile",
+        back_populates="submission",
+        cascade="all, delete-orphan",
+        order_by="MetalsWebsiteSubmissionFile.sort_index",
+    )
+
+
+class MetalsWebsiteSubmissionItem(Base):
+    __tablename__ = "metals_website_submission_items"
+    __table_args__ = (Index("idx_metals_website_submission_items_sub_sort", "submission_id", "sort_index"),)
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    submission_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("metals_website_submissions.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    sort_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    catalog_product_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("metals_catalog_products.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    description: Mapped[str] = mapped_column(String(500), nullable=False)
+    gauge: Mapped[Optional[str]] = mapped_column(String(50))
+    colour: Mapped[Optional[str]] = mapped_column(String(100))
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    notes: Mapped[Optional[str]] = mapped_column(Text())
+
+    submission = relationship("MetalsWebsiteSubmission", back_populates="items")
+
+
+class MetalsWebsiteSubmissionFile(Base):
+    __tablename__ = "metals_website_submission_files"
+    __table_args__ = (Index("idx_metals_website_submission_files_sub_sort", "submission_id", "sort_index"),)
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    submission_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("metals_website_submissions.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    item_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("metals_website_submission_items.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    file_object_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    original_name: Mapped[Optional[str]] = mapped_column(String(500))
+    sort_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    submission = relationship("MetalsWebsiteSubmission", back_populates="files")
+    file_object = relationship("FileObject", foreign_keys=[file_object_id])
 
 
 class DocumentTemplate(Base):

@@ -7,7 +7,7 @@ import { useConfirm } from '@/components/ConfirmProvider';
 import { SubcontractorWorkerClockModalLayer } from '@/components/SubcontractorWorkerClockModalLayer';
 import { ProjectSearchCombobox } from '@/components/ProjectSearchCombobox';
 import { ClockActionTile } from '@/components/ClockActionTile';
-import { formatDateLocal, formatDecimalHoursAsHMin, getTodayLocal } from '@/lib/dateUtils';
+import { formatDateLocal, formatDecimalHoursAsHMin, getTodayLocal, formatDateTimeVancouver } from '@/lib/dateUtils';
 import { isCompleteLocalDatetime, LocalDateTimeFields } from '@/components/LocalDateTimeFields';
 import {
   scWorkerAttendanceDetailQuickInfo,
@@ -77,7 +77,7 @@ function toUtcISOString(localValue?: string): string | null {
 
 const formatDateTime = (iso?: string | null) => {
   if (!iso) return '—';
-  return new Date(iso).toLocaleString('en-US', {
+  return formatDateTimeVancouver(iso, {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
@@ -798,7 +798,7 @@ export default function SubcontractorWorkerTimesheetBlock({
           <div className="mb-4 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-900">
             Clocked in
             {openAttendance.project_name ? ` @ ${openAttendance.project_name}` : ''}
-            {openAttendance.clock_in_time ? ` since ${new Date(openAttendance.clock_in_time).toLocaleString()}` : ''}.
+            {openAttendance.clock_in_time ? ` since ${formatDateTimeVancouver(openAttendance.clock_in_time)}` : ''}.
           </div>
         )}
 

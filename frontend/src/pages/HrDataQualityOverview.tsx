@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Users } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { api } from '@/lib/api';
+import { formatDateTimeVancouver } from '@/lib/dateUtils';
 import {
   AppBadge,
   AppButton,
@@ -94,13 +95,7 @@ const ISSUE_LABELS: Record<(typeof ISSUE_KEYS)[number], string> = {
 
 function fmtDate(iso: string | null | undefined): string {
   if (!iso) return '—';
-  try {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return '—';
-    return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-  } catch {
-    return '—';
-  }
+  return formatDateTimeVancouver(iso);
 }
 
 export default function HrDataQualityOverview() {

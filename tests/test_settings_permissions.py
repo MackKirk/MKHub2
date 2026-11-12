@@ -217,6 +217,8 @@ class TestSettingsPermissions(unittest.TestCase):
             get_settings_admin_bundle(db=_FakeDb(), user=_user_with({}))
         self.assertEqual(ctx.exception.status_code, 403)
 
+    @patch("app.routes.settings.ensure_job_types_list")
+    @patch("app.routes.settings.ensure_document_template_categories_list")
     @patch("app.routes.settings.ensure_service_items_list")
     @patch("app.routes.settings.ensure_standard_file_categories")
     @patch("app.routes.settings.ensure_training_matrix_slots")
@@ -229,6 +231,8 @@ class TestSettingsPermissions(unittest.TestCase):
         _mock_training,
         _mock_standard,
         _mock_service_items,
+        _mock_doc_tpl,
+        _mock_job_types,
     ):
         db = _FakeDb({SettingList: _FakeQuery(all_rows=[])})
         result = get_settings_admin_bundle(

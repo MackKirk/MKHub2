@@ -9,6 +9,7 @@ import {
   fleetHeroValueMutedClass,
 } from '@/components/fleet/FleetAssetHero';
 import { AppBadge, AppButton, AppCard, AppHeroEditButton, uiBorders, uiCx, uiRadius } from '@/components/ui';
+import { formatDateVancouver } from '@/lib/dateUtils';
 
 const woCheckInTileClass =
   'h-24 w-24 sm:h-28 sm:w-28 rounded-xl border-2 border-sky-400 bg-sky-50 text-sky-950 text-sm font-semibold shadow-sm hover:bg-sky-100 active:scale-[0.98] transition flex flex-col items-center justify-center gap-1 px-1 py-2 text-center leading-tight';
@@ -131,7 +132,7 @@ function WorkOrderHeroBody({
               </FleetHeroStat>
               <FleetHeroStat label="Created">
                 <div className={fleetHeroValueClass}>
-                  {new Date(workOrder.created_at).toLocaleDateString()}
+                  {formatDateVancouver(workOrder.created_at)}
                 </div>
               </FleetHeroStat>
               <FleetHeroStat label="Entity">

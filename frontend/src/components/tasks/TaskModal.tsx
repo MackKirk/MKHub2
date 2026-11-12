@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import { api, withFileAccessToken } from '@/lib/api';
+import { formatDateTimeVancouver } from '@/lib/dateUtils';
 import {
   AppBadge,
   AppButton,
@@ -57,11 +58,7 @@ type Props = {
 
 function formatDateTime(dateStr?: string | null) {
   if (!dateStr) return '';
-  try {
-    return new Date(dateStr).toLocaleString();
-  } catch {
-    return dateStr;
-  }
+  return formatDateTimeVancouver(dateStr);
 }
 
 export default function TaskModal({ open, taskId, onClose, onUpdated }: Props) {

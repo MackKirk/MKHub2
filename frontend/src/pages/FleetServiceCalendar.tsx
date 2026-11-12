@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api } from '@/lib/api';
-import { formatDateLocal } from '@/lib/dateUtils';
+import { formatDateLocal, formatTimeVancouver } from '@/lib/dateUtils';
 import {
   AppButton,
   AppCard,
@@ -51,8 +51,7 @@ type CalendarEvent = WorkOrderCalendarEvent | ScheduleCalendarEvent;
 
 function formatTime(iso: string | null): string {
   if (!iso) return '';
-  const d = new Date(iso);
-  return d.toLocaleTimeString('en-CA', { hour: '2-digit', minute: '2-digit', hour12: true });
+  return formatTimeVancouver(iso, { hour: '2-digit', minute: '2-digit', hour12: true });
 }
 
 function calendarVehicleLines(

@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { formatDateVancouver } from '@/lib/dateUtils';
 import { useMemo, useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
@@ -781,7 +782,7 @@ export default function InventoryProducts(){
       <AppPageHeader
         title="Products"
         subtitle="Catalog of materials and pricing"
-        icon={<Package className="h-4 w-4" />}
+        icon={<Package className="h-4 w-4" />}
       />
 
       <AppCard bodyClassName={uiSpacing.cardPadding}>
@@ -1129,7 +1130,7 @@ export default function InventoryProducts(){
                                 </div>
                                 {usage.created_at && (
                                   <div className={uiCx(uiTypography.helper, 'mt-1 text-gray-600')}>
-                                    Created: {new Date(usage.created_at).toLocaleDateString()}
+                                    Created: {formatDateVancouver(usage.created_at)}
                                   </div>
                                 )}
                               </div>
@@ -1146,7 +1147,7 @@ export default function InventoryProducts(){
                                     )}
                                     {usage.created_at && (
                                       <div className={uiCx(uiTypography.helper, 'mt-1 text-gray-600')}>
-                                        Created: {new Date(usage.created_at).toLocaleDateString()}
+                                        Created: {formatDateVancouver(usage.created_at)}
                                       </div>
                                     )}
                                   </>

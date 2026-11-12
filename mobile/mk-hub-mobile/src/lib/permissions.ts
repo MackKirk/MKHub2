@@ -14,9 +14,7 @@ function canAccessProjectLineMenu(
   if (line === "construction") {
     return (
       permissions.has("business:construction:projects:read") ||
-      permissions.has("business:construction:projects:write") ||
-      permissions.has("business:projects:read") ||
-      permissions.has("business:projects:write")
+      permissions.has("business:construction:projects:write")
     );
   }
   return (
@@ -35,8 +33,6 @@ export function hasPermission(
   if (isAdmin) return true;
 
   const has = permissions.has(requiredPermission);
-  const legacyBizRead = permissions.has("business:projects:read");
-  const legacyBizWrite = permissions.has("business:projects:write");
 
   if (requiredPermission === "business:construction:projects:read") {
     return canAccessProjectLineMenu(permissions, "construction", isAdmin);
@@ -45,24 +41,19 @@ export function hasPermission(
     return canAccessProjectLineMenu(permissions, "repairs", isAdmin);
   }
   if (requiredPermission === "business:projects:read") {
-    return (
-      has ||
-      legacyBizRead ||
-      canAccessProjectLineMenu(permissions, "construction", isAdmin)
-    );
+    return canAccessProjectLineMenu(permissions, "construction", isAdmin);
   }
-  if (
-    requiredPermission === "business:construction:projects:write" ||
-    requiredPermission === "business:projects:write"
-  ) {
-    return (
-      has ||
-      legacyBizWrite ||
-      permissions.has("business:construction:projects:write")
-    );
+  if (requiredPermission === "business:construction:projects:write") {
+    return permissions.has("business:construction:projects:write");
   }
   if (requiredPermission === "business:rm:projects:write") {
-    return has || legacyBizWrite || permissions.has("business:rm:projects:write");
+    return permissions.has("business:rm:projects:write");
+  }
+  if (requiredPermission === "business:projects:write") {
+    return (
+      permissions.has("business:construction:projects:write") ||
+      permissions.has("business:rm:projects:write")
+    );
   }
   if (requiredPermission.startsWith("hr:")) {
     const legacyPerm = requiredPermission.replace("hr:", "");

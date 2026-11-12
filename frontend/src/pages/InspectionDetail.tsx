@@ -1,6 +1,7 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessToken } from '@/lib/api';
+import { formatDateVancouver } from '@/lib/dateUtils';
 import toast from 'react-hot-toast';
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { INSPECTION_RESULT_LABELS, INSPECTION_RESULT_COLORS } from '@/lib/fleetBadges';
@@ -592,11 +593,11 @@ export default function InspectionDetail() {
             </div>
             <div>
               <span className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Date</span>
-              <div className="text-sm font-semibold text-gray-900 mt-0.5">{new Date(inspection.inspection_date).toLocaleDateString()}</div>
+              <div className="text-sm font-semibold text-gray-900 mt-0.5">{formatDateVancouver(inspection.inspection_date)}</div>
             </div>
             <div>
               <span className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Created</span>
-              <div className="text-sm font-semibold text-gray-900 mt-0.5">{new Date(inspection.created_at).toLocaleDateString()}</div>
+              <div className="text-sm font-semibold text-gray-900 mt-0.5">{formatDateVancouver(inspection.created_at)}</div>
             </div>
             {inspection.inspection_schedule_id && (
               <div className="col-span-2 sm:col-span-1">
@@ -645,7 +646,7 @@ export default function InspectionDetail() {
                       </div>
                       <div>
                         <span className="text-gray-600 block text-sm font-semibold">Date</span>
-                        <span className="text-gray-900">{inspection.inspection_date ? new Date(inspection.inspection_date).toLocaleDateString() : new Date().toLocaleDateString()}</span>
+                        <span className="text-gray-900">{inspection.inspection_date ? formatDateVancouver(inspection.inspection_date) : formatDateVancouver(new Date().toISOString())}</span>
                       </div>
                     </div>
                   </div>
@@ -849,7 +850,7 @@ export default function InspectionDetail() {
                       <div><span className="text-gray-600 block text-sm font-semibold">Unit #</span> {fleetAsset.unit_number || fleetAsset.name || '—'}</div>
                       <div><span className="text-gray-600 block text-sm font-semibold">Name</span> {fleetAsset.name || '—'}</div>
                       <div><span className="text-gray-600 block text-sm font-semibold">KM</span> {fleetAsset.odometer_current != null ? fleetAsset.odometer_current.toLocaleString() : '—'}</div>
-                      <div><span className="text-gray-600 block text-sm font-semibold">Date</span> {inspection.inspection_date ? new Date(inspection.inspection_date).toLocaleDateString() : '—'}</div>
+                      <div><span className="text-gray-600 block text-sm font-semibold">Date</span> {inspection.inspection_date ? formatDateVancouver(inspection.inspection_date) : '—'}</div>
                     </div>
                   </div>
                 )}
@@ -924,7 +925,7 @@ export default function InspectionDetail() {
                       </div>
                       <div>
                         <span className="text-gray-600 block text-sm font-semibold">Date</span>
-                        <span className="text-gray-900">{inspection.inspection_date ? new Date(inspection.inspection_date).toLocaleDateString() : new Date().toLocaleDateString()}</span>
+                        <span className="text-gray-900">{inspection.inspection_date ? formatDateVancouver(inspection.inspection_date) : formatDateVancouver(new Date().toISOString())}</span>
                       </div>
                     </div>
                   </div>
@@ -1138,7 +1139,7 @@ export default function InspectionDetail() {
                       <div><span className="text-gray-600 block text-sm font-semibold">Name</span> {fleetAsset.name || '—'}</div>
                       <div><span className="text-gray-600 block text-sm font-semibold">KM</span> {fleetAsset.odometer_current != null ? fleetAsset.odometer_current.toLocaleString() : '—'}</div>
                       <div><span className="text-gray-600 block text-sm font-semibold">Hours</span> {fleetAsset.hours_current != null ? fleetAsset.hours_current.toLocaleString() : '—'}</div>
-                      <div><span className="text-gray-600 block text-sm font-semibold">Date</span> {inspection.inspection_date ? new Date(inspection.inspection_date).toLocaleDateString() : '—'}</div>
+                      <div><span className="text-gray-600 block text-sm font-semibold">Date</span> {inspection.inspection_date ? formatDateVancouver(inspection.inspection_date) : '—'}</div>
                     </div>
                   </div>
                 )}

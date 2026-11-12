@@ -23,6 +23,8 @@ export const SHARED_CATEGORY_IDS = new Set([
 export const PRODUCT_METALS_ACCESS_PERM = 'product:metals:access';
 export const METALS_CUSTOMERS_READ = 'metals:customers:read';
 export const METALS_CUSTOMERS_WRITE = 'metals:customers:write';
+export const METALS_WEBSITE_READ = 'metals:website:read';
+export const METALS_WEBSITE_WRITE = 'metals:website:write';
 
 /** Categories only in Hub product (Business is shared but remapped per product). */
 export const HUB_ONLY_CATEGORY_IDS = new Set([

@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { api } from '@/lib/api';
+import { formatDateVancouver } from '@/lib/dateUtils';
 import { useConfirm } from '@/components/ConfirmProvider';
 import DynamicSafetyForm from '@/components/DynamicSafetyForm';
 import { normalizeDefinition, type SafetyFormDefinition } from '@/types/safetyFormTemplate';
@@ -88,13 +89,7 @@ type ReviewBadgeVariant = 'neutral' | 'success' | 'warning' | 'danger' | 'info';
 
 function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '—';
-  try {
-    const date = new Date(dateStr);
-    if (Number.isNaN(date.getTime())) return dateStr;
-    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-  } catch {
-    return dateStr;
-  }
+  return formatDateVancouver(dateStr, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
 function formatPeriod(start: string | null, end: string | null): string {

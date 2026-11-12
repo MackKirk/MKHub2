@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { Building2, Calendar, ChevronDown, ChevronUp, MapPin, Tag } from 'lucide-react';
 import { api } from '@/lib/api';
+import { formatDateTimeVancouver } from '@/lib/dateUtils';
 import { AppButton, AppDatePicker, AppInput, AppUserSelect, uiCx, uiLayout } from '@/components/ui';
 import OverlayPortal from '@/components/OverlayPortal';
 import {
@@ -85,12 +86,8 @@ type Props = {
 type Step = 'pick' | 'compose' | 'view';
 
 function formatInfoWhen(iso?: string | null): string {
-  if (!iso) return new Date().toLocaleString(undefined, { dateStyle: 'long', timeStyle: 'short' });
-  try {
-    return new Date(iso).toLocaleString(undefined, { dateStyle: 'long', timeStyle: 'short' });
-  } catch {
-    return iso;
-  }
+  if (!iso) return formatDateTimeVancouver(new Date().toISOString(), { dateStyle: 'long', timeStyle: 'short' });
+  return formatDateTimeVancouver(iso, { dateStyle: 'long', timeStyle: 'short' });
 }
 
 function projectLocation(info?: FollowUpProjectInfo, row?: FollowUpRow | null): string {

@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { api, withFileAccessToken } from '@/lib/api';
 import { putFile, rejectOversizedBatch } from '@/lib/fileUploadBatch';
 import { downloadStoredFiles } from '@/lib/downloadFile';
+import { formatDateVancouver } from '@/lib/dateUtils';
 import { useConfirm } from '@/components/ConfirmProvider';
 import {
   FileImagePreviewModal,
@@ -850,7 +851,7 @@ export function WorkOrderFilesTab({ workOrderId, canEdit = true }: Props) {
                                           <span className="min-w-0 truncate text-sm font-bold text-gray-900">{name}</span>
                                           <span className={uiCx(uiTypography.helper, 'text-gray-600')}>{getFileTypeLabel(f)}</span>
                                           <span className={uiCx(uiTypography.helper, 'text-gray-600')}>
-                                            {f.uploaded_at ? new Date(f.uploaded_at).toLocaleDateString() : '—'}
+                                            {f.uploaded_at ? formatDateVancouver(f.uploaded_at) : '—'}
                                           </span>
                                           <div />
                                         </AppSortableEntityListRow>
@@ -974,7 +975,7 @@ export function WorkOrderFilesTab({ workOrderId, canEdit = true }: Props) {
                               </button>
                               <span className={uiCx(uiTypography.helper, 'text-gray-600')}>{getFileTypeLabel(f)}</span>
                               <span className={uiCx(uiTypography.helper, 'text-gray-600')}>
-                                {f.uploaded_at ? new Date(f.uploaded_at).toLocaleDateString() : '—'}
+                                {f.uploaded_at ? formatDateVancouver(f.uploaded_at) : '—'}
                               </span>
                               <div className="flex w-24 shrink-0 items-center justify-end gap-1.5">
                                 {!f.is_legacy ? (

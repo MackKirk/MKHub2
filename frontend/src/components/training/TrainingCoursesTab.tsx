@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BookOpen } from 'lucide-react';
 import { withFileAccessToken } from '@/lib/api';
+import { formatDateVancouver } from '@/lib/dateUtils';
 import type { TrainingCourse, TrainingData } from '@/hooks/useMyTrainingData';
 import {
   AppBadge,
@@ -142,7 +143,7 @@ function CourseCard({
           <span>{duration ?? '—'}</span>
           {course.certificate_expires_at ? (
             <span className={activeTab === 'expired' ? 'font-semibold text-amber-700' : undefined}>
-              Expires {new Date(course.certificate_expires_at).toLocaleDateString()}
+              Expires {formatDateVancouver(course.certificate_expires_at)}
             </span>
           ) : course.completed_at ? (
             <span className="text-emerald-700">Finished</span>

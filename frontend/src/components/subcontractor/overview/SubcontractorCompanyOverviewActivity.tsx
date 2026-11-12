@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { InsightsEmptyState, InsightsSection } from '@/components/insights';
-import { formatDecimalHoursAsHMin } from '@/lib/dateUtils';
+import { formatDecimalHoursAsHMin, formatDateVancouver, formatTimeVancouver } from '@/lib/dateUtils';
 
 export type ActivityFeedItem = {
   type: string;
@@ -33,7 +33,7 @@ const EVENT_ICONS: Record<string, string> = {
 function groupByDay(events: ActivityFeedItem[]): Array<{ day: string; events: ActivityFeedItem[] }> {
   const map = new Map<string, ActivityFeedItem[]>();
   for (const e of events) {
-    const day = new Date(e.at).toLocaleDateString('en-US', {
+    const day = formatDateVancouver(e.at, {
       weekday: 'short',
       month: 'short',
       day: 'numeric',
@@ -102,7 +102,7 @@ export function SubcontractorCompanyOverviewActivity({
                       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                         <span className="font-semibold text-gray-900">{ev.title}</span>
                         <span className="text-xs text-gray-600 tabular-nums whitespace-nowrap">
-                          {new Date(ev.at).toLocaleTimeString(undefined, {
+                          {formatTimeVancouver(ev.at, {
                             hour: '2-digit',
                             minute: '2-digit',
                           })}

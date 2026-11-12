@@ -2,7 +2,7 @@
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { formatDateLocal } from '@/lib/dateUtils';
+import { formatDateLocal, formatTimeVancouver } from '@/lib/dateUtils';
 import type { Task, TaskBuckets } from '@/components/tasks/types';
 import { ClockActionTile } from '@/components/ClockActionTile';
 import { ClockInOutModalLayer } from '@/components/ClockInOutModalLayer';
@@ -864,11 +864,11 @@ export default function ScheduleCard() {
                         {clockIn.status === 'approved' ? 'Approved' : clockIn.status === 'pending' ? 'Pending' : 'Rejected'}
                       </AppBadge>
                       <span className={uiTypography.sectionTitle}>
-                        {clockIn.clock_in_time ? new Date(clockIn.clock_in_time).toLocaleTimeString('en-US', {
+                        {clockIn.clock_in_time ? formatTimeVancouver(clockIn.clock_in_time, {
                           hour: 'numeric',
                           minute: '2-digit',
                           hour12: true,
-                        }) : (clockIn.time_selected_utc ? new Date(clockIn.time_selected_utc).toLocaleTimeString('en-US', {
+                        }) : (clockIn.time_selected_utc ? formatTimeVancouver(clockIn.time_selected_utc, {
                           hour: 'numeric',
                           minute: '2-digit',
                           hour12: true,
@@ -893,11 +893,11 @@ export default function ScheduleCard() {
                         {clockOut.status === 'approved' ? 'Approved' : clockOut.status === 'pending' ? 'Pending' : 'Rejected'}
                       </AppBadge>
                       <span className={uiTypography.sectionTitle}>
-                        {clockOut.clock_out_time ? new Date(clockOut.clock_out_time).toLocaleTimeString('en-US', {
+                        {clockOut.clock_out_time ? formatTimeVancouver(clockOut.clock_out_time, {
                           hour: 'numeric',
                           minute: '2-digit',
                           hour12: true,
-                        }) : (clockOut.time_selected_utc ? new Date(clockOut.time_selected_utc).toLocaleTimeString('en-US', {
+                        }) : (clockOut.time_selected_utc ? formatTimeVancouver(clockOut.time_selected_utc, {
                           hour: 'numeric',
                           minute: '2-digit',
                           hour12: true,

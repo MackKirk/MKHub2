@@ -9,6 +9,7 @@ import {
   uiSpacing,
   uiTypography,
 } from '@/components/ui';
+import { formatDateTimeVancouver } from '@/lib/dateUtils';
 
 type AssignmentRow = {
   id: string;
@@ -43,7 +44,7 @@ export function FuelCardCustodyTab({ activeAssignment, assignments }: Props) {
               {activeAssignment.assigned_to_name || activeAssignment.assigned_to_user_id}
             </p>
             <p className={uiCx(uiTypography.helper, 'mt-1')}>
-              Assigned {new Date(activeAssignment.assigned_at).toLocaleString()}
+              Assigned {formatDateTimeVancouver(activeAssignment.assigned_at)}
             </p>
             {activeAssignment.reason_out?.trim() ? (
               <p className={uiCx(uiTypography.helper, 'mt-1')}>Reason: {activeAssignment.reason_out.trim()}</p>
@@ -85,9 +86,9 @@ export function FuelCardCustodyTab({ activeAssignment, assignments }: Props) {
                     {a.assigned_to_name || a.assigned_to_user_id}
                   </p>
                   <p className={uiCx(uiTypography.helper, 'mt-1')}>
-                    Out {new Date(a.assigned_at).toLocaleString()}
+                    Out {formatDateTimeVancouver(a.assigned_at)}
                     {a.returned_at
-                      ? ` · Returned ${new Date(a.returned_at).toLocaleString()}`
+                      ? ` · Returned ${formatDateTimeVancouver(a.returned_at)}`
                       : ' · Still active'}
                   </p>
                   {a.reason_out?.trim() ? (

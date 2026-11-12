@@ -4,7 +4,13 @@ from __future__ import annotations
 from typing import Literal
 
 from ..models.models import User
-from .security import _get_user_permission_map, _has_permission, _legacy_full_settings_access, _user_is_admin
+from .security import (
+    _get_user_permission_map,
+    _has_any_project_line_read_permission,
+    _has_permission,
+    _legacy_full_settings_access,
+    _user_is_admin,
+)
 
 SETTINGS_ACCESS = "settings:access"
 
@@ -64,6 +70,7 @@ DROPDOWN_SETTINGS_LIST_NAMES = frozenset(
         "report_categories",
         "timesheet",
         "service_items",
+        "job_types",
         "document_template_categories",
     }
 )
@@ -266,11 +273,13 @@ def can_read_list_in_settings_bundle(user: User, list_name: str) -> bool:
             or _has_permission(user, "hr:users:edit:timesheet")
             or _has_permission(user, "hr:users:view:timesheet")
         )
+    if list_name == "job_types":
+        # Create/Edit Shift consumers — any authenticated user may read the catalog.
+        return True
     if list_name == DOCUMENT_TEMPLATE_CATEGORIES_LIST_NAME:
         return can_read_document_templates(user)
-    return (
-        _has_permission(user, "business:customers:read")
-        or _has_permission(user, "business:projects:read")
+    return _has_permission(user, "business:customers:read") or _has_any_project_line_read_permission(
+        user
     )
 
 

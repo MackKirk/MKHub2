@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { InsightsEmptyState, InsightsSection } from '@/components/insights';
 import type { ActivityEvent } from './customerOverviewTypes';
 import { formatDateForDisplay } from './customerOverviewUtils';
+import { formatDateVancouver } from '@/lib/dateUtils';
 
 const EVENT_ICONS: Record<string, string> = {
   project_created: '📁',
@@ -15,7 +16,7 @@ const EVENT_ICONS: Record<string, string> = {
 function groupByDay(events: ActivityEvent[]): Array<{ day: string; events: ActivityEvent[] }> {
   const map = new Map<string, ActivityEvent[]>();
   for (const e of events) {
-    const day = new Date(e.date).toLocaleDateString('en-US', {
+    const day = formatDateVancouver(e.date, {
       weekday: 'short',
       month: 'short',
       day: 'numeric',

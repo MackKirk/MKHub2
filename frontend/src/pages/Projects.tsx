@@ -1,6 +1,6 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessTokenIfNeeded } from '@/lib/api';
-import { useMemo, useState, useEffect, lazy, Suspense } from 'react';
+import { useMemo, useState, useEffect, useRef, lazy, Suspense } from 'react';
 import type { ReactNode } from 'react';
 import ImagePicker from '@/components/ImagePicker';
 import { DivisionIcon } from '@/components/DivisionIcon';
@@ -17,9 +17,28 @@ import { getUserDisplayName } from '@/lib/userDisplay';
 import { isRangeOperator } from '@/components/FilterBuilder/utils';
 import { useBusinessLine } from '@/context/BusinessLineContext';
 import { BUSINESS_LINE_REPAIRS_MAINTENANCE, filterProjectDivisionsForBusinessLine, PROJECT_DIVISIONS_QUERY_KEY } from '@/lib/businessLine';
-import { effectiveShowInProject } from '@/lib/projectStatusVisibility';
+import { effectiveShowInProject, filterStatusesForProject } from '@/lib/projectStatusVisibility';
 import { useNavigateBack } from '@/hooks/useNavigateBack';
-import { buildOpportunityListSearchParams, resolveProjectQuickStatusFilters } from '@/lib/opportunityFilters';
+import {
+  buildOpportunityListSearchParams,
+  isRelatedToMeParamActive,
+  setRelatedToMeParam,
+} from '@/lib/opportunityFilters';
+import {
+  applyCreatedWithinPreset,
+  CREATED_WITHIN_PRESETS,
+  detectCreatedWithinPreset,
+  isNoneStatusMode,
+  LIST_PREFERENCES_QUERY_KEY,
+  normalizeUserListPreferences,
+  type OpportunityStatusSelection,
+  putListPreferencesBodyForLine,
+  resolveEffectiveStatusIds,
+  setAllStatusSelection,
+  statusSelectionForBusinessLine,
+  toggleStatusSelection,
+  urlHasStatusFilterRules,
+} from '@/lib/opportunityListPreferences';
 import {
   effectiveListPageLimit,
   listPageSizeSelectOptions,
@@ -50,6 +69,7 @@ import {
   AppTooltip,
   AppUserAvatar,
   getAppTabButtonClassName,
+  SelectDropdownCheckbox,
   uiBorders,
   uiColors,
   uiCx,
@@ -340,6 +360,7 @@ function convertParamsToRules(params: URLSearchParams): FilterRule[] {
 
 export default function Projects(){
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryParam = searchParams.get('q') || '';
   const businessLine = useBusinessLine();
@@ -351,6 +372,9 @@ export default function Projects(){
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [hasAnimated, setHasAnimated] = useState(false);
   const [animationComplete, setAnimationComplete] = useState(false);
+  /** null = all statuses; [] = none; string[] = subset. Persisted per business line. */
+  const [statusSelection, setStatusSelection] = useState<OpportunityStatusSelection>(null);
+  const statusPrefsHydratedLine = useRef<string | null>(null);
   
   // View mode state with persistence
   const [viewMode, setViewMode] = useState<ProjectViewMode>(() =>
@@ -413,20 +437,61 @@ export default function Projects(){
     if (urlQ !== debouncedQ) setDebouncedQ(urlQ);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
+
+  const { data: listPrefs, isFetched: listPrefsFetched } = useQuery({
+    queryKey: LIST_PREFERENCES_QUERY_KEY,
+    queryFn: async () =>
+      normalizeUserListPreferences(await api<unknown>('GET', '/users/me/list-preferences')),
+    staleTime: 60_000,
+  });
+
+  useEffect(() => {
+    statusPrefsHydratedLine.current = null;
+  }, [businessLine]);
+
+  useEffect(() => {
+    if (!listPrefsFetched || !listPrefs) return;
+    if (statusPrefsHydratedLine.current === businessLine) return;
+    statusPrefsHydratedLine.current = businessLine;
+    setStatusSelection(statusSelectionForBusinessLine(listPrefs, businessLine, 'project_status_ids'));
+  }, [listPrefsFetched, listPrefs, businessLine]);
+
+  const saveStatusPrefsMutation = useMutation({
+    mutationFn: (selection: OpportunityStatusSelection) =>
+      api<unknown>(
+        'PUT',
+        '/users/me/list-preferences',
+        putListPreferencesBodyForLine(businessLine, selection, 'project_status_ids'),
+      ),
+    onSuccess: (data) => {
+      queryClient.setQueryData(LIST_PREFERENCES_QUERY_KEY, normalizeUserListPreferences(data));
+    },
+  });
+
+  const statusNoneSelected = isNoneStatusMode(statusSelection);
   
   const qs = useMemo(() => {
     const params = buildOpportunityListSearchParams(searchParams, businessLine, {
       page: Number(searchParams.get('page') || '1') || 1,
       limit: effectiveListPageLimit(viewMode, searchParams.get('limit')),
     });
+    if (
+      !urlHasStatusFilterRules(searchParams) &&
+      Array.isArray(statusSelection) &&
+      statusSelection.length > 0
+    ) {
+      for (const id of statusSelection) {
+        params.append('status', id);
+      }
+    }
     const s = params.toString();
     return s ? `?${s}` : '';
-  }, [searchParams, businessLine, viewMode]);
+  }, [searchParams, businessLine, viewMode, statusSelection]);
   
   const { data, isLoading, isFetching, isError, error, refetch } = useQuery({ 
     queryKey:['projects', businessLine, qs], 
     queryFn: ()=> api<{ items: Project[]; total: number; page: number; limit: number } | Project[]>('GET', `/projects/business/projects${qs}`),
-    enabled: viewMode !== 'map' && viewMode !== 'calendar',
+    enabled: viewMode !== 'map' && viewMode !== 'calendar' && listPrefsFetched && !statusNoneSelected,
     placeholderData: keepPreviousData,
   });
   
@@ -441,8 +506,12 @@ export default function Projects(){
     [projectDivisions, businessLine]
   );
   
-  // Show loading until list API returns (divisions load in parallel for icons)
-  const isInitialLoading = viewMode !== 'map' && viewMode !== 'calendar' && isLoading && !data;
+  // Show loading until prefs + list API return (divisions load in parallel for icons)
+  const isInitialLoading =
+    viewMode !== 'map' &&
+    viewMode !== 'calendar' &&
+    !statusNoneSelected &&
+    (!listPrefsFetched || (isLoading && !data));
   
   // Track when animation completes to remove inline styles for hover to work
   useEffect(() => {
@@ -589,59 +658,69 @@ export default function Projects(){
       if (value) params.set(key, value);
     }
     if (q) params.set('q', q);
-    if (searchParams.get('related_to_me') === '1') params.set('related_to_me', '1');
+    if (isRelatedToMeParamActive(searchParams)) setRelatedToMeParam(params, true);
     params.set('page', '1');
     setSearchParams(params);
     refetch();
   };
 
   const hasRuleFilters = currentRules.length > 0;
-  const hasActiveFilters = hasRuleFilters || searchParams.get('related_to_me') === '1';
+  const createdWithinPreset = useMemo(
+    () => detectCreatedWithinPreset(searchParams),
+    [searchParams],
+  );
+  const hasActiveFilters = useMemo(() => {
+    return (
+      hasRuleFilters ||
+      isRelatedToMeParamActive(searchParams) ||
+      statusSelection !== null ||
+      !!createdWithinPreset
+    );
+  }, [hasRuleFilters, searchParams, statusSelection, createdWithinPreset]);
 
-  const projectQuickStatusFilters = useMemo(
-    () => resolveProjectQuickStatusFilters(projectStatuses),
-    [projectStatuses],
+  const projectStatusOptions = useMemo(() => {
+    return filterStatusesForProject(projectStatuses)
+      .map((s: { id?: unknown; label?: unknown }) => ({
+        id: String(s.id || ''),
+        label: String(s.label || ''),
+      }))
+      .filter((s) => s.id && s.label)
+      .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
+  }, [projectStatuses]);
+
+  const allStatusOptionIds = useMemo(
+    () => projectStatusOptions.map((s) => s.id),
+    [projectStatusOptions],
   );
 
-  const toggleStatusQuickFilter = (statusId: string | undefined) => {
-    if (!statusId) return;
+  const effectiveStatusSelection = useMemo(
+    () => resolveEffectiveStatusIds(statusSelection, allStatusOptionIds),
+    [statusSelection, allStatusOptionIds],
+  );
+
+  const persistStatusSelection = (next: OpportunityStatusSelection) => {
+    setStatusSelection(next);
+    statusPrefsHydratedLine.current = businessLine;
+    saveStatusPrefsMutation.mutate(next);
+  };
+
+  const clearStatusRulesFromUrl = () => {
     const params = new URLSearchParams(searchParams);
-    const cur = params.get('status');
-    if (cur === statusId) {
-      params.delete('status');
-    } else {
-      params.delete('status_not');
-      params.set('status', statusId);
-    }
+    params.delete('status');
+    params.delete('status_not');
     params.set('page', '1');
     setSearchParams(params, { replace: true });
   };
 
-  const quickFilterSegments = useMemo(() => {
-    const segments: Array<{ key: string; label: string; active: boolean; onClick: () => void }> = [
-      {
-        key: 'related_to_me',
-        label: 'Related to Me',
-        active: searchParams.get('related_to_me') === '1',
-        onClick: () => {
-          const params = new URLSearchParams(searchParams);
-          if (params.get('related_to_me') === '1') params.delete('related_to_me');
-          else params.set('related_to_me', '1');
-          params.set('page', '1');
-          setSearchParams(params, { replace: true });
-        },
-      },
-    ];
-    for (const filter of projectQuickStatusFilters) {
-      segments.push({
-        key: filter.key,
-        label: filter.label,
-        active: searchParams.get('status') === filter.statusId,
-        onClick: () => toggleStatusQuickFilter(filter.statusId),
-      });
-    }
-    return segments;
-  }, [searchParams, projectQuickStatusFilters, setSearchParams]);
+  const onToggleAllStatuses = () => {
+    clearStatusRulesFromUrl();
+    persistStatusSelection(setAllStatusSelection(statusSelection !== null));
+  };
+
+  const onToggleStatus = (statusId: string) => {
+    clearStatusRulesFromUrl();
+    persistStatusSelection(toggleStatusSelection(statusSelection, statusId, allStatusOptionIds));
+  };
 
   const quickFilterCountBaseParams = useMemo(
     () =>
@@ -662,7 +741,8 @@ export default function Projects(){
     staleTime: 60_000,
   });
 
-  const quickFilterCountsByKey = tabCounts || {};
+  const relatedToMeCount = tabCounts?.related_to_me;
+  const statusCountsByKey = tabCounts || {};
 
   const listCardAnimClass = animationComplete
     ? undefined
@@ -803,7 +883,11 @@ export default function Projects(){
                 onClick={() => {
                   const params = new URLSearchParams();
                   if (q) params.set('q', q);
+                  if (viewMode === 'list') params.set('view', 'list');
+                  else if (viewMode === 'map') params.set('view', 'map');
+                  else if (viewMode === 'calendar') params.set('view', 'calendar');
                   setSearchParams(params);
+                  persistStatusSelection(null);
                   refetch();
                 }}
               >
@@ -811,23 +895,97 @@ export default function Projects(){
               </AppButton>
             )}
           </div>
-          <div className={uiCx('mt-3 border-t border-gray-100 pt-3', uiLayout.actionsRow, 'flex-wrap items-center gap-2')}>
-            <span className={uiCx(uiTypography.overline, 'shrink-0')}>Quick filters:</span>
-            <div className="flex flex-wrap gap-2">
-              {quickFilterSegments.map((segment) => (
+          <div className={uiCx('mt-3 border-t border-gray-100 pt-3', uiSpacing.sectionStack)}>
+            <div className={uiCx(uiLayout.actionsRow, 'flex-wrap items-center gap-2')}>
+              <span className={uiCx(uiTypography.overline, 'shrink-0')}>Statuses:</span>
+              <div className="flex flex-wrap gap-2">
                 <button
-                  key={segment.key}
                   type="button"
-                  onClick={segment.onClick}
-                  className={getAppTabButtonClassName(segment.active)}
-                  aria-pressed={segment.active}
+                  role="checkbox"
+                  aria-checked={statusSelection === null}
+                  onClick={onToggleAllStatuses}
+                  className={uiCx(
+                    getAppTabButtonClassName(false),
+                    statusSelection === null && 'border-gray-400 bg-gray-50',
+                  )}
                 >
-                  <span>{segment.label}</span>
-                  {typeof quickFilterCountsByKey[segment.key] === 'number' ? (
-                    <AppTabCountBadge count={quickFilterCountsByKey[segment.key]} isActive={segment.active} />
+                  <SelectDropdownCheckbox checked={statusSelection === null} />
+                  <span>All</span>
+                </button>
+                {projectStatusOptions.map((status) => {
+                  const active =
+                    statusSelection === null ||
+                    (Array.isArray(effectiveStatusSelection) &&
+                      effectiveStatusSelection.includes(status.id));
+                  const count =
+                    typeof statusCountsByKey[status.id] === 'number'
+                      ? statusCountsByKey[status.id]
+                      : undefined;
+                  return (
+                    <button
+                      key={status.id}
+                      type="button"
+                      role="checkbox"
+                      aria-checked={active}
+                      onClick={() => onToggleStatus(status.id)}
+                      className={uiCx(
+                        getAppTabButtonClassName(false),
+                        active && 'border-gray-400 bg-gray-50',
+                      )}
+                    >
+                      <SelectDropdownCheckbox checked={active} />
+                      <span>{status.label}</span>
+                      {typeof count === 'number' ? (
+                        <AppTabCountBadge count={count} isActive={false} />
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className={uiCx(uiLayout.actionsRow, 'flex-wrap items-center gap-2')}>
+              <span className={uiCx(uiTypography.overline, 'shrink-0')}>Quick filters:</span>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const params = new URLSearchParams(searchParams);
+                    const enabling = !isRelatedToMeParamActive(searchParams);
+                    setRelatedToMeParam(params, enabling);
+                    params.set('page', '1');
+                    setSearchParams(params, { replace: true });
+                  }}
+                  className={getAppTabButtonClassName(isRelatedToMeParamActive(searchParams))}
+                  aria-pressed={isRelatedToMeParamActive(searchParams)}
+                >
+                  <span>Related to Me</span>
+                  {typeof relatedToMeCount === 'number' ? (
+                    <AppTabCountBadge
+                      count={relatedToMeCount}
+                      isActive={isRelatedToMeParamActive(searchParams)}
+                    />
                   ) : null}
                 </button>
-              ))}
+                {CREATED_WITHIN_PRESETS.map((preset) => {
+                  const active = createdWithinPreset === preset.key;
+                  return (
+                    <button
+                      key={preset.key}
+                      type="button"
+                      onClick={() => {
+                        const params = new URLSearchParams(searchParams);
+                        applyCreatedWithinPreset(params, active ? null : preset.key);
+                        params.set('page', '1');
+                        setSearchParams(params, { replace: true });
+                      }}
+                      className={getAppTabButtonClassName(active)}
+                      aria-pressed={active}
+                    >
+                      <span>{preset.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </AppCard>
@@ -841,8 +999,12 @@ export default function Projects(){
                 onRemove={() => {
                   const updatedRules = currentRules.filter((r) => r.id !== rule.id);
                   const params = convertRulesToParams(updatedRules);
+                  for (const key of ['sort', 'dir', 'view', 'limit'] as const) {
+                    const value = searchParams.get(key);
+                    if (value) params.set(key, value);
+                  }
                   if (q) params.set('q', q);
-                  if (searchParams.get('related_to_me') === '1') params.set('related_to_me', '1');
+                  if (isRelatedToMeParamActive(searchParams)) setRelatedToMeParam(params, true);
                   setSearchParams(params);
                   refetch();
                 }}
@@ -879,7 +1041,7 @@ export default function Projects(){
               detailBasePath={projectBasePath}
             />
           </Suspense>
-        ) : viewMode === 'cards' ? (
+        ) : statusNoneSelected ? null : viewMode === 'cards' ? (
           <div className={uiCx('grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-3', listCardAnimClass)}>
             {isLoading && !arr.length ? (
               <>
@@ -940,21 +1102,28 @@ export default function Projects(){
             ) : null}
           </div>
         )}
-        {!isInitialLoading && viewMode !== 'map' && viewMode !== 'calendar' && isError && arr.length === 0 && (
+        {!isInitialLoading && viewMode !== 'map' && viewMode !== 'calendar' && statusNoneSelected && (
+          <AppEmptyState
+            className="py-8"
+            title="No statuses selected"
+            description="Select at least one status above to view projects."
+          />
+        )}
+        {!isInitialLoading && viewMode !== 'map' && viewMode !== 'calendar' && !statusNoneSelected && isError && arr.length === 0 && (
           <AppEmptyState
             className="py-8"
             title="Could not load projects"
             description={(error as Error)?.message || 'Something went wrong while loading projects. Try again.'}
           />
         )}
-        {!isInitialLoading && viewMode !== 'map' && viewMode !== 'calendar' && !isError && arr.length === 0 && (
+        {!isInitialLoading && viewMode !== 'map' && viewMode !== 'calendar' && !statusNoneSelected && !isError && arr.length === 0 && (
           <AppEmptyState
             className="py-8"
             title="No projects found"
             description="No projects found matching your criteria."
           />
         )}
-        {!isInitialLoading && viewMode !== 'map' && viewMode !== 'calendar' && totalCount > 0 && (
+        {!isInitialLoading && viewMode !== 'map' && viewMode !== 'calendar' && !statusNoneSelected && totalCount > 0 && (
           <div className={uiCx(uiLayout.actionsRow, 'mt-4 flex-wrap justify-between gap-3 border-t border-gray-200 pt-4')}>
             <p className={uiTypography.helper}>
               Page {currentPage} of {totalPages} ({totalCount} total)
@@ -1138,7 +1307,10 @@ export function ProjectListItem({ project, projectDivisions, projectStatuses, va
   const col6 = (
     <div className="min-w-0 flex items-center">
       {statusLabel ? (
-        <AppBadge variant={getProjectStatusBadgeVariant(statusLabel)} className="max-w-full truncate">
+        <AppBadge
+          variant={getProjectStatusBadgeVariant(statusLabel, projectStatuses)}
+          className="max-w-full truncate"
+        >
           {statusLabel}
         </AppBadge>
       ) : (
@@ -1471,7 +1643,10 @@ function ProjectListCard({ project, projectDivisions, projectStatuses, projectBa
 
           <div className="relative flex-shrink-0">
             {statusLabel ? (
-              <AppBadge variant={getProjectStatusBadgeVariant(statusLabel)} className="max-w-[10rem] truncate">
+              <AppBadge
+                variant={getProjectStatusBadgeVariant(statusLabel, projectStatuses)}
+                className="max-w-[10rem] truncate"
+              >
                 {statusLabel}
               </AppBadge>
             ) : (
