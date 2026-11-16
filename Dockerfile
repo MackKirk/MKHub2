@@ -23,6 +23,13 @@ COPY frontend/src/lib/overlayRoot.ts /work/frontend/src/lib/overlayRoot.ts
 RUN ln -s /work/portal/node_modules /work/frontend/node_modules
 RUN npm run build
 
+FROM node:20-slim as website
+WORKDIR /work/website
+COPY website/package.json ./
+RUN npm install -g npm@11 && npm install --no-audit --no-fund
+COPY website ./
+RUN npm run build
+
 FROM python:3.11-slim
 
 ENV PYTHONUNBUFFERED=1
@@ -47,9 +54,10 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
-# Copy built frontend
+# Copy built SPAs (overwrite any empty/local dist from COPY .)
 COPY --from=frontend /work/frontend/dist ./frontend/dist
 COPY --from=portal /work/portal/dist ./portal/dist
+COPY --from=website /work/website/dist ./website/dist
 
 # Render sets $PORT; default to 8000
 ENV PORT=8000
