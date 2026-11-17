@@ -16,6 +16,7 @@ export type RoutePermissionRule = {
 export const ROUTE_PERMISSION_RULES: RoutePermissionRule[] = [
   // R&M (before generic /rm-projects)
   { path: '/rm-warranty-review', permission: 'business:rm:projects:read' },
+  { path: '/rm-field-reports', permission: 'business:rm:projects:fieldwork:read' },
   { path: '/rm-business', permission: 'business:rm:projects:read' },
   { path: '/rm-opportunities', permission: 'business:rm:projects:read' },
   { path: '/rm-projects', permission: 'business:rm:projects:read' },

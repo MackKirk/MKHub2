@@ -405,12 +405,17 @@ export function validateDynamicFormMissing(
       }
 
       if (field.requireComment || field.requireImage) {
-        const note = getFieldAttachmentNote(field, payload);
-        if (field.requireComment && !note.text.trim()) {
-          push(field.key, `${label} (comment)`);
-        }
-        if (field.requireImage && note.imageIds.length === 0) {
-          push(field.key, `${label} (image)`);
+        // Pass/Fail: only force comment/image when the answer is Fail.
+        if (field.type === 'pass_fail_na' && v !== 'fail') {
+          // pass / na / unanswered — skip (unanswered handled by required)
+        } else {
+          const note = getFieldAttachmentNote(field, payload);
+          if (field.requireComment && !note.text.trim()) {
+            push(field.key, `${label} (comment)`);
+          }
+          if (field.requireImage && note.imageIds.length === 0) {
+            push(field.key, `${label} (image)`);
+          }
         }
       }
     }

@@ -61,6 +61,8 @@ import MetalsWebsiteInbox from './pages/MetalsWebsiteInbox';
 import SiteDetail from './pages/SiteDetail';
 import Projects from './pages/Projects';
 import WarrantyReview from './pages/WarrantyReview';
+import FieldReportsPage from './pages/FieldReportsPage';
+import FieldReportReviewPage from './pages/FieldReportReviewPage';
 import ProjectNew from './pages/ProjectNew';
 import Opportunities from './pages/Opportunities';
 import OpportunityDetail from './pages/OpportunityDetail';
@@ -262,6 +264,8 @@ export default function App(){
           <Route path="/rm-leak-investigations/:id" element={<RmLeakInvestigationDetailRedirect />} />
           <Route path="/rm-projects" element={shell(<BusinessLineProvider line={BUSINESS_LINE_REPAIRS_MAINTENANCE}><Projects /></BusinessLineProvider>)} />
           <Route path="/rm-warranty-review" element={shell(<WarrantyReview />)} />
+          <Route path="/rm-field-reports" element={shell(<FieldReportsPage />)} />
+          <Route path="/rm-field-reports/:projectId/:recordId" element={shell(<FieldReportReviewPage />)} />
           <Route path="/rm-projects/new" element={shell(<BusinessLineProvider line={BUSINESS_LINE_REPAIRS_MAINTENANCE}><ProjectNew /></BusinessLineProvider>)} />
           <Route path="/rm-projects/:id" element={shell(<RmProjectDetail />)} />
           <Route path="/rm-business" element={shell(<BusinessLineProvider line={BUSINESS_LINE_REPAIRS_MAINTENANCE}><BusinessDashboard /></BusinessLineProvider>)} />

@@ -51,6 +51,8 @@ const HUB_ONLY_PATH_PREFIXES = [
   '/rm-opportunities',
   '/rm-projects',
   '/rm-warranty-review',
+  '/rm-field-reports',
+  '/rm-fieldwork',
   '/customers',
   '/safety',
   '/fleet',

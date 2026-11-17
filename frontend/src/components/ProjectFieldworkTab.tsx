@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useMemo, useState, type MutableRefObject } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { ClipboardList } from 'lucide-react';
-import { ApiError, api, formatApiErrorDetail } from '@/lib/api';
+import { ApiError, api, fetchAuthorizedBinary, formatApiErrorDetail } from '@/lib/api';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import DynamicForm from '@/components/DynamicForm';
+import {
+  FieldworkSupervisorReportView,
+  SUPERVISOR_COMMENTS_KEY,
+} from '@/components/fieldwork/FieldworkSupervisorReportView';
 import {
   AppBadge,
   AppButton,
@@ -100,6 +104,7 @@ export default function ProjectFieldworkTab({
   const [reviewNote, setReviewNote] = useState('');
   const [showHistory, setShowHistory] = useState(false);
   const [requestChangesOpen, setRequestChangesOpen] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
   /** When true, detail refetch must not overwrite local form/comments (409 conflict). */
   const [conflictHold, setConflictHold] = useState<{
     localPayload: Record<string, unknown>;
@@ -655,6 +660,40 @@ export default function ProjectFieldworkTab({
   const status = (detail.status || '').toLowerCase();
   const showReviewActions = canReview && status === 'submitted';
   const showRevision = canWrite && status === 'approved';
+  const supervisorComments = useMemo(() => {
+    const bag = formPayload[SUPERVISOR_COMMENTS_KEY];
+    if (!bag || typeof bag !== 'object' || Array.isArray(bag)) return {} as Record<string, string>;
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(bag as Record<string, unknown>)) {
+      if (typeof v === 'string') out[k] = v;
+      else if (v && typeof v === 'object' && !Array.isArray(v)) {
+        const t = (v as { text?: unknown }).text;
+        if (typeof t === 'string') out[k] = t;
+      }
+    }
+    return out;
+  }, [formPayload]);
+
+  const downloadPdf = async () => {
+    try {
+      setPdfBusy(true);
+      const buf = await fetchAuthorizedBinary(
+        `/projects/${encodeURIComponent(projectId)}/fieldwork-records/${encodeURIComponent(detail.id)}/pdf`
+      );
+      const blob = new Blob([buf], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${kindLabel(detail.kind).replace(/\s+/g, '-').toLowerCase()}-${detail.id.slice(0, 8)}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('PDF downloaded');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not generate PDF');
+    } finally {
+      setPdfBusy(false);
+    }
+  };
 
   return (
     <div className={uiCx(uiSpacing.pageStack)}>
@@ -680,6 +719,23 @@ export default function ProjectFieldworkTab({
           </p>
         </div>
         <div className={uiCx(uiLayout.actionsRow, 'flex-wrap')}>
+          {!editable ? (
+            <Link
+              to={`/rm-field-reports/${projectId}/${detail.id}`}
+              className="inline-flex items-center rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Open review report
+            </Link>
+          ) : null}
+          <AppButton
+            type="button"
+            variant="secondary"
+            size="sm"
+            loading={pdfBusy}
+            onClick={() => void downloadPdf()}
+          >
+            Download PDF
+          </AppButton>
           <AppButton type="button" variant="secondary" size="sm" onClick={() => setShowHistory((v) => !v)}>
             {showHistory ? 'Hide history' : 'Status history'}
           </AppButton>
@@ -820,17 +876,25 @@ export default function ProjectFieldworkTab({
         </AppCard>
       ) : null}
 
-      <AppCard bodyClassName={uiSpacing.cardPadding}>
-        <DynamicForm
-          definition={definition}
-          formPayload={formPayload}
-          setFormPayload={setFormPayload}
-          canWrite={editable}
-          readOnly={readOnly}
-          projectId={projectId}
-          enableFieldworkPhraseInsert={editable}
+      {editable ? (
+        <AppCard bodyClassName={uiSpacing.cardPadding}>
+          <DynamicForm
+            definition={definition}
+            formPayload={formPayload}
+            setFormPayload={setFormPayload}
+            canWrite={editable}
+            readOnly={readOnly}
+            projectId={projectId}
+            enableFieldworkPhraseInsert={editable}
+          />
+        </AppCard>
+      ) : (
+        <FieldworkSupervisorReportView
+          record={detail}
+          supervisorComments={supervisorComments}
+          canEditSupervisorComments={false}
         />
-      </AppCard>
+      )}
 
       <AppFormModal
         open={requestChangesOpen}

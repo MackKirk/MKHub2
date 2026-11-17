@@ -318,9 +318,14 @@ export function validateRequiredFields(
         }
       }
       if (field.requireComment || field.requireImage) {
-        const note = getFieldAttachmentNote(field, payload);
-        if (field.requireComment && !note.text.trim()) missing.push(`${label} (comment)`);
-        if (field.requireImage && note.imageIds.length === 0) missing.push(`${label} (image)`);
+        // Pass/Fail: only force comment/image when the answer is Fail.
+        if (field.type === "pass_fail_na" && value !== "fail") {
+          // pass / na / unanswered — skip
+        } else {
+          const note = getFieldAttachmentNote(field, payload);
+          if (field.requireComment && !note.text.trim()) missing.push(`${label} (comment)`);
+          if (field.requireImage && note.imageIds.length === 0) missing.push(`${label} (image)`);
+        }
       }
     }
   }
