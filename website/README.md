@@ -55,6 +55,20 @@ cd website && npm run build
 
 The FastAPI app serves the built SPA at `/website/` when `website/dist` exists.
 
+### Render / Docker
+
+The root `Dockerfile` builds Hub, portal, and website SPAs and copies `website/dist` into the image. After deploy, open:
+
+`https://mkhub2.onrender.com/website/`
+
+If the Metals auth tables are missing on the shared Postgres, run once against that DB:
+
+```bash
+python scripts/separate_metals_portal_auth.py
+# or on a fresh DB:
+python scripts/run_create_metals_website_tables.py
+```
+
 ## Brand assets
 
 - `public/assets/brand/mkm-logo.png` — primary logo (header / hero)
