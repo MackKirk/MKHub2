@@ -39,6 +39,10 @@ export type SafetyFormField = {
   label: string;
   order: number;
   required?: boolean;
+  /** When true, respondent must leave a per-field comment before submit. */
+  requireComment?: boolean;
+  /** When true, respondent must attach at least one per-field image before submit. */
+  requireImage?: boolean;
   placeholder?: string;
   /** Legacy inline options; prefer optionsSource for dropdown types. */
   options?: string[];
@@ -245,6 +249,8 @@ export function normalizeDefinition(raw: unknown): SafetyFormDefinition {
         label: String(fr.label || 'Field'),
         order: typeof fr.order === 'number' ? fr.order : fields.length,
         required: Boolean(fr.required),
+        requireComment: Boolean(fr.requireComment),
+        requireImage: Boolean(fr.requireImage),
         placeholder: fr.placeholder != null ? String(fr.placeholder) : undefined,
         options: Array.isArray(fr.options) ? fr.options.filter((x): x is string => typeof x === 'string') : undefined,
         optionsSource,
@@ -331,6 +337,40 @@ export const DYNAMIC_FORM_WORKER_SIGNATURE_HIGHLIGHT_KEY = '__dynamic_worker_sig
 
 export type DynamicFormMissingField = { key: string; label: string };
 
+const SIDE_COMMENT_PAYLOAD_KEY = '_fieldComments';
+
+/** Per-field note text + images (side comments or yes_no_na embedded notes). */
+export function getFieldAttachmentNote(
+  field: SafetyFormField,
+  payload: Record<string, unknown>
+): { text: string; imageIds: string[] } {
+  if (field.type === 'yes_no_na') {
+    const v = payload[field.key];
+    const o = v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+    const imgs = o.commentImageIds;
+    return {
+      text: typeof o.comments === 'string' ? o.comments : '',
+      imageIds: Array.isArray(imgs) ? imgs.filter((x): x is string => typeof x === 'string' && !!x.trim()) : [],
+    };
+  }
+  const bag = payload[SIDE_COMMENT_PAYLOAD_KEY];
+  const raw =
+    bag && typeof bag === 'object' && !Array.isArray(bag)
+      ? (bag as Record<string, unknown>)[field.key]
+      : undefined;
+  if (typeof raw === 'string') return { text: raw, imageIds: [] };
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    const o = raw as Record<string, unknown>;
+    const t = typeof o.text === 'string' ? o.text : '';
+    const arr = o.imageIds ?? o.images;
+    const imageIds = Array.isArray(arr)
+      ? arr.filter((x): x is string => typeof x === 'string' && !!x.trim())
+      : [];
+    return { text: t, imageIds };
+  }
+  return { text: '', imageIds: [] };
+}
+
 export function validateDynamicFormMissing(
   definition: SafetyFormDefinition,
   payload: Record<string, unknown>
@@ -340,34 +380,39 @@ export function validateDynamicFormMissing(
 
   for (const sec of definition.sections) {
     for (const field of sec.fields) {
-      if (!field.required) continue;
       if (field.type === 'text_info') continue;
       if (!isFieldVisible(field, payload)) continue;
       if (field.type === 'pass_fail_total') continue;
+
       const v = payload[field.key];
       const label = field.label || field.key;
-      if (field.type === 'checkbox') {
-        if (v !== true) push(field.key, label);
-        continue;
+
+      if (field.required) {
+        if (field.type === 'checkbox') {
+          if (v !== true) push(field.key, label);
+        } else if (field.type === 'dropdown_multi' || field.type === 'user_multi' || field.type === 'equipment_multi') {
+          if (!Array.isArray(v) || v.length === 0) push(field.key, label);
+        } else if (field.type === 'yes_no_na') {
+          const o = v && typeof v === 'object' && !Array.isArray(v) ? (v as { status?: string }) : {};
+          if (!o.status || !['yes', 'no', 'na'].includes(o.status)) push(field.key, label);
+        } else if (field.type === 'pass_fail_na') {
+          if (v !== 'pass' && v !== 'fail' && v !== 'na') push(field.key, label);
+        } else if (field.type === 'scale_1_5') {
+          if (v !== '1' && v !== '2' && v !== '3' && v !== '4' && v !== '5') push(field.key, label);
+        } else if (isEmptyValue(field, v)) {
+          push(field.key, label);
+        }
       }
-      if (field.type === 'dropdown_multi' || field.type === 'user_multi' || field.type === 'equipment_multi') {
-        if (!Array.isArray(v) || v.length === 0) push(field.key, label);
-        continue;
+
+      if (field.requireComment || field.requireImage) {
+        const note = getFieldAttachmentNote(field, payload);
+        if (field.requireComment && !note.text.trim()) {
+          push(field.key, `${label} (comment)`);
+        }
+        if (field.requireImage && note.imageIds.length === 0) {
+          push(field.key, `${label} (image)`);
+        }
       }
-      if (field.type === 'yes_no_na') {
-        const o = v && typeof v === 'object' && !Array.isArray(v) ? (v as { status?: string }) : {};
-        if (!o.status || !['yes', 'no', 'na'].includes(o.status)) push(field.key, label);
-        continue;
-      }
-      if (field.type === 'pass_fail_na') {
-        if (v !== 'pass' && v !== 'fail' && v !== 'na') push(field.key, label);
-        continue;
-      }
-      if (field.type === 'scale_1_5') {
-        if (v !== '1' && v !== '2' && v !== '3' && v !== '4' && v !== '5') push(field.key, label);
-        continue;
-      }
-      if (isEmptyValue(field, v)) push(field.key, label);
     }
   }
   const workerSig = definition.signature_policy?.worker;

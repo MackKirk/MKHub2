@@ -20,7 +20,8 @@ from sqlalchemy.orm import Session
 from app.db import SessionLocal
 from app.models.models import User, EmployeeProfile, FileObject, EmployeeVisa, EmployeeEmergencyContact
 from app.services.bamboohr_client import BambooHRClient
-from app.services.employment_type import employment_type_for_storage
+from app.services.employment_type import employment_kind, employment_type_for_storage
+from app.services.hours_registration import pay_type_for_storage
 from app.auth.security import get_password_hash
 from app.config import settings
 from app.storage.local_provider import LocalStorageProvider
@@ -1294,7 +1295,7 @@ def create_or_update_user(
         "work_email": employee_data.get("workEmail") or employee_data.get("email"),
         "work_phone": employee_data.get("workPhone"),
         "pay_rate": str(pay_rate_value) if pay_rate_value else None,
-        "pay_type": final_pay_type if final_pay_type else (pay_type if pay_type else None),
+        "pay_type": pay_type_for_storage(final_pay_type if final_pay_type else pay_type),
         "employment_type": employment_type_for_storage(employee_data.get("employmentHistoryStatus")),
         "sin_number": employee_data.get("sin") or employee_data.get("ssn"),
         "work_permit_status": employee_data.get("workPermitStatus"),
@@ -1305,6 +1306,11 @@ def create_or_update_user(
         "updated_at": datetime.now(timezone.utc),
     }
     
+    bamboo_employment_kind = employment_kind(employee_data.get("employmentHistoryStatus"))
+    if bamboo_employment_kind == "salary":
+        profile_data["pay_type"] = "salary"
+        profile_data["needs_register_hours"] = False
+
     if profile:
         # Fields that should be preserved if they were manually edited
         # (i.e., not overwritten by BambooHR sync)
@@ -1314,8 +1320,19 @@ def create_or_update_user(
             # This prevents BambooHR sync from overwriting manually edited salary information
             if getattr(profile, "pay_rate", None) is not None:
                 preserve_fields.append("pay_rate")
-            if getattr(profile, "pay_type", None) is not None:
+            current_pay = pay_type_for_storage(getattr(profile, "pay_type", None))
+            if current_pay is not None:
                 preserve_fields.append("pay_type")
+            # Salary on the Bamboo employment status must win so hour reminders stay off.
+            if bamboo_employment_kind == "salary" and current_pay != "salary":
+                if "pay_type" in preserve_fields:
+                    preserve_fields.remove("pay_type")
+            elif bamboo_employment_kind == "salary" and current_pay == "salary":
+                profile_data.pop("needs_register_hours", None)
+            if bamboo_employment_kind in {"salary", "hourly"} and employment_kind(
+                getattr(profile, "employment_type", None)
+            ) in {"full-time", "part-time", "contract"}:
+                profile_data.pop("employment_type", None)
             
             if preserve_fields:
                 print(f"  [INFO] Preserving manually edited fields: {preserve_fields}")

@@ -83,7 +83,7 @@ function TabGlyph({
 export const AppTabs: React.FC = () => {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const showClock = shouldRegisterHours(user?.pay_type, user?.needs_register_hours);
+  const showClock = shouldRegisterHours(user?.pay_type, user?.needs_register_hours, user?.employment_type);
   const { openCount: tasksOpenCount } = useTasksBadge();
   const { unreadCount: communityUnreadCount } = useCommunityBadge();
   const [searchOpen, setSearchOpen] = useState(false);

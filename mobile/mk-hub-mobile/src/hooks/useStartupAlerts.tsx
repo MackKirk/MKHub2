@@ -226,7 +226,8 @@ export const StartupAlertsProvider: React.FC<{ children: React.ReactNode }> = ({
       if (!user?.id) return;
       const mustRegisterHours = shouldRegisterHours(
         user.pay_type,
-        user.needs_register_hours
+        user.needs_register_hours,
+        user.employment_type
       );
       try {
         setPendingLoading(true);
@@ -307,7 +308,7 @@ export const StartupAlertsProvider: React.FC<{ children: React.ReactNode }> = ({
           );
         }
       } catch {
-        if (shouldRegisterHours(user.pay_type, user.needs_register_hours)) {
+        if (shouldRegisterHours(user.pay_type, user.needs_register_hours, user.employment_type)) {
           void setupHoursReminders(false, user.username);
         } else {
           void clearHoursReminderRegistration();
@@ -322,6 +323,7 @@ export const StartupAlertsProvider: React.FC<{ children: React.ReactNode }> = ({
       user?.id,
       user?.username,
       user?.pay_type,
+      user?.employment_type,
       user?.needs_register_hours
     ]
   );

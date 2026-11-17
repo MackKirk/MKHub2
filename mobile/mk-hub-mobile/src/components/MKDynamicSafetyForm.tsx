@@ -43,8 +43,13 @@ import {
 } from "../services/safetySupport";
 import {
   CommentToggleButton,
+  ImageToggleButton,
   MKSafetyFieldCommentPanel
 } from "./MKSafetyFieldCommentPanel";
+import {
+  MKFieldworkFieldNoteModal,
+  type FieldworkNoteModalMode
+} from "./MKFieldworkFieldNoteModal";
 import { MKSafetyFileField } from "./MKSafetyFileField";
 import { MKSafetySelectModal, type SelectOption } from "./MKSafetySelectModal";
 import { MKSafetySignatureBlock } from "./MKSafetySignatureBlock";
@@ -70,6 +75,8 @@ interface MKDynamicSafetyFormProps {
   enableFieldFlags?: boolean;
   fieldFlagStates?: Record<string, SafetyFieldFlagState>;
   onFlagField?: (fieldKey: string) => void;
+  /** Fieldwork reports: open comment/image note modals with phrase library. */
+  enableFieldworkPhraseInsert?: boolean;
 }
 
 const PFNA = [
@@ -164,7 +171,9 @@ function SideCommentBlock({
   onSideImages,
   enableFieldFlags,
   flagState,
-  onFlagField
+  onFlagField,
+  enableFieldworkPhraseInsert,
+  onOpenFieldNote
 }: {
   fieldId: string;
   fieldKey: string;
@@ -182,10 +191,15 @@ function SideCommentBlock({
   enableFieldFlags?: boolean;
   flagState?: SafetyFieldFlagState;
   onFlagField?: (fieldKey: string) => void;
+  enableFieldworkPhraseInsert?: boolean;
+  onOpenFieldNote?: (mode: FieldworkNoteModalMode, storage: "side" | "yn") => void;
 }) {
-  const expanded = commentOpen[fieldId] === true;
-  const filled = sideComment.text.trim().length > 0 || sideComment.imageIds.length > 0;
+  const expanded = !enableFieldworkPhraseInsert && commentOpen[fieldId] === true;
+  const hasText = sideComment.text.trim().length > 0;
+  const hasImages = sideComment.imageIds.length > 0;
+  const filled = hasText || hasImages;
   const st = flagState || "none";
+  const storage: "side" | "yn" = onSideText || onSideImages ? "yn" : "side";
 
   const updateSideText = (text: string) => {
     if (onSideText) {
@@ -227,24 +241,40 @@ function SideCommentBlock({
           </TouchableOpacity>
         ) : null}
         {!readOnly ? (
-          <CommentToggleButton
-            expanded={expanded}
-            hasComment={filled}
-            onToggle={() => toggleComment(fieldId)}
-          />
+          <>
+            <CommentToggleButton
+              expanded={expanded}
+              hasComment={enableFieldworkPhraseInsert ? hasText : filled}
+              onToggle={() => {
+                if (enableFieldworkPhraseInsert && onOpenFieldNote) {
+                  onOpenFieldNote("comment", storage);
+                  return;
+                }
+                toggleComment(fieldId);
+              }}
+            />
+            {enableFieldworkPhraseInsert ? (
+              <ImageToggleButton
+                hasImages={hasImages}
+                onToggle={() => onOpenFieldNote?.("images", storage)}
+              />
+            ) : null}
+          </>
         ) : null}
       </View>
-      <MKSafetyFieldCommentPanel
-        expanded={readOnly ? filled : expanded}
-        disabled={readOnly}
-        text={sideComment.text}
-        imageIds={sideComment.imageIds}
-        onTextChange={updateSideText}
-        onImageIdsChange={updateSideImages}
-        projectId={projectId}
-        inspectionId={inspectionId}
-        token={token}
-      />
+      {!enableFieldworkPhraseInsert ? (
+        <MKSafetyFieldCommentPanel
+          expanded={readOnly ? filled : expanded}
+          disabled={readOnly}
+          text={sideComment.text}
+          imageIds={sideComment.imageIds}
+          onTextChange={updateSideText}
+          onImageIdsChange={updateSideImages}
+          projectId={projectId}
+          inspectionId={inspectionId}
+          token={token}
+        />
+      ) : null}
     </>
   );
 }
@@ -262,11 +292,18 @@ export const MKDynamicSafetyForm: React.FC<MKDynamicSafetyFormProps> = ({
   onSupportLoadingChange,
   enableFieldFlags = false,
   fieldFlagStates,
-  onFlagField
+  onFlagField,
+  enableFieldworkPhraseInsert = false
 }) => {
   const normalized = useMemo(() => normalizeDefinition(definition), [definition]);
   const pfKeys = useMemo(() => collectPassFailNaKeysOrdered(normalized), [normalized]);
   const [commentOpen, setCommentOpen] = useState<Record<string, boolean>>({});
+  const [fieldNoteModal, setFieldNoteModal] = useState<null | {
+    fieldKey: string;
+    fieldLabel: string;
+    mode: FieldworkNoteModalMode;
+    storage: "side" | "yn";
+  }>(null);
   const [employees, setEmployees] = useState<EmployeeListItem[]>([]);
   const [fleet, setFleet] = useState<FleetAssetOption[]>([]);
   const [customLists, setCustomLists] = useState<
@@ -525,6 +562,15 @@ export const MKDynamicSafetyForm: React.FC<MKDynamicSafetyFormProps> = ({
       enableFieldFlags={enableFieldFlags}
       flagState={fieldFlagStates?.[field.key] || "none"}
       onFlagField={onFlagField}
+      enableFieldworkPhraseInsert={enableFieldworkPhraseInsert}
+      onOpenFieldNote={(mode, storage) =>
+        setFieldNoteModal({
+          fieldKey: field.key,
+          fieldLabel: field.label || "Field note",
+          mode,
+          storage
+        })
+      }
     />
   );
 
@@ -865,6 +911,16 @@ export const MKDynamicSafetyForm: React.FC<MKDynamicSafetyFormProps> = ({
   const sections = [...normalized.sections].sort((a, b) => a.order - b.order);
   const additionalComments = getAdditionalComments(payload);
 
+  const modalNote =
+    fieldNoteModal == null
+      ? null
+      : fieldNoteModal.storage === "yn"
+        ? {
+            text: getYn(payload, fieldNoteModal.fieldKey).comments,
+            imageIds: getYn(payload, fieldNoteModal.fieldKey).commentImageIds
+          }
+        : getSideCommentForField(payload, fieldNoteModal.fieldKey);
+
   if (loadingSupport) {
     return (
       <View style={styles.fullScreenLoading}>
@@ -877,6 +933,53 @@ export const MKDynamicSafetyForm: React.FC<MKDynamicSafetyFormProps> = ({
 
   return (
     <>
+      {enableFieldworkPhraseInsert && fieldNoteModal && modalNote ? (
+        <MKFieldworkFieldNoteModal
+          visible
+          mode={fieldNoteModal.mode}
+          fieldLabel={fieldNoteModal.fieldLabel}
+          disabled={readOnly}
+          text={modalNote.text}
+          imageIds={modalNote.imageIds}
+          onTextChange={(text) => {
+            if (fieldNoteModal.storage === "yn") {
+              const yn = getYn(payload, fieldNoteModal.fieldKey);
+              onChange({ ...payload, [fieldNoteModal.fieldKey]: { ...yn, comments: text } });
+              return;
+            }
+            onChange(
+              mergeSideComment(payload, fieldNoteModal.fieldKey, {
+                ...getSideCommentForField(payload, fieldNoteModal.fieldKey),
+                text
+              })
+            );
+          }}
+          onImageIdsChange={(updater) => {
+            if (fieldNoteModal.storage === "yn") {
+              const yn = getYn(payload, fieldNoteModal.fieldKey);
+              onChange({
+                ...payload,
+                [fieldNoteModal.fieldKey]: {
+                  ...yn,
+                  commentImageIds: updater(yn.commentImageIds)
+                }
+              });
+              return;
+            }
+            const cur = getSideCommentForField(payload, fieldNoteModal.fieldKey);
+            onChange(
+              mergeSideComment(payload, fieldNoteModal.fieldKey, {
+                ...cur,
+                imageIds: updater(cur.imageIds)
+              })
+            );
+          }}
+          projectId={projectId}
+          inspectionId={inspectionId}
+          token={token}
+          onClose={() => setFieldNoteModal(null)}
+        />
+      ) : null}
       <ScrollView contentContainerStyle={styles.content}>
         {sections.map((section) => (
           <MKCard key={section.id} style={styles.sectionCard} elevated>

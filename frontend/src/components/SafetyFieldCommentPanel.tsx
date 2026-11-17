@@ -2,6 +2,7 @@ import { useCallback, useLayoutEffect, useRef, useState, type Dispatch, type Key
 import toast from 'react-hot-toast';
 import { withFileAccessToken } from '@/lib/api';
 import { imageFilesFromClipboardData, isLikelyImageFile } from '@/utils/imageUploadHelpers';
+import FieldworkPhraseInsertButton from '@/components/fieldwork/FieldworkPhraseInsertButton';
 
 const MAX_IMAGES = 8;
 
@@ -17,6 +18,8 @@ type Props = {
   uploadFile: (file: File) => Promise<string | null>;
   /** When true, only the text field (no image upload, paste, or thumbnails). */
   textCommentsOnly?: boolean;
+  /** Fieldwork only: show a control to insert R&M phrase-library text into the comment. */
+  enableFieldworkPhrases?: boolean;
 };
 
 function ImageThumbStrip({
@@ -64,6 +67,7 @@ export function SafetyFieldCommentPanel({
   projectId,
   uploadFile,
   textCommentsOnly = false,
+  enableFieldworkPhrases = false,
 }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -168,9 +172,33 @@ export function SafetyFieldCommentPanel({
 
   const has = textCommentsOnly ? text.trim().length > 0 : text.trim().length > 0 || imageIds.length > 0;
 
+  const insertPhrase = useCallback(
+    (phrase: string) => {
+      const ta = textareaRef.current;
+      const current = ta?.value ?? text;
+      const start = ta?.selectionStart ?? current.length;
+      const end = ta?.selectionEnd ?? start;
+      const before = current.slice(0, start);
+      const after = current.slice(end);
+      const needsPadBefore = before.length > 0 && !/\s$/.test(before);
+      const needsPadAfter = after.length > 0 && !/^\s/.test(after);
+      const inserted = `${needsPadBefore ? '\n' : ''}${phrase}${needsPadAfter ? '\n' : ''}`;
+      insertTextareaText(inserted);
+    },
+    [insertTextareaText, text]
+  );
+
   if (!disabled && expanded) {
     return (
       <div className="mt-3 w-full space-y-3">
+        {enableFieldworkPhrases ? (
+          <div className="space-y-2">
+            <FieldworkPhraseInsertButton disabled={disabled} onInsert={insertPhrase} />
+            <p className="text-xs text-gray-500">
+              Prefer the library for standard wording. Use the note below only for something site-specific.
+            </p>
+          </div>
+        ) : null}
         <textarea
           ref={textareaRef}
           value={text}
@@ -191,8 +219,14 @@ export function SafetyFieldCommentPanel({
                   void addImageFiles(files);
                 }
           }
-          placeholder={textCommentsOnly ? 'Comment (optional)' : 'Comments / details (optional)'}
-          rows={textCommentsOnly ? 2 : 3}
+          placeholder={
+            enableFieldworkPhrases
+              ? 'Short extra note (optional)'
+              : textCommentsOnly
+                ? 'Comment (optional)'
+                : 'Comments / details (optional)'
+          }
+          rows={enableFieldworkPhrases ? 2 : textCommentsOnly ? 2 : 3}
           disabled={disabled}
           className="w-full px-3 py-2 border-2 border-gray-200 rounded-xl text-sm resize-y disabled:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-red/20 focus:border-brand-red"
         />

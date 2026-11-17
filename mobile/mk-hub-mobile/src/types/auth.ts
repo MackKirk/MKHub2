@@ -13,6 +13,7 @@ export interface MeUser {
   last_name?: string | null;
   roles?: string[];
   pay_type?: string | null;
+  employment_type?: string | null;
   needs_register_hours?: boolean | null;
 }
 
@@ -29,6 +30,7 @@ export interface MeProfile {
   first_name?: string | null;
   last_name?: string | null;
   pay_type?: string | null;
+  employment_type?: string | null;
   needs_register_hours?: boolean | null;
 }
 

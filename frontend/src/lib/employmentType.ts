@@ -1,31 +1,27 @@
-/** Employment Type options on the employee profile. Values must match the stored option text. */
+/** Employment Type is the working relationship. Pay type is hourly or salary. */
 
 export const EMPLOYMENT_TYPE_OPTIONS = [
   { value: 'Full-time', label: 'Full-time' },
-  { value: 'Hourly', label: 'Hourly' },
   { value: 'Part-time', label: 'Part-time' },
-  { value: 'Salary', label: 'Salary' },
+  { value: 'Contract', label: 'Contract' },
 ] as const;
 
 const ALIASES: Record<string, (typeof EMPLOYMENT_TYPE_OPTIONS)[number]['value']> = {
-  salary: 'Salary',
-  salaried: 'Salary',
-  hourly: 'Hourly',
-  hour: 'Hourly',
-  hours: 'Hourly',
   'full-time': 'Full-time',
   'full time': 'Full-time',
   fulltime: 'Full-time',
   'part-time': 'Part-time',
   'part time': 'Part-time',
   parttime: 'Part-time',
+  contract: 'Contract',
+  contractor: 'Contract',
 };
 
 function aliasKey(raw: string): string {
   return raw.trim().toLowerCase().replace(/[_/]+/g, ' ').replace(/\s+/g, ' ');
 }
 
-/** Map free-text or Bamboo labels onto Full-time | Hourly | Part-time | Salary. */
+/** Map free-text labels onto Full-time | Part-time | Contract. Salary and Hourly are pay types. */
 export function canonicalEmploymentType(raw?: string | null): string {
   const text = String(raw || '').trim();
   if (!text) return '';
@@ -34,13 +30,11 @@ export function canonicalEmploymentType(raw?: string | null): string {
   return ALIASES[key] || ALIASES[key.replace(/ /g, '-')] || '';
 }
 
-/** Option value when recognized; otherwise the original text so unknown values are not wiped. */
+/** Option value when recognized. Pay labels such as Salary are left blank so the select is not stuck. */
 export function employmentTypeFormValue(raw?: string | null): string {
-  const text = String(raw || '').trim();
-  if (!text) return '';
-  return canonicalEmploymentType(text) || text;
+  return canonicalEmploymentType(raw);
 }
 
 export function employmentTypeLabel(raw?: string | null): string {
-  return employmentTypeFormValue(raw);
+  return canonicalEmploymentType(raw) || String(raw || '').trim();
 }

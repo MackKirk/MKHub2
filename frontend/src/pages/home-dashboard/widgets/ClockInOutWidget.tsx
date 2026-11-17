@@ -66,6 +66,7 @@ export function ClockInOutWidget({ config: _config }: ClockInOutWidgetProps) {
   const mustRegisterHours = shouldRegisterHours(
     meProfile?.profile?.pay_type,
     meProfile?.profile?.needs_register_hours,
+    meProfile?.profile?.employment_type,
   );
 
   const { data: shiftsForDate = [] } = useQuery<Shift[]>({

@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useState, type MutableRefObject } from
 import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { Camera, ClipboardList } from 'lucide-react';
-import { ApiError, api, formatApiErrorDetail, withFileAccessToken } from '@/lib/api';
+import { ClipboardList } from 'lucide-react';
+import { ApiError, api, formatApiErrorDetail } from '@/lib/api';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import DynamicForm from '@/components/DynamicForm';
@@ -20,7 +20,6 @@ import {
   uiSpacing,
   uiTypography,
 } from '@/components/ui';
-import { FileImagePreviewModal } from '@/components/files';
 import { formatDateLocal } from '@/lib/dateUtils';
 import {
   normalizeDefinition,
@@ -28,7 +27,6 @@ import {
   type SafetyFormDefinition,
 } from '@/types/safetyFormTemplate';
 import type {
-  FieldworkPhotoObservation,
   FieldworkRecord,
   FieldworkRecordKind,
   FieldworkTemplatePick,
@@ -108,8 +106,6 @@ export default function ProjectFieldworkTab({
     localComments: string;
     serverRowVersion: number | null;
   } | null>(null);
-  const [photoPreviewIndex, setPhotoPreviewIndex] = useState<number | null>(null);
-
   useEffect(() => {
     setSelectedId(recordFromUrl);
   }, [recordFromUrl]);
@@ -459,9 +455,6 @@ export default function ProjectFieldworkTab({
       (m) => `${m.label || m.key} is required`
     );
     const errs = [...missing];
-    if (settings.require_final_comments && !finalComments.trim()) {
-      errs.push('Final comments are required for this template.');
-    }
     if (settings.require_min_photos > 0 && Number(detail.photo_count || 0) < settings.require_min_photos) {
       errs.push(`At least ${settings.require_min_photos} photo(s) are required before submit.`);
     }
@@ -658,7 +651,6 @@ export default function ProjectFieldworkTab({
     );
   }
 
-  const photos: FieldworkPhotoObservation[] = Array.isArray(detail.photos) ? detail.photos : [];
   const events = Array.isArray(detail.events) ? detail.events : [];
   const status = (detail.status || '').toLowerCase();
   const showReviewActions = canReview && status === 'submitted';
@@ -836,108 +828,9 @@ export default function ProjectFieldworkTab({
           canWrite={editable}
           readOnly={readOnly}
           projectId={projectId}
+          enableFieldworkPhraseInsert={editable}
         />
       </AppCard>
-
-      <AppCard bodyClassName={uiSpacing.cardPadding}>
-        <label htmlFor="fw-final-comments" className="text-sm font-semibold text-gray-900">
-          Final comments
-          {settings.require_final_comments ? <span className="text-red-600"> *</span> : null}
-        </label>
-        <textarea
-          id="fw-final-comments"
-          className="mt-2 w-full min-h-[96px] rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400/35 disabled:bg-gray-50 disabled:text-gray-600"
-          value={finalComments}
-          onChange={(e) => setFinalComments(e.target.value)}
-          disabled={!editable}
-          placeholder={editable ? 'Summary comments for reviewers…' : undefined}
-        />
-      </AppCard>
-
-      <AppCard bodyClassName={uiSpacing.cardPadding}>
-        <div className="flex items-center gap-2">
-          <Camera className="h-4 w-4 text-gray-500" aria-hidden />
-          <h3 className={uiTypography.sectionTitle}>Photo observations</h3>
-          <span className={uiCx(uiTypography.helper)}>
-            {photos.length} photo{photos.length === 1 ? '' : 's'}
-          </span>
-        </div>
-        <p className={uiCx(uiTypography.helper, 'mt-1')}>
-          Same FileObject as Project Files · phrase snapshots from PhotoObservation
-          {settings.default_pictures_folder
-            ? ` · folder: ${settings.default_pictures_folder}`
-            : ''}
-          .
-        </p>
-        {photos.length === 0 ? (
-          <div className="mt-4">
-            <AppEmptyState
-              title="No photographs linked yet"
-              description="Photos uploaded from mobile or classified from Files appear here for review."
-              className="border-0 bg-transparent p-0 shadow-none"
-            />
-          </div>
-        ) : (
-          <ul className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 list-none">
-            {photos.map((p, idx) => (
-              <li key={p.id} className="rounded-lg border border-gray-200 overflow-hidden bg-white">
-                <button
-                  type="button"
-                  className="aspect-[4/3] w-full bg-gray-100 block"
-                  onClick={() => setPhotoPreviewIndex(idx)}
-                  title="Open full preview"
-                >
-                  <img
-                    src={withFileAccessToken(`/files/${p.file_object_id}/thumbnail?w=480`)}
-                    alt={p.phrase_text_snapshot || 'Field photo'}
-                    className="h-full w-full object-cover"
-                    loading="lazy"
-                  />
-                </button>
-                <div className="p-3 space-y-1">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    {(p.entry_type || '').replace('_', ' ') || 'Unclassified'}
-                  </div>
-                  <div className="text-sm font-medium text-gray-900">
-                    {p.phrase_text_snapshot || 'Needs classification'}
-                  </div>
-                  {p.classification_snapshot ? (
-                    <div className={uiCx(uiTypography.helper)}>{p.classification_snapshot}</div>
-                  ) : null}
-                  {p.extra_notes ? (
-                    <p className="text-sm text-gray-700 whitespace-pre-wrap">{p.extra_notes}</p>
-                  ) : null}
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </AppCard>
-
-      <FileImagePreviewModal
-        open={photoPreviewIndex != null}
-        items={photos.map((p) => ({
-          id: p.id,
-          name: p.phrase_text_snapshot || p.classification_snapshot || 'Field photo',
-          url: withFileAccessToken(`/files/${p.file_object_id}/thumbnail?w=1600`),
-          fileObjectId: p.file_object_id,
-        }))}
-        index={photoPreviewIndex ?? 0}
-        onClose={() => setPhotoPreviewIndex(null)}
-        onPrev={() =>
-          setPhotoPreviewIndex((i) => {
-            if (i == null || photos.length === 0) return i;
-            return (i - 1 + photos.length) % photos.length;
-          })
-        }
-        onNext={() =>
-          setPhotoPreviewIndex((i) => {
-            if (i == null || photos.length === 0) return i;
-            return (i + 1) % photos.length;
-          })
-        }
-        variant="modal"
-      />
 
       <AppFormModal
         open={requestChangesOpen}

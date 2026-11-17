@@ -210,6 +210,30 @@ export function CommentToggleButton({
   );
 }
 
+export function ImageToggleButton({
+  hasImages,
+  onToggle,
+  disabled
+}: {
+  hasImages: boolean;
+  onToggle: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <TouchableOpacity
+      style={[styles.commentToggle, hasImages && styles.imageToggleActive]}
+      onPress={onToggle}
+      disabled={disabled}
+    >
+      <Ionicons
+        name="image-outline"
+        size={20}
+        color={hasImages ? "#7C3AED" : colors.textMuted}
+      />
+    </TouchableOpacity>
+  );
+}
+
 const styles = StyleSheet.create({
   panel: { gap: spacing.sm, marginTop: spacing.sm },
   textArea: {
@@ -270,6 +294,10 @@ const styles = StyleSheet.create({
   },
   commentToggleActive: {
     borderColor: colors.primary,
-    backgroundColor: colors.background
+    backgroundColor: colors.drawerActiveBg
+  },
+  imageToggleActive: {
+    borderColor: "#C4B5FD",
+    backgroundColor: "#F5F3FF"
   }
 });

@@ -1608,12 +1608,12 @@ def create_app() -> FastAPI:
                     db.commit()
 
                     try:
-                        from .services.employment_type import backfill_employment_type_aliases
+                        from .services.employment_type import backfill_employment_pay_split
 
-                        n_employment = backfill_employment_type_aliases(db)
+                        n_employment = backfill_employment_pay_split(db)
                         db.commit()
                         if n_employment:
-                            print(f"[startup] normalized {n_employment} employment_type values to select options")
+                            print(f"[startup] split employment type and pay type on {n_employment} rows")
                     except Exception as e:
                         print(f"[startup] employment_type backfill (non-critical): {e}")
                         db.rollback()

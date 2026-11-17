@@ -1856,14 +1856,14 @@ export const userSalaryQuickInfo = formModalQuickInfo({
   ),
   howToUse: (
     <>
-      Choose {uiLabel('Hourly')}, {uiLabel('Salary')}, or {uiLabel('Contract')}. For salary, turn on{' '}
+      Choose {uiLabel('Hourly')} or {uiLabel('Salary')}. For salary, turn on{' '}
       {uiLabel('Register hours')} when that person must still clock in.
     </>
   ),
   behavior: (
     <>
       With {uiLabel('Register hours')} on, a salary employee is treated as hourly for clock-in and hours reminders.
-      Pay type stays Salary. Hourly and contract always register hours.
+      Pay type stays Salary. Hourly employees always register hours.
     </>
   ),
   actions: (

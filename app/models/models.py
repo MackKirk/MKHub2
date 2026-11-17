@@ -2241,8 +2241,8 @@ class EmployeeProfile(Base):
 
     # Financeiro & Contratual
     pay_rate: Mapped[Optional[str]] = mapped_column(String(100))
-    pay_type: Mapped[Optional[str]] = mapped_column(String(50))  # hourly|salary|contract
-    employment_type: Mapped[Optional[str]] = mapped_column(String(50))  # Full-time|Hourly|Part-time|Salary
+    pay_type: Mapped[Optional[str]] = mapped_column(String(50))  # hourly|salary
+    employment_type: Mapped[Optional[str]] = mapped_column(String(50))  # Full-time|Part-time|Contract
     # Salary staff skip hours by default; set True when a salary role still must clock in.
     needs_register_hours: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 

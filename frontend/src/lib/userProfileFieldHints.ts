@@ -21,7 +21,7 @@ export const USER_PROFILE_FIELD_HINTS: Record<string, string> = {
   work_eligibility_status:
     'Work eligibility status\n\nWhether this person may work in Canada; drives visa and document requirements.',
   job_title: 'Job title\n\nRole or position title shown on the profile and org chart.',
-  employment_type: 'Employment type\n\nFull-time, hourly, part-time, or salary classification.',
+  employment_type: 'Employment type\n\nWorking relationship: full-time, part-time, or contract. How they are paid is Pay type.',
   manager_user_id: 'Supervisor\n\nReports-to manager for approvals and org structure.',
   hire_date: 'Hire date\n\nStart date of employment; used for tenure.',
   termination_date: 'Termination date\n\nLast day of employment, if applicable.',
@@ -30,7 +30,7 @@ export const USER_PROFILE_FIELD_HINTS: Record<string, string> = {
   departments: 'Departments\n\nInternal divisions this employee belongs to.',
   project_division_ids: 'Project divisions\n\nProject lines or branches they work on.',
   pay_rate: 'Pay rate\n\nCompensation amount as a number only (e.g. 29 or 50.00). Unit comes from Pay type.',
-  pay_type: 'Pay type\n\nHow pay is structured: hourly, salary, or contract. Shown with the rate as / hour, / year, etc.',
+  pay_type: 'Pay type\n\nHow pay is structured: hourly or salary. Salary skips clock-in and hours reminders unless Register hours is on.',
   needs_register_hours:
     'Register hours\n\nSalary skips clock-in and hours reminders. Turn this on to treat this person as hourly for hours only. Pay type stays Salary.',
   salary_effective_date: 'Effective date\n\nWhen the new pay rate takes effect; stored as the first day of the selected date.',

@@ -1880,22 +1880,27 @@ def update_user_profile(
         elif k in data and data[k] is None:
             pass
     if "pay_type" in data:
-        from ..services.hours_registration import canonical_pay_type
+        from ..services.hours_registration import pay_type_for_storage
 
         raw_pay_type = data.get("pay_type")
         if raw_pay_type is None or not str(raw_pay_type).strip():
-            raise HTTPException(status_code=400, detail="pay_type must be hourly, salary, or contract")
-        normalized_pay_type = canonical_pay_type(str(raw_pay_type))
+            raise HTTPException(status_code=400, detail="pay_type must be hourly or salary")
+        normalized_pay_type = pay_type_for_storage(str(raw_pay_type))
         if normalized_pay_type is None:
-            raise HTTPException(status_code=400, detail="pay_type must be hourly, salary, or contract")
+            raise HTTPException(status_code=400, detail="pay_type must be hourly or salary")
         data["pay_type"] = normalized_pay_type
         if normalized_pay_type != "salary":
             data["needs_register_hours"] = False
     if "employment_type" in data:
         from ..services.employment_type import employment_type_for_storage
+        from ..services.hours_registration import is_salary_employment_label
 
         raw_employment_type = data.get("employment_type")
-        if raw_employment_type is None or not str(raw_employment_type).strip():
+        if is_salary_employment_label(None if raw_employment_type is None else str(raw_employment_type)):
+            data["pay_type"] = "salary"
+            data["needs_register_hours"] = False
+            data["employment_type"] = None
+        elif raw_employment_type is None or not str(raw_employment_type).strip():
             data["employment_type"] = None
         else:
             data["employment_type"] = employment_type_for_storage(str(raw_employment_type))

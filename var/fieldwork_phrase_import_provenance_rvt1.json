@@ -1,0 +1,577 @@
+{
+  "source_pack": "rvt1",
+  "target_list": "R&M Observed Conditions",
+  "updated_at": "2026-11-12T23:34:21.209094+00:00",
+  "by_origin_id": {
+    "rvt1|Asphalt Shingles|Damage/Punctures/Tears|p3": {
+      "item_id": "2a1fd22c-1848-47f2-9eb0-7446089e2e96",
+      "path": [
+        "Asphalt Shingles",
+        "Damage/Punctures/Tears",
+        "Ripped/torn asphalt shingles were observed throughout the roof areas."
+      ],
+      "imported_original": "Ripped/torn asphalt shingles were observed throughout the roof areas.",
+      "imported_at": "2026-11-12T23:34:16.443113+00:00"
+    },
+    "rvt1|Asphalt Shingles|Damage/Punctures/Tears|p4": {
+      "item_id": "4595b195-df65-4019-8bad-8fc5f401c926",
+      "path": [
+        "Asphalt Shingles",
+        "Damage/Punctures/Tears",
+        "Several shingles were observed to be punctured."
+      ],
+      "imported_original": "Several shingles were observed to be punctured.",
+      "imported_at": "2026-11-12T23:34:16.524631+00:00"
+    },
+    "rvt1|Asphalt Shingles|Debris|p6": {
+      "item_id": "16b30218-77de-466b-8ff8-77aa714e4dc9",
+      "path": [
+        "Asphalt Shingles",
+        "Debris",
+        "Various types of debris were found on the roof surfaces."
+      ],
+      "imported_original": "Various types of debris were found on the roof surfaces.",
+      "imported_at": "2026-11-12T23:34:16.607417+00:00"
+    },
+    "rvt1|Asphalt Shingles|Debris|p7": {
+      "item_id": "25e6c2af-d32c-4d8a-8021-e86ff01b161d",
+      "path": [
+        "Asphalt Shingles",
+        "Debris",
+        "Animal feces accumulated in a corner."
+      ],
+      "imported_original": "Animal feces accumulated in a corner.",
+      "imported_at": "2026-11-12T23:34:16.698315+00:00"
+    },
+    "rvt1|Asphalt Shingles|Debris|p8": {
+      "item_id": "e651137e-b2f1-4443-bf99-94b346dab860",
+      "path": [
+        "Asphalt Shingles",
+        "Debris",
+        "Organic debris was observed throughout."
+      ],
+      "imported_original": "Organic debris was observed throughout.",
+      "imported_at": "2026-11-12T23:34:16.778567+00:00"
+    },
+    "rvt1|Asphalt Shingles|Debris|p9": {
+      "item_id": "d7066629-7328-4402-a4b2-cbc6294b2611",
+      "path": [
+        "Asphalt Shingles",
+        "Debris",
+        "A build up of general debris has accumulated within the debris strainers, causing blockages."
+      ],
+      "imported_original": "A build up of general debris has accumulated within the debris strainers, causing blockages.",
+      "imported_at": "2026-11-12T23:34:16.863984+00:00"
+    },
+    "rvt1|Asphalt Shingles|Granular Loss|p11": {
+      "item_id": "3de13ccf-9356-41af-b055-8fc888254f8b",
+      "path": [
+        "Asphalt Shingles",
+        "Granular Loss",
+        "Granular loss was noted on the asphalt shingles."
+      ],
+      "imported_original": "Granular loss was noted on the asphalt shingles.",
+      "imported_at": "2026-11-12T23:34:16.952073+00:00"
+    },
+    "rvt1|Asphalt Shingles|Granular Loss|p12": {
+      "item_id": "c2db37e3-2984-4d6c-85d4-23a315013c05",
+      "path": [
+        "Asphalt Shingles",
+        "Granular Loss",
+        "The asphalt shingles are suffering from severe granule loss."
+      ],
+      "imported_original": "The asphalt shingles are suffering from severe granule loss.",
+      "imported_at": "2026-11-12T23:34:17.037064+00:00"
+    },
+    "rvt1|Asphalt Shingles|Gutters|p14": {
+      "item_id": "5e0e9686-cbbf-41c7-b497-2e53eb97e1e1",
+      "path": [
+        "Asphalt Shingles",
+        "Gutters",
+        "Damaged gutters were noted in multiple areas."
+      ],
+      "imported_original": "Damaged gutters were noted in multiple areas.",
+      "imported_at": "2026-11-12T23:34:17.125297+00:00"
+    },
+    "rvt1|Asphalt Shingles|Gutters|p15": {
+      "item_id": "1a5eb108-fc8d-4785-8f2c-ae469eb31ecf",
+      "path": [
+        "Asphalt Shingles",
+        "Gutters",
+        "The gutter was damaged."
+      ],
+      "imported_original": "The gutter was damaged.",
+      "imported_at": "2026-11-12T23:34:17.207627+00:00"
+    },
+    "rvt1|Asphalt Shingles|Gutters|p16": {
+      "item_id": "fc51b3eb-aad5-4672-9dcb-28026bb25b93",
+      "path": [
+        "Asphalt Shingles",
+        "Gutters",
+        "Debris was noted within some of the gutters."
+      ],
+      "imported_original": "Debris was noted within some of the gutters.",
+      "imported_at": "2026-11-12T23:34:17.290386+00:00"
+    },
+    "rvt1|Asphalt Shingles|Gutters|p17": {
+      "item_id": "73f613f9-60fc-443c-901c-2d91ec95ae5b",
+      "path": [
+        "Asphalt Shingles",
+        "Gutters",
+        "The loose granules have accumulated within the gutters, causing blockages at the downpipe elbow/s."
+      ],
+      "imported_original": "The loose granules have accumulated within the gutters, causing blockages at the downpipe elbow/s.",
+      "imported_at": "2026-11-12T23:34:17.373979+00:00"
+    },
+    "rvt1|Asphalt Shingles|Organic Growth|p19": {
+      "item_id": "d6a689e4-6150-4409-aa4f-18f754d1761c",
+      "path": [
+        "Asphalt Shingles",
+        "Organic Growth",
+        "Organic growth was observed throughout."
+      ],
+      "imported_original": "Organic growth was observed throughout.",
+      "imported_at": "2026-11-12T23:34:17.460686+00:00"
+    },
+    "rvt1|Asphalt Shingles|Organic Growth|p20": {
+      "item_id": "7e3d3ea7-dc6a-4179-bdc7-da24f0cd8a8b",
+      "path": [
+        "Asphalt Shingles",
+        "Organic Growth",
+        "Several well-established concentrations of organic growth were seen."
+      ],
+      "imported_original": "Several well-established concentrations of organic growth were seen.",
+      "imported_at": "2026-11-12T23:34:17.543379+00:00"
+    },
+    "rvt1|Asphalt Shingles|Organic Growth|p21": {
+      "item_id": "bd193b46-1a98-4d92-832c-f7c6d9d11af3",
+      "path": [
+        "Asphalt Shingles",
+        "Organic Growth",
+        "The roof is suffering from large pockets of organic growth."
+      ],
+      "imported_original": "The roof is suffering from large pockets of organic growth.",
+      "imported_at": "2026-11-12T23:34:17.623948+00:00"
+    },
+    "rvt1|Asphalt Shingles|Plumbing Stacks|p23": {
+      "item_id": "f006d3d1-e8a8-4bf4-801e-d63bfaff5236",
+      "path": [
+        "Asphalt Shingles",
+        "Plumbing Stacks",
+        "A settlement cap is missing. The flashing is also too high and needs to be cut down."
+      ],
+      "imported_original": "A settlement cap is missing. The flashing is also too high and needs to be cut down.",
+      "imported_at": "2026-11-12T23:34:17.711261+00:00"
+    },
+    "rvt1|Asphalt Shingles|Plumbing Stacks|p24": {
+      "item_id": "71473ddc-b602-462c-8f51-5f48250737ee",
+      "path": [
+        "Asphalt Shingles",
+        "Plumbing Stacks",
+        "The 5 in 1 flashing for the plumbing stack is severely degraded."
+      ],
+      "imported_original": "The 5 in 1 flashing for the plumbing stack is severely degraded.",
+      "imported_at": "2026-11-12T23:34:17.794129+00:00"
+    },
+    "rvt1|Asphalt Shingles|Plumbing Stacks|p25": {
+      "item_id": "8750c486-e239-4f7c-a630-49a5ddd30972",
+      "path": [
+        "Asphalt Shingles",
+        "Plumbing Stacks",
+        "The lead flashing that encapsulates the plumbing stack has degraded and needs replacing."
+      ],
+      "imported_original": "The lead flashing that encapsulates the plumbing stack has degraded and needs replacing.",
+      "imported_at": "2026-11-12T23:34:17.874177+00:00"
+    },
+    "rvt1|Asphalt Shingles|Punctures|p27": {
+      "item_id": "016bca30-8ec8-4f99-8718-2693c29583e2",
+      "path": [
+        "Asphalt Shingles",
+        "Punctures",
+        "Multiple punctures were observed throughout the roof areas."
+      ],
+      "imported_original": "Multiple punctures were observed throughout the roof areas.",
+      "imported_at": "2026-11-12T23:34:17.958260+00:00"
+    },
+    "rvt1|Asphalt Shingles|Ridge Caps|p31": {
+      "item_id": "e3650173-a923-4f98-9065-73c2f7524e50",
+      "path": [
+        "Asphalt Shingles",
+        "Ridge Caps",
+        "All the ridge caps are cracked."
+      ],
+      "imported_original": "All the ridge caps are cracked.",
+      "imported_at": "2026-11-12T23:34:18.056494+00:00"
+    },
+    "rvt1|Asphalt Shingles|Ridge Caps|p32": {
+      "item_id": "0ba0a6b8-3bd4-468d-b094-7dc688d7b2f0",
+      "path": [
+        "Asphalt Shingles",
+        "Ridge Caps",
+        "Several of the ridge caps are cracked."
+      ],
+      "imported_original": "Several of the ridge caps are cracked.",
+      "imported_at": "2026-11-12T23:34:18.137455+00:00"
+    },
+    "rvt1|Asphalt Shingles|Ridge Caps|p33": {
+      "item_id": "adbdce84-4c72-4f0c-ae25-55bdda03036c",
+      "path": [
+        "Asphalt Shingles",
+        "Ridge Caps",
+        "Several of the ridge caps are either missing or needs to be replaced."
+      ],
+      "imported_original": "Several of the ridge caps are either missing or needs to be replaced.",
+      "imported_at": "2026-11-12T23:34:18.224511+00:00"
+    },
+    "rvt1|Asphalt Shingles|Safety|p35": {
+      "item_id": "e3ede39a-5683-4c9e-b1a3-555a97b75144",
+      "path": [
+        "Asphalt Shingles",
+        "Safety",
+        "Temporary safety anchors are fixed through the roof surface throughout."
+      ],
+      "imported_original": "Temporary safety anchors are fixed through the roof surface throughout.",
+      "imported_at": "2026-11-12T23:34:18.309521+00:00"
+    },
+    "rvt1|Asphalt Shingles|Safety|p36": {
+      "item_id": "ee946956-9124-4d80-994d-0377c84786e9",
+      "path": [
+        "Asphalt Shingles",
+        "Safety",
+        "A temporary roof anchor has been left."
+      ],
+      "imported_original": "A temporary roof anchor has been left.",
+      "imported_at": "2026-11-12T23:34:18.395482+00:00"
+    },
+    "rvt1|SBS|Alligatoring/Crazing|p41": {
+      "item_id": "b884ea37-e5d7-41cd-a860-a89cb0633693",
+      "path": [
+        "SBS",
+        "Alligatoring/Crazing",
+        "Crazing or ‘Alligatoring’ is characterized by a pattern of cracks resembling an alligator's skin, caused by the sun's UV rays drying out and damaging the roof's surface."
+      ],
+      "imported_original": "Crazing or ‘Alligatoring’ is characterized by a pattern of cracks resembling an alligator's skin, caused by the sun's UV rays drying out and damaging the roof's surface.",
+      "imported_at": "2026-11-12T23:34:18.490135+00:00"
+    },
+    "rvt1|SBS|Alligatoring/Crazing|p42": {
+      "item_id": "13ea5b10-36dd-4a35-a254-6108139c6183",
+      "path": [
+        "SBS",
+        "Alligatoring/Crazing",
+        "Crazing or ‘alligatioring’ was observed throughout."
+      ],
+      "imported_original": "Crazing or ‘alligatioring’ was observed throughout.",
+      "imported_at": "2026-11-12T23:34:18.573741+00:00"
+    },
+    "rvt1|SBS|Blisters|p45": {
+      "item_id": "daff06e2-27fc-4e7f-b023-5521c8cf0bb6",
+      "path": [
+        "SBS",
+        "Blisters",
+        "Severe granular loss and minor blisters were observed throughout."
+      ],
+      "imported_original": "Severe granular loss and minor blisters were observed throughout.",
+      "imported_at": "2026-11-12T23:34:18.654323+00:00"
+    },
+    "rvt1|SBS|BUR vent/Dryer Vent|p49": {
+      "item_id": "adfde3f2-c815-4e58-807e-1910389eac33",
+      "path": [
+        "SBS",
+        "BUR vent/Dryer Vent",
+        "A dryer/BUR vent was noted to have an additional modified opening on it. This is far below the industry standard of a minimum 8\" flood plain/finished roof surface height."
+      ],
+      "imported_original": "A dryer/BUR vent was noted to have an additional modified opening on it. This is far below the industry standard of a minimum 8\" flood plain/finished roof surface height.",
+      "imported_at": "2026-11-12T23:34:18.735760+00:00"
+    },
+    "rvt1|SBS|Damage/Punctures/Tears|p53": {
+      "item_id": "e601bc4d-f24e-4a40-82a0-0daaacd2a0ce",
+      "path": [
+        "SBS",
+        "Damage/Punctures/Tears",
+        "The roof has been damaged in multiple locations."
+      ],
+      "imported_original": "The roof has been damaged in multiple locations.",
+      "imported_at": "2026-11-12T23:34:18.821417+00:00"
+    },
+    "rvt1|SBS|Damage/Punctures/Tears|p54": {
+      "item_id": "684129ca-7c0d-4e52-8bbc-65abbb959567",
+      "path": [
+        "SBS",
+        "Damage/Punctures/Tears",
+        "Damaged gutters were noted in multiple areas."
+      ],
+      "imported_original": "Damaged gutters were noted in multiple areas.",
+      "imported_at": "2026-11-12T23:34:18.904454+00:00"
+    },
+    "rvt1|SBS|Debris (General)|p56": {
+      "item_id": "b9c95da6-6306-4b01-8e90-7af1ea55cda0",
+      "path": [
+        "SBS",
+        "Debris (General)",
+        "Various types of debris were found on the roof surfaces."
+      ],
+      "imported_original": "Various types of debris were found on the roof surfaces.",
+      "imported_at": "2026-11-12T23:34:18.986297+00:00"
+    },
+    "rvt1|SBS|Debris (General)|p57": {
+      "item_id": "b8d948f9-c226-41f9-852e-3ea5cf317870",
+      "path": [
+        "SBS",
+        "Debris (General)",
+        "Animal feces accumulated in a corner."
+      ],
+      "imported_original": "Animal feces accumulated in a corner.",
+      "imported_at": "2026-11-12T23:34:19.082135+00:00"
+    },
+    "rvt1|SBS|Debris (Organic)|p59": {
+      "item_id": "d4718e46-8b38-4637-b172-0011d912a99d",
+      "path": [
+        "SBS",
+        "Debris (Organic)",
+        "The internal roof drain sumps are packed with organic debris. This impedes water flow."
+      ],
+      "imported_original": "The internal roof drain sumps are packed with organic debris. This impedes water flow.",
+      "imported_at": "2026-11-12T23:34:19.164685+00:00"
+    },
+    "rvt1|SBS|Granular Loss|p61": {
+      "item_id": "a86a2c11-2208-4198-92d7-078c1ba1fed8",
+      "path": [
+        "SBS",
+        "Granular Loss",
+        "Granular loss was observed on the roof surface throughout."
+      ],
+      "imported_original": "Granular loss was observed on the roof surface throughout.",
+      "imported_at": "2026-11-12T23:34:19.248129+00:00"
+    },
+    "rvt1|SBS|Granular Loss|p62": {
+      "item_id": "f985fc32-9720-4728-bad7-444b65e59894",
+      "path": [
+        "SBS",
+        "Granular Loss",
+        "Severe granular loss and minor blisters were observed throughout."
+      ],
+      "imported_original": "Severe granular loss and minor blisters were observed throughout.",
+      "imported_at": "2026-11-12T23:34:19.328408+00:00"
+    },
+    "rvt1|SBS|Gutters|p64": {
+      "item_id": "9654bcb1-2b89-4e09-8f5f-30a65858cdce",
+      "path": [
+        "SBS",
+        "Gutters",
+        "Damaged gutters were noted in multiple areas."
+      ],
+      "imported_original": "Damaged gutters were noted in multiple areas.",
+      "imported_at": "2026-11-12T23:34:19.412635+00:00"
+    },
+    "rvt1|SBS|Gutters|p65": {
+      "item_id": "6f54f5bd-1141-43bb-8aeb-12b5945f24b0",
+      "path": [
+        "SBS",
+        "Gutters",
+        "The gutter was damaged."
+      ],
+      "imported_original": "The gutter was damaged.",
+      "imported_at": "2026-11-12T23:34:19.495641+00:00"
+    },
+    "rvt1|SBS|Gutters|p66": {
+      "item_id": "25f833ba-a97b-4c6b-ad1e-aeb1e06580c5",
+      "path": [
+        "SBS",
+        "Gutters",
+        "Debris was noted within some of the gutters."
+      ],
+      "imported_original": "Debris was noted within some of the gutters.",
+      "imported_at": "2026-11-12T23:34:19.580230+00:00"
+    },
+    "rvt1|SBS|Membrane|p68": {
+      "item_id": "e5828707-06f4-41da-b76e-ddd05ae592dc",
+      "path": [
+        "SBS",
+        "Membrane",
+        "The membrane was not trimmed back when initially installed."
+      ],
+      "imported_original": "The membrane was not trimmed back when initially installed.",
+      "imported_at": "2026-11-12T23:34:19.666050+00:00"
+    },
+    "rvt1|SBS|Metal Flashings|p72": {
+      "item_id": "46182177-4380-4525-8cd4-9aad703dd421",
+      "path": [
+        "SBS",
+        "Metal Flashings",
+        "Several of the metal skirt flashings around the RTU’s are loose or open to water ingress."
+      ],
+      "imported_original": "Several of the metal skirt flashings around the RTU’s are loose or open to water ingress.",
+      "imported_at": "2026-11-12T23:34:19.747503+00:00"
+    },
+    "rvt1|SBS|Menzie/Plumbing stack|p74": {
+      "item_id": "43bb89b0-2cf3-4906-a9e0-94c25ea8edb3",
+      "path": [
+        "SBS",
+        "Menzie/Plumbing stack",
+        "A settlement cap was observed to be missing from a plumbing stack."
+      ],
+      "imported_original": "A settlement cap was observed to be missing from a plumbing stack.",
+      "imported_at": "2026-11-12T23:34:19.827864+00:00"
+    },
+    "rvt1|SBS|Menzie/Plumbing stack|p75": {
+      "item_id": "07397752-9c84-4ed1-a874-c74bebc19604",
+      "path": [
+        "SBS",
+        "Menzie/Plumbing stack",
+        "All the penetrations require a new layer of liquid membrane and granules."
+      ],
+      "imported_original": "All the penetrations require a new layer of liquid membrane and granules.",
+      "imported_at": "2026-11-12T23:34:19.917098+00:00"
+    },
+    "rvt1|SBS|Menzie/Plumbing stack|p76": {
+      "item_id": "d4e0ae33-eede-4671-a905-413e1dc32413",
+      "path": [
+        "SBS",
+        "Menzie/Plumbing stack",
+        "A plumbing stack has a cap that is the incorrect size. It can cause moisture to enter the roof system and building."
+      ],
+      "imported_original": "A plumbing stack has a cap that is the incorrect size. It can cause moisture to enter the roof system and building.",
+      "imported_at": "2026-11-12T23:34:20.004043+00:00"
+    },
+    "rvt1|SBS|Organic Growth|p78": {
+      "item_id": "9ec8a401-5dfb-40eb-a69d-bdf4fcf076bb",
+      "path": [
+        "SBS",
+        "Organic Growth",
+        "Organic growth was observed throughout."
+      ],
+      "imported_original": "Organic growth was observed throughout.",
+      "imported_at": "2026-11-12T23:34:20.084263+00:00"
+    },
+    "rvt1|SBS|Organic Growth|p79": {
+      "item_id": "ade6098a-af29-48ae-afb5-b1e708cb013b",
+      "path": [
+        "SBS",
+        "Organic Growth",
+        "Organic debris was observed throughout."
+      ],
+      "imported_original": "Organic debris was observed throughout.",
+      "imported_at": "2026-11-12T23:34:20.169736+00:00"
+    },
+    "rvt1|SBS|Organic Growth|p80": {
+      "item_id": "03f24f44-0ceb-431a-80e5-5e67e5a73604",
+      "path": [
+        "SBS",
+        "Organic Growth",
+        "Organic debris was observed throughout. Especially at the low spots of the roof."
+      ],
+      "imported_original": "Organic debris was observed throughout. Especially at the low spots of the roof.",
+      "imported_at": "2026-11-12T23:34:20.255768+00:00"
+    },
+    "rvt1|SBS|Paving Slabs|p82": {
+      "item_id": "5cae4f5b-8a62-4ec5-9980-9181905c3991",
+      "path": [
+        "SBS",
+        "Paving Slabs",
+        "There is an excessive amount of paving slabs on the roof areas."
+      ],
+      "imported_original": "There is an excessive amount of paving slabs on the roof areas.",
+      "imported_at": "2026-11-12T23:34:20.336996+00:00"
+    },
+    "rvt1|SBS|Paving Slabs|p83": {
+      "item_id": "67df4bca-95f4-4f70-881d-5271ec89adea",
+      "path": [
+        "SBS",
+        "Paving Slabs",
+        "Paving slabs are also surrounding the internal roof drains."
+      ],
+      "imported_original": "Paving slabs are also surrounding the internal roof drains.",
+      "imported_at": "2026-11-12T23:34:20.416270+00:00"
+    },
+    "rvt1|SBS|Paving Slabs|p84": {
+      "item_id": "c1a4405a-539c-44f1-bd56-647db5599028",
+      "path": [
+        "SBS",
+        "Paving Slabs",
+        "The membrane is unprotected underneath this paving stone. They can become imbedded into the membrane and in some cases cause punctures."
+      ],
+      "imported_original": "The membrane is unprotected underneath this paving stone. They can become imbedded into the membrane and in some cases cause punctures.",
+      "imported_at": "2026-11-12T23:34:20.516237+00:00"
+    },
+    "rvt1|SBS|Paving Slabs|p85": {
+      "item_id": "84d2316b-a641-4f1e-be55-a7d196a9f255",
+      "path": [
+        "SBS",
+        "Paving Slabs",
+        "It should be removed, the roof be reviewed, repaired if applicable and a sacrificial sheet of SBS installed underneath."
+      ],
+      "imported_original": "It should be removed, the roof be reviewed, repaired if applicable and a sacrificial sheet of SBS installed underneath.",
+      "imported_at": "2026-11-12T23:34:20.597603+00:00"
+    },
+    "rvt1|SBS|Ponding Water|p87": {
+      "item_id": "5afdeb52-d066-4165-8a6b-90aef2d61456",
+      "path": [
+        "SBS",
+        "Ponding Water",
+        "Ponding water was observed in several locations."
+      ],
+      "imported_original": "Ponding water was observed in several locations.",
+      "imported_at": "2026-11-12T23:34:20.691298+00:00"
+    },
+    "rvt1|SBS|Punctures|p89": {
+      "item_id": "bcf1f754-3810-48cc-aff0-4d737032e5b3",
+      "path": [
+        "SBS",
+        "Punctures",
+        "Multiple punctures were observed throughout the roof areas."
+      ],
+      "imported_original": "Multiple punctures were observed throughout the roof areas.",
+      "imported_at": "2026-11-12T23:34:20.771345+00:00"
+    },
+    "rvt1|SBS|Punctures|p90": {
+      "item_id": "7173e518-c8d3-4dc4-a456-917988167571",
+      "path": [
+        "SBS",
+        "Punctures",
+        "An open corner was observed at an extraction fan curb. It requires to be repaired."
+      ],
+      "imported_original": "An open corner was observed at an extraction fan curb. It requires to be repaired.",
+      "imported_at": "2026-11-12T23:34:20.854211+00:00"
+    },
+    "rvt1|SBS|Rust/Corrosion|p92": {
+      "item_id": "3328b4ba-713c-4ecc-9704-bde28aadab76",
+      "path": [
+        "SBS",
+        "Rust/Corrosion",
+        "Corrosion was observed to be well established on the roof hatch."
+      ],
+      "imported_original": "Corrosion was observed to be well established on the roof hatch.",
+      "imported_at": "2026-11-12T23:34:20.935349+00:00"
+    },
+    "rvt1|SBS|Rust/Corrosion|p93": {
+      "item_id": "8ccbe7f4-dc1f-443e-9538-f8aa9e806a4e",
+      "path": [
+        "SBS",
+        "Rust/Corrosion",
+        "Solution - It requires to be treated with a rust inhibiting paint."
+      ],
+      "imported_original": "Solution - It requires to be treated with a rust inhibiting paint.",
+      "imported_at": "2026-11-12T23:34:21.017655+00:00"
+    },
+    "rvt1|Vinyl Decking|Corners|p96": {
+      "item_id": "7574a939-c63c-4b7c-97b0-999e97123796",
+      "path": [
+        "Vinyl Decking",
+        "Corners",
+        "A few corners are open to water ingress."
+      ],
+      "imported_original": "A few corners are open to water ingress.",
+      "imported_at": "2026-11-12T23:34:21.099405+00:00"
+    },
+    "rvt1|Vinyl Decking|Trim|p98": {
+      "item_id": "a1aa8808-af8b-4b1c-af56-563809ae25f9",
+      "path": [
+        "Vinyl Decking",
+        "Trim",
+        "The outer trim was observed to be damaged on approximately 30% of the vinyl decks."
+      ],
+      "imported_original": "The outer trim was observed to be damaged on approximately 30% of the vinyl decks.",
+      "imported_at": "2026-11-12T23:34:21.182553+00:00"
+    }
+  }
+}

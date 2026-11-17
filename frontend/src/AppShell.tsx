@@ -675,7 +675,11 @@ export default function AppShell({ children }: PropsWithChildren){
         { id: 'schedule', label: 'Schedule', path: '/schedule', icon: <IconCalendar /> },
         { id: 'time-off', label: 'Time Off', path: '/home?open=time-off', icon: <IconSun /> },
         { id: 'sick-leave', label: 'Sick Leave', path: '/home?open=sick', icon: <IconMedkit /> },
-        ...(shouldRegisterHours(meProfile?.profile?.pay_type, meProfile?.profile?.needs_register_hours)
+        ...(shouldRegisterHours(
+          meProfile?.profile?.pay_type,
+          meProfile?.profile?.needs_register_hours,
+          meProfile?.profile?.employment_type,
+        )
           ? [{ id: 'clock-in-out', label: 'Clock In/Out', path: '/home?open=hours', icon: <IconClock /> }]
           : []),
         { id: 'tasks', label: 'Tasks', path: '/tasks', icon: <IconClipboard /> },
