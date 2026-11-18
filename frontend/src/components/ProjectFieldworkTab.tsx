@@ -242,6 +242,20 @@ export default function ProjectFieldworkTab({
     return JSON.stringify(formPayload) !== baseline.payload || finalComments !== baseline.comments;
   }, [baseline, detail, editable, formPayload, finalComments]);
 
+  const supervisorComments = useMemo(() => {
+    const bag = formPayload[SUPERVISOR_COMMENTS_KEY];
+    if (!bag || typeof bag !== 'object' || Array.isArray(bag)) return {} as Record<string, string>;
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(bag as Record<string, unknown>)) {
+      if (typeof v === 'string') out[k] = v;
+      else if (v && typeof v === 'object' && !Array.isArray(v)) {
+        const t = (v as { text?: unknown }).text;
+        if (typeof t === 'string') out[k] = t;
+      }
+    }
+    return out;
+  }, [formPayload]);
+
   const extractConflictRowVersion = (err: unknown): number | null => {
     if (!(err instanceof ApiError)) return null;
     const d = err.detail;
@@ -678,19 +692,6 @@ export default function ProjectFieldworkTab({
   const showReviewActions = canReview && status === 'submitted';
   const showRevision = canWrite && status === 'approved';
   const showCreateQuote = status === 'approved';
-  const supervisorComments = useMemo(() => {
-    const bag = formPayload[SUPERVISOR_COMMENTS_KEY];
-    if (!bag || typeof bag !== 'object' || Array.isArray(bag)) return {} as Record<string, string>;
-    const out: Record<string, string> = {};
-    for (const [k, v] of Object.entries(bag as Record<string, unknown>)) {
-      if (typeof v === 'string') out[k] = v;
-      else if (v && typeof v === 'object' && !Array.isArray(v)) {
-        const t = (v as { text?: unknown }).text;
-        if (typeof t === 'string') out[k] = t;
-      }
-    }
-    return out;
-  }, [formPayload]);
 
   const downloadPdf = async () => {
     try {
