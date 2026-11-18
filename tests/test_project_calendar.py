@@ -90,7 +90,7 @@ def _make_db(shifts, clients=None):
 class TestProjectCalendarShiftsOnly(unittest.TestCase):
     @patch("app.services.project_calendar_service._has_project_feature_permission", return_value=True)
     @patch("app.services.project_calendar_service._load_users_map", return_value={})
-    @patch("app.services.project_calendar_service._division_labels_map", return_value={})
+    @patch("app.services.project_calendar_service._division_meta_map", return_value={})
     @patch("app.services.project_calendar_service.build_business_projects_query")
     def test_date_range_only_project_excluded(self, mock_build, *_mocks):
         project = _ProjectStub(
@@ -116,7 +116,7 @@ class TestProjectCalendarShiftsOnly(unittest.TestCase):
 
     @patch("app.services.project_calendar_service._has_project_feature_permission", return_value=True)
     @patch("app.services.project_calendar_service._load_users_map", return_value={})
-    @patch("app.services.project_calendar_service._division_labels_map", return_value={})
+    @patch("app.services.project_calendar_service._division_meta_map", return_value={})
     @patch("app.services.project_calendar_service.build_business_projects_query")
     def test_appears_only_on_shift_day(self, mock_build, *_mocks):
         project = _ProjectStub(
@@ -152,7 +152,7 @@ class TestProjectCalendarShiftsOnly(unittest.TestCase):
 
     @patch("app.services.project_calendar_service._has_project_feature_permission", return_value=True)
     @patch("app.services.project_calendar_service._load_users_map", return_value={})
-    @patch("app.services.project_calendar_service._division_labels_map", return_value={})
+    @patch("app.services.project_calendar_service._division_meta_map", return_value={})
     @patch("app.services.project_calendar_service.build_business_projects_query")
     def test_shift_outside_date_range_still_appears(self, mock_build, *_mocks):
         project = _ProjectStub(

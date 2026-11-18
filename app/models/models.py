@@ -3299,6 +3299,9 @@ class Shift(Base):
     job_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), index=True)  # Job type/task identifier (to be linked to Job model when available)
     job_name: Mapped[Optional[str]] = mapped_column(String(255))  # Job name snapshot (for reference)
     notes: Mapped[Optional[str]] = mapped_column(Text)
+    # Multi-worker create: shared token per date; optional lead/helper roles
+    crew_group_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), index=True)
+    crew_role: Mapped[Optional[str]] = mapped_column(String(20))  # lead | helper | null
     # Worker confirmation: pending (not seen) | viewed | accepted | declined
     ack_status: Mapped[str] = mapped_column(String(20), default="pending", server_default="pending", nullable=False)
     ack_viewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
@@ -3314,6 +3317,7 @@ class Shift(Base):
     __table_args__ = (
         Index('idx_shifts_worker_date_time', 'worker_id', 'date', 'start_time', 'end_time'),
         Index('idx_shifts_project_date', 'project_id', 'date'),
+        Index('idx_shifts_crew_group_id', 'crew_group_id'),
     )
 
 

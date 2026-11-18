@@ -1,6 +1,11 @@
-import { AppBadge, AppUserAvatar, uiCx, uiTypography } from '@/components/ui';
+import { AppBadge, AppTooltip, AppUserAvatar, uiCx, uiTypography } from '@/components/ui';
 import type { ProjectCalendarDayEntry } from './projectCalendar.types';
-import { formatTime12h, personToAvatarUser } from './projectCalendar.utils';
+import {
+  aggregateShiftAck,
+  divisionChipStyle,
+  formatTime12h,
+  personToAvatarUser,
+} from './projectCalendar.utils';
 
 type Props = {
   entry: ProjectCalendarDayEntry;
@@ -9,27 +14,58 @@ type Props = {
   onOpen: () => void;
 };
 
-function projectChipColors(projectId: string): { bg: string; text: string; border: string } {
-  let hash = 0;
-  for (let i = 0; i < projectId.length; i++) {
-    hash = (hash << 5) - hash + projectId.charCodeAt(i);
-    hash &= hash;
-  }
-  const colors = [
-    { bg: 'bg-blue-50', text: 'text-blue-900', border: 'border-blue-200/80' },
-    { bg: 'bg-green-50', text: 'text-green-900', border: 'border-green-200/80' },
-    { bg: 'bg-purple-50', text: 'text-purple-900', border: 'border-purple-200/80' },
-    { bg: 'bg-amber-50', text: 'text-amber-900', border: 'border-amber-200/80' },
-    { bg: 'bg-teal-50', text: 'text-teal-900', border: 'border-teal-200/80' },
-    { bg: 'bg-indigo-50', text: 'text-indigo-900', border: 'border-indigo-200/80' },
-  ];
-  return colors[Math.abs(hash) % colors.length];
+function AckDot({
+  aggregate,
+  size,
+}: {
+  aggregate: NonNullable<ReturnType<typeof aggregateShiftAck>>;
+  size: 'sm' | 'md';
+}) {
+  return (
+    <AppTooltip
+      wrap
+      followCursor
+      content={
+        <div className="space-y-0.5 text-left">
+          {aggregate.people.map((person, idx) => (
+            <div key={`${idx}-${person.name}`}>
+              <span className="font-semibold">{person.name}</span>
+              <span className="font-normal"> - {person.statusLabel}</span>
+            </div>
+          ))}
+        </div>
+      }
+      placement="top"
+      className="absolute right-0 top-0 z-[1]"
+    >
+      {/* Larger hit area so hover does not flicker on the tiny dot edge. */}
+      <span
+        className="flex h-5 w-5 items-start justify-end p-0.5"
+        aria-label={aggregate.meta.longLabel}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <span
+          className={uiCx(
+            'mt-0.5 block shrink-0 rounded-full ring-1 ring-white/90',
+            size === 'sm' ? 'h-1.5 w-1.5' : 'h-2 w-2',
+            aggregate.meta.dotClass,
+          )}
+        />
+      </span>
+    </AppTooltip>
+  );
 }
 
 export function ProjectCalendarProjectChip({ entry, compact = false, onOpen }: Props) {
-  const colors = projectChipColors(entry.project_id);
+  const chipStyle = divisionChipStyle(
+    entry.primary_division?.color,
+    entry.primary_division?.id,
+  );
   const isDense = compact === 'dense';
   const isCompact = compact === true || isDense;
+  const ackAggregate =
+    entry.workers_visible && entry.shift_count > 0 ? aggregateShiftAck(entry.shifts) : null;
+
   const titleParts = [
     entry.code,
     entry.name,
@@ -75,16 +111,23 @@ export function ProjectCalendarProjectChip({ entry, compact = false, onOpen }: P
         onOpen();
       }}
       className={uiCx(
-        'w-full border text-left transition-colors hover:brightness-95',
-        colors.bg,
-        colors.text,
-        colors.border,
+        'relative w-full border text-left transition-[filter] hover:brightness-95',
+        ackAggregate && (isDense ? 'pr-3' : 'pr-3.5'),
         isDense
           ? 'rounded px-1 py-0.5 text-[11px] leading-tight shadow-none'
           : uiCx('rounded-lg px-2 py-1.5 text-xs shadow-sm'),
       )}
-      title={[...titleParts, ...leadershipParts, ...workerLines].join(' · ')}
+      style={chipStyle}
+      title={[
+        entry.primary_division?.label ? `Division: ${entry.primary_division.label}` : null,
+        ...titleParts,
+        ...leadershipParts,
+        ...workerLines,
+      ]
+        .filter(Boolean)
+        .join(' · ')}
     >
+      {ackAggregate ? <AckDot aggregate={ackAggregate} size={isDense ? 'sm' : 'md'} /> : null}
       {isDense ? (
         <div className="flex min-w-0 items-center gap-0.5">
           <span className="min-w-0 flex-1 truncate font-semibold">{denseLabel}</span>
@@ -156,10 +199,12 @@ export function ProjectCalendarProjectChip({ entry, compact = false, onOpen }: P
           ) : null}
 
           {isCompact && entry.shift_count > 0 ? (
-            <div className={uiCx('mt-0.5 text-[11px] opacity-80')}>
-              {entry.workers_visible
-                ? `${entry.shift_count} shift${entry.shift_count === 1 ? '' : 's'}`
-                : `${entry.shift_count} scheduled`}
+            <div className={uiCx('mt-0.5 flex items-center gap-1.5 text-[11px] opacity-80')}>
+              <span>
+                {entry.workers_visible
+                  ? `${entry.shift_count} shift${entry.shift_count === 1 ? '' : 's'}`
+                  : `${entry.shift_count} scheduled`}
+              </span>
             </div>
           ) : null}
         </>

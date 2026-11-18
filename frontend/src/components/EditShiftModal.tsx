@@ -1,10 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import OverlayPortal from '@/components/OverlayPortal';
 import toast from 'react-hot-toast';
 import { jobTypeSelectOptions } from '@/lib/jobTypes';
 import { formatDateLocal } from '@/lib/dateUtils';
 import { editShiftQuickInfo } from '@/lib/formModalQuickInfo';
+import { mapEmployeeToAppUserSelect } from '@/lib/clientUi';
 import {
   SHIFT_TIME_PRESET_OPTIONS,
   detectPreset,
@@ -15,6 +17,7 @@ import ShiftAckPanel from '@/components/ShiftAckPanel';
 import ShiftNoteField from '@/components/ShiftNoteField';
 import { persistShiftNoteLibrary } from '@/lib/shiftNoteLibrary';
 import {
+  AppBadge,
   AppButton,
   AppControlLabelRow,
   AppDatePicker,
@@ -22,10 +25,187 @@ import {
   AppInput,
   AppSelect,
   AppTimePicker,
+  AppUserSelect,
+  uiBorders,
   uiCx,
   uiLayout,
   uiSpacing,
+  uiTypography,
 } from '@/components/ui';
+
+type CrewMember = {
+  shift_id: string;
+  worker_id: string;
+  worker_name?: string | null;
+  crew_role?: string | null;
+};
+
+type CrewGroupPayload = {
+  crew_group_id: string;
+  lead_worker_id?: string | null;
+  members: CrewMember[];
+};
+
+function EditCrewPanel({
+  crewGroupId,
+  employees,
+  canEdit,
+  onChanged,
+}: {
+  crewGroupId: string;
+  employees: any[];
+  canEdit: boolean;
+  onChanged: () => Promise<void>;
+}) {
+  const queryClient = useQueryClient();
+  const [leadId, setLeadId] = useState('');
+  const [addWorkerId, setAddWorkerId] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const { data: crew, refetch, isLoading } = useQuery({
+    queryKey: ['crew-group', crewGroupId],
+    queryFn: () => api<CrewGroupPayload>('GET', `/dispatch/crew-groups/${crewGroupId}`),
+    enabled: !!crewGroupId,
+  });
+
+  useEffect(() => {
+    setLeadId(crew?.lead_worker_id ? String(crew.lead_worker_id) : '');
+  }, [crew?.lead_worker_id, crewGroupId]);
+
+  const memberIds = useMemo(
+    () => new Set((crew?.members || []).map((m) => String(m.worker_id))),
+    [crew?.members],
+  );
+
+  const addUsers = useMemo(
+    () =>
+      (Array.isArray(employees) ? employees : [])
+        .filter((emp) => emp?.id && !memberIds.has(String(emp.id)))
+        .map((emp) => mapEmployeeToAppUserSelect(emp)),
+    [employees, memberIds],
+  );
+
+  const leadOptions = useMemo(() => {
+    const opts = [{ value: '', label: 'No group lead' }];
+    for (const m of crew?.members || []) {
+      opts.push({
+        value: String(m.worker_id),
+        label: m.worker_name || m.worker_id,
+      });
+    }
+    return opts;
+  }, [crew?.members]);
+
+  const applyPatch = async (payload: Record<string, unknown>) => {
+    setSaving(true);
+    try {
+      await api('PATCH', `/dispatch/crew-groups/${crewGroupId}`, payload);
+      await refetch();
+      await queryClient.invalidateQueries({ queryKey: ['crew-group', crewGroupId] });
+      await onChanged();
+      toast.success('Crew updated');
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || e?.message || 'Failed to update crew');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (isLoading && !crew) {
+    return <div className={uiTypography.helper}>Loading crew…</div>;
+  }
+  if (!crew) return null;
+
+  return (
+    <div className={uiCx('space-y-3 rounded-lg border p-3', uiBorders.subtle)}>
+      <div className="flex items-center justify-between gap-2">
+        <div className={uiCx(uiTypography.sectionTitle, 'text-sm')}>Crew</div>
+        <AppBadge variant="neutral">{crew.members.length} workers</AppBadge>
+      </div>
+      <ul className="space-y-1.5">
+        {(crew.members || []).map((m) => (
+          <li
+            key={m.shift_id}
+            className="flex items-center justify-between gap-2 rounded-md bg-gray-50 px-2 py-1.5"
+          >
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="truncate text-sm font-semibold text-gray-900">
+                {m.worker_name || m.worker_id}
+              </span>
+              {m.crew_role === 'lead' ? (
+                <AppBadge variant="info" className="normal-case !text-[10px] !px-1.5 !py-0">
+                  Lead
+                </AppBadge>
+              ) : null}
+            </div>
+            {canEdit && crew.members.length > 1 ? (
+              <AppButton
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={saving}
+                onClick={() => void applyPatch({ remove_worker_ids: [m.worker_id] })}
+              >
+                Remove
+              </AppButton>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+      {canEdit ? (
+        <>
+          <AppSelect
+            label="Group lead"
+            value={leadId}
+            onChange={(e) => setLeadId(e.target.value)}
+            options={leadOptions}
+            sortOptions={false}
+            disabled={saving}
+          />
+          <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+            <AppButton
+              type="button"
+              size="sm"
+              variant="secondary"
+              disabled={saving}
+              onClick={() =>
+                void applyPatch({
+                  lead_worker_id: leadId || null,
+                })
+              }
+            >
+              Save lead
+            </AppButton>
+          </div>
+          <AppUserSelect
+            mode="single"
+            label="Add to crew"
+            users={addUsers}
+            value={addWorkerId}
+            onChange={setAddWorkerId}
+            placeholder="Search or select worker…"
+            disabled={saving || addUsers.length === 0}
+            emptyMessage="No workers available to add"
+          />
+          <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+            <AppButton
+              type="button"
+              size="sm"
+              disabled={saving || !addWorkerId}
+              onClick={() => {
+                const wid = addWorkerId;
+                setAddWorkerId('');
+                void applyPatch({ add_worker_ids: [wid] });
+              }}
+            >
+              Add worker
+            </AppButton>
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
+}
 
 export default function EditShiftModal({
   projectId: _projectId,
@@ -224,6 +404,33 @@ export default function EditShiftModal({
   );
 
   if (designSystem) {
+    const hasCrew = Boolean(shift.crew_group_id);
+    const scheduleColumn = (
+      <div className={uiCx(uiSpacing.sectionStack, 'space-y-4')}>
+        <AppInput label="Worker" value={workerLabel} disabled helperText={lockedHint} />
+        <AppDatePicker label="Date" value={date} onChange={() => {}} disabled helperText={lockedHint} />
+        {timeOfDaySection}
+        <AppSelect
+          label="Job Type"
+          value={jobType}
+          onChange={(e) => setJobType(e.target.value)}
+          options={jobOpts}
+          disabled={!canEdit}
+          fieldHint="Job Type\n\nOptional label for the type of work during this shift."
+        />
+      </div>
+    );
+    const notesField = (
+      <ShiftNoteField
+        projectId={_projectId}
+        value={notes}
+        onChange={setNotes}
+        disabled={!canEdit || saving}
+        flags={noteFlags}
+        onFlagsChange={setNoteFlags}
+      />
+    );
+
     return (
       <AppFormModal
         open
@@ -234,6 +441,7 @@ export default function EditShiftModal({
             ? 'Update shift time, job type, and notes'
             : 'Read-only — you do not have permission to edit shifts'
         }
+        formWidth="wide"
         quickInfo={editShiftQuickInfo}
         footer={
           <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
@@ -264,31 +472,25 @@ export default function EditShiftModal({
             </div>
           )}
 
-          <AppInput label="Worker" value={workerLabel} disabled helperText={lockedHint} />
-
-          <AppDatePicker label="Date" value={date} onChange={() => {}} disabled helperText={lockedHint} />
-
-          {timeOfDaySection}
-
-          <AppSelect
-            label="Job Type"
-            value={jobType}
-            onChange={(e) => setJobType(e.target.value)}
-            options={jobOpts}
-            disabled={!canEdit}
-            fieldHint="Job Type\n\nOptional label for the type of work during this shift."
-          />
-
-          <ShiftNoteField
-            projectId={_projectId}
-            value={notes}
-            onChange={setNotes}
-            disabled={!canEdit || saving}
-            flags={noteFlags}
-            onFlagsChange={setNoteFlags}
-          />
-
-          <ShiftAckPanel mode="dispatcher" shift={shift} />
+          <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
+            <div className={uiCx(uiSpacing.sectionStack, 'space-y-4')}>
+              {scheduleColumn}
+              {hasCrew ? (
+                <EditCrewPanel
+                  crewGroupId={String(shift.crew_group_id)}
+                  employees={Array.isArray(employees) ? employees : []}
+                  canEdit={canEdit}
+                  onChanged={onSave}
+                />
+              ) : (
+                <ShiftAckPanel mode="dispatcher" shift={shift} />
+              )}
+            </div>
+            <div className={uiCx(uiSpacing.sectionStack, 'space-y-4')}>
+              {notesField}
+              {hasCrew ? <ShiftAckPanel mode="dispatcher" shift={shift} /> : null}
+            </div>
+          </div>
         </div>
       </AppFormModal>
     );

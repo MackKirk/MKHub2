@@ -1445,18 +1445,22 @@ export const createShiftQuickInfo = formModalQuickInfo({
     <>
       Choose {uiLabel('Workers')}, pick {uiLabel('Single Date')} or {uiLabel('Date Range')}, select a time of day (
       {uiLabel('All day')}, {uiLabel('Morning')}, {uiLabel('Afternoon')}, {uiLabel('Evening')}, or {uiLabel('Custom')}), and optionally assign
-      a {uiLabel('Job Type')} or a {uiLabel('Note for the worker')}. If the project still has divisions without an on-site lead, turn on{' '}
-      {uiLabel('Also assign as on-site lead')} when needed. The button label shows how many shifts will be created.
+      a {uiLabel('Job Type')} or a {uiLabel('Note for the worker')}. On the people step, use the star on a person to
+      assign them as {uiLabel('On-site lead')} and choose which empty divisions they fill. With 2+ workers, the{' '}
+      {uiLabel('Crew')} step shows the selected people as cards — tap the crown (or the card) for an optional{' '}
+      {uiLabel('Group lead')}, and use the star again if you need to change on-site lead. The button label shows how
+      many shifts will be created.
     </>
   ),
   behavior: (
     <>
       In range mode you can {uiLabel('Exclude weekends')} so Saturday and Sunday are skipped. Each worker × date
-      combination becomes its own shift. A note is copied onto every shift in the batch and shown on the worker&apos;s
-      schedule. Overlapping times for the same worker show a warning but do not block saving.
+      combination becomes its own shift. Selecting 2+ workers creates a crew group per date (shared group id); an
+      optional group lead shows a Lead badge on the calendar. A note is copied onto every shift in the batch and shown
+      on the worker&apos;s schedule. Overlapping times for the same worker show a warning but do not block saving.
       Past dates are allowed for backfill: workers are not notified, confirmation is auto-accepted, and the shift is
-      recorded as backdated. On-site lead is optional and collapsed by default; when used it only fills empty division
-      slots.
+      recorded as backdated. Project on-site lead is set from the people star and only fills empty division slots; it
+      is separate from group lead. Different people can be on-site lead for different divisions in the same batch.
     </>
   ),
   actions: (
@@ -1469,7 +1473,12 @@ export const createShiftQuickInfo = formModalQuickInfo({
 
 /** Edit Shift (Workload / Dispatch). */
 export const editShiftQuickInfo = formModalQuickInfo({
-  purpose: <>View or update an existing scheduled shift — time of day, job type, and notes.</>,
+  purpose: (
+    <>
+      View or update an existing scheduled shift — time of day, job type, and notes. If the shift belongs to a crew,
+      edit members, group lead, or remove people from that crew.
+    </>
+  ),
   howToUse: (
     <>
       Worker and date are fixed. Change {uiLabel('Time of day')} (including {uiLabel('Custom')} start/end),{' '}

@@ -235,10 +235,13 @@ export function AppFormModal({
   const useFormBodySplit = !isDetailLayout && !!footer && scrollBody;
   const useFormBodyFill = !isDetailLayout && !!footer && !scrollBody;
 
+  // Custom dialogClassName owns outer width — don't re-cap the form column at 880px.
   const wideFormScrollClass = isWideForm
-    ? isExpanded
-      ? 'w-full min-w-0 md:w-[880px] md:max-w-[880px] md:shrink-0'
-      : 'w-full min-w-0 max-w-[880px]'
+    ? dialogClassNameProp
+      ? 'w-full min-w-0 max-w-full'
+      : isExpanded
+        ? 'w-full min-w-0 md:w-[880px] md:max-w-[880px] md:shrink-0'
+        : 'w-full min-w-0 max-w-[880px]'
     : '';
 
   const detailOwnsScroll = isDetailLayout && !scrollBody;

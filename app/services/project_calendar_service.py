@@ -78,15 +78,92 @@ def _load_users_map(db: Session, user_ids: list) -> dict[str, dict[str, Any]]:
     return users_map
 
 
-def _division_labels_map(db: Session) -> dict[str, str]:
-    out: dict[str, str] = {}
+def _normalize_hex_color(raw: Optional[str]) -> Optional[str]:
+    if not raw:
+        return None
+    color = str(raw).strip()
+    if not color:
+        return None
+    if not color.startswith("#"):
+        if len(color) in (3, 6) and all(c in "0123456789abcdefABCDEF" for c in color):
+            color = f"#{color}"
+        else:
+            return None
+    lowered = color.lower()
+    if lowered in ("#ccc", "#cccccc", "#999", "#999999"):
+        # Settings default placeholder — treat as unset so UI can pick a distinct palette.
+        return None
+    return color
+
+
+def _division_meta_map(db: Session) -> dict[str, dict[str, Optional[str]]]:
+    """id -> {label, color} for project_divisions (color from meta.color; subdivisions inherit parent)."""
+    out: dict[str, dict[str, Optional[str]]] = {}
     divisions_list = db.query(SettingList).filter(SettingList.name == "project_divisions").first()
     if not divisions_list:
         return out
     items = db.query(SettingItem).filter(SettingItem.list_id == divisions_list.id).all()
+    by_id: dict[str, SettingItem] = {str(item.id): item for item in items}
+
+    def resolve_color(item: SettingItem, depth: int = 0) -> Optional[str]:
+        if depth > 4:
+            return None
+        meta = getattr(item, "meta", None) or {}
+        color = None
+        if isinstance(meta, dict):
+            color = _normalize_hex_color(meta.get("color"))
+        if not color:
+            color = _normalize_hex_color(getattr(item, "value", None))
+        if color:
+            return color
+        parent_id = getattr(item, "parent_id", None)
+        if parent_id is None:
+            return None
+        parent = by_id.get(str(parent_id))
+        if not parent:
+            return None
+        return resolve_color(parent, depth + 1)
+
     for item in items:
-        out[str(item.id)] = item.label or str(item.id)
+        out[str(item.id)] = {
+            "label": item.label or str(item.id),
+            "color": resolve_color(item),
+        }
     return out
+
+
+def _pick_primary_division_id(
+    raw_div_ids: list,
+    percentages: Optional[dict],
+) -> Optional[str]:
+    """Highest project_division_percentages win; else first id in project_division_ids."""
+    ids: list[str] = []
+    seen: set[str] = set()
+    for raw_id in raw_div_ids or []:
+        div_id = str(raw_id) if raw_id is not None else ""
+        if not div_id or div_id in seen:
+            continue
+        seen.add(div_id)
+        ids.append(div_id)
+    if not ids:
+        return None
+    if isinstance(percentages, dict) and percentages:
+        best_id = None
+        best_pct = float("-inf")
+        for div_id in ids:
+            raw = percentages.get(div_id)
+            if raw is None:
+                continue
+            try:
+                pct = float(raw)
+            except (TypeError, ValueError):
+                continue
+            if pct > best_pct:
+                best_pct = pct
+                best_id = div_id
+        if best_id:
+            return best_id
+    return ids[0]
 
 
 def _project_active_bounds(project: Project) -> tuple[Optional[date], Optional[date]]:
@@ -212,7 +289,7 @@ def get_project_calendar_data(
             user_ids.add(str(legacy_lead))
 
     users_map = _load_users_map(db, list(user_ids))
-    div_labels = _division_labels_map(db)
+    div_meta = _division_meta_map(db)
 
     client_ids = list({getattr(p, "client_id", None) for p in projects if getattr(p, "client_id", None)})
     clients_map: dict[str, Client] = {}
@@ -244,7 +321,7 @@ def get_project_calendar_data(
                 seen_lead_ids.add(uid_str)
                 onsite_leads.append({
                     **payload,
-                    "division_label": div_labels.get(str(div_id)),
+                    "division_label": (div_meta.get(str(div_id)) or {}).get("label"),
                 })
         legacy_lead = getattr(project, "onsite_lead_id", None)
         if legacy_lead:
@@ -295,6 +372,23 @@ def get_project_calendar_data(
         if client:
             client_display = getattr(client, "display_name", None) or getattr(client, "name", None)
 
+        address_parts = [
+            getattr(project, "address", None),
+            getattr(project, "address_city", None),
+            getattr(project, "address_province", None),
+            getattr(project, "address_country", None),
+        ]
+        address_parts = [str(p).strip() for p in address_parts if p and str(p).strip()]
+        if not address_parts:
+            address_parts = [
+                getattr(project, "site_address_line1", None),
+                getattr(project, "site_city", None),
+                getattr(project, "site_province", None),
+                getattr(project, "site_country", None),
+            ]
+            address_parts = [str(p).strip() for p in address_parts if p and str(p).strip()]
+        address_label = ", ".join(address_parts) if address_parts else None
+
         leadership = leadership_cache[str(project.id)]
         shift_payloads: list[dict[str, Any]] = []
         show_workers = can_read_workload(project)
@@ -308,9 +402,54 @@ def get_project_calendar_data(
                     "worker_name": worker.get("name") if worker else None,
                     "start_time": s.start_time.isoformat() if s.start_time else None,
                     "end_time": s.end_time.isoformat() if s.end_time else None,
+                    "crew_group_id": str(s.crew_group_id) if getattr(s, "crew_group_id", None) else None,
+                    "crew_role": getattr(s, "crew_role", None),
+                    "ack_status": getattr(s, "ack_status", None) or "pending",
+                    "job_name": getattr(s, "job_name", None),
                 })
         elif has_shifts:
             shift_payloads = [{"id": str(s.id)} for s in day_shifts]
+
+        divisions: list[dict[str, Any]] = []
+        raw_div_ids = getattr(project, "project_division_ids", None) or []
+        if not isinstance(raw_div_ids, list):
+            raw_div_ids = []
+        seen_div: set[str] = set()
+        for raw_id in raw_div_ids:
+            div_id = str(raw_id) if raw_id is not None else ""
+            if not div_id or div_id in seen_div:
+                continue
+            meta = div_meta.get(div_id)
+            if not meta or not meta.get("label"):
+                continue
+            seen_div.add(div_id)
+            divisions.append({
+                "id": div_id,
+                "label": meta["label"],
+                "color": meta.get("color"),
+            })
+
+        primary_id = _pick_primary_division_id(
+            raw_div_ids,
+            getattr(project, "project_division_percentages", None),
+        )
+        primary_division = None
+        if primary_id:
+            primary_meta = div_meta.get(primary_id)
+            if primary_meta and primary_meta.get("label"):
+                primary_division = {
+                    "id": primary_id,
+                    "label": primary_meta["label"],
+                    "color": primary_meta.get("color"),
+                }
+            else:
+                # Fall back to first resolved division entry
+                for d in divisions:
+                    if d["id"] == primary_id:
+                        primary_division = d
+                        break
+        if primary_division is None and divisions:
+            primary_division = divisions[0]
 
         entry: dict[str, Any] = {
             "project_id": str(project.id),
@@ -318,7 +457,10 @@ def get_project_calendar_data(
             "name": project.name,
             "status_label": getattr(project, "status_label", None),
             "client_display_name": client_display,
+            "address": address_label,
             "appearance": appearance,
+            "divisions": divisions,
+            "primary_division": primary_division,
             "estimators": leadership["estimators"],
             "project_admin": leadership["project_admin"],
             "onsite_leads": leadership["onsite_leads"],

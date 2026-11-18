@@ -14,6 +14,7 @@ import {
   AppButton,
   AppTextarea,
   uiCx,
+  uiRadius,
   uiTypography,
 } from '@/components/ui';
 
@@ -146,14 +147,21 @@ export default function ShiftAckPanel({
                 : 'Pending confirmation — accept if you can attend, or decline if you cannot.'}
           </p>
           <div className="flex flex-wrap gap-2">
-            <AppButton
-              size="sm"
+            <button
               type="button"
               disabled={saving || status === 'accepted'}
               onClick={() => respond('accepted')}
+              className={uiCx(
+                'inline-flex h-8 items-center justify-center px-3 text-sm font-semibold text-white shadow-sm',
+                status === 'accepted'
+                  ? 'bg-gradient-to-br from-green-500 via-green-600 to-emerald-800'
+                  : 'bg-gradient-to-br from-amber-400 via-amber-500 to-orange-700',
+                uiRadius.control,
+                'hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60',
+              )}
             >
               I'll be there
-            </AppButton>
+            </button>
             <AppButton
               size="sm"
               type="button"

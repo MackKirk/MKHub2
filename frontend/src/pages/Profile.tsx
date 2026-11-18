@@ -1,4 +1,4 @@
-﻿import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessToken } from '@/lib/api';
 import { sortByLabel } from '@/lib/sortOptions';
 import { formatDateVancouver } from '@/lib/dateUtils';
