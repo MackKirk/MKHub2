@@ -86,6 +86,7 @@ export type FieldworkInboxRecord = FieldworkRecord & {
   project_code?: string | null;
   project_address?: string | null;
   is_bidding?: boolean;
+  business_line?: string | null;
 };
 
 export type FieldworkInboxResponse = {

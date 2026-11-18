@@ -1,4 +1,4 @@
-"""R&M Fieldwork records API (PR1: domain + workflow; no UI / upload orchestration)."""
+"""Fieldwork records API (Construction + R&M)."""
 from __future__ import annotations
 
 import uuid
@@ -23,14 +23,18 @@ from ..models.models import (
     Project,
     User,
 )
-from ..services.business_line import BUSINESS_LINE_REPAIRS_MAINTENANCE
-from ..services.fieldwork_access import assert_rm_fieldwork_project
+from ..services.fieldwork_access import (
+    assert_fieldwork_project,
+    fieldwork_lines_for_user,
+    parse_optional_business_line,
+)
 from ..services.fieldwork_phrases import resolve_phrase_snapshots
 from ..services.form_engine import (
     FIELDWORK_PHOTO_ENTRY_OBSERVATION,
     FIELDWORK_PHOTO_ENTRY_WORK_PERFORMED,
     SITE_ASSESSMENT_CATEGORY,
     WORK_REPORT_CATEGORY,
+    fieldwork_template_allows_business_line,
     is_fieldwork_template_category,
     normalized_template_category,
 )
@@ -463,6 +467,7 @@ def _record_inbox_item(db: Session, row: FieldworkRecord, proj: Project) -> dict
     base["project_code"] = proj.code
     base["project_address"] = proj.address
     base["is_bidding"] = bool(getattr(proj, "is_bidding", False))
+    base["business_line"] = getattr(proj, "business_line", None)
     return base
 
 
@@ -472,6 +477,7 @@ def list_fieldwork_records(
     kind: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
     q: Optional[str] = Query(None),
+    business_line: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     limit: int = Query(25, ge=1, le=100),
     db: Session = Depends(get_db),
@@ -483,11 +489,20 @@ def list_fieldwork_records(
     """
     if project_id:
         proj = _load_project(db, project_id)
-        assert_rm_fieldwork_project(db, user, proj, "read")
+        assert_fieldwork_project(db, user, proj, "read")
         return _list_records_for_project(db, proj, kind=kind, status=status)
 
-    if not user_has_any_rm_fieldwork_permission(user, "read"):
+    allowed_lines = fieldwork_lines_for_user(user, "read")
+    if not allowed_lines:
         raise HTTPException(status_code=403, detail="Forbidden")
+
+    line_filter = parse_optional_business_line(business_line)
+    if line_filter:
+        if line_filter not in allowed_lines:
+            raise HTTPException(status_code=403, detail="Forbidden")
+        inbox_lines = [line_filter]
+    else:
+        inbox_lines = allowed_lines
 
     status_norm = _inbox_status_filter(status)
     kind_norm = (kind or "").strip().lower() or None
@@ -496,7 +511,7 @@ def list_fieldwork_records(
 
     filters = [
         Project.deleted_at.is_(None),
-        Project.business_line == BUSINESS_LINE_REPAIRS_MAINTENANCE,
+        Project.business_line.in_(inbox_lines),
         project_visibility_clause_for_user(user),
     ]
     if kind_norm:
@@ -579,7 +594,7 @@ def list_project_fieldwork_records(
 ):
     """Project-scoped list (same payload as GET /fieldwork/records). Prefer this from web/Vite."""
     proj = _load_project(db, project_id)
-    assert_rm_fieldwork_project(db, user, proj, "read")
+    assert_fieldwork_project(db, user, proj, "read")
     return _list_records_for_project(db, proj, kind=kind, status=status)
 
 
@@ -591,7 +606,7 @@ def create_fieldwork_record(
     user: User = Depends(get_current_user),
 ):
     proj = _load_project(db, project_id)
-    assert_rm_fieldwork_project(db, user, proj, "write")
+    assert_fieldwork_project(db, user, proj, "write")
     kind = (body.kind or "").strip().lower()
     if kind not in KINDS:
         raise HTTPException(status_code=400, detail="kind must be site_assessment or work_report")
@@ -610,6 +625,11 @@ def create_fieldwork_record(
     if (tpl.status or "").lower() != "active":
         raise HTTPException(status_code=400, detail="Template is not active")
     definition = tpl.definition if isinstance(tpl.definition, dict) else {"sections": []}
+    if not fieldwork_template_allows_business_line(definition, getattr(proj, "business_line", None)):
+        raise HTTPException(
+            status_code=400,
+            detail="Template is not available for this project's business line",
+        )
     settings = _settings_from_template(tpl, kind)
     now = _utcnow()
     row = FieldworkRecord(
@@ -642,7 +662,7 @@ def get_fieldwork_record(
     user: User = Depends(get_current_user),
 ):
     proj = _load_project(db, project_id)
-    assert_rm_fieldwork_project(db, user, proj, "read")
+    assert_fieldwork_project(db, user, proj, "read")
     row = _load_record(db, proj.id, record_id)
     return _record_to_dict(db, row, include_photos=True, include_events=True)
 
@@ -660,7 +680,7 @@ def download_fieldwork_record_pdf(
     from ..services.fieldwork_report_pdf import build_fieldwork_report_pdf_bytes
 
     proj = _load_project(db, project_id)
-    assert_rm_fieldwork_project(db, user, proj, "read")
+    assert_fieldwork_project(db, user, proj, "read")
     row = _load_record(db, proj.id, record_id)
     try:
         pdf_bytes = build_fieldwork_report_pdf_bytes(db, record=row, project=proj)
@@ -693,7 +713,7 @@ def patch_fieldwork_record(
     user: User = Depends(get_current_user),
 ):
     proj = _load_project(db, project_id)
-    assert_rm_fieldwork_project(db, user, proj, "write")
+    assert_fieldwork_project(db, user, proj, "write")
     row = _load_record(db, proj.id, record_id, for_update=True)
     _assert_editable(row)
     _bump_row_version(row, body.expected_row_version)
@@ -721,7 +741,7 @@ def submit_fieldwork_record(
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
 ):
     proj = _load_project(db, project_id)
-    assert_rm_fieldwork_project(db, user, proj, "write")
+    assert_fieldwork_project(db, user, proj, "write")
     row = _load_record(db, proj.id, record_id, for_update=True)
     key = (body.idempotency_key or idempotency_key or "").strip() or None
     if row.status == STATUS_SUBMITTED:
@@ -763,7 +783,7 @@ def request_fieldwork_changes(
     user: User = Depends(get_current_user),
 ):
     proj = _load_project(db, project_id)
-    assert_rm_fieldwork_project(db, user, proj, "review")
+    assert_fieldwork_project(db, user, proj, "review")
     row = _load_record(db, proj.id, record_id, for_update=True)
     if row.status == STATUS_CHANGES_REQUESTED:
         return _record_to_dict(db, row, include_photos=True, include_events=True)
@@ -805,7 +825,7 @@ def approve_fieldwork_record(
     user: User = Depends(get_current_user),
 ):
     proj = _load_project(db, project_id)
-    assert_rm_fieldwork_project(db, user, proj, "review")
+    assert_fieldwork_project(db, user, proj, "review")
     row = _load_record(db, proj.id, record_id, for_update=True)
     if row.status == TERMINAL_APPROVED:
         return _record_to_dict(db, row, include_photos=True, include_events=True)
@@ -846,7 +866,7 @@ def patch_fieldwork_supervisor_comments(
 ):
     """Save per-item supervisor notes while reviewing (does not require draft status)."""
     proj = _load_project(db, project_id)
-    assert_rm_fieldwork_project(db, user, proj, "review")
+    assert_fieldwork_project(db, user, proj, "review")
     row = _load_record(db, proj.id, record_id, for_update=True)
     st = (row.status or "").strip().lower()
     if st not in REVIEW_ANNOTATION_STATUSES:
@@ -896,7 +916,7 @@ def create_fieldwork_revision(
 ):
     """Create an editable revision of an approved record (post-approval immutability)."""
     proj = _load_project(db, project_id)
-    assert_rm_fieldwork_project(db, user, proj, "write")
+    assert_fieldwork_project(db, user, proj, "write")
     src = _load_record(db, proj.id, record_id)
     if src.status != TERMINAL_APPROVED:
         raise HTTPException(status_code=409, detail="Only approved records can be revised")
@@ -980,7 +1000,7 @@ def list_fieldwork_photos(
     user: User = Depends(get_current_user),
 ):
     proj = _load_project(db, project_id)
-    assert_rm_fieldwork_project(db, user, proj, "read")
+    assert_fieldwork_project(db, user, proj, "read")
     row = _load_record(db, proj.id, record_id)
     photos = (
         db.query(FieldworkPhotoObservation)
@@ -1000,7 +1020,7 @@ def create_fieldwork_photo(
     user: User = Depends(get_current_user),
 ):
     proj = _load_project(db, project_id)
-    assert_rm_fieldwork_project(db, user, proj, "write")
+    assert_fieldwork_project(db, user, proj, "write")
     row = _load_record(db, proj.id, record_id, for_update=True)
     _assert_editable(row)
     _bump_row_version(row, body.expected_row_version)
@@ -1145,7 +1165,7 @@ def patch_fieldwork_photo(
     user: User = Depends(get_current_user),
 ):
     proj = _load_project(db, project_id)
-    assert_rm_fieldwork_project(db, user, proj, "write")
+    assert_fieldwork_project(db, user, proj, "write")
     row = _load_record(db, proj.id, record_id, for_update=True)
     _assert_editable(row)
     _bump_row_version(row, body.expected_row_version)
@@ -1223,7 +1243,7 @@ def delete_fieldwork_photo(
     user: User = Depends(get_current_user),
 ):
     proj = _load_project(db, project_id)
-    assert_rm_fieldwork_project(db, user, proj, "write")
+    assert_fieldwork_project(db, user, proj, "write")
     row = _load_record(db, proj.id, record_id, for_update=True)
     _assert_editable(row)
     # Bump parent version so concurrent submit sees a conflict if expected_row_version is used

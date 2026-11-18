@@ -5,7 +5,8 @@ Fieldwork file-policy constants (enforced in later PRs).
 Domains:
   - Safety: inspection, follow_up
   - HR: employee_review
-  - Fieldwork (R&M): site_assessment, work_report
+  - Fieldwork (Construction + R&M): site_assessment, work_report
+    Isolation between lines uses definition.fieldwork_settings.business_lines.
 
 Photo classification for R&M technical folders: Needs Classification is enforced
 in Project Files (PR5) for images in FIELDWORK_TECHNICAL_PHOTO_FOLDER_NAMES that
@@ -14,7 +15,13 @@ approved phrases; Files surfaces them as derived read-only metadata.
 """
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, List, Optional
+
+from .business_line import (
+    BUSINESS_LINE_REPAIRS_MAINTENANCE,
+    VALID_BUSINESS_LINES,
+    normalize_business_line,
+)
 
 # --- Template categories (FormTemplate.category) ---
 INSPECTION_CATEGORY = "inspection"
@@ -104,3 +111,33 @@ def domain_for_template_category(raw: Optional[str]) -> str:
 
 def is_known_template_category(raw: Optional[str]) -> bool:
     return normalized_template_category(raw) in ALL_TEMPLATE_CATEGORIES
+
+
+def normalize_fieldwork_business_lines(raw: Any) -> List[str]:
+    """Sanitize fieldwork_settings.business_lines; default legacy templates to R&M-only."""
+    if isinstance(raw, str):
+        raw = [raw]
+    if not isinstance(raw, list) or not raw:
+        return [BUSINESS_LINE_REPAIRS_MAINTENANCE]
+    out: List[str] = []
+    for item in raw:
+        line = normalize_business_line(item if isinstance(item, str) else None)
+        if line in VALID_BUSINESS_LINES and line not in out:
+            out.append(line)
+    return out or [BUSINESS_LINE_REPAIRS_MAINTENANCE]
+
+
+def fieldwork_template_business_lines(definition: Any) -> List[str]:
+    fw = {}
+    if isinstance(definition, dict):
+        raw_fw = definition.get("fieldwork_settings")
+        if isinstance(raw_fw, dict):
+            fw = raw_fw
+    return normalize_fieldwork_business_lines(fw.get("business_lines"))
+
+
+def fieldwork_template_allows_business_line(definition: Any, business_line: Optional[str]) -> bool:
+    line = normalize_business_line(business_line)
+    if line not in VALID_BUSINESS_LINES:
+        return False
+    return line in fieldwork_template_business_lines(definition)

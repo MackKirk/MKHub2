@@ -24,6 +24,8 @@ const SUB_READ_MARKERS = [
   ':proposal:',
   ':costs:',
   ':safety:',
+  ':warranties:',
+  ':fieldwork:',
 ] as const;
 
 export type ProjectLineConfigKind =
@@ -76,9 +78,10 @@ function linePrefix(line: ProjectLine): string {
 
 function isLineSubReadKey(key: string, line: ProjectLine): boolean {
   const prefix = linePrefix(line);
+  // Require suffix :read so fieldwork:review (contains ":read" as a substring) is excluded.
   return (
     key.startsWith(`${prefix}:`) &&
-    key.includes(':read') &&
+    key.endsWith(':read') &&
     key !== `${prefix}:read` &&
     key !== `${prefix}:read:all` &&
     SUB_READ_MARKERS.some((m) => key.includes(m))
@@ -161,6 +164,18 @@ export function buildProjectLinePermissionRows(
     });
   }
 
+  const fieldworkReview = areaPerms.find((p) => p.key === `${prefix}:fieldwork:review`);
+  if (fieldworkReview) {
+    rows.push({
+      kind: 'writeOnly',
+      id: fieldworkReview.id,
+      label: formatLinePermissionLabel(fieldworkReview.label),
+      description: fieldworkReview.description,
+      writeKey: fieldworkReview.key,
+      indent: true,
+    });
+  }
+
   const viewAll = findFirst(areaPerms, [`${prefix}:read:all`]);
   if (viewAll) {
     rows.push({
@@ -216,6 +231,11 @@ function clearProposalToolPermissions(next: Record<string, boolean>, proposalWri
   next[proposalWriteKey.replace(':proposal:write', ':proposal:delete')] = false;
 }
 
+function clearFieldworkReviewPermission(next: Record<string, boolean>, fieldworkWriteKey: string): void {
+  if (!fieldworkWriteKey.endsWith(':fieldwork:write')) return;
+  next[fieldworkWriteKey.replace(':fieldwork:write', ':fieldwork:review')] = false;
+}
+
 export function applyProjectLineAccessLevel(
   line: ProjectLine,
   areaPerms: PermDef[],
@@ -232,6 +252,7 @@ export function applyProjectLineAccessLevel(
       next[row.readKey] = false;
       next[row.writeKey] = false;
       clearProposalToolPermissions(next, row.writeKey);
+      clearFieldworkReviewPermission(next, row.writeKey);
       if (row.readKey === mainReadKey) {
         return applyPermissionUncheckCascade(row.readKey, next);
       }
@@ -245,6 +266,7 @@ export function applyProjectLineAccessLevel(
       next[row.readKey] = true;
       next[row.writeKey] = false;
       clearProposalToolPermissions(next, row.writeKey);
+      clearFieldworkReviewPermission(next, row.writeKey);
       clearLegacyProjectSubPermissions(next);
       return next;
     }

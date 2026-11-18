@@ -23,6 +23,9 @@ export const ROUTE_PERMISSION_RULES: RoutePermissionRule[] = [
   { path: '/rm-leak-investigations', permission: 'business:rm:projects:read' },
 
   // Production / construction
+  { path: '/field-reports', permission: 'business:construction:projects:fieldwork:read' },
+  { path: '/fieldwork/form-templates', permission: 'business:construction:projects:fieldwork:read' },
+  { path: '/fieldwork/form-custom-lists', permission: 'business:construction:projects:fieldwork:read' },
   { path: '/business/subcontractors', permission: 'business:customers:read' },
   { path: '/business', permission: 'business:construction:projects:read', exact: true },
   { path: '/projects', permission: 'business:construction:projects:read' },

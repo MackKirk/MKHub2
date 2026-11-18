@@ -264,7 +264,9 @@ export default function App(){
           <Route path="/rm-leak-investigations/:id" element={<RmLeakInvestigationDetailRedirect />} />
           <Route path="/rm-projects" element={shell(<BusinessLineProvider line={BUSINESS_LINE_REPAIRS_MAINTENANCE}><Projects /></BusinessLineProvider>)} />
           <Route path="/rm-warranty-review" element={shell(<WarrantyReview />)} />
-          <Route path="/rm-field-reports" element={shell(<FieldReportsPage />)} />
+          <Route path="/field-reports" element={shell(<FieldReportsPage line="construction" />)} />
+          <Route path="/field-reports/:projectId/:recordId" element={shell(<FieldReportReviewPage />)} />
+          <Route path="/rm-field-reports" element={shell(<FieldReportsPage line="repairs_maintenance" />)} />
           <Route path="/rm-field-reports/:projectId/:recordId" element={shell(<FieldReportReviewPage />)} />
           <Route path="/rm-projects/new" element={shell(<BusinessLineProvider line={BUSINESS_LINE_REPAIRS_MAINTENANCE}><ProjectNew /></BusinessLineProvider>)} />
           <Route path="/rm-projects/:id" element={shell(<RmProjectDetail />)} />
@@ -281,7 +283,16 @@ export default function App(){
           <Route path="/documents/form-templates" element={shell(<FormTemplatesPage />)} />
           <Route path="/documents/form-templates/:id" element={shell(<FormTemplateEditorPage />)} />
           <Route path="/documents/form-custom-lists" element={shell(<FormCustomListsPage />)} />
-          <Route path="/rm-fieldwork/form-templates" element={shell(<FormTemplatesPage variant="fieldwork" />)} />
+          <Route
+            path="/fieldwork/form-templates"
+            element={shell(<FormTemplatesPage variant="fieldwork" businessLine="construction" />)}
+          />
+          <Route path="/fieldwork/form-templates/:id" element={shell(<FormTemplateEditorPage />)} />
+          <Route path="/fieldwork/form-custom-lists" element={shell(<FormCustomListsPage variant="fieldwork" />)} />
+          <Route
+            path="/rm-fieldwork/form-templates"
+            element={shell(<FormTemplatesPage variant="fieldwork" businessLine="repairs_maintenance" />)}
+          />
           <Route path="/rm-fieldwork/form-templates/:id" element={shell(<FormTemplateEditorPage />)} />
           <Route path="/rm-fieldwork/form-custom-lists" element={shell(<FormCustomListsPage variant="fieldwork" />)} />
           <Route path="/log-hours" element={shell(<LogHours/>)} />

@@ -1478,20 +1478,39 @@ def create_document(
                     pages.append({"template_id": None, "elements": []})
                     continue
                 tid = entry.get("template_id")
+                entry_margins = entry.get("margins")
+                entry_elements = entry.get("elements") if isinstance(entry.get("elements"), list) else []
+                # Blank / invalid template pages still keep authored elements (slots, captions).
                 if not tid:
-                    pages.append({"template_id": None, "elements": [], "margins": entry.get("margins")})
+                    pages.append(
+                        {
+                            "template_id": None,
+                            "margins": entry_margins,
+                            "elements": _clone_elements_with_new_ids(entry_elements, f"p{idx}"),
+                        }
+                    )
                     continue
                 try:
                     tuid = uuid.UUID(tid) if isinstance(tid, str) else tid
                 except (ValueError, TypeError):
-                    pages.append({"template_id": None, "elements": [], "margins": entry.get("margins")})
+                    pages.append(
+                        {
+                            "template_id": None,
+                            "margins": entry_margins,
+                            "elements": _clone_elements_with_new_ids(entry_elements, f"p{idx}"),
+                        }
+                    )
                     continue
                 template = db.query(DocumentTemplate).filter(DocumentTemplate.id == tuid).first()
                 if not template:
-                    pages.append({"template_id": str(tuid), "elements": [], "margins": entry.get("margins")})
+                    pages.append(
+                        {
+                            "template_id": str(tuid),
+                            "margins": entry_margins,
+                            "elements": _clone_elements_with_new_ids(entry_elements, f"p{idx}"),
+                        }
+                    )
                     continue
-                entry_margins = entry.get("margins")
-                entry_elements = entry.get("elements") if isinstance(entry.get("elements"), list) else []
                 elements = _clone_elements_with_new_ids(entry_elements, f"p{idx}") if entry_elements else []
                 pages.append({"template_id": str(tuid), "margins": entry_margins, "elements": elements})
     # Auto-fill tokens (project / employee fields + Auto Date at document create time)

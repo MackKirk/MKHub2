@@ -77,12 +77,16 @@ const FIELDWORK_PICTURES_FOLDER_OPTIONS = [
   { value: 'Photos for Additional Recommendations', label: 'Photos for Additional Recommendations' },
 ];
 
-function defaultFieldworkSettings(category: string): NonNullable<SafetyFormDefinition['fieldwork_settings']> {
+function defaultFieldworkSettings(
+  category: string,
+  businessLine: 'construction' | 'repairs_maintenance' = 'repairs_maintenance'
+): NonNullable<SafetyFormDefinition['fieldwork_settings']> {
   const cat = (category || '').toLowerCase();
   return {
     require_final_comments: true,
     require_min_photos: 0,
     default_pictures_folder: cat === 'work_report' ? 'Invoice Photos' : 'Proposal Photos',
+    business_lines: [businessLine],
   };
 }
 
@@ -113,10 +117,14 @@ function serializePersistedFormState(
 ): string {
   const definition = buildPersistedDefinition(def, sigRequired);
   if (fieldworkSettings) {
+    const lines = (fieldworkSettings.business_lines || []).filter(
+      (x) => x === 'construction' || x === 'repairs_maintenance'
+    );
     definition.fieldwork_settings = {
       require_final_comments: Boolean(fieldworkSettings.require_final_comments),
       require_min_photos: Math.max(0, Number(fieldworkSettings.require_min_photos) || 0),
       default_pictures_folder: fieldworkSettings.default_pictures_folder || undefined,
+      business_lines: lines.length ? [...new Set(lines)] : ['repairs_maintenance'],
     };
   }
   return JSON.stringify({
@@ -145,6 +153,10 @@ function snapshotFormFromTmpl(t: TemplateDetail, includeFieldworkSettings = fals
         require_min_photos:
           typeof fw.require_min_photos === 'number' ? Math.max(0, fw.require_min_photos) : defaults.require_min_photos,
         default_pictures_folder: fw.default_pictures_folder || defaults.default_pictures_folder,
+        business_lines:
+          Array.isArray(fw.business_lines) && fw.business_lines.length
+            ? fw.business_lines
+            : defaults.business_lines,
       }
     : null;
   return serializePersistedFormState(
@@ -334,13 +346,24 @@ export default function FormTemplateEditorPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const isEmployeeReviewEditor = location.pathname.startsWith('/reviews/form-templates');
-  const isFieldworkEditor = location.pathname.startsWith('/rm-fieldwork/form-templates');
+  const isConstructionFieldworkEditor = location.pathname.startsWith('/fieldwork/form-templates');
+  const isRmFieldworkEditor = location.pathname.startsWith('/rm-fieldwork/form-templates');
+  const isFieldworkEditor = isConstructionFieldworkEditor || isRmFieldworkEditor;
+  const fieldworkDefaultLine: 'construction' | 'repairs_maintenance' = isConstructionFieldworkEditor
+    ? 'construction'
+    : 'repairs_maintenance';
   const listPath = isEmployeeReviewEditor
     ? '/reviews/form-templates'
-    : isFieldworkEditor
-      ? '/rm-fieldwork/form-templates'
-      : '/documents/form-templates';
-  const customListsPath = isFieldworkEditor ? '/rm-fieldwork/form-custom-lists' : '/documents/form-custom-lists';
+    : isConstructionFieldworkEditor
+      ? '/fieldwork/form-templates'
+      : isRmFieldworkEditor
+        ? '/rm-fieldwork/form-templates'
+        : '/documents/form-templates';
+  const customListsPath = isConstructionFieldworkEditor
+    ? '/fieldwork/form-custom-lists'
+    : isRmFieldworkEditor
+      ? '/rm-fieldwork/form-custom-lists'
+      : '/documents/form-custom-lists';
   const qc = useQueryClient();
   const confirm = useConfirm();
   const [localName, setLocalName] = useState('');
@@ -350,7 +373,9 @@ export default function FormTemplateEditorPage() {
   const [category, setCategory] = useState('inspection');
   const [status, setStatus] = useState('active');
   const [definition, setDefinition] = useState<SafetyFormDefinition>(DEFAULT_DEFINITION);
-  const [fieldworkSettings, setFieldworkSettings] = useState(() => defaultFieldworkSettings('site_assessment'));
+  const [fieldworkSettings, setFieldworkSettings] = useState(() =>
+    defaultFieldworkSettings('site_assessment', fieldworkDefaultLine)
+  );
   const [versionLabel, setVersionLabel] = useState('');
   const [previewPayload, setPreviewPayload] = useState<Record<string, unknown>>({});
   const [tab, setTab] = useState<'build' | 'preview'>('build');
@@ -425,7 +450,7 @@ export default function FormTemplateEditorPage() {
     setDefinition(normalized);
     const wr = tmpl.definition?.signature_policy?.worker;
     setSigRequired(Boolean(wr?.required));
-    const defaults = defaultFieldworkSettings(tmpl.category || 'site_assessment');
+    const defaults = defaultFieldworkSettings(tmpl.category || 'site_assessment', fieldworkDefaultLine);
     const fw = normalized.fieldwork_settings || {};
     setFieldworkSettings({
       require_final_comments:
@@ -433,8 +458,22 @@ export default function FormTemplateEditorPage() {
       require_min_photos:
         typeof fw.require_min_photos === 'number' ? Math.max(0, fw.require_min_photos) : defaults.require_min_photos,
       default_pictures_folder: fw.default_pictures_folder || defaults.default_pictures_folder,
+      business_lines:
+        Array.isArray(fw.business_lines) && fw.business_lines.length
+          ? fw.business_lines
+          : defaults.business_lines,
     });
-  }, [tmpl?.id, tmpl?.name, tmpl?.version_label, tmpl?.description, tmpl?.category, tmpl?.status, tmpl?.definition, isFieldworkEditor]);
+  }, [
+    tmpl?.id,
+    tmpl?.name,
+    tmpl?.version_label,
+    tmpl?.description,
+    tmpl?.category,
+    tmpl?.status,
+    tmpl?.definition,
+    isFieldworkEditor,
+    fieldworkDefaultLine,
+  ]);
 
   const categoryForSave = isEmployeeReviewEditor
     ? 'employee_review'
@@ -462,7 +501,13 @@ export default function FormTemplateEditorPage() {
               fieldwork_settings: {
                 require_final_comments: Boolean(fieldworkSettings.require_final_comments),
                 require_min_photos: Math.max(0, Number(fieldworkSettings.require_min_photos) || 0),
-                default_pictures_folder: fieldworkSettings.default_pictures_folder || defaultFieldworkSettings(categoryForSave).default_pictures_folder,
+                default_pictures_folder:
+                  fieldworkSettings.default_pictures_folder ||
+                  defaultFieldworkSettings(categoryForSave, fieldworkDefaultLine).default_pictures_folder,
+                business_lines:
+                  Array.isArray(fieldworkSettings.business_lines) && fieldworkSettings.business_lines.length
+                    ? fieldworkSettings.business_lines
+                    : [fieldworkDefaultLine],
               },
             }
           : {}),
@@ -666,7 +711,7 @@ export default function FormTemplateEditorPage() {
     const wr = tmpl.definition?.signature_policy?.worker;
     setSigRequired(Boolean(wr?.required));
     if (isFieldworkEditor) {
-      const defaults = defaultFieldworkSettings(tmpl.category || 'site_assessment');
+      const defaults = defaultFieldworkSettings(tmpl.category || 'site_assessment', fieldworkDefaultLine);
       const fw = normalized.fieldwork_settings || {};
       setFieldworkSettings({
         require_final_comments:
@@ -674,9 +719,13 @@ export default function FormTemplateEditorPage() {
         require_min_photos:
           typeof fw.require_min_photos === 'number' ? Math.max(0, fw.require_min_photos) : defaults.require_min_photos,
         default_pictures_folder: fw.default_pictures_folder || defaults.default_pictures_folder,
+        business_lines:
+          Array.isArray(fw.business_lines) && fw.business_lines.length
+            ? fw.business_lines
+            : defaults.business_lines,
       });
     }
-  }, [tmpl, isFieldworkEditor]);
+  }, [tmpl, isFieldworkEditor, fieldworkDefaultLine]);
 
   useUnsavedChangesGuard(hasUnsavedChanges, flushSaveAll, handleGuardDiscard);
 
@@ -1352,10 +1401,38 @@ export default function FormTemplateEditorPage() {
                     />
                   </div>
                 </div>
+                <div className="flex flex-wrap gap-4">
+                  <AppCheckbox
+                    label="Production (Construction)"
+                    checked={(fieldworkSettings.business_lines || []).includes('construction')}
+                    onChange={(checked) =>
+                      setFieldworkSettings((prev) => {
+                        const cur = new Set(prev.business_lines || []);
+                        if (checked) cur.add('construction');
+                        else cur.delete('construction');
+                        if (cur.size === 0) cur.add(fieldworkDefaultLine);
+                        return { ...prev, business_lines: [...cur] };
+                      })
+                    }
+                  />
+                  <AppCheckbox
+                    label="Repairs & Maintenance"
+                    checked={(fieldworkSettings.business_lines || []).includes('repairs_maintenance')}
+                    onChange={(checked) =>
+                      setFieldworkSettings((prev) => {
+                        const cur = new Set(prev.business_lines || []);
+                        if (checked) cur.add('repairs_maintenance');
+                        else cur.delete('repairs_maintenance');
+                        if (cur.size === 0) cur.add(fieldworkDefaultLine);
+                        return { ...prev, business_lines: [...cur] };
+                      })
+                    }
+                  />
+                </div>
                 <p className={uiCx(uiTypography.helper)}>
                   Phrase libraries:{' '}
                   <Link to={customListsPath} className="text-brand-red hover:underline">
-                    R&amp;M Observed Conditions / Work Performed
+                    Observed Conditions / Work Performed
                   </Link>
                 </p>
               </div>

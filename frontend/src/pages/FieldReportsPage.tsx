@@ -17,9 +17,15 @@ import {
 } from '@/components/ui';
 import { useNavigateBack } from '@/hooks/useNavigateBack';
 import { api } from '@/lib/api';
+import { BUSINESS_LINE_CONSTRUCTION, BUSINESS_LINE_REPAIRS_MAINTENANCE } from '@/lib/businessLine';
 import { formatDateLocal } from '@/lib/dateUtils';
 import { listPageSizeSelectOptions, parseListPageLimit } from '@/lib/listPagination';
 import type { FieldworkInboxResponse } from '@/types/fieldwork';
+
+type FieldReportsPageProps = {
+  /** When set, inbox is scoped to that business line (nav entry under Production vs R&M). */
+  line?: typeof BUSINESS_LINE_CONSTRUCTION | typeof BUSINESS_LINE_REPAIRS_MAINTENANCE;
+};
 
 type StatusFilter = 'pending' | 'changes_requested' | 'approved' | 'draft' | 'all';
 
@@ -56,8 +62,14 @@ function fmtWhen(iso: string | null | undefined): string {
   }
 }
 
-export default function FieldReportsPage() {
-  const navigateBack = useNavigateBack('/rm-business');
+function reviewBasePath(businessLine: string | null | undefined): string {
+  return businessLine === BUSINESS_LINE_CONSTRUCTION ? '/field-reports' : '/rm-field-reports';
+}
+
+export default function FieldReportsPage({ line }: FieldReportsPageProps) {
+  const navigateBack = useNavigateBack(
+    line === BUSINESS_LINE_CONSTRUCTION ? '/business' : '/rm-business'
+  );
   const [searchParams, setSearchParams] = useSearchParams();
   const queryParam = searchParams.get('q') || '';
   const [q, setQ] = useState(queryParam);
@@ -114,10 +126,11 @@ export default function FieldReportsPage() {
     if (debouncedQ) params.set('q', debouncedQ);
     if (status && status !== 'all') params.set('status', status);
     if (kind) params.set('kind', kind);
+    if (line) params.set('business_line', line);
     params.set('page', String(page));
     params.set('limit', String(limit));
     return `?${params.toString()}`;
-  }, [debouncedQ, status, kind, page, limit]);
+  }, [debouncedQ, status, kind, line, page, limit]);
 
   const { data, isLoading, isFetching, isError, error } = useQuery({
     queryKey: ['fieldwork-inbox', qs],
@@ -211,7 +224,7 @@ export default function FieldReportsPage() {
           ) : (
             <ul className="divide-y divide-gray-100 list-none">
               {items.map((row) => {
-                const reviewPath = `/rm-field-reports/${row.project_id}/${row.id}`;
+                const reviewPath = `${reviewBasePath(row.business_line || line)}/${row.project_id}/${row.id}`;
                 const photos = Number(row.photo_count || 0);
                 return (
                   <li key={row.id}>

@@ -74,11 +74,13 @@ export type SignatureRolePolicy = {
   mode?: 'typed' | 'drawn' | 'any';
 };
 
-/** Optional R&M Fieldwork template settings (Site Assessment / Work Report). */
+/** Optional Fieldwork template settings (Site Assessment / Work Report). */
 export type FieldworkTemplateSettings = {
   require_final_comments?: boolean;
   require_min_photos?: number;
   default_pictures_folder?: string;
+  /** Which business lines may use this template. Missing → R&M only (legacy). */
+  business_lines?: Array<'construction' | 'repairs_maintenance' | string>;
 };
 
 export type SafetyFormDefinition = {
@@ -279,6 +281,12 @@ export function normalizeDefinition(raw: unknown): SafetyFormDefinition {
     }
     if (typeof fw.default_pictures_folder === 'string' && fw.default_pictures_folder.trim()) {
       fieldwork_settings.default_pictures_folder = fw.default_pictures_folder.trim();
+    }
+    if (Array.isArray(fw.business_lines)) {
+      const lines = fw.business_lines
+        .map((x) => String(x || '').trim())
+        .filter((x) => x === 'construction' || x === 'repairs_maintenance');
+      if (lines.length) fieldwork_settings.business_lines = [...new Set(lines)];
     }
     if (Object.keys(fieldwork_settings).length === 0) fieldwork_settings = undefined;
   }

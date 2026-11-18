@@ -56,6 +56,7 @@ import { BUSINESS_LINE_REPAIRS_MAINTENANCE, filterProjectDivisionsForBusinessLin
 import { projectHasLeakInvestigationDivision } from '@/lib/leakInvestigation';
 import {
   hasAnyProjectSectionPermission,
+  hasFieldworkReviewPermission,
   hasProjectFeaturePermission,
   hasProjectFeatureReadPermission,
   hasProjectFeatureWritePermission,
@@ -1402,7 +1403,7 @@ export default function ProjectDetail(){
       // Fieldwork review-only users must still open the tab to approve / request changes.
       if (
         tabKey === 'fieldwork' &&
-        (permissions.has('business:rm:projects:fieldwork:review') || isAdmin)
+        hasFieldworkReviewPermission(permissions, bl, isAdmin, location.pathname)
       ) {
         return true;
       }
@@ -1560,9 +1561,19 @@ export default function ProjectDetail(){
   const [workloadEventCreateOpen, setWorkloadEventCreateOpen] = useState(false);
 
   const isRmBusinessLine = projectBusinessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE;
+  const canInsertFromFieldReport =
+    isAdmin ||
+    hasProjectFeatureReadPermission(
+      permissions,
+      projectBusinessLine,
+      'fieldwork',
+      isAdmin,
+      location.pathname
+    ) ||
+    hasFieldworkReviewPermission(permissions, projectBusinessLine, isAdmin, location.pathname);
 
-  // Base available tabs (leak investigations use the same strip as opportunities)
-  // Fieldwork is R&M-only and available on both Opportunity and awarded Project.
+  // Base available tabs (leak investigations use the same strip as opportunities).
+  // Fieldwork is available on Construction and R&M (Opportunity + awarded Project).
   const baseAvailableTabs = isOpportunityStyleTabs
     ? ([
         'overview',
@@ -1574,7 +1585,7 @@ export default function ProjectDetail(){
         'proposal',
         'pricing',
         'estimate',
-        ...(isRmBusinessLine ? (['fieldwork'] as const) : []),
+        'fieldwork',
       ] as const)
     : ([
         'overview',
@@ -1589,7 +1600,7 @@ export default function ProjectDetail(){
         'warranties',
         'orders',
         'safety',
-        ...(isRmBusinessLine ? (['fieldwork'] as const) : []),
+        'fieldwork',
       ] as const);
   
   // Filter tabs based on permissions (only when user data is loaded)
@@ -3502,6 +3513,7 @@ export default function ProjectDetail(){
                     location.pathname
                   )}
                   designSystem={useDesignSystem}
+                  enableInsertFromFieldReport={canInsertFromFieldReport}
                 />
               )}
 
@@ -3645,9 +3657,10 @@ export default function ProjectDetail(){
                 />
               )}
 
-              {tab === 'fieldwork' && isRmBusinessLine && (
+              {tab === 'fieldwork' && (
                 <ProjectFieldworkTab
                   projectId={String(id)}
+                  businessLine={projectBusinessLine}
                   isOpportunity={!!isOpportunityStyleTabs}
                   canRead={
                     hasProjectFeatureReadPermission(
@@ -3657,8 +3670,12 @@ export default function ProjectDetail(){
                       isAdmin,
                       location.pathname
                     ) ||
-                    permissions.has('business:rm:projects:fieldwork:review') ||
-                    isAdmin
+                    hasFieldworkReviewPermission(
+                      permissions,
+                      projectBusinessLine,
+                      isAdmin,
+                      location.pathname
+                    )
                   }
                   canWrite={hasProjectFeatureWritePermission(
                     permissions,
@@ -3667,7 +3684,12 @@ export default function ProjectDetail(){
                     isAdmin,
                     location.pathname
                   )}
-                  canReview={permissions.has('business:rm:projects:fieldwork:review') || isAdmin}
+                  canReview={hasFieldworkReviewPermission(
+                    permissions,
+                    projectBusinessLine,
+                    isAdmin,
+                    location.pathname
+                  )}
                   flushSaveRef={fieldworkTabSaveRef}
                 />
               )}

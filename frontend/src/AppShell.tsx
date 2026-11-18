@@ -702,6 +702,9 @@ export default function AppShell({ children }: PropsWithChildren){
         { id: 'business-dashboard', label: 'Dashboard', path: '/business', icon: <IconDashboard />, requiredPermission: 'business:construction:projects:read' },
         { id: 'opportunities', label: 'Opportunities', path: '/opportunities', icon: <IconOpportunities />, requiredPermission: 'business:construction:projects:read' },
         { id: 'projects', label: 'Projects', path: '/projects', icon: <IconProjects />, requiredPermission: 'business:construction:projects:read' },
+        { id: 'field-reports', label: 'Field Reports', path: '/field-reports', icon: <IconClipboard />, requiredPermission: 'business:construction:projects:fieldwork:read' },
+        { id: 'fieldwork-form-templates', label: 'Fieldwork Templates', path: '/fieldwork/form-templates', icon: <IconDocument />, requiredPermission: 'business:construction:projects:fieldwork:read' },
+        { id: 'fieldwork-phrase-lists', label: 'Fieldwork Phrases', path: '/fieldwork/form-custom-lists', icon: <IconDocument />, requiredPermission: 'business:construction:projects:fieldwork:read' },
       ]
     },
     {

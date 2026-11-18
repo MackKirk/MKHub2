@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type MutableRefObject } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { ClipboardList } from 'lucide-react';
@@ -24,6 +24,8 @@ import {
   uiSpacing,
   uiTypography,
 } from '@/components/ui';
+import { BUSINESS_LINE_CONSTRUCTION, BUSINESS_LINE_REPAIRS_MAINTENANCE } from '@/lib/businessLine';
+import { createQuoteFromFieldReport } from '@/lib/createQuoteFromFieldReport';
 import { formatDateLocal } from '@/lib/dateUtils';
 import {
   normalizeDefinition,
@@ -38,6 +40,8 @@ import type {
 
 type Props = {
   projectId: string;
+  /** Project business line — scopes which Fieldwork templates appear. */
+  businessLine?: string | null;
   isOpportunity: boolean;
   canRead: boolean;
   canWrite: boolean;
@@ -81,6 +85,7 @@ function isFieldworkConflict(err: unknown): boolean {
 
 export default function ProjectFieldworkTab({
   projectId,
+  businessLine,
   isOpportunity,
   canRead,
   canWrite,
@@ -89,8 +94,12 @@ export default function ProjectFieldworkTab({
 }: Props) {
   const qc = useQueryClient();
   const confirm = useConfirm();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const recordFromUrl = (searchParams.get('fieldwork_record') || '').trim() || null;
+  const [quoteBusy, setQuoteBusy] = useState(false);
+  const reviewBasePath =
+    businessLine === BUSINESS_LINE_CONSTRUCTION ? '/field-reports' : '/rm-field-reports';
 
   const preferredKind: FieldworkRecordKind = isOpportunity ? 'site_assessment' : 'work_report';
   const [selectedId, setSelectedId] = useState<string | null>(recordFromUrl);
@@ -162,9 +171,17 @@ export default function ProjectFieldworkTab({
   });
 
   const { data: templates = [] } = useQuery({
-    queryKey: ['formTemplates', 'fieldwork', 'active'],
-    queryFn: () =>
-      api<FieldworkTemplatePick[]>('GET', '/form-templates?domain=fieldwork&status=active&sort=name&sort_dir=asc'),
+    queryKey: ['formTemplates', 'fieldwork', 'active', businessLine || ''],
+    queryFn: () => {
+      const params = new URLSearchParams({
+        domain: 'fieldwork',
+        status: 'active',
+        sort: 'name',
+        sort_dir: 'asc',
+      });
+      if (businessLine) params.set('business_line', businessLine);
+      return api<FieldworkTemplatePick[]>('GET', `/form-templates?${params.toString()}`);
+    },
     enabled: canWrite && createOpen,
   });
 
@@ -660,6 +677,7 @@ export default function ProjectFieldworkTab({
   const status = (detail.status || '').toLowerCase();
   const showReviewActions = canReview && status === 'submitted';
   const showRevision = canWrite && status === 'approved';
+  const showCreateQuote = status === 'approved';
   const supervisorComments = useMemo(() => {
     const bag = formPayload[SUPERVISOR_COMMENTS_KEY];
     if (!bag || typeof bag !== 'object' || Array.isArray(bag)) return {} as Record<string, string>;
@@ -721,7 +739,7 @@ export default function ProjectFieldworkTab({
         <div className={uiCx(uiLayout.actionsRow, 'flex-wrap')}>
           {!editable ? (
             <Link
-              to={`/rm-field-reports/${projectId}/${detail.id}`}
+              to={`${reviewBasePath}/${projectId}/${detail.id}`}
               className="inline-flex items-center rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
             >
               Open review report
@@ -736,6 +754,41 @@ export default function ProjectFieldworkTab({
           >
             Download PDF
           </AppButton>
+          {showCreateQuote ? (
+            <AppButton
+              type="button"
+              size="sm"
+              loading={quoteBusy}
+              onClick={async () => {
+                try {
+                  setQuoteBusy(true);
+                  const { path } = await createQuoteFromFieldReport({
+                    project: {
+                      id: projectId,
+                      business_line: businessLine || BUSINESS_LINE_REPAIRS_MAINTENANCE,
+                      is_bidding: isOpportunity,
+                    },
+                    recordId: detail.id,
+                    recordKind: detail.kind,
+                  });
+                  toast.success('Quote document created — pick photos to insert');
+                  navigate(path);
+                } catch (err) {
+                  toast.error(
+                    err instanceof ApiError
+                      ? formatApiErrorDetail(err) || err.message
+                      : err instanceof Error
+                        ? err.message
+                        : 'Could not create quote'
+                  );
+                } finally {
+                  setQuoteBusy(false);
+                }
+              }}
+            >
+              Create quote
+            </AppButton>
+          ) : null}
           <AppButton type="button" variant="secondary" size="sm" onClick={() => setShowHistory((v) => !v)}>
             {showHistory ? 'Hide history' : 'Status history'}
           </AppButton>

@@ -1388,27 +1388,48 @@ def user_has_any_project_safety_permission(
     return any(_has_permission(user, k) for k in keys)
 
 
-def user_has_any_rm_fieldwork_permission(
-    user: User, action: Literal["read", "write", "review"]
+def user_has_fieldwork_permission(
+    user: User,
+    action: Literal["read", "write", "review"],
+    business_line: Optional[str] = None,
 ) -> bool:
-    """R&M Fieldwork module (templates / records). Construction is out of scope for MVP.
+    """Fieldwork module (templates / records) for Construction and/or R&M.
 
     Privilege escalation rules (intentional):
     - read: satisfied by read OR write OR review (writers/reviewers can open lists)
     - write: write only (review-only cannot mutate)
     - review: review only (write-only cannot approve)
+
+    When business_line is omitted, any line-scoped fieldwork grant satisfies the check
+    (used for shared phrase catalogs / template admin entry).
     """
     if _user_is_admin(user):
         return True
-    keys = [f"business:rm:projects:fieldwork:{action}"]
-    if action == "read":
-        keys.extend(
-            [
-                "business:rm:projects:fieldwork:write",
-                "business:rm:projects:fieldwork:review",
-            ]
-        )
-    return any(_has_permission(user, k) for k in keys)
+    lines = (
+        [normalize_business_line(business_line)]
+        if business_line is not None
+        else [BUSINESS_LINE_CONSTRUCTION, BUSINESS_LINE_REPAIRS_MAINTENANCE]
+    )
+    for line in lines:
+        prefix = _project_line_perm_prefix(line)
+        keys = [f"{prefix}:fieldwork:{action}"]
+        if action == "read":
+            keys.extend(
+                [
+                    f"{prefix}:fieldwork:write",
+                    f"{prefix}:fieldwork:review",
+                ]
+            )
+        if any(_has_permission(user, k) for k in keys):
+            return True
+    return False
+
+
+def user_has_any_rm_fieldwork_permission(
+    user: User, action: Literal["read", "write", "review"]
+) -> bool:
+    """Backward-compatible alias: any business-line fieldwork permission."""
+    return user_has_fieldwork_permission(user, action)
 
 
 def _project_category_allow_list(

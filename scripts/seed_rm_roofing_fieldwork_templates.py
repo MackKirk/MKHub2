@@ -183,6 +183,7 @@ def site_assessment_definition() -> dict[str, Any]:
             "require_final_comments": False,
             "require_min_photos": 0,
             "default_pictures_folder": "Proposal Photos",
+            "business_lines": ["repairs_maintenance"],
         },
     }
 
@@ -276,6 +277,7 @@ def work_report_definition() -> dict[str, Any]:
             "require_final_comments": True,
             "require_min_photos": 0,
             "default_pictures_folder": "Invoice Photos",
+            "business_lines": ["repairs_maintenance"],
         },
     }
 

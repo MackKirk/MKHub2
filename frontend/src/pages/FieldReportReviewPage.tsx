@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
@@ -21,8 +21,10 @@ import {
 } from '@/components/ui';
 import { useNavigateBack } from '@/hooks/useNavigateBack';
 import { ApiError, api, fetchAuthorizedBinary, formatApiErrorDetail } from '@/lib/api';
+import { createQuoteFromFieldReport } from '@/lib/createQuoteFromFieldReport';
 import { formatDateLocal } from '@/lib/dateUtils';
-import { isAdminRole } from '@/lib/projectLinePermissionKeys';
+import { BUSINESS_LINE_CONSTRUCTION, BUSINESS_LINE_REPAIRS_MAINTENANCE } from '@/lib/businessLine';
+import { hasFieldworkReviewPermission, isAdminRole } from '@/lib/projectLinePermissionKeys';
 import type { FieldworkRecord } from '@/types/fieldwork';
 
 function kindLabel(kind: string | null | undefined): string {
@@ -66,9 +68,10 @@ function readSupervisorMap(payload: Record<string, unknown> | undefined): Record
 
 export default function FieldReportReviewPage() {
   const { projectId = '', recordId = '' } = useParams();
-  const navigateBack = useNavigateBack('/rm-field-reports');
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const confirm = useConfirm();
+  const [quoteBusy, setQuoteBusy] = useState(false);
   const { data: me } = useQuery({
     queryKey: ['me'],
     queryFn: () => api<{ roles?: unknown[]; permissions?: string[] }>('GET', '/auth/me'),
@@ -76,7 +79,6 @@ export default function FieldReportReviewPage() {
   });
   const isAdmin = isAdminRole(me?.roles);
   const permissions = useMemo(() => new Set(me?.permissions || []), [me?.permissions]);
-  const canReview = isAdmin || permissions.has('business:rm:projects:fieldwork:review');
 
   const [supervisorComments, setSupervisorComments] = useState<Record<string, string>>({});
   const [supervisorBaseline, setSupervisorBaseline] = useState('');
@@ -101,10 +103,18 @@ export default function FieldReportReviewPage() {
         code?: string;
         address?: string;
         is_bidding?: boolean;
+        business_line?: string;
       }>('GET', `/projects/${projectId}`),
     enabled: !!projectId,
     staleTime: 60_000,
   });
+
+  const projectBusinessLine = projectMeta?.business_line;
+  const canReview = hasFieldworkReviewPermission(
+    permissions,
+    projectBusinessLine,
+    isAdmin
+  );
 
   useEffect(() => {
     if (!record) return;
@@ -121,9 +131,14 @@ export default function FieldReportReviewPage() {
   const canEditSupervisor =
     canReview && (status === 'submitted' || status === 'changes_requested' || status === 'approved');
 
+  const isRm = projectBusinessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE;
   const projectHref = projectMeta?.is_bidding
-    ? `/rm-opportunities/${projectId}?tab=fieldwork&fieldwork_record=${recordId}`
-    : `/rm-projects/${projectId}?tab=fieldwork&fieldwork_record=${recordId}`;
+    ? `${isRm ? '/rm-opportunities' : '/opportunities'}/${projectId}?tab=fieldwork&fieldwork_record=${recordId}`
+    : `${isRm ? '/rm-projects' : '/projects'}/${projectId}?tab=fieldwork&fieldwork_record=${recordId}`;
+
+  const navigateBack = useNavigateBack(
+    projectBusinessLine === BUSINESS_LINE_CONSTRUCTION ? '/field-reports' : '/rm-field-reports'
+  );
 
   const invalidate = async () => {
     await qc.invalidateQueries({ queryKey: ['fieldwork-record', projectId, recordId] });
@@ -317,6 +332,42 @@ export default function FieldReportReviewPage() {
             >
               Download PDF
             </AppButton>
+            {status === 'approved' ? (
+              <AppButton
+                type="button"
+                size="sm"
+                loading={quoteBusy}
+                onClick={async () => {
+                  try {
+                    setQuoteBusy(true);
+                    const { path } = await createQuoteFromFieldReport({
+                      project: {
+                        id: projectId,
+                        business_line: projectBusinessLine,
+                        is_bidding: projectMeta?.is_bidding,
+                      },
+                      recordId,
+                      recordKind: record.kind,
+                      projectName: projectMeta?.name,
+                    });
+                    toast.success('Quote document created — pick photos to insert');
+                    navigate(path);
+                  } catch (err) {
+                    toast.error(
+                      err instanceof ApiError
+                        ? formatApiErrorDetail(err) || err.message
+                        : err instanceof Error
+                          ? err.message
+                          : 'Could not create quote'
+                    );
+                  } finally {
+                    setQuoteBusy(false);
+                  }
+                }}
+              >
+                Create quote
+              </AppButton>
+            ) : null}
             <AppButton type="button" variant="secondary" size="sm" onClick={() => setShowHistory((v) => !v)}>
               {showHistory ? 'Hide history' : 'History'}
             </AppButton>

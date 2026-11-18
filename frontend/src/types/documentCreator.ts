@@ -484,6 +484,14 @@ export type DocElement = {
   lockPosition?: boolean;
   /** Degrees, clockwise, around the element's box center. */
   rotation?: number;
+  /**
+   * Optional injection metadata (preserved through DocumentType expand/clone).
+   * Quotation Field Report slots use slot: "photo_N" / "caption_N".
+   */
+  meta?: {
+    slot?: string;
+    [k: string]: unknown;
+  };
 };
 
 /** Content area margins (percent). Elements cannot be placed outside. */
