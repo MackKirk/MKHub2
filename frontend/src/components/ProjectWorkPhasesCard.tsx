@@ -1,14 +1,17 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { CheckSquare2, ListChecks, Square } from 'lucide-react';
+import { CheckSquare2, ListChecks, Plus, Square, Trash2 } from 'lucide-react';
 import { ApiError, api, formatApiErrorDetail } from '@/lib/api';
 import { useConfirm } from '@/components/ConfirmProvider';
 import {
   AppButton,
   AppCard,
+  AppCheckbox,
   AppEmptyState,
   AppFormModal,
+  AppInput,
+  AppListRowIconButton,
   AppSectionHeader,
   AppSelect,
   uiCx,
@@ -23,6 +26,8 @@ export type WorkPhase = {
   label: string;
   done: boolean;
   sort: number;
+  source_template_id?: string | null;
+  source_template_name?: string | null;
 };
 
 export type WorkPhaseTemplate = {
@@ -62,6 +67,8 @@ export default function ProjectWorkPhasesCard({
   const confirm = useConfirm();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [templateId, setTemplateId] = useState('');
+  const [replaceOnApply, setReplaceOnApply] = useState(false);
+  const [newLabel, setNewLabel] = useState('');
 
   const { data, isLoading } = useQuery({
     queryKey: ['project-work-phases', projectId],
@@ -110,22 +117,42 @@ export default function ProjectWorkPhasesCard({
   };
 
   const applyMut = useMutation({
-    mutationFn: (tid: string) =>
+    mutationFn: ({ tid, replace }: { tid: string; replace: boolean }) =>
       api<PhasesPayload>('POST', `/projects/${encodeURIComponent(projectId)}/work-phases/apply-template`, {
         template_id: tid,
-        replace: true,
+        replace,
       }),
-    onSuccess: (payload) => {
+    onSuccess: (payload, vars) => {
       syncProjectCache(payload);
       setPickerOpen(false);
       setTemplateId('');
-      toast.success('Progress map applied');
+      setReplaceOnApply(false);
+      toast.success(vars.replace ? 'Progress map replaced' : 'Template phases added');
     },
     onError: (err) => {
       toast.error(
         err instanceof ApiError
           ? formatApiErrorDetail(err) || err.message
           : 'Could not apply template'
+      );
+    },
+  });
+
+  const addMut = useMutation({
+    mutationFn: (label: string) =>
+      api<PhasesPayload>('POST', `/projects/${encodeURIComponent(projectId)}/work-phases`, {
+        label,
+      }),
+    onSuccess: (payload) => {
+      syncProjectCache(payload);
+      setNewLabel('');
+      toast.success('Phase added');
+    },
+    onError: (err) => {
+      toast.error(
+        err instanceof ApiError
+          ? formatApiErrorDetail(err) || err.message
+          : 'Could not add phase'
       );
     },
   });
@@ -149,6 +176,18 @@ export default function ProjectWorkPhasesCard({
     },
   });
 
+  const removeMut = useMutation({
+    mutationFn: (phaseId: string) =>
+      api<PhasesPayload>(
+        'DELETE',
+        `/projects/${encodeURIComponent(projectId)}/work-phases/${encodeURIComponent(phaseId)}`
+      ),
+    onSuccess: (payload) => {
+      syncProjectCache(payload);
+    },
+    onError: () => toast.error('Could not remove phase'),
+  });
+
   const clearMut = useMutation({
     mutationFn: () =>
       api<PhasesPayload>('DELETE', `/projects/${encodeURIComponent(projectId)}/work-phases`),
@@ -167,17 +206,10 @@ export default function ProjectWorkPhasesCard({
         ? Math.round((100 * doneCount) / phases.length)
         : null;
 
-  const openPicker = async () => {
-    if (phases.length && canEdit) {
-      const result = await confirm({
-        title: 'Replace progress map?',
-        message: 'Choosing a template replaces the current checklist on this project.',
-        confirmText: 'Choose template',
-        cancelText: 'Cancel',
-      });
-      if (result !== 'confirm') return;
-    }
-    setPickerOpen(true);
+  const submitNewPhase = () => {
+    const label = newLabel.trim();
+    if (!label || addMut.isPending) return;
+    addMut.mutate(label);
   };
 
   const body = (
@@ -186,8 +218,8 @@ export default function ProjectWorkPhasesCard({
         <p className={uiTypography.helper}>Loading…</p>
       ) : phases.length === 0 ? (
         <AppEmptyState
-          title="No progress map yet"
-          description="Pick a template to create broad job phases. Checking them off updates project progress %."
+          title="No progress phases yet"
+          description="Add phases manually or pull in one or more templates (e.g. Pre-production, then Production)."
           className="border-0 bg-transparent p-0 shadow-none"
         />
       ) : (
@@ -200,9 +232,11 @@ export default function ProjectWorkPhasesCard({
           </div>
           <ul className="space-y-1.5">
             {phases.map((phase) => {
-              const busy = toggleMut.isPending && toggleMut.variables?.phaseId === phase.id;
+              const busy =
+                (toggleMut.isPending && toggleMut.variables?.phaseId === phase.id) ||
+                (removeMut.isPending && removeMut.variables === phase.id);
               return (
-                <li key={phase.id}>
+                <li key={phase.id} className="flex items-start gap-1">
                   <button
                     type="button"
                     disabled={!canEdit || busy}
@@ -210,27 +244,43 @@ export default function ProjectWorkPhasesCard({
                       canEdit && toggleMut.mutate({ phaseId: phase.id, done: !phase.done })
                     }
                     className={uiCx(
-                      'flex w-full items-start gap-2.5 rounded-lg px-2 py-2 text-left transition-colors',
+                      'flex min-w-0 flex-1 items-start gap-2.5 rounded-lg px-2 py-2 text-left transition-colors',
                       canEdit ? 'hover:bg-gray-50' : 'cursor-default',
                       phase.done ? 'opacity-80' : ''
                     )}
                   >
-                    <span className="mt-0.5 text-brand-red shrink-0">
+                    <span className="mt-0.5 shrink-0 text-brand-red">
                       {phase.done ? (
                         <CheckSquare2 className="h-4.5 w-4.5" aria-hidden />
                       ) : (
                         <Square className="h-4.5 w-4.5 text-gray-400" aria-hidden />
                       )}
                     </span>
-                    <span
-                      className={uiCx(
-                        'text-sm text-gray-900',
-                        phase.done ? 'line-through text-gray-500' : 'font-medium'
-                      )}
-                    >
-                      {phase.label}
+                    <span className="min-w-0">
+                      <span
+                        className={uiCx(
+                          'block text-sm text-gray-900',
+                          phase.done ? 'text-gray-500 line-through' : 'font-medium'
+                        )}
+                      >
+                        {phase.label}
+                      </span>
+                      {phase.source_template_name ? (
+                        <span className={uiCx(uiTypography.helper, 'mt-0.5 block truncate')}>
+                          from {phase.source_template_name}
+                        </span>
+                      ) : null}
                     </span>
                   </button>
+                  {canEdit ? (
+                    <AppListRowIconButton
+                      label={`Remove ${phase.label}`}
+                      icon={<Trash2 className="h-4 w-4" />}
+                      disabled={busy}
+                      className="mt-1 shrink-0"
+                      onClick={() => removeMut.mutate(phase.id)}
+                    />
+                  ) : null}
                 </li>
               );
             })}
@@ -239,30 +289,68 @@ export default function ProjectWorkPhasesCard({
       )}
 
       {canEdit ? (
-        <div className={uiCx(uiLayout.actionsRow, 'flex-wrap')}>
-          <AppButton type="button" size="sm" variant="secondary" onClick={() => void openPicker()}>
-            {phases.length ? 'Change template' : 'Choose template'}
-          </AppButton>
-          {phases.length ? (
+        <div className="space-y-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+            <AppInput
+              id="work-phase-new-label"
+              className="min-w-0 flex-1"
+              label="Add phase"
+              value={newLabel}
+              onChange={(e) => setNewLabel(e.target.value)}
+              placeholder="e.g. Scaffolding setup"
+              autoComplete="off"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  submitNewPhase();
+                }
+              }}
+            />
             <AppButton
               type="button"
               size="sm"
-              variant="ghost"
-              loading={clearMut.isPending}
-              onClick={async () => {
-                const result = await confirm({
-                  title: 'Clear progress map?',
-                  message: 'Removes all phases from this project. Progress % is left as-is.',
-                  confirmText: 'Clear',
-                  cancelText: 'Cancel',
-                });
-                if (result !== 'confirm') return;
-                clearMut.mutate();
+              loading={addMut.isPending}
+              disabled={!newLabel.trim()}
+              onClick={submitNewPhase}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Add
+            </AppButton>
+          </div>
+
+          <div className={uiCx(uiLayout.actionsRow, 'flex-wrap')}>
+            <AppButton
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={() => {
+                setReplaceOnApply(false);
+                setPickerOpen(true);
               }}
             >
-              Clear
+              Add from template
             </AppButton>
-          ) : null}
+            {phases.length ? (
+              <AppButton
+                type="button"
+                size="sm"
+                variant="ghost"
+                loading={clearMut.isPending}
+                onClick={async () => {
+                  const result = await confirm({
+                    title: 'Clear all phases?',
+                    message: 'Removes every phase on this project. Progress % is left as-is.',
+                    confirmText: 'Clear all',
+                    cancelText: 'Cancel',
+                  });
+                  if (result !== 'confirm') return;
+                  clearMut.mutate();
+                }}
+              >
+                Clear all
+              </AppButton>
+            ) : null}
+          </div>
         </div>
       ) : null}
     </div>
@@ -274,7 +362,7 @@ export default function ProjectWorkPhasesCard({
         <AppCard bodyClassName={uiSpacing.cardPadding}>
           <AppSectionHeader
             title="Job progress"
-            description="Broad phases for this job — not system Tasks. Completing them updates progress %."
+            description="Checklist for this job — not system Tasks. Add phases by hand or stack templates. Completing them updates progress %."
             icon={<ListChecks className="h-4 w-4" />}
           />
           <div className="mt-3">{body}</div>
@@ -283,7 +371,7 @@ export default function ProjectWorkPhasesCard({
         <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
           <h3 className="text-sm font-semibold text-gray-900">Job progress</h3>
           <p className="mt-1 text-xs text-gray-500">
-            Broad phases for this job — not system Tasks.
+            Add phases manually or stack templates — not system Tasks.
           </p>
           <div className="mt-3">{body}</div>
         </div>
@@ -295,9 +383,14 @@ export default function ProjectWorkPhasesCard({
           if (applyMut.isPending) return;
           setPickerOpen(false);
           setTemplateId('');
+          setReplaceOnApply(false);
         }}
-        title="Choose progress template"
-        description="Phases are created on this project. You can check them off as work advances."
+        title="Add from template"
+        description={
+          phases.length
+            ? 'Template phases are appended to the current list. You can apply Pre-production, then Production, etc.'
+            : 'Templates quickly seed the checklist. You can still add or remove phases afterward.'
+        }
         size="md"
         footer={
           <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
@@ -309,6 +402,7 @@ export default function ProjectWorkPhasesCard({
               onClick={() => {
                 setPickerOpen(false);
                 setTemplateId('');
+                setReplaceOnApply(false);
               }}
             >
               Cancel
@@ -318,9 +412,9 @@ export default function ProjectWorkPhasesCard({
               size="sm"
               loading={applyMut.isPending}
               disabled={!templateId}
-              onClick={() => applyMut.mutate(templateId)}
+              onClick={() => applyMut.mutate({ tid: templateId, replace: replaceOnApply })}
             >
-              Apply
+              {replaceOnApply ? 'Replace all' : 'Add phases'}
             </AppButton>
           </div>
         }
@@ -340,11 +434,18 @@ export default function ProjectWorkPhasesCard({
               }))}
             />
             {templateId ? (
-              <ul className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-sm text-gray-700 space-y-1">
+              <ul className="space-y-1 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-sm text-gray-700">
                 {(templates.find((t) => t.id === templateId)?.phases || []).map((p) => (
                   <li key={p.key}>• {p.label}</li>
                 ))}
               </ul>
+            ) : null}
+            {phases.length > 0 ? (
+              <AppCheckbox
+                label="Replace existing phases instead of appending"
+                checked={replaceOnApply}
+                onChange={setReplaceOnApply}
+              />
             ) : null}
           </div>
         )}

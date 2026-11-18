@@ -44,7 +44,7 @@ export default function FieldworkTemplatesHubPage({ businessLine }: Props) {
     <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
       <AppPageHeader
         title="Templates"
-        subtitle={`${lineLabel}: Fieldwork assessments (site assessment / work report) and Job progress maps for projects.`}
+        subtitle={`${lineLabel}: Fieldwork assessments and Job progress starter templates (projects can stack several and edit by hand).`}
         icon={<FileStack className="h-4 w-4" />}
       />
 

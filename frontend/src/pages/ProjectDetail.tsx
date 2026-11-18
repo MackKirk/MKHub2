@@ -1227,6 +1227,7 @@ export default function ProjectDetail(){
 
   type ProjectDetailTab =
     | 'overview'
+    | 'progress'
     | 'general'
     | 'reports'
     | 'dispatch'
@@ -1420,10 +1421,10 @@ export default function ProjectDetail(){
     if (me === undefined) return;
 
     const sp = new URLSearchParams(location.search);
-    const tabParam = sp.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'pricing'|'estimate'|'warranties'|'orders'|'safety'|'fieldwork'|null;
+    const tabParam = sp.get('tab') as 'overview'|'progress'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'pricing'|'estimate'|'warranties'|'orders'|'safety'|'fieldwork'|null;
     const signOnly =
       sp.get('sign_only') === '1' && Boolean(sp.get('safety_inspection')?.trim());
-    const validTabs = ['overview','general','reports','dispatch','timesheet','files','photos','documents','proposal','pricing','estimate','warranties','orders','safety','fieldwork'];
+    const validTabs = ['overview','progress','general','reports','dispatch','timesheet','files','photos','documents','proposal','pricing','estimate','warranties','orders','safety','fieldwork'];
     if (tabParam && validTabs.includes(tabParam)) {
       if (tabParam === 'safety' && signOnly) {
         setTab('safety');
@@ -1578,6 +1579,7 @@ export default function ProjectDetail(){
   const baseAvailableTabs = isOpportunityStyleTabs
     ? ([
         'overview',
+        'progress',
         'reports',
         'dispatch',
         'timesheet',
@@ -1590,6 +1592,7 @@ export default function ProjectDetail(){
       ] as const)
     : ([
         'overview',
+        'progress',
         'reports',
         'dispatch',
         'timesheet',
@@ -1614,7 +1617,8 @@ export default function ProjectDetail(){
       return ['overview'] as unknown as typeof baseAvailableTabs;
     }
     return baseAvailableTabs.filter(tab => {
-      if (tab === 'overview') return true; // Overview is always available
+      // Overview + Progress: always available when the project is visible
+      if (tab === 'overview' || tab === 'progress') return true;
       return hasTabPermission(tab);
     });
   }, [baseAvailableTabs, hasTabPermission, me, signOnlySafetySession]);
@@ -1856,6 +1860,7 @@ export default function ProjectDetail(){
       'orders': 'Orders',
       'safety': 'Safety',
       'fieldwork': 'Fieldwork',
+      'progress': 'Progress',
     };
     const tabTitle = tabTitles[activeTab] || activeTab;
     return `${baseTitle} • ${tabTitle}`;
@@ -1887,6 +1892,7 @@ export default function ProjectDetail(){
       'orders': 'Purchase orders and supplies',
       'safety': 'Site safety inspections',
       'fieldwork': 'Site assessments and work reports',
+      'progress': 'Job progress map — broad phases that drive project %',
     };
     return tabDescriptions[activeTab] || '';
   };
@@ -3655,6 +3661,24 @@ export default function ProjectDetail(){
                   initialSafetyFollowUpId={safetyFollowUpFromUrl}
                   flushSaveRef={safetyTabSaveRef}
                   signOnlySession={signOnlySafetySession}
+                />
+              )}
+
+              {tab === 'progress' && (
+                <ProjectWorkPhasesCard
+                  projectId={String(id)}
+                  businessLine={proj?.business_line}
+                  canEdit={hasEditPermission}
+                  useDesignSystem={useDesignSystem}
+                  initialPhases={Array.isArray(proj?.work_phases) ? proj.work_phases : null}
+                  onProgressSynced={(progress) => {
+                    if (progress == null) return;
+                    queryClient.setQueryData<Project | undefined>(projectQueryKey, (old) =>
+                      old ? { ...old, progress } : old,
+                    );
+                    queryClient.invalidateQueries({ queryKey: projectQueryKey });
+                    invalidateRecentActivity();
+                  }}
                 />
               )}
 
@@ -8849,17 +8873,18 @@ function LastReportsCard({ reports, useDesignSystem }: { reports: Report[]; useD
 }
 
 function ProjectTabCards({ availableTabs, tabCounts, onTabClick, proj, currentTab, useDesignSystem, isHeroCollapsed, headerEnd }: { 
-  availableTabs: readonly ('overview'|'reports'|'dispatch'|'timesheet'|'files'|'documents'|'proposal'|'pricing'|'estimate'|'warranties'|'orders'|'safety')[], 
+  availableTabs: readonly ('overview'|'progress'|'reports'|'dispatch'|'timesheet'|'files'|'documents'|'proposal'|'pricing'|'estimate'|'warranties'|'orders'|'safety'|'fieldwork')[], 
   tabCounts?: Partial<Record<string, number>>,
   onTabClick: (tab: typeof availableTabs[number] | 'overview' | null) => void,
   proj: any,
-  currentTab: 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'pricing'|'estimate'|'warranties'|'orders'|'safety'|'fieldwork'|null,
+  currentTab: 'overview'|'progress'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'pricing'|'estimate'|'warranties'|'orders'|'safety'|'fieldwork'|null,
   useDesignSystem?: boolean,
   isHeroCollapsed?: boolean,
   headerEnd?: ReactNode,
 }){
   const tabConfig: Record<string, { label: string, icon: string }> = {
     overview: { label: 'Overview', icon: '📊' },
+    progress: { label: 'Progress', icon: '✅' },
     reports: { label: 'Notes/History', icon: '📝' },
     dispatch: { label: 'Dispatch', icon: '👷' },
     timesheet: { label: 'Timesheet', icon: '⏰' },

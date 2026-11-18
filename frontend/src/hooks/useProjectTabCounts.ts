@@ -13,6 +13,7 @@ type Proposal = {
 
 export type ProjectDetailTabKey =
   | 'overview'
+  | 'progress'
   | 'reports'
   | 'dispatch'
   | 'timesheet'
@@ -23,7 +24,8 @@ export type ProjectDetailTabKey =
   | 'estimate'
   | 'orders'
   | 'safety'
-  | 'fieldwork';
+  | 'fieldwork'
+  | 'warranties'
 
 export type ProjectTabCounts = Partial<
   Record<'reports' | 'dispatch' | 'timesheet' | 'files' | 'documents' | 'pricing' | 'safety' | 'fieldwork', number>

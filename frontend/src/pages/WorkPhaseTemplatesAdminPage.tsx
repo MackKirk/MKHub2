@@ -261,8 +261,8 @@ export default function WorkPhaseTemplatesAdminPage({ businessLine }: Props) {
   return (
     <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'pb-2')}>
       <p className={uiTypography.helper}>
-        Broad job phases applied on a project Overview. Checking them off updates progress % — not
-        system Tasks.
+        Starter packs for the project Progress tab. Projects can stack multiple templates and still
+        add/remove phases by hand. Checking them off updates progress % — not system Tasks.
       </p>
 
       <AppCard bodyClassName={uiSpacing.cardPadding}>

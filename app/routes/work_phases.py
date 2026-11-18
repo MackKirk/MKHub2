@@ -15,10 +15,14 @@ from ..db import get_db
 from ..models.models import Project, User, WorkPhaseTemplate
 from ..services.business_line import VALID_BUSINESS_LINES, normalize_business_line
 from ..services.work_phases import (
+    add_manual_phase,
+    append_template_phases,
     compute_progress_percent,
     instantiate_phases_from_template,
     normalize_project_phases,
     normalize_template_phases,
+    remove_phase,
+    rename_phase,
     set_phase_done,
 )
 
@@ -125,11 +129,17 @@ def _unique_name(db: Session, name: str, *, exclude_id: Optional[uuid.UUID] = No
 
 class ApplyTemplateBody(BaseModel):
     template_id: str
-    replace: bool = True
+    """When false (default), append template phases to the existing checklist (multi-template)."""
+    replace: bool = False
 
 
-class PhaseDoneBody(BaseModel):
-    done: bool = True
+class AddPhaseBody(BaseModel):
+    label: str = Field(..., min_length=1, max_length=255)
+
+
+class PhasePatchBody(BaseModel):
+    done: Optional[bool] = None
+    label: Optional[str] = Field(None, min_length=1, max_length=255)
 
 
 class WorkPhaseTemplateBody(BaseModel):
@@ -331,6 +341,7 @@ def apply_work_phase_template(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """Apply a template: append by default (stack Pre-prod + Production, etc.)."""
     project = _load_project(db, project_id)
     _assert_project_write(user, project)
     try:
@@ -341,14 +352,21 @@ def apply_work_phase_template(
     if not tpl or not tpl.is_active:
         raise HTTPException(status_code=404, detail="Template not found")
 
-    existing = normalize_project_phases(getattr(project, "work_phases", None))
-    if existing and not body.replace:
-        raise HTTPException(
-            status_code=409,
-            detail="Project already has work phases; pass replace=true to overwrite",
+    tpl_id = str(tpl.id)
+    tpl_name = tpl.name
+    if body.replace:
+        phases = instantiate_phases_from_template(
+            tpl.phases,
+            source_template_id=tpl_id,
+            source_template_name=tpl_name,
         )
-
-    phases = instantiate_phases_from_template(tpl.phases)
+    else:
+        phases = append_template_phases(
+            getattr(project, "work_phases", None),
+            tpl.phases,
+            source_template_id=tpl_id,
+            source_template_name=tpl_name,
+        )
     if not phases:
         raise HTTPException(status_code=400, detail="Template has no phases")
 
@@ -362,11 +380,33 @@ def apply_work_phase_template(
     return _project_phases_payload(project)
 
 
+@router.post("/projects/{project_id}/work-phases")
+def add_project_work_phase(
+    project_id: str,
+    body: AddPhaseBody,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    project = _load_project(db, project_id)
+    _assert_project_write(user, project)
+    try:
+        updated = add_manual_phase(getattr(project, "work_phases", None), body.label)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    project.work_phases = updated
+    project.progress = compute_progress_percent(updated)
+    flag_modified(project, "work_phases")
+    db.add(project)
+    db.commit()
+    db.refresh(project)
+    return _project_phases_payload(project)
+
+
 @router.patch("/projects/{project_id}/work-phases/{phase_id}")
 def patch_project_work_phase(
     project_id: str,
     phase_id: str,
-    body: PhaseDoneBody,
+    body: PhasePatchBody,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -375,9 +415,40 @@ def patch_project_work_phase(
     rows = normalize_project_phases(getattr(project, "work_phases", None))
     if not any(p["id"] == str(phase_id) for p in rows):
         raise HTTPException(status_code=404, detail="Phase not found")
-    updated = set_phase_done(rows, phase_id, body.done)
+    if body.done is None and body.label is None:
+        raise HTTPException(status_code=400, detail="Provide done and/or label")
+    updated = rows
+    if body.done is not None:
+        updated = set_phase_done(updated, phase_id, body.done)
+    if body.label is not None:
+        try:
+            updated = rename_phase(updated, phase_id, body.label)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
     project.work_phases = updated
     project.progress = compute_progress_percent(updated)
+    flag_modified(project, "work_phases")
+    db.add(project)
+    db.commit()
+    db.refresh(project)
+    return _project_phases_payload(project)
+
+
+@router.delete("/projects/{project_id}/work-phases/{phase_id}")
+def delete_project_work_phase(
+    project_id: str,
+    phase_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    project = _load_project(db, project_id)
+    _assert_project_write(user, project)
+    rows = normalize_project_phases(getattr(project, "work_phases", None))
+    if not any(p["id"] == str(phase_id) for p in rows):
+        raise HTTPException(status_code=404, detail="Phase not found")
+    updated = remove_phase(rows, phase_id)
+    project.work_phases = updated
+    project.progress = compute_progress_percent(updated) if updated else project.progress
     flag_modified(project, "work_phases")
     db.add(project)
     db.commit()
