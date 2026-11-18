@@ -76,6 +76,7 @@ from .routes.safety import router as safety_router
 from .routes.form_templates import router as form_templates_router
 from .routes.form_custom_lists import router as form_custom_lists_router
 from .routes.fieldwork import router as fieldwork_router
+from .routes.work_phases import router as work_phases_router
 from .routes.training import router as training_router
 from .routes.tutorials import router as tutorials_router
 from .routes.bug_report import router as bug_report_router
@@ -321,6 +322,7 @@ def create_app() -> FastAPI:
     app.include_router(form_custom_lists_router, dependencies=_hub)
     app.include_router(form_templates_router, dependencies=_hub)
     app.include_router(fieldwork_router, dependencies=_hub)
+    app.include_router(work_phases_router, dependencies=_hub)
     app.include_router(training_router, dependencies=_hub)
     app.include_router(tutorials_router, dependencies=_hub)
     app.include_router(bug_report_router, dependencies=_hub)
@@ -1228,6 +1230,44 @@ def create_app() -> FastAPI:
                     except Exception as e:
                         db.rollback()
                         print(f"[startup] Fieldwork phrase catalog seed (non-critical): {e}")
+
+                    try:
+                        from .models.models import WorkPhaseTemplate
+
+                        Base.metadata.create_all(bind=engine, tables=[WorkPhaseTemplate.__table__])
+                        db.commit()
+                        print("[startup] Ensured work_phase_templates")
+                    except Exception as e:
+                        db.rollback()
+                        print(f"[startup] work_phase_templates create_all (non-critical): {e}")
+
+                    try:
+                        for col, col_type in (
+                            ("work_phases", "JSON NULL"),
+                            (
+                                "work_phase_template_id",
+                                "UUID NULL REFERENCES work_phase_templates(id) ON DELETE SET NULL",
+                            ),
+                        ):
+                            rows = db.execute(
+                                text(
+                                    """
+                                    SELECT 1 FROM information_schema.columns
+                                    WHERE table_schema = 'public'
+                                      AND table_name = 'projects'
+                                      AND column_name = :col
+                                    LIMIT 1
+                                    """
+                                ),
+                                {"col": col},
+                            ).fetchall()
+                            if not rows:
+                                db.execute(text(f"ALTER TABLE projects ADD COLUMN {col} {col_type}"))
+                                db.commit()
+                                print(f"[startup] Added projects.{col}")
+                    except Exception as e:
+                        db.rollback()
+                        print(f"[startup] projects work_phases columns (non-critical): {e}")
 
                     # Employee review: assignment snapshot + review_cycles.form_template_id (additive only)
                     try:

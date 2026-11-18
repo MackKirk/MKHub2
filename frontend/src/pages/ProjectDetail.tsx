@@ -44,6 +44,7 @@ import ProjectWarrantiesTab from '@/components/ProjectWarrantiesTab';
 
 import ChangeProjectOwnerModal from '@/components/ChangeProjectOwnerModal';
 import ProjectFieldBriefCard from '@/components/ProjectFieldBriefCard';
+import ProjectWorkPhasesCard from '@/components/ProjectWorkPhasesCard';
 import ProjectTeamCard from '@/components/ProjectTeamCard';
 import SiteFormModal, { type ClientSiteRecord } from '@/components/SiteFormModal';
 import NewContactModal from '@/components/NewContactModal';
@@ -1029,7 +1030,7 @@ function UserAvatar({ user, size = 'w-8 h-8', showTooltip = true, tooltipText }:
   );
 }
 
-type Project = { id:string, code?:string, project_number?:string|null, name?:string, client_id?:string, client_display_name?:string, client_name?:string, related_client_ids?:string[], related_client_display_names?:string[], awarded_related_client_ids?:string[], awarded_related_client_id?:string|null, address?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, scope_of_work?:string|null, job_completion_estimate?:string|null, crew_material_list?:{ id: string; name: string; quantity?: string|null; unit?: string|null; notes?: string|null }[]|null, status_id?:string, division_id?:string, division_ids?:string[], project_division_ids?:string[], estimator_id?:string, estimator_ids?:string[], project_admin_id?:string, onsite_lead_id?:string, division_onsite_leads?:Record<string, string>, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, created_at?:string, date_start?:string, date_eta?:string, date_awarded?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_address_line2?:string, site_address_line3?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string, status_changed_at?:string, is_bidding?:boolean, lead_source?:string, business_line?: string, purchase_order_number?:string|null, billing_contact?:string|null, invoice_to?:string|null, billing_email?:string|null, po_required?:boolean, billing_address_line1?:string|null, billing_address_line2?:string|null, billing_country?:string|null, billing_province?:string|null, billing_city?:string|null, billing_postal_code?:string|null, billing_differs_from_customer?:boolean, invoice_blocked_reason?:string|null, related_rm_opportunities?:{ id:string, name?:string, code?:string, status_label?:string|null }[], source_production_project?:{ id:string, name?:string, code?:string }|null };
+  type Project = { id:string, code?:string, project_number?:string|null, name?:string, client_id?:string, client_display_name?:string, client_name?:string, related_client_ids?:string[], related_client_display_names?:string[], awarded_related_client_ids?:string[], awarded_related_client_id?:string|null, address?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, scope_of_work?:string|null, job_completion_estimate?:string|null, crew_material_list?:{ id: string; name: string; quantity?: string|null; unit?: string|null; notes?: string|null }[]|null, work_phases?: { id: string; key: string; label: string; done: boolean; sort: number }[] | null, work_phase_template_id?: string | null, status_id?:string, division_id?:string, division_ids?:string[], project_division_ids?:string[], estimator_id?:string, estimator_ids?:string[], project_admin_id?:string, onsite_lead_id?:string, division_onsite_leads?:Record<string, string>, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, created_at?:string, date_start?:string, date_eta?:string, date_awarded?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_address_line2?:string, site_address_line3?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string, status_changed_at?:string, is_bidding?:boolean, lead_source?:string, business_line?: string, purchase_order_number?:string|null, billing_contact?:string|null, invoice_to?:string|null, billing_email?:string|null, po_required?:boolean, billing_address_line1?:string|null, billing_address_line2?:string|null, billing_country?:string|null, billing_province?:string|null, billing_city?:string|null, billing_postal_code?:string|null, billing_differs_from_customer?:boolean, invoice_blocked_reason?:string|null, related_rm_opportunities?:{ id:string, name?:string, code?:string, status_label?:string|null }[], source_production_project?:{ id:string, name?:string, code?:string }|null };
 
 function projectAwardedRelatedIdsSet(proj: Project | null | undefined): Set<string> {
   const raw = proj?.awarded_related_client_ids;
@@ -8488,22 +8489,43 @@ function ProjectOverviewBody({
     />
   );
 
+  const workPhasesCard = (
+    <ProjectWorkPhasesCard
+      projectId={projectId}
+      businessLine={proj?.business_line}
+      canEdit={hasEditPermission}
+      useDesignSystem={useDesignSystem}
+      initialPhases={Array.isArray(proj?.work_phases) ? proj.work_phases : null}
+      onProgressSynced={(progress) => {
+        if (progress == null) return;
+        // Keep hero progress bar in sync when phases drive %.
+        onFieldBriefSaved?.({ progress });
+      }}
+    />
+  );
+
   if (isOpportunityStyleTabs) {
     if (!showDescription) {
       return (
-        <div className={uiCx(overviewRow, 'mb-4')}>
-          <div className="flex h-full min-h-0 flex-col">{teamCard}</div>
-          {workloadCard}
-        </div>
+        <>
+          <div className={uiCx(overviewRow, 'mb-4')}>
+            <div className="flex h-full min-h-0 flex-col">{teamCard}</div>
+            {workloadCard}
+          </div>
+          <div className="mb-4">{workPhasesCard}</div>
+        </>
       );
     }
 
     return (
-      <div className={uiCx(overviewContextGrid, 'mb-4')}>
-        <div className={teamColumnClass}>{teamCard}</div>
-        <div className="order-1 lg:order-none lg:col-start-2 lg:row-start-1">{descriptionCard}</div>
-        <div className="order-3 lg:order-none lg:col-start-2 lg:row-start-2">{workloadCard}</div>
-      </div>
+      <>
+        <div className={uiCx(overviewContextGrid, 'mb-4')}>
+          <div className={teamColumnClass}>{teamCard}</div>
+          <div className="order-1 lg:order-none lg:col-start-2 lg:row-start-1">{descriptionCard}</div>
+          <div className="order-3 lg:order-none lg:col-start-2 lg:row-start-2">{workloadCard}</div>
+        </div>
+        <div className="mb-4">{workPhasesCard}</div>
+      </>
     );
   }
 
@@ -8557,6 +8579,7 @@ function ProjectOverviewBody({
         />
         {teamCard}
       </div>
+      <div className="mb-4">{workPhasesCard}</div>
       {notesWorkloadSection}
       {billingActivityRow}
     </>

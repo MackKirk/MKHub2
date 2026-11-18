@@ -417,8 +417,13 @@ class Project(Base):
     date_eta: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     date_awarded: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     date_end: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    # Visual progress percentage 0-100
+    # Visual progress percentage 0-100 (driven by work_phases when a template is applied)
     progress: Mapped[Optional[int]] = mapped_column(Integer)
+    # Job progress map (NOT system Tasks): [{id, key, label, done, sort}]
+    work_phases: Mapped[Optional[list]] = mapped_column(JSON)
+    work_phase_template_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("work_phase_templates.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     cost_estimated: Mapped[Optional[int]] = mapped_column(BigInteger)
     cost_actual: Mapped[Optional[int]] = mapped_column(BigInteger)
     service_value: Mapped[Optional[int]] = mapped_column(BigInteger)
@@ -461,6 +466,24 @@ class Project(Base):
     # Soft delete
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     deleted_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+
+class WorkPhaseTemplate(Base):
+    """Reusable job-progress phase lists (Production / R&M). Not system Tasks."""
+
+    __tablename__ = "work_phase_templates"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    # construction | repairs_maintenance | null (any line)
+    business_line: Mapped[Optional[str]] = mapped_column(String(50), index=True)
+    # Ordered [{key, label}]
+    phases: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    sort_index: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
 
 class ProjectMember(Base):
