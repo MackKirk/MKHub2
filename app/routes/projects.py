@@ -1844,6 +1844,10 @@ def get_project(
         "scope_of_work": getattr(p, 'scope_of_work', None),
         "job_completion_estimate": getattr(p, 'job_completion_estimate', None),
         "crew_material_list": getattr(p, 'crew_material_list', None),
+        "work_phases": getattr(p, "work_phases", None) or [],
+        "work_phase_template_id": str(getattr(p, "work_phase_template_id", None))
+        if getattr(p, "work_phase_template_id", None)
+        else None,
         "status_id": getattr(p, 'status_id', None),
         "division_id": getattr(p, 'division_id', None),
         "status_label": getattr(p, 'status_label', None),

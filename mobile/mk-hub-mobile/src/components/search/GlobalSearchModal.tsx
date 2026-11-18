@@ -138,7 +138,7 @@ export const GlobalSearchModal: React.FC<Props> = ({ visible, onClose }) => {
   const [opening, setOpening] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const showClock = searchShowClock(user?.pay_type, user?.needs_register_hours);
+  const showClock = searchShowClock(user?.pay_type, user?.needs_register_hours, user?.employment_type);
 
   useEffect(() => {
     if (!visible) return;

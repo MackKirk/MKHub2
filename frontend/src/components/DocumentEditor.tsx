@@ -39,6 +39,12 @@ import {
 import { readDocumentCreatorClipboard, writeDocumentCreatorClipboard } from '@/utils/documentCreatorClipboard';
 import OverlayPortal from '@/components/OverlayPortal';
 import DocumentEditorRibbon from '@/components/document-editor/DocumentEditorRibbon';
+import InsertFromFieldReportDialog from '@/components/document-editor/InsertFromFieldReportDialog';
+import {
+  buildOverflowPhotoElements,
+  fillFieldReportPhotoSlots,
+} from '@/lib/fillFieldReportPhotoSlots';
+import type { FieldworkPhotoObservation } from '@/types/fieldwork';
 import DocumentExportPdfOverlay, {
   type DocumentExportPdfProgress,
 } from '@/components/document-editor/DocumentExportPdfOverlay';
@@ -165,6 +171,11 @@ type DocumentEditorDocumentProps = {
   enableSendForSignature?: boolean;
   /** First open after scoped create — prompt to confirm/edit auto-generated title. */
   promptRenameOnOpen?: boolean;
+  /** Show Insert → Field report (photos + captions). */
+  enableInsertFromFieldReport?: boolean;
+  /** Open Insert from Field Report once, pre-selecting this approved record. */
+  autoOpenInsertFieldReportId?: string | null;
+  onAutoOpenInsertFieldReportConsumed?: () => void;
 };
 
 type DocumentEditorTemplateProps = {
@@ -197,6 +208,14 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
   const documentId = !isTemplate ? props.documentId : undefined;
   const projectId = !isTemplate ? props.projectId : undefined;
   const subjectUserId = !isTemplate ? (props as DocumentEditorDocumentProps).subjectUserId : undefined;
+  const enableInsertFromFieldReport =
+    !isTemplate && !!(props as DocumentEditorDocumentProps).enableInsertFromFieldReport && !!projectId;
+  const autoOpenInsertFieldReportId = !isTemplate
+    ? (props as DocumentEditorDocumentProps).autoOpenInsertFieldReportId
+    : null;
+  const onAutoOpenInsertFieldReportConsumed = !isTemplate
+    ? (props as DocumentEditorDocumentProps).onAutoOpenInsertFieldReportConsumed
+    : undefined;
   const onClose = props.onClose;
   const templateProps = isTemplate ? props : null;
   const propReadOnly = !isTemplate && !!(props as DocumentEditorDocumentProps).readOnly;
@@ -289,6 +308,22 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
   const [pdfPreviewExpanded, setPdfPreviewExpanded] = useState(false);
   const [bgPickerOpen, setBgPickerOpen] = useState(false);
   const [imagePickerOpen, setImagePickerOpen] = useState(false);
+  const [fieldReportInsertOpen, setFieldReportInsertOpen] = useState(false);
+  const [fieldReportPreferredRecordId, setFieldReportPreferredRecordId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const id = (autoOpenInsertFieldReportId || '').trim();
+    if (!id || !enableInsertFromFieldReport || readOnly) return;
+    setFieldReportPreferredRecordId(id);
+    setFieldReportInsertOpen(true);
+    onAutoOpenInsertFieldReportConsumed?.();
+  }, [
+    autoOpenInsertFieldReportId,
+    enableInsertFromFieldReport,
+    readOnly,
+    onAutoOpenInsertFieldReportConsumed,
+  ]);
+
   /** When set, ImagePicker is in "replace" mode for this element; when null, in "add" mode. */
   const [imagePickerReplaceElementId, setImagePickerReplaceElementId] = useState<string | null>(null);
   /** Preload this image in the picker when editing/replacing. */
@@ -1974,6 +2009,80 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
     handleAddElement(createImagePlaceholder());
   }, [handleAddElement]);
 
+  /** Prefer Quotation photo_N/caption_N slots; overflow falls back to free image+text dump. */
+  const handleInsertFromFieldReportPhotos = useCallback(
+    (photos: FieldworkPhotoObservation[]) => {
+      if (!photos.length || readOnly) return;
+      if (textEditingElementId) {
+        notifyBlockedByTextEdit();
+        return;
+      }
+      const currentPages = stateRef.current.pages;
+      const pageIndex = stateRef.current.currentPageIndex;
+      const { pages: slottedPages, filledCount, overflow } = fillFieldReportPhotoSlots(
+        currentPages,
+        photos
+      );
+      const overflowEls = buildOverflowPhotoElements(overflow);
+      if (!filledCount && !overflowEls.length) {
+        toast.error('No photos to insert.');
+        return;
+      }
+
+      let nextPages = slottedPages;
+      if (overflowEls.length) {
+        const targetIndex = Math.min(
+          Math.max(0, filledCount ? slottedPages.length - 1 : pageIndex),
+          Math.max(0, slottedPages.length - 1)
+        );
+        nextPages = slottedPages.map((p, i) =>
+          i === targetIndex
+            ? { ...p, elements: [...(p.elements || []), ...overflowEls] }
+            : p
+        );
+      }
+
+      pushHistory();
+      setPages(nextPages);
+      stateRef.current.pages = nextPages;
+
+      if (overflowEls.length) {
+        setSelectedElementIds(overflowEls.map((el) => el.id));
+      } else {
+        const filledIds: string[] = [];
+        for (const page of nextPages) {
+          for (const el of page.elements || []) {
+            const slot = typeof el.meta?.slot === 'string' ? el.meta.slot : '';
+            if (el.type === 'image' && /^photo_\d+$/i.test(slot) && String(el.content || '').trim()) {
+              filledIds.push(el.id);
+            }
+          }
+        }
+        setSelectedElementIds(filledIds.slice(0, 8));
+      }
+
+      const overflowPhotoCount = overflowEls.filter((e) => e.type === 'image').length;
+      if (filledCount && overflowPhotoCount) {
+        toast.success(
+          `Filled ${filledCount} slot${filledCount === 1 ? '' : 's'}; ${overflowPhotoCount} extra photo(s) added.`
+        );
+      } else if (filledCount) {
+        toast.success(
+          filledCount === 1
+            ? 'Photo and caption filled into Quotation slot.'
+            : `Filled ${filledCount} Quotation photo slots.`
+        );
+      } else {
+        toast.success(
+          overflowPhotoCount === 1
+            ? 'Photo and caption added to this page.'
+            : 'Photos and captions added to this page. Drag to rearrange if needed.'
+        );
+      }
+    },
+    [readOnly, textEditingElementId, notifyBlockedByTextEdit, pushHistory]
+  );
+
   const uploadDocumentImageFile = useCallback(
     async (file: File): Promise<string> => {
       const up: any = await api('POST', '/files/upload', {
@@ -2506,6 +2615,11 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
           setImagePickerOpen(true);
         }}
         onAddImagePlaceholder={handleAddImagePlaceholder}
+        onInsertFromFieldReport={
+          enableInsertFromFieldReport && !readOnly
+            ? () => setFieldReportInsertOpen(true)
+            : undefined
+        }
         onAddInitials={
           projectId
             ? undefined
@@ -3076,6 +3190,18 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
         subjectUserId={subjectUserId}
       />
       )}
+      {enableInsertFromFieldReport && projectId && !readOnly ? (
+        <InsertFromFieldReportDialog
+          open={fieldReportInsertOpen}
+          projectId={projectId}
+          preferredRecordId={fieldReportPreferredRecordId}
+          onClose={() => {
+            setFieldReportInsertOpen(false);
+            setFieldReportPreferredRecordId(null);
+          }}
+          onInsert={handleInsertFromFieldReportPhotos}
+        />
+      ) : null}
       {!isTemplate && imagePickerOpen && (
         <ImagePicker
           isOpen={true}

@@ -219,10 +219,24 @@ def apply_production() -> int:
         return 3
 
     # --- Live apply (only when fully authorized) ---
+    # Load local .env if DATABASE_URL is not already present (do not print secrets).
+    env_path = ROOT / ".env"
+    if env_path.exists() and not os.environ.get("DATABASE_URL"):
+        for line in env_path.read_text(encoding="utf-8").splitlines():
+            s = line.strip()
+            if not s or s.startswith("#") or "=" not in s:
+                continue
+            k, v = s.split("=", 1)
+            k = k.strip()
+            v = v.strip().strip('"').strip("'")
+            if k and k not in os.environ:
+                os.environ[k] = v
+
     from sqlalchemy.orm import Session  # local import: avoid DB stack on dry-run
 
     from app.db import SessionLocal  # noqa: WPS433
     from app.models.models import FormCustomList, FormCustomListItem
+    from app.services.fieldwork_phrases import ensure_fieldwork_phrase_lists
     from app.services.form_engine import LIST_DOMAIN_FIELDWORK
 
     rows = build_pack()
@@ -230,6 +244,8 @@ def apply_production() -> int:
     db: Session = SessionLocal()
     created = updated = noop = skipped = 0
     try:
+        # Ensure empty seed lists exist; does not invent Work Performed phrases.
+        ensure_fieldwork_phrase_lists(db, commit=False)
         lst = (
             db.query(FormCustomList)
             .filter(

@@ -1,4 +1,4 @@
-"""R&M Fieldwork records API (PR1: domain + workflow; no UI / upload orchestration)."""
+"""Fieldwork records API (Construction + R&M)."""
 from __future__ import annotations
 
 import uuid
@@ -6,10 +6,12 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
-from ..auth.security import get_current_user
+from ..auth.security import get_current_user, user_has_any_rm_fieldwork_permission
 from ..db import get_db
 from ..models.models import (
     ClientFile,
@@ -21,16 +23,22 @@ from ..models.models import (
     Project,
     User,
 )
-from ..services.fieldwork_access import assert_rm_fieldwork_project
+from ..services.fieldwork_access import (
+    assert_fieldwork_project,
+    fieldwork_lines_for_user,
+    parse_optional_business_line,
+)
 from ..services.fieldwork_phrases import resolve_phrase_snapshots
 from ..services.form_engine import (
     FIELDWORK_PHOTO_ENTRY_OBSERVATION,
     FIELDWORK_PHOTO_ENTRY_WORK_PERFORMED,
     SITE_ASSESSMENT_CATEGORY,
     WORK_REPORT_CATEGORY,
+    fieldwork_template_allows_business_line,
     is_fieldwork_template_category,
     normalized_template_category,
 )
+from ..services.project_visibility import project_visibility_clause_for_user
 
 router = APIRouter(tags=["fieldwork"])
 
@@ -348,6 +356,20 @@ class FieldworkReviewBody(BaseModel):
     idempotency_key: Optional[str] = None
 
 
+class FieldworkSupervisorCommentsBody(BaseModel):
+    """Per-field supervisor notes (sidecar in form_payload._supervisorComments)."""
+
+    comments: dict = Field(default_factory=dict, description="fieldKey -> { text: string }")
+    expected_row_version: Optional[int] = None
+    idempotency_key: Optional[str] = None
+
+
+SUPERVISOR_COMMENTS_KEY = "_supervisorComments"
+REVIEW_ANNOTATION_STATUSES = frozenset(
+    {STATUS_SUBMITTED, STATUS_CHANGES_REQUESTED, TERMINAL_APPROVED}
+)
+
+
 class FieldworkPhotoCreateBody(BaseModel):
     file_object_id: str
     client_file_id: Optional[str] = None
@@ -427,19 +449,139 @@ def _list_records_for_project(
     return [_record_to_dict(db, r) for r in rows]
 
 
+def _inbox_status_filter(raw: Optional[str]) -> Optional[str]:
+    """Normalize inbox status filter. pending → submitted. all/empty → no filter."""
+    if not raw:
+        return None
+    s = raw.strip().lower()
+    if s in ("", "all"):
+        return None
+    if s in ("pending", "pending_review"):
+        return STATUS_SUBMITTED
+    return s
+
+
+def _record_inbox_item(db: Session, row: FieldworkRecord, proj: Project) -> dict:
+    base = _record_to_dict(db, row)
+    base["project_name"] = proj.name
+    base["project_code"] = proj.code
+    base["project_address"] = proj.address
+    base["is_bidding"] = bool(getattr(proj, "is_bidding", False))
+    base["business_line"] = getattr(proj, "business_line", None)
+    return base
+
+
 @router.get("/fieldwork/records")
 def list_fieldwork_records(
     project_id: Optional[str] = Query(None),
     kind: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
+    q: Optional[str] = Query(None),
+    business_line: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    limit: int = Query(25, ge=1, le=100),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if not project_id:
-        raise HTTPException(status_code=400, detail="project_id is required")
-    proj = _load_project(db, project_id)
-    assert_rm_fieldwork_project(db, user, proj, "read")
-    return _list_records_for_project(db, proj, kind=kind, status=status)
+    """
+    Project-scoped list when project_id is set (array).
+    Cross-project inbox when omitted: { items, total, page, limit, counts }.
+    """
+    if project_id:
+        proj = _load_project(db, project_id)
+        assert_fieldwork_project(db, user, proj, "read")
+        return _list_records_for_project(db, proj, kind=kind, status=status)
+
+    allowed_lines = fieldwork_lines_for_user(user, "read")
+    if not allowed_lines:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    line_filter = parse_optional_business_line(business_line)
+    if line_filter:
+        if line_filter not in allowed_lines:
+            raise HTTPException(status_code=403, detail="Forbidden")
+        inbox_lines = [line_filter]
+    else:
+        inbox_lines = allowed_lines
+
+    status_norm = _inbox_status_filter(status)
+    kind_norm = (kind or "").strip().lower() or None
+    if kind_norm and kind_norm not in KINDS:
+        raise HTTPException(status_code=400, detail="Invalid kind")
+
+    filters = [
+        Project.deleted_at.is_(None),
+        Project.business_line.in_(inbox_lines),
+        project_visibility_clause_for_user(user),
+    ]
+    if kind_norm:
+        filters.append(FieldworkRecord.kind == kind_norm)
+    search = (q or "").strip()
+    if search:
+        like = f"%{search}%"
+        filters.append(
+            or_(
+                Project.name.ilike(like),
+                Project.code.ilike(like),
+                Project.address.ilike(like),
+                FieldworkRecord.kind.ilike(like),
+            )
+        )
+
+    count_rows = (
+        db.query(FieldworkRecord.status, func.count(FieldworkRecord.id))
+        .join(Project, Project.id == FieldworkRecord.project_id)
+        .filter(*filters)
+        .group_by(FieldworkRecord.status)
+        .all()
+    )
+    counts = {
+        "draft": 0,
+        "submitted": 0,
+        "changes_requested": 0,
+        "approved": 0,
+        "superseded": 0,
+        "all": 0,
+    }
+    for st, n in count_rows:
+        key = (st or "").strip().lower()
+        counts["all"] += int(n or 0)
+        if key in counts:
+            counts[key] = int(n or 0)
+    counts["pending"] = counts["submitted"]
+
+    list_filters = list(filters)
+    if status_norm:
+        list_filters.append(FieldworkRecord.status == status_norm)
+
+    total = (
+        db.query(func.count(FieldworkRecord.id))
+        .join(Project, Project.id == FieldworkRecord.project_id)
+        .filter(*list_filters)
+        .scalar()
+        or 0
+    )
+    rows = (
+        db.query(FieldworkRecord, Project)
+        .join(Project, Project.id == FieldworkRecord.project_id)
+        .filter(*list_filters)
+        .order_by(
+            FieldworkRecord.submitted_at.desc().nullslast(),
+            FieldworkRecord.updated_at.desc().nullslast(),
+            FieldworkRecord.created_at.desc(),
+        )
+        .offset((page - 1) * limit)
+        .limit(limit)
+        .all()
+    )
+    items = [_record_inbox_item(db, row, proj) for row, proj in rows]
+    return {
+        "items": items,
+        "total": int(total),
+        "page": page,
+        "limit": limit,
+        "counts": counts,
+    }
 
 
 @router.get("/projects/{project_id}/fieldwork-records")
@@ -452,7 +594,7 @@ def list_project_fieldwork_records(
 ):
     """Project-scoped list (same payload as GET /fieldwork/records). Prefer this from web/Vite."""
     proj = _load_project(db, project_id)
-    assert_rm_fieldwork_project(db, user, proj, "read")
+    assert_fieldwork_project(db, user, proj, "read")
     return _list_records_for_project(db, proj, kind=kind, status=status)
 
 
@@ -464,7 +606,7 @@ def create_fieldwork_record(
     user: User = Depends(get_current_user),
 ):
     proj = _load_project(db, project_id)
-    assert_rm_fieldwork_project(db, user, proj, "write")
+    assert_fieldwork_project(db, user, proj, "write")
     kind = (body.kind or "").strip().lower()
     if kind not in KINDS:
         raise HTTPException(status_code=400, detail="kind must be site_assessment or work_report")
@@ -483,6 +625,11 @@ def create_fieldwork_record(
     if (tpl.status or "").lower() != "active":
         raise HTTPException(status_code=400, detail="Template is not active")
     definition = tpl.definition if isinstance(tpl.definition, dict) else {"sections": []}
+    if not fieldwork_template_allows_business_line(definition, getattr(proj, "business_line", None)):
+        raise HTTPException(
+            status_code=400,
+            detail="Template is not available for this project's business line",
+        )
     settings = _settings_from_template(tpl, kind)
     now = _utcnow()
     row = FieldworkRecord(
@@ -515,9 +662,46 @@ def get_fieldwork_record(
     user: User = Depends(get_current_user),
 ):
     proj = _load_project(db, project_id)
-    assert_rm_fieldwork_project(db, user, proj, "read")
+    assert_fieldwork_project(db, user, proj, "read")
     row = _load_record(db, proj.id, record_id)
     return _record_to_dict(db, row, include_photos=True, include_events=True)
+
+
+@router.get("/projects/{project_id}/fieldwork-records/{record_id}/pdf")
+def download_fieldwork_record_pdf(
+    project_id: str,
+    record_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Download a printable Field Report PDF (includes technician + supervisor notes and photos)."""
+    from slugify import slugify
+
+    from ..services.fieldwork_report_pdf import build_fieldwork_report_pdf_bytes
+
+    proj = _load_project(db, project_id)
+    assert_fieldwork_project(db, user, proj, "read")
+    row = _load_record(db, proj.id, record_id)
+    try:
+        pdf_bytes = build_fieldwork_report_pdf_bytes(db, record=row, project=proj)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"PDF generation failed: {exc}") from exc
+
+    kind = (row.kind or "field-report").replace("_", "-")
+    date_part = ""
+    if row.submitted_at:
+        date_part = row.submitted_at.strftime("%Y-%m-%d")
+    elif row.created_at:
+        date_part = row.created_at.strftime("%Y-%m-%d")
+    else:
+        date_part = _utcnow().strftime("%Y-%m-%d")
+    stem = slugify(f"{kind} {proj.code or proj.name or 'report'} {date_part} {str(row.id)[:8]}") or "field-report"
+    filename = f"{stem[:160]}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.patch("/projects/{project_id}/fieldwork-records/{record_id}")
@@ -529,7 +713,7 @@ def patch_fieldwork_record(
     user: User = Depends(get_current_user),
 ):
     proj = _load_project(db, project_id)
-    assert_rm_fieldwork_project(db, user, proj, "write")
+    assert_fieldwork_project(db, user, proj, "write")
     row = _load_record(db, proj.id, record_id, for_update=True)
     _assert_editable(row)
     _bump_row_version(row, body.expected_row_version)
@@ -557,7 +741,7 @@ def submit_fieldwork_record(
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
 ):
     proj = _load_project(db, project_id)
-    assert_rm_fieldwork_project(db, user, proj, "write")
+    assert_fieldwork_project(db, user, proj, "write")
     row = _load_record(db, proj.id, record_id, for_update=True)
     key = (body.idempotency_key or idempotency_key or "").strip() or None
     if row.status == STATUS_SUBMITTED:
@@ -599,7 +783,7 @@ def request_fieldwork_changes(
     user: User = Depends(get_current_user),
 ):
     proj = _load_project(db, project_id)
-    assert_rm_fieldwork_project(db, user, proj, "review")
+    assert_fieldwork_project(db, user, proj, "review")
     row = _load_record(db, proj.id, record_id, for_update=True)
     if row.status == STATUS_CHANGES_REQUESTED:
         return _record_to_dict(db, row, include_photos=True, include_events=True)
@@ -641,7 +825,7 @@ def approve_fieldwork_record(
     user: User = Depends(get_current_user),
 ):
     proj = _load_project(db, project_id)
-    assert_rm_fieldwork_project(db, user, proj, "review")
+    assert_fieldwork_project(db, user, proj, "review")
     row = _load_record(db, proj.id, record_id, for_update=True)
     if row.status == TERMINAL_APPROVED:
         return _record_to_dict(db, row, include_photos=True, include_events=True)
@@ -672,6 +856,57 @@ def approve_fieldwork_record(
     return _record_to_dict(db, row, include_photos=True, include_events=True)
 
 
+@router.patch("/projects/{project_id}/fieldwork-records/{record_id}/supervisor-comments")
+def patch_fieldwork_supervisor_comments(
+    project_id: str,
+    record_id: str,
+    body: FieldworkSupervisorCommentsBody,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Save per-item supervisor notes while reviewing (does not require draft status)."""
+    proj = _load_project(db, project_id)
+    assert_fieldwork_project(db, user, proj, "review")
+    row = _load_record(db, proj.id, record_id, for_update=True)
+    st = (row.status or "").strip().lower()
+    if st not in REVIEW_ANNOTATION_STATUSES:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Supervisor comments cannot be edited while status is '{row.status}'",
+        )
+    _bump_row_version(row, body.expected_row_version)
+    payload = dict(row.form_payload) if isinstance(row.form_payload, dict) else {}
+    cleaned: dict = {}
+    raw = body.comments if isinstance(body.comments, dict) else {}
+    for key, val in raw.items():
+        fk = str(key or "").strip()
+        if not fk or fk.startswith("_"):
+            continue
+        text = ""
+        if isinstance(val, str):
+            text = val.strip()
+        elif isinstance(val, dict):
+            text = str(val.get("text") or "").strip()
+        if text:
+            cleaned[fk] = {"text": text}
+    payload[SUPERVISOR_COMMENTS_KEY] = cleaned
+    row.form_payload = payload
+    row.updated_at = _utcnow()
+    row.updated_by = user.id
+    _add_event(
+        db,
+        row,
+        event_type="supervisor_comments_updated",
+        user=user,
+        from_status=st,
+        to_status=st,
+        message=f"{len(cleaned)} field note(s)",
+    )
+    db.commit()
+    db.refresh(row)
+    return _record_to_dict(db, row, include_photos=True, include_events=True)
+
+
 @router.post("/projects/{project_id}/fieldwork-records/{record_id}/revisions")
 def create_fieldwork_revision(
     project_id: str,
@@ -681,7 +916,7 @@ def create_fieldwork_revision(
 ):
     """Create an editable revision of an approved record (post-approval immutability)."""
     proj = _load_project(db, project_id)
-    assert_rm_fieldwork_project(db, user, proj, "write")
+    assert_fieldwork_project(db, user, proj, "write")
     src = _load_record(db, proj.id, record_id)
     if src.status != TERMINAL_APPROVED:
         raise HTTPException(status_code=409, detail="Only approved records can be revised")
@@ -765,7 +1000,7 @@ def list_fieldwork_photos(
     user: User = Depends(get_current_user),
 ):
     proj = _load_project(db, project_id)
-    assert_rm_fieldwork_project(db, user, proj, "read")
+    assert_fieldwork_project(db, user, proj, "read")
     row = _load_record(db, proj.id, record_id)
     photos = (
         db.query(FieldworkPhotoObservation)
@@ -785,7 +1020,7 @@ def create_fieldwork_photo(
     user: User = Depends(get_current_user),
 ):
     proj = _load_project(db, project_id)
-    assert_rm_fieldwork_project(db, user, proj, "write")
+    assert_fieldwork_project(db, user, proj, "write")
     row = _load_record(db, proj.id, record_id, for_update=True)
     _assert_editable(row)
     _bump_row_version(row, body.expected_row_version)
@@ -930,7 +1165,7 @@ def patch_fieldwork_photo(
     user: User = Depends(get_current_user),
 ):
     proj = _load_project(db, project_id)
-    assert_rm_fieldwork_project(db, user, proj, "write")
+    assert_fieldwork_project(db, user, proj, "write")
     row = _load_record(db, proj.id, record_id, for_update=True)
     _assert_editable(row)
     _bump_row_version(row, body.expected_row_version)
@@ -1008,7 +1243,7 @@ def delete_fieldwork_photo(
     user: User = Depends(get_current_user),
 ):
     proj = _load_project(db, project_id)
-    assert_rm_fieldwork_project(db, user, proj, "write")
+    assert_fieldwork_project(db, user, proj, "write")
     row = _load_record(db, proj.id, record_id, for_update=True)
     _assert_editable(row)
     # Bump parent version so concurrent submit sees a conflict if expected_row_version is used

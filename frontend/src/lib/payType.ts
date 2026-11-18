@@ -3,10 +3,10 @@
 export const PAY_TYPE_OPTIONS = [
   { value: 'hourly', label: 'Hourly' },
   { value: 'salary', label: 'Salary' },
-  { value: 'contract', label: 'Contract' },
 ] as const;
 
-export type CanonicalPayType = (typeof PAY_TYPE_OPTIONS)[number]['value'];
+/** `contract` remains only so older rows still display until they are stored as hourly. */
+export type CanonicalPayType = 'hourly' | 'salary' | 'contract';
 
 const HOURLY = new Set(['hourly', 'hour', 'hours']);
 const SALARY = new Set(['salary', 'salaried', 'annual', 'yearly', 'year', 'exempt']);
@@ -29,9 +29,21 @@ export function isSalaryPayType(raw?: string | null): boolean {
   return canonicalPayType(raw) === 'salary';
 }
 
+/** True when Employment Type still holds the old Salary pay label. */
+export function isSalaryEmploymentType(raw?: string | null): boolean {
+  const text = (raw || '').trim().toLowerCase();
+  if (!text) return false;
+  if (text === 'salary' || text === 'salaried') return true;
+  return text.includes('salary') || text.includes('salaried');
+}
+
 /** Salary skips hours unless the register-hours checkbox is on. */
-export function shouldRegisterHours(payType?: string | null, needsRegisterHours?: boolean | null): boolean {
-  if (!isSalaryPayType(payType)) return true;
+export function shouldRegisterHours(
+  payType?: string | null,
+  needsRegisterHours?: boolean | null,
+  employmentType?: string | null,
+): boolean {
+  if (!isSalaryPayType(payType) && !isSalaryEmploymentType(employmentType)) return true;
   return Boolean(needsRegisterHours);
 }
 

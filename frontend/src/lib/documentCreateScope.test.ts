@@ -43,6 +43,16 @@ describe('document open path helpers', () => {
     expect(path).toContain('rename=1');
   });
 
+  it('appends insert_field_report query when provided', () => {
+    const path = documentsTabPathForProject(
+      { id: 'p1', business_line: 'construction', is_bidding: true },
+      'doc-9',
+      { rename: true, insertFieldReportId: 'rec-1' },
+    );
+    expect(path).toContain('/opportunities/p1?');
+    expect(path).toContain('insert_field_report=rec-1');
+  });
+
   it('appends rename query for user document builder', () => {
     const path = userDocumentBuilderPath('u1', 'doc-2', { rename: true });
     expect(path).toContain('doc=doc-2');

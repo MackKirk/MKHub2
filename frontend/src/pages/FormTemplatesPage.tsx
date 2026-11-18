@@ -49,6 +49,8 @@ type FormTemplatesPageProps = {
   variant?: FormTemplatesPageVariant;
   /** When true, omit the page header (e.g. embedded in Employee Review → Admin → Templates tab). */
   embedded?: boolean;
+  /** Fieldwork only: scopes list + editor paths to a business line. */
+  businessLine?: 'construction' | 'repairs_maintenance';
 };
 
 const LIST_GRID_COLS_SAFETY =
@@ -73,7 +75,11 @@ function templateTypeLabel(category: string | null | undefined): string {
   return 'Inspection';
 }
 
-export default function FormTemplatesPage({ variant = 'safety', embedded = false }: FormTemplatesPageProps) {
+export default function FormTemplatesPage({
+  variant = 'safety',
+  embedded = false,
+  businessLine,
+}: FormTemplatesPageProps) {
   const qc = useQueryClient();
   const nav = useNavigate();
   const confirm = useConfirm();
@@ -84,7 +90,9 @@ export default function FormTemplatesPage({ variant = 'safety', embedded = false
   const editorBasePath = isHr
     ? '/reviews/form-templates'
     : isFieldwork
-      ? '/rm-fieldwork/form-templates'
+      ? businessLine === 'construction'
+        ? '/fieldwork/form-templates'
+        : '/rm-fieldwork/form-templates'
       : '/documents/form-templates';
 
   const sortBy = (searchParams.get('sort') as SortCol) || 'name';
@@ -99,13 +107,16 @@ export default function FormTemplatesPage({ variant = 'safety', embedded = false
   };
 
   const { data: rows = [], isLoading } = useQuery({
-    queryKey: ['formTemplates', sortBy, sortDir, variant],
+    queryKey: ['formTemplates', sortBy, sortDir, variant, businessLine || ''],
     queryFn: () => {
       const params = new URLSearchParams();
       params.set('sort', sortBy);
       params.set('sort_dir', sortDir);
       if (isHr) params.set('category', 'employee_review');
-      if (isFieldwork) params.set('domain', 'fieldwork');
+      if (isFieldwork) {
+        params.set('domain', 'fieldwork');
+        if (businessLine) params.set('business_line', businessLine);
+      }
       return api<TemplateRow[]>('GET', `/form-templates?${params.toString()}`);
     },
   });
@@ -128,8 +139,8 @@ export default function FormTemplatesPage({ variant = 'safety', embedded = false
   }, [rows, searchQuery, isHr, isFieldwork]);
 
   const createMut = useMutation({
-    mutationFn: () =>
-      api<{ id: string }>('POST', '/form-templates', {
+    mutationFn: async () => {
+      const created = await api<{ id: string }>('POST', '/form-templates', {
         name: isHr
           ? 'New employee review template'
           : isFieldwork
@@ -137,7 +148,29 @@ export default function FormTemplatesPage({ variant = 'safety', embedded = false
             : 'New form template',
         category: isHr ? 'employee_review' : isFieldwork ? 'site_assessment' : 'inspection',
         status: 'active',
-      }),
+      });
+      // Stamp business_lines so Construction templates are not treated as legacy R&M-only.
+      if (isFieldwork && businessLine && created?.id) {
+        try {
+          await api('PUT', `/form-templates/${encodeURIComponent(created.id)}`, {
+            expected_definition_version: 1,
+            definition: {
+              sections: [],
+              signature_policy: { worker: { required: false, mode: 'drawn' } },
+              fieldwork_settings: {
+                require_final_comments: true,
+                require_min_photos: 0,
+                default_pictures_folder: 'Proposal Photos',
+                business_lines: [businessLine],
+              },
+            },
+          });
+        } catch {
+          // Editor can still set lines on first save.
+        }
+      }
+      return created;
+    },
     onSuccess: (r) => {
       qc.invalidateQueries({ queryKey: ['formTemplates'] });
       toast.success('Template created');

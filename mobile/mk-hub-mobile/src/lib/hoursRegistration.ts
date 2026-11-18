@@ -24,24 +24,21 @@ export function isSalaryPayType(payType?: string | null): boolean {
 }
 
 const EMPLOYMENT_ALIASES: Record<string, string> = {
-  salary: "Salary",
-  salaried: "Salary",
-  hourly: "Hourly",
-  hour: "Hourly",
-  hours: "Hourly",
   "full-time": "Full-time",
   "full time": "Full-time",
   fulltime: "Full-time",
   "part-time": "Part-time",
   "part time": "Part-time",
-  parttime: "Part-time"
+  parttime: "Part-time",
+  contract: "Contract",
+  contractor: "Contract"
 };
 
 /** Map free-text employment type onto Full-time | Hourly | Part-time | Salary. */
 export function employmentTypeLabel(raw?: string | null): string {
   const text = String(raw || "").trim();
   if (!text) return "";
-  if (text === "Full-time" || text === "Hourly" || text === "Part-time" || text === "Salary") return text;
+  if (text === "Full-time" || text === "Part-time" || text === "Contract") return text;
   const key = text.toLowerCase().replace(/[_/]+/g, " ").replace(/\s+/g, " ");
   return EMPLOYMENT_ALIASES[key] || EMPLOYMENT_ALIASES[key.replace(/ /g, "-")] || text;
 }
@@ -54,10 +51,18 @@ export function payTypeLabel(payType?: string | null): string {
   return (payType || "").trim();
 }
 
+export function isSalaryEmploymentType(raw?: string | null): boolean {
+  const text = String(raw || "").trim().toLowerCase();
+  if (!text) return false;
+  if (text === "salary" || text === "salaried") return true;
+  return text.includes("salary") || text.includes("salaried");
+}
+
 export function shouldRegisterHours(
   payType?: string | null,
-  needsRegisterHours?: boolean | null
+  needsRegisterHours?: boolean | null,
+  employmentType?: string | null
 ): boolean {
-  if (!isSalaryPayType(payType)) return true;
+  if (!isSalaryPayType(payType) && !isSalaryEmploymentType(employmentType)) return true;
   return Boolean(needsRegisterHours);
 }

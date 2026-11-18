@@ -13,6 +13,7 @@ const LINE_PROJECT_SUB_FEATURES = [
   'costs',
   'safety',
   'warranties',
+  'fieldwork',
 ] as const;
 
 const LINE_PROJECT_PREFIXES = ['business:construction:projects', 'business:rm:projects'] as const;
@@ -25,6 +26,7 @@ const LINE_PROJECT_SUB_KEYS = LINE_PROJECT_PREFIXES.flatMap((prefix) => [
   `${prefix}:proposal:approve`,
   `${prefix}:proposal:delete`,
   `${prefix}:warranties:costs:read`,
+  `${prefix}:fieldwork:review`,
   `${prefix}:members:write`,
   `${prefix}:owner:write`,
 ]);
@@ -239,9 +241,6 @@ export const IMPLEMENTED_PERMISSIONS = new Set([
   'business:projects:costs:write',
   'business:projects:safety:read',
   'business:projects:safety:write',
-  'business:rm:projects:fieldwork:read',
-  'business:rm:projects:fieldwork:write',
-  'business:rm:projects:fieldwork:review',
   'business:projects:warranties:read',
   'business:projects:warranties:write',
   'business:projects:warranties:costs:read',

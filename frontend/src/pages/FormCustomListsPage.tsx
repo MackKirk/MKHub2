@@ -10,7 +10,7 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
@@ -273,7 +273,12 @@ export default function FormCustomListsPage({ variant = 'safety' }: FormCustomLi
   const [newName, setNewName] = useState('');
   const [listsSearch, setListsSearch] = useState('');
   const isFieldwork = variant === 'fieldwork';
-  const templatesLink = isFieldwork ? '/rm-fieldwork/form-templates' : '/documents/form-templates';
+  const location = useLocation();
+  const templatesLink = isFieldwork
+    ? location.pathname.startsWith('/fieldwork/')
+      ? '/fieldwork/form-templates'
+      : '/rm-fieldwork/form-templates'
+    : '/documents/form-templates';
   const createDomain = isFieldwork ? 'fieldwork' : 'safety';
 
   const { data: listsRaw, isLoading } = useQuery({

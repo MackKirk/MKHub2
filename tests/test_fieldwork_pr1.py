@@ -49,19 +49,17 @@ def _user():
 class FieldworkAccessTests(unittest.TestCase):
     @patch("app.services.fieldwork_access.is_project_visible_to_user", return_value=True)
     @patch("app.services.fieldwork_access.can_access_business_line", return_value=True)
-    @patch("app.services.fieldwork_access.user_has_any_rm_fieldwork_permission", return_value=True)
+    @patch("app.services.fieldwork_access.user_has_fieldwork_permission", return_value=True)
     @patch("app.services.fieldwork_access._user_is_admin", return_value=False)
-    def test_rejects_construction_project(self, *_m):
+    def test_allows_construction_project(self, *_m):
         proj = MagicMock()
         proj.deleted_at = None
         proj.business_line = BUSINESS_LINE_CONSTRUCTION
-        with self.assertRaises(HTTPException) as ctx:
-            assert_rm_fieldwork_project(MagicMock(), _user(), proj, "read")
-        self.assertEqual(ctx.exception.status_code, 400)
+        assert_rm_fieldwork_project(MagicMock(), _user(), proj, "read")
 
     @patch("app.services.fieldwork_access.is_project_visible_to_user", return_value=True)
     @patch("app.services.fieldwork_access.can_access_business_line", return_value=True)
-    @patch("app.services.fieldwork_access.user_has_any_rm_fieldwork_permission", return_value=False)
+    @patch("app.services.fieldwork_access.user_has_fieldwork_permission", return_value=False)
     @patch("app.services.fieldwork_access._user_is_admin", return_value=False)
     def test_requires_fieldwork_permission(self, *_m):
         proj = MagicMock()

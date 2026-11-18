@@ -3896,13 +3896,13 @@ function SalarySection({ p, userId, canEdit }: { p: any; userId: string; canEdit
             <div className={uiTypography.sectionTitle}>{payTypeDisplay}</div>
             {!canonical && storedPayType ? (
               <p className={uiCx(uiTypography.helper, 'mt-1')}>
-                Choose Hourly, Salary, or Contract so clock-in and reminders follow the right rule.
+                Choose Hourly or Salary so clock-in and reminders follow the right rule.
               </p>
             ) : (
               <p className={uiCx(uiTypography.helper, 'mt-1')}>
                 {isSalaryPay
                   ? 'Salary skips clock-in and hours reminders unless hours registration is on.'
-                  : 'Hourly and contract must clock in and can receive hours reminders.'}
+                  : 'Hourly employees must clock in and can receive hours reminders.'}
               </p>
             )}
           </AppCard>
@@ -3982,7 +3982,7 @@ function SalarySection({ p, userId, canEdit }: { p: any; userId: string; canEdit
             />
           ) : (
             <p className={uiTypography.helper}>
-              Hourly and contract employees always clock in and can receive hours reminders.
+              Hourly employees always clock in and can receive hours reminders.
             </p>
           )}
         </div>

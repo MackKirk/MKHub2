@@ -31,6 +31,12 @@ describe('shouldRegisterHours', () => {
     expect(shouldRegisterHours('Salary', true)).toBe(true);
     expect(shouldRegisterHours('hourly', false)).toBe(true);
   });
+
+  it('skips hours when employment type is still the old Salary label', () => {
+    expect(shouldRegisterHours('hourly', false, 'salary')).toBe(false);
+    expect(shouldRegisterHours('hourly', false, 'Salary')).toBe(false);
+    expect(shouldRegisterHours('', false, 'Full-time')).toBe(true);
+  });
 });
 
 describe('payTypeLabel', () => {

@@ -247,15 +247,15 @@ def create_salary_history(
     
     effective_date = datetime.fromisoformat(effective_date_str.replace('Z', '+00:00'))
     
-    from ..services.hours_registration import canonical_pay_type
+    from ..services.hours_registration import pay_type_for_storage
 
     raw_pay_type = payload.get("pay_type")
     if raw_pay_type is None or not str(raw_pay_type).strip():
         pay_type = profile.pay_type if profile else None
     else:
-        pay_type = canonical_pay_type(str(raw_pay_type))
+        pay_type = pay_type_for_storage(str(raw_pay_type))
         if pay_type is None:
-            raise HTTPException(status_code=400, detail="pay_type must be hourly, salary, or contract")
+            raise HTTPException(status_code=400, detail="pay_type must be hourly or salary")
 
     # Create salary history entry
     salary_history = EmployeeSalaryHistory(

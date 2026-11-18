@@ -156,7 +156,10 @@ def default_definition() -> dict:
 
 def _normalize_fieldwork_settings(raw: Any) -> Optional[dict]:
     """Sanitize optional definition.fieldwork_settings for Site Assessment / Work Report."""
-    from ..services.form_engine import FIELDWORK_TECHNICAL_PHOTO_FOLDER_NAMES
+    from ..services.form_engine import (
+        FIELDWORK_TECHNICAL_PHOTO_FOLDER_NAMES,
+        normalize_fieldwork_business_lines,
+    )
 
     if not isinstance(raw, dict):
         return None
@@ -183,6 +186,8 @@ def _normalize_fieldwork_settings(raw: Any) -> Optional[dict]:
                 f"{', '.join(sorted(FIELDWORK_TECHNICAL_PHOTO_FOLDER_NAMES))}",
             )
         out["default_pictures_folder"] = name
+    if "business_lines" in raw:
+        out["business_lines"] = normalize_fieldwork_business_lines(raw.get("business_lines"))
     return out or None
 
 
@@ -396,6 +401,10 @@ def list_form_templates(
     domain: Optional[str] = Query(
         None, description="Optional domain scope: safety | employee_review | fieldwork"
     ),
+    business_line: Optional[str] = Query(
+        None,
+        description="When domain=fieldwork, only templates allowed for this business line",
+    ),
     status: Optional[str] = Query(None),
     schedulable: bool = Query(False, description="If true, only templates usable for new inspections"),
     sort: str = Query("name", description="name | created_at | updated_at"),
@@ -406,6 +415,15 @@ def list_form_templates(
     has_fieldwork = user_has_any_rm_fieldwork_permission(user, "read")
     if not (has_safety or has_hr or has_fieldwork):
         raise HTTPException(status_code=403, detail="Forbidden")
+
+    from ..services.business_line import VALID_BUSINESS_LINES, normalize_business_line
+    from ..services.form_engine import fieldwork_template_allows_business_line
+
+    line_filter = None
+    if business_line is not None and str(business_line).strip():
+        line_filter = normalize_business_line(business_line)
+        if line_filter not in VALID_BUSINESS_LINES:
+            raise HTTPException(status_code=400, detail="Invalid business_line")
 
     explicit_domain = (domain or "").strip().lower() if domain else ""
     if explicit_domain:
@@ -500,6 +518,14 @@ def list_form_templates(
 
     # Drop rows the user cannot read (belt-and-suspenders)
     rows = [t for t in rows if _can_read_template_category(user, t.category)]
+
+    if line_filter:
+        rows = [
+            t
+            for t in rows
+            if not is_fieldwork_template_category(t.category)
+            or fieldwork_template_allows_business_line(t.definition, line_filter)
+        ]
 
     if schedulable:
         rows = [

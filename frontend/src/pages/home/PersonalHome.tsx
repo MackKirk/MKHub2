@@ -162,6 +162,7 @@ export function HomeQuickAccess() {
   const mustRegisterHours = shouldRegisterHours(
     meProfile?.profile?.pay_type,
     meProfile?.profile?.needs_register_hours,
+    meProfile?.profile?.employment_type,
   );
 
   // Sidebar Personal → Time Off / Sick Leave / Clock In/Out land here with ?open=

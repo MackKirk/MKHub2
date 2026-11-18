@@ -320,7 +320,8 @@ export async function openGlobalSearchItem(item: GlobalSearchItem): Promise<void
 
 export function searchShowClock(
   payType: string | null | undefined,
-  needsRegisterHours: boolean | null | undefined
+  needsRegisterHours: boolean | null | undefined,
+  employmentType?: string | null
 ): boolean {
-  return shouldRegisterHours(payType, needsRegisterHours);
+  return shouldRegisterHours(payType, needsRegisterHours, employmentType);
 }

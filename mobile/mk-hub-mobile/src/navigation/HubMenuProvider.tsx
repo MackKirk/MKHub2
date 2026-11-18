@@ -162,7 +162,7 @@ export const HubMenuProvider: React.FC<{ children: React.ReactNode }> = ({
     });
   }, [slide]);
 
-  const showClock = shouldRegisterHours(user?.pay_type, user?.needs_register_hours);
+  const showClock = shouldRegisterHours(user?.pay_type, user?.needs_register_hours, user?.employment_type);
   const canSeeItem = (item: HubMenuItem) =>
     (item.id !== "clock" || showClock) &&
     hasPermission(permissionsSet, roles, item.requiredPermission);

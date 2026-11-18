@@ -185,7 +185,7 @@ export const HomeScreen: React.FC = () => {
     [navigation]
   );
 
-  const mustRegisterHours = shouldRegisterHours(user?.pay_type, user?.needs_register_hours);
+  const mustRegisterHours = shouldRegisterHours(user?.pay_type, user?.needs_register_hours, user?.employment_type);
   const canReadSafety = hasPermission(
     new Set(permissions),
     roles,

@@ -329,7 +329,7 @@ export const ClockScreen: React.FC = () => {
     </View>
   );
 
-  const mustRegisterHours = shouldRegisterHours(user?.pay_type, user?.needs_register_hours);
+  const mustRegisterHours = shouldRegisterHours(user?.pay_type, user?.needs_register_hours, user?.employment_type);
   if (user && !mustRegisterHours && !hasOpenClockIn) {
     return (
       <ScreenLayout scroll={false} style={styles.screen} contentStyle={styles.layout}>

@@ -675,7 +675,11 @@ export default function AppShell({ children }: PropsWithChildren){
         { id: 'schedule', label: 'Schedule', path: '/schedule', icon: <IconCalendar /> },
         { id: 'time-off', label: 'Time Off', path: '/home?open=time-off', icon: <IconSun /> },
         { id: 'sick-leave', label: 'Sick Leave', path: '/home?open=sick', icon: <IconMedkit /> },
-        ...(shouldRegisterHours(meProfile?.profile?.pay_type, meProfile?.profile?.needs_register_hours)
+        ...(shouldRegisterHours(
+          meProfile?.profile?.pay_type,
+          meProfile?.profile?.needs_register_hours,
+          meProfile?.profile?.employment_type,
+        )
           ? [{ id: 'clock-in-out', label: 'Clock In/Out', path: '/home?open=hours', icon: <IconClock /> }]
           : []),
         { id: 'tasks', label: 'Tasks', path: '/tasks', icon: <IconClipboard /> },
@@ -698,6 +702,9 @@ export default function AppShell({ children }: PropsWithChildren){
         { id: 'business-dashboard', label: 'Dashboard', path: '/business', icon: <IconDashboard />, requiredPermission: 'business:construction:projects:read' },
         { id: 'opportunities', label: 'Opportunities', path: '/opportunities', icon: <IconOpportunities />, requiredPermission: 'business:construction:projects:read' },
         { id: 'projects', label: 'Projects', path: '/projects', icon: <IconProjects />, requiredPermission: 'business:construction:projects:read' },
+        { id: 'field-reports', label: 'Field Reports', path: '/field-reports', icon: <IconClipboard />, requiredPermission: 'business:construction:projects:fieldwork:read' },
+        { id: 'fieldwork-form-templates', label: 'Templates', path: '/fieldwork/form-templates', icon: <IconDocument />, requiredPermission: 'business:construction:projects:fieldwork:read' },
+        { id: 'fieldwork-phrase-lists', label: 'Fieldwork Phrases', path: '/fieldwork/form-custom-lists', icon: <IconDocument />, requiredPermission: 'business:construction:projects:fieldwork:read' },
       ]
     },
     {
@@ -709,7 +716,8 @@ export default function AppShell({ children }: PropsWithChildren){
         { id: 'rm-opportunities', label: 'Opportunities', path: '/rm-opportunities', icon: <IconOpportunities />, requiredPermission: 'business:rm:projects:read' },
         { id: 'rm-projects', label: 'Projects', path: '/rm-projects', icon: <IconProjects />, requiredPermission: 'business:rm:projects:read' },
         { id: 'rm-warranty-review', label: 'Warranty Review', path: '/rm-warranty-review', icon: <IconClipboard />, requiredPermission: 'business:rm:projects:read' },
-        { id: 'rm-fieldwork-form-templates', label: 'Fieldwork Templates', path: '/rm-fieldwork/form-templates', icon: <IconDocument />, requiredPermission: 'business:rm:projects:fieldwork:read' },
+        { id: 'rm-field-reports', label: 'Field Reports', path: '/rm-field-reports', icon: <IconClipboard />, requiredPermission: 'business:rm:projects:fieldwork:read' },
+        { id: 'rm-fieldwork-form-templates', label: 'Templates', path: '/rm-fieldwork/form-templates', icon: <IconDocument />, requiredPermission: 'business:rm:projects:fieldwork:read' },
         { id: 'rm-fieldwork-phrase-lists', label: 'Fieldwork Phrases', path: '/rm-fieldwork/form-custom-lists', icon: <IconDocument />, requiredPermission: 'business:rm:projects:fieldwork:read' },
       ]
     },

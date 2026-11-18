@@ -6,6 +6,7 @@ import {
   useState,
   useRef,
   type ComponentProps,
+  type ReactNode,
   type SetStateAction,
 } from 'react';
 import { useQuery, useQueries } from '@tanstack/react-query';
@@ -17,6 +18,9 @@ import SafetyDynamicFileField from '@/components/SafetyDynamicFileField';
 import SafetyPdfViewReferenceField from '@/components/SafetyPdfViewReferenceField';
 import { SafetyFieldQuestionLabel as FieldQuestionLabel } from '@/components/SafetyFieldQuestionLabel';
 import { SafetyFieldCommentPanel } from '@/components/SafetyFieldCommentPanel';
+import FieldworkFieldNoteModal, {
+  type FieldworkNoteModalTab,
+} from '@/components/fieldwork/FieldworkFieldNoteModal';
 import {
   AppCheckbox,
   AppCombobox,
@@ -150,6 +154,19 @@ function ChatBubbleIcon({ className }: { className?: string }) {
   );
 }
 
+function ImageAttachmentIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+      />
+    </svg>
+  );
+}
+
 type SideCommentEntry = { text: string; imageIds: string[] };
 
 function parseSideCommentRaw(raw: unknown): SideCommentEntry {
@@ -239,6 +256,9 @@ function CommentIconOnly({
   flagState,
   onFlag,
   showComment = true,
+  hasImages = false,
+  showImages = false,
+  onToggleImages,
 }: {
   expanded: boolean;
   hasComment: boolean;
@@ -247,32 +267,68 @@ function CommentIconOnly({
   flagState?: SafetyFieldFlagState;
   onFlag?: () => void;
   showComment?: boolean;
+  hasImages?: boolean;
+  showImages?: boolean;
+  onToggleImages?: () => void;
 }) {
-  const commentBtn = showComment ? (
+  const iconBtn = (
+    active: boolean,
+    title: string,
+    onClick: () => void,
+    icon: ReactNode,
+    activeCls: string
+  ) => (
     <button
       type="button"
-      title={expanded ? 'Close comment' : hasComment ? 'Edit comment' : 'Add comment'}
-      aria-expanded={expanded}
-      aria-label={expanded ? 'Close comment' : hasComment ? 'Edit comment' : 'Add comment'}
+      title={title}
+      aria-label={title}
       tabIndex={-1}
-      onPointerDown={(e) => {
-        e.preventDefault();
-      }}
-      onMouseDown={(e) => {
-        // Keep focus from landing on this button so Space types in the comment textarea after opening.
-        e.preventDefault();
-      }}
-      onClick={onToggle}
+      onPointerDown={(e) => e.preventDefault()}
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={onClick}
       className={`min-w-[2.75rem] min-h-[2.75rem] flex items-center justify-center rounded-xl border-2 transition-all shrink-0 ${
-        expanded || hasComment
-          ? 'border-blue-400 bg-blue-50 text-blue-700'
+        active
+          ? activeCls
           : 'border-gray-200 bg-white text-gray-400 hover:border-gray-300 hover:text-gray-600'
-      } ${onFlag ? '' : className ?? ''}`}
+      }`}
     >
-      <ChatBubbleIcon className="w-5 h-5" />
+      {icon}
     </button>
-  ) : null;
-  if (!onFlag) return commentBtn;
+  );
+
+  const commentBtn = showComment
+    ? iconBtn(
+        expanded || hasComment,
+        expanded ? 'Close comment' : hasComment ? 'Edit comment' : 'Add comment',
+        onToggle,
+        <ChatBubbleIcon className="w-5 h-5" />,
+        'border-blue-400 bg-blue-50 text-blue-700'
+      )
+    : null;
+
+  const imageBtn =
+    showImages && onToggleImages
+      ? iconBtn(
+          hasImages,
+          hasImages ? 'Edit images' : 'Add images',
+          onToggleImages,
+          <ImageAttachmentIcon className="w-5 h-5" />,
+          'border-violet-400 bg-violet-50 text-violet-700'
+        )
+      : null;
+
+  const attachmentGroup =
+    commentBtn || imageBtn ? (
+      <div className="flex items-center gap-1.5 shrink-0">
+        {commentBtn}
+        {imageBtn}
+      </div>
+    ) : null;
+
+  if (!onFlag) {
+    if (!attachmentGroup) return null;
+    return className ? <div className={className}>{attachmentGroup}</div> : attachmentGroup;
+  }
   const st = flagState || 'none';
   const hasFlag = st === 'pending' || st === 'completed';
   const flagCls = hasFlag
@@ -299,6 +355,7 @@ function CommentIconOnly({
         {hasFlag ? <FlagWithCheckIcon /> : <FlagIconSvg className="w-5 h-5" />}
       </button>
       {commentBtn}
+      {imageBtn}
     </div>
   );
 }
@@ -376,6 +433,8 @@ type Props = {
   hidePerFieldSideComments?: boolean;
   /** Per-field comment panels: text only, no images (e.g. employee review supervisor flow). */
   fieldCommentTextOnly?: boolean;
+  /** Fieldwork reports: allow inserting R&M phrase-library text into comment panels. */
+  enableFieldworkPhraseInsert?: boolean;
   /** Show SiteDocs-style flag icon per field (safety inspections). */
   enableFieldFlags?: boolean;
   /** Flag state by field key (pending = yellow). */
@@ -436,6 +495,7 @@ export default function DynamicSafetyForm({
   hideWorkerSignatureBlock = false,
   hidePerFieldSideComments = false,
   fieldCommentTextOnly = false,
+  enableFieldworkPhraseInsert = false,
   enableFieldFlags = false,
   fieldFlagStates,
   onFlagField,
@@ -476,6 +536,12 @@ export default function DynamicSafetyForm({
     el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [highlightRequiredFieldKeys]);
   const [commentOpen, setCommentOpen] = useState<Record<string, boolean>>({});
+  const [fieldNoteModal, setFieldNoteModal] = useState<null | {
+    fieldKey: string;
+    fieldLabel: string;
+    kind: FieldworkNoteModalTab;
+    storage: 'side' | 'yn';
+  }>(null);
   const sections = useMemo(() => sortedSections(definition), [definition]);
 
   const allPassFailNaKeys = useMemo(() => collectPassFailNaKeysOrdered(definition), [definition]);
@@ -708,14 +774,45 @@ export default function DynamicSafetyForm({
 
   const renderField = (field: SafetyFormField, _zebra: boolean, _idx: number) => {
     if (!isFieldVisible(field, formPayload)) return null;
-    const rowBg = '';
     const k = field.key;
-    const rowWrapClass = `p-4 ${rowBg} ${highlightKeySet?.has(k) ? 'ring-2 ring-red-500/90 rounded-lg' : ''}`;
-    const commentExpanded = commentOpen[field.id] === true;
+    const commentExpanded = !enableFieldworkPhraseInsert && commentOpen[field.id] === true;
     const sideComment = getSideCommentForField(formPayload, k);
-    const sideCommentFilled =
-      sideComment.text.trim().length > 0 || sideComment.imageIds.length > 0;
-    const toggleFieldComment = () => toggleCommentOpen(field.id);
+    const ynPreview = field.type === 'yes_no_na' ? getYn(formPayload, k) : null;
+    const hasTextComment = ynPreview
+      ? ynPreview.comments.trim().length > 0
+      : sideComment.text.trim().length > 0;
+    const hasImageAttachments = ynPreview
+      ? ynPreview.commentImageIds.length > 0
+      : sideComment.imageIds.length > 0;
+    const sideCommentFilled = hasTextComment || hasImageAttachments;
+    const rowWrapClass = `p-4 ${highlightKeySet?.has(k) ? 'ring-2 ring-red-500/90 rounded-lg' : ''}`;
+    const openFieldNoteModal = (kind: FieldworkNoteModalTab, storage: 'side' | 'yn' = 'side') => {
+      setFieldNoteModal({
+        fieldKey: k,
+        fieldLabel: field.label || 'Field note',
+        kind,
+        storage,
+      });
+    };
+    const toggleFieldComment = () => {
+      if (enableFieldworkPhraseInsert) {
+        openFieldNoteModal('comment', field.type === 'yes_no_na' ? 'yn' : 'side');
+        return;
+      }
+      toggleCommentOpen(field.id);
+    };
+    const commentIconExtras = enableFieldworkPhraseInsert
+      ? {
+          hasComment: hasTextComment,
+          hasImages: hasImageAttachments,
+          showImages: !disabled && showPerFieldSideComments && !fieldCommentTextOnly,
+          onToggleImages: () =>
+            openFieldNoteModal('images', field.type === 'yes_no_na' ? 'yn' : 'side'),
+        }
+      : {
+          hasComment: sideCommentFilled,
+          showImages: false as const,
+        };
 
     if (field.type === 'pass_fail_total') {
       const pft = getPft(formPayload, k);
@@ -747,15 +844,16 @@ export default function DynamicSafetyForm({
               <div className="shrink-0 ml-auto">
                 <CommentIconOnly
                   expanded={commentExpanded}
-                  hasComment={sideCommentFilled}
                   onToggle={toggleFieldComment}
                   {...flagPropsFor(k)}
                   showComment={!disabled && showPerFieldSideComments}
+                  {...commentIconExtras}
                 />
               </div>
             )}
           </div>
-          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments} textCommentsOnly={fieldCommentTextOnly}
+          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments && !enableFieldworkPhraseInsert} textCommentsOnly={fieldCommentTextOnly}
+            enableFieldworkPhrases={false}
             expanded={commentExpanded}
             disabled={disabled}
             text={sideComment.text}
@@ -792,14 +890,15 @@ export default function DynamicSafetyForm({
             {((!disabled && showPerFieldSideComments) || enableFieldFlags) && (
               <CommentIconOnly
                 expanded={commentExpanded}
-                hasComment={sideCommentFilled}
                 onToggle={toggleFieldComment}
                 {...flagPropsFor(k)}
                 showComment={!disabled && showPerFieldSideComments}
+                {...commentIconExtras}
               />
             )}
           </div>
-          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments} textCommentsOnly={fieldCommentTextOnly}
+          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments && !enableFieldworkPhraseInsert} textCommentsOnly={fieldCommentTextOnly}
+            enableFieldworkPhrases={false}
             expanded={commentExpanded}
             disabled={disabled}
             text={sideComment.text}
@@ -829,15 +928,16 @@ export default function DynamicSafetyForm({
             {((!disabled && showPerFieldSideComments) || enableFieldFlags) && (
               <CommentIconOnly
                 expanded={commentExpanded}
-                hasComment={sideCommentFilled}
                 onToggle={toggleFieldComment}
                 className="self-start"
                 {...flagPropsFor(k)}
                 showComment={!disabled && showPerFieldSideComments}
+                {...commentIconExtras}
               />
             )}
           </div>
-          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments} textCommentsOnly={fieldCommentTextOnly}
+          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments && !enableFieldworkPhraseInsert} textCommentsOnly={fieldCommentTextOnly}
+            enableFieldworkPhrases={false}
             expanded={commentExpanded}
             disabled={disabled}
             text={sideComment.text}
@@ -872,14 +972,15 @@ export default function DynamicSafetyForm({
             {((!disabled && showPerFieldSideComments) || enableFieldFlags) && (
               <CommentIconOnly
                 expanded={commentExpanded}
-                hasComment={sideCommentFilled}
                 onToggle={toggleFieldComment}
                 {...flagPropsFor(k)}
                 showComment={!disabled && showPerFieldSideComments}
+                {...commentIconExtras}
               />
             )}
           </div>
-          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments} textCommentsOnly={fieldCommentTextOnly}
+          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments && !enableFieldworkPhraseInsert} textCommentsOnly={fieldCommentTextOnly}
+            enableFieldworkPhrases={false}
             expanded={commentExpanded}
             disabled={disabled}
             text={sideComment.text}
@@ -909,14 +1010,15 @@ export default function DynamicSafetyForm({
             {((!disabled && showPerFieldSideComments) || enableFieldFlags) && (
               <CommentIconOnly
                 expanded={commentExpanded}
-                hasComment={sideCommentFilled}
                 onToggle={toggleFieldComment}
                 {...flagPropsFor(k)}
                 showComment={!disabled && showPerFieldSideComments}
+                {...commentIconExtras}
               />
             )}
           </div>
-          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments} textCommentsOnly={fieldCommentTextOnly}
+          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments && !enableFieldworkPhraseInsert} textCommentsOnly={fieldCommentTextOnly}
+            enableFieldworkPhrases={false}
             expanded={commentExpanded}
             disabled={disabled}
             text={sideComment.text}
@@ -944,14 +1046,15 @@ export default function DynamicSafetyForm({
             {((!disabled && showPerFieldSideComments) || enableFieldFlags) && (
               <CommentIconOnly
                 expanded={commentExpanded}
-                hasComment={sideCommentFilled}
                 onToggle={toggleFieldComment}
                 {...flagPropsFor(k)}
                 showComment={!disabled && showPerFieldSideComments}
+                {...commentIconExtras}
               />
             )}
           </div>
-          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments} textCommentsOnly={fieldCommentTextOnly}
+          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments && !enableFieldworkPhraseInsert} textCommentsOnly={fieldCommentTextOnly}
+            enableFieldworkPhrases={false}
             expanded={commentExpanded}
             disabled={disabled}
             text={sideComment.text}
@@ -982,14 +1085,15 @@ export default function DynamicSafetyForm({
             {((!disabled && showPerFieldSideComments) || enableFieldFlags) && (
               <CommentIconOnly
                 expanded={commentExpanded}
-                hasComment={sideCommentFilled}
                 onToggle={toggleFieldComment}
                 {...flagPropsFor(k)}
                 showComment={!disabled && showPerFieldSideComments}
+                {...commentIconExtras}
               />
             )}
           </div>
-          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments} textCommentsOnly={fieldCommentTextOnly}
+          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments && !enableFieldworkPhraseInsert} textCommentsOnly={fieldCommentTextOnly}
+            enableFieldworkPhrases={false}
             expanded={commentExpanded}
             disabled={disabled}
             text={sideComment.text}
@@ -1067,14 +1171,15 @@ export default function DynamicSafetyForm({
             {((!disabled && showPerFieldSideComments) || enableFieldFlags) && (
               <CommentIconOnly
                 expanded={commentExpanded}
-                hasComment={sideCommentFilled}
                 onToggle={toggleFieldComment}
                 {...flagPropsFor(k)}
                 showComment={!disabled && showPerFieldSideComments}
+                {...commentIconExtras}
               />
             )}
           </div>
-          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments} textCommentsOnly={fieldCommentTextOnly}
+          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments && !enableFieldworkPhraseInsert} textCommentsOnly={fieldCommentTextOnly}
+            enableFieldworkPhrases={false}
             expanded={commentExpanded}
             disabled={disabled}
             text={sideComment.text}
@@ -1138,14 +1243,15 @@ export default function DynamicSafetyForm({
             {((!disabled && showPerFieldSideComments) || enableFieldFlags) && (
               <CommentIconOnly
                 expanded={commentExpanded}
-                hasComment={sideCommentFilled}
                 onToggle={toggleFieldComment}
                 {...flagPropsFor(k)}
                 showComment={!disabled && showPerFieldSideComments}
+                {...commentIconExtras}
               />
             )}
           </div>
-          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments} textCommentsOnly={fieldCommentTextOnly}
+          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments && !enableFieldworkPhraseInsert} textCommentsOnly={fieldCommentTextOnly}
+            enableFieldworkPhrases={false}
             expanded={commentExpanded}
             disabled={disabled}
             text={sideComment.text}
@@ -1184,15 +1290,16 @@ export default function DynamicSafetyForm({
               {((!disabled && showPerFieldSideComments) || enableFieldFlags) && (
                 <CommentIconOnly
                   expanded={commentExpanded}
-                  hasComment={sideCommentFilled}
                   onToggle={toggleFieldComment}
                   {...flagPropsFor(k)}
                   showComment={!disabled && showPerFieldSideComments}
+                  {...commentIconExtras}
                 />
               )}
             </div>
           </div>
-          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments} textCommentsOnly={fieldCommentTextOnly}
+          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments && !enableFieldworkPhraseInsert} textCommentsOnly={fieldCommentTextOnly}
+            enableFieldworkPhrases={false}
             expanded={commentExpanded}
             disabled={disabled}
             text={sideComment.text}
@@ -1231,15 +1338,16 @@ export default function DynamicSafetyForm({
               {((!disabled && showPerFieldSideComments) || enableFieldFlags) && (
                 <CommentIconOnly
                   expanded={commentExpanded}
-                  hasComment={sideCommentFilled}
                   onToggle={toggleFieldComment}
                   {...flagPropsFor(k)}
                   showComment={!disabled && showPerFieldSideComments}
+                  {...commentIconExtras}
                 />
               )}
             </div>
           </div>
-          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments} textCommentsOnly={fieldCommentTextOnly}
+          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments && !enableFieldworkPhraseInsert} textCommentsOnly={fieldCommentTextOnly}
+            enableFieldworkPhrases={false}
             expanded={commentExpanded}
             disabled={disabled}
             text={sideComment.text}
@@ -1255,8 +1363,6 @@ export default function DynamicSafetyForm({
 
     if (field.type === 'yes_no_na') {
       const yn = getYn(formPayload, k);
-      const ynCommentFilled =
-        yn.comments.trim().length > 0 || yn.commentImageIds.length > 0;
       return (
         <div key={field.id} data-safety-field-key={k} className={rowWrapClass}>
           <div className="flex flex-wrap items-center gap-4">
@@ -1279,15 +1385,16 @@ export default function DynamicSafetyForm({
               {((!disabled && showPerFieldSideComments) || enableFieldFlags) && (
                 <CommentIconOnly
                   expanded={commentExpanded}
-                  hasComment={ynCommentFilled}
                   onToggle={toggleFieldComment}
                   {...flagPropsFor(k)}
                   showComment={!disabled && showPerFieldSideComments}
+                  {...commentIconExtras}
                 />
               )}
             </div>
           </div>
-          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments} textCommentsOnly={fieldCommentTextOnly}
+          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments && !enableFieldworkPhraseInsert} textCommentsOnly={fieldCommentTextOnly}
+            enableFieldworkPhrases={false}
             expanded={commentExpanded}
             disabled={disabled}
             text={yn.comments}
@@ -1321,14 +1428,15 @@ export default function DynamicSafetyForm({
             {((!disabled && showPerFieldSideComments) || enableFieldFlags) && (
               <CommentIconOnly
                 expanded={commentExpanded}
-                hasComment={sideCommentFilled}
                 onToggle={toggleFieldComment}
                 {...flagPropsFor(k)}
                 showComment={!disabled && showPerFieldSideComments}
+                {...commentIconExtras}
               />
             )}
           </div>
-          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments} textCommentsOnly={fieldCommentTextOnly}
+          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments && !enableFieldworkPhraseInsert} textCommentsOnly={fieldCommentTextOnly}
+            enableFieldworkPhrases={false}
             expanded={commentExpanded}
             disabled={disabled}
             text={sideComment.text}
@@ -1362,14 +1470,15 @@ export default function DynamicSafetyForm({
             {((!disabled && showPerFieldSideComments) || enableFieldFlags) && (
               <CommentIconOnly
                 expanded={commentExpanded}
-                hasComment={sideCommentFilled}
                 onToggle={toggleFieldComment}
                 {...flagPropsFor(k)}
                 showComment={!disabled && showPerFieldSideComments}
+                {...commentIconExtras}
               />
             )}
           </div>
-          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments} textCommentsOnly={fieldCommentTextOnly}
+          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments && !enableFieldworkPhraseInsert} textCommentsOnly={fieldCommentTextOnly}
+            enableFieldworkPhrases={false}
             expanded={commentExpanded}
             disabled={disabled}
             text={sideComment.text}
@@ -1427,14 +1536,15 @@ export default function DynamicSafetyForm({
             {((!disabled && showPerFieldSideComments) || enableFieldFlags) && (
               <CommentIconOnly
                 expanded={commentExpanded}
-                hasComment={sideCommentFilled}
                 onToggle={toggleFieldComment}
                 {...flagPropsFor(k)}
                 showComment={!disabled && showPerFieldSideComments}
+                {...commentIconExtras}
               />
             )}
           </div>
-          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments} textCommentsOnly={fieldCommentTextOnly}
+          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments && !enableFieldworkPhraseInsert} textCommentsOnly={fieldCommentTextOnly}
+            enableFieldworkPhrases={false}
             expanded={commentExpanded}
             disabled={disabled}
             text={sideComment.text}
@@ -1467,14 +1577,15 @@ export default function DynamicSafetyForm({
             {((!disabled && showPerFieldSideComments) || enableFieldFlags) && (
               <CommentIconOnly
                 expanded={commentExpanded}
-                hasComment={sideCommentFilled}
                 onToggle={toggleFieldComment}
                 {...flagPropsFor(k)}
                 showComment={!disabled && showPerFieldSideComments}
+                {...commentIconExtras}
               />
             )}
           </div>
-          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments} textCommentsOnly={fieldCommentTextOnly}
+          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments && !enableFieldworkPhraseInsert} textCommentsOnly={fieldCommentTextOnly}
+            enableFieldworkPhrases={false}
             expanded={commentExpanded}
             disabled={disabled}
             text={sideComment.text}
@@ -1508,14 +1619,15 @@ export default function DynamicSafetyForm({
             {((!disabled && showPerFieldSideComments) || enableFieldFlags) && (
               <CommentIconOnly
                 expanded={commentExpanded}
-                hasComment={sideCommentFilled}
                 onToggle={toggleFieldComment}
                 {...flagPropsFor(k)}
                 showComment={!disabled && showPerFieldSideComments}
+                {...commentIconExtras}
               />
             )}
           </div>
-          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments} textCommentsOnly={fieldCommentTextOnly}
+          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments && !enableFieldworkPhraseInsert} textCommentsOnly={fieldCommentTextOnly}
+            enableFieldworkPhrases={false}
             expanded={commentExpanded}
             disabled={disabled}
             text={sideComment.text}
@@ -1539,15 +1651,16 @@ export default function DynamicSafetyForm({
               (!disabled && showPerFieldSideComments) || enableFieldFlags ? (
                 <CommentIconOnly
                   expanded={commentExpanded}
-                  hasComment={sideCommentFilled}
                   onToggle={toggleFieldComment}
                   {...flagPropsFor(k)}
                   showComment={!disabled && showPerFieldSideComments}
+                  {...commentIconExtras}
                 />
               ) : undefined
             }
           />
-          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments} textCommentsOnly={fieldCommentTextOnly}
+          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments && !enableFieldworkPhraseInsert} textCommentsOnly={fieldCommentTextOnly}
+            enableFieldworkPhrases={false}
             expanded={commentExpanded}
             disabled={disabled}
             text={sideComment.text}
@@ -1579,15 +1692,16 @@ export default function DynamicSafetyForm({
               (!disabled && showPerFieldSideComments) || enableFieldFlags ? (
                 <CommentIconOnly
                   expanded={commentExpanded}
-                  hasComment={sideCommentFilled}
                   onToggle={toggleFieldComment}
                   {...flagPropsFor(k)}
                   showComment={!disabled && showPerFieldSideComments}
+                  {...commentIconExtras}
                 />
               ) : undefined
             }
           />
-          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments} textCommentsOnly={fieldCommentTextOnly}
+          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments && !enableFieldworkPhraseInsert} textCommentsOnly={fieldCommentTextOnly}
+            enableFieldworkPhrases={false}
             expanded={commentExpanded}
             disabled={disabled}
             text={sideComment.text}
@@ -1635,8 +1749,40 @@ export default function DynamicSafetyForm({
 
   const additionalComments = getAdditionalComments(formPayload);
 
+  const modalNote =
+    fieldNoteModal == null
+      ? null
+      : fieldNoteModal.storage === 'yn'
+        ? {
+            text: getYn(formPayload, fieldNoteModal.fieldKey).comments,
+            imageIds: getYn(formPayload, fieldNoteModal.fieldKey).commentImageIds,
+          }
+        : getSideCommentForField(formPayload, fieldNoteModal.fieldKey);
+
   return (
     <div ref={formScrollClampRef} className="space-y-4">
+      {enableFieldworkPhraseInsert && fieldNoteModal && modalNote ? (
+        <FieldworkFieldNoteModal
+          open
+          onClose={() => setFieldNoteModal(null)}
+          fieldLabel={fieldNoteModal.fieldLabel}
+          mode={fieldNoteModal.kind}
+          disabled={disabled}
+          text={modalNote.text}
+          imageIds={modalNote.imageIds}
+          onTextChange={(s) => {
+            if (fieldNoteModal.storage === 'yn') setYnCommentOnly(fieldNoteModal.fieldKey, s);
+            else updateSideComment(fieldNoteModal.fieldKey, { text: s });
+          }}
+          onImageIdsChange={
+            fieldNoteModal.storage === 'yn'
+              ? (updater) => setYnCommentImageIds(fieldNoteModal.fieldKey, updater)
+              : setSideCommentImageIds(fieldNoteModal.fieldKey)
+          }
+          projectId={projectId}
+          uploadFile={uploadFile}
+        />
+      ) : null}
       {sections.map((section) => {
         const visibleFields = section.fields.filter((f) => isFieldVisible(f, formPayload));
         return (
@@ -1668,6 +1814,7 @@ export default function DynamicSafetyForm({
               onImageIdsChange={setAdditionalCommentImageIds}
               projectId={projectId}
               uploadFile={uploadFile}
+              enableFieldworkPhrases={false}
             />
           </div>
         </div>

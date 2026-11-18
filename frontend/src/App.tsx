@@ -61,6 +61,8 @@ import MetalsWebsiteInbox from './pages/MetalsWebsiteInbox';
 import SiteDetail from './pages/SiteDetail';
 import Projects from './pages/Projects';
 import WarrantyReview from './pages/WarrantyReview';
+import FieldReportsPage from './pages/FieldReportsPage';
+import FieldReportReviewPage from './pages/FieldReportReviewPage';
 import ProjectNew from './pages/ProjectNew';
 import Opportunities from './pages/Opportunities';
 import OpportunityDetail from './pages/OpportunityDetail';
@@ -118,6 +120,7 @@ import SafetyFollowUpsPage from './pages/SafetyFollowUpsPage';
 import SafetyInspectionSignPage from './pages/SafetyInspectionSignPage';
 import SafetySchedulePage from './pages/SafetySchedulePage';
 import FormTemplatesPage from './pages/FormTemplatesPage';
+import FieldworkTemplatesHubPage from './pages/FieldworkTemplatesHubPage';
 import FormTemplateEditorPage from './pages/FormTemplateEditorPage';
 import FormCustomListsPage from './pages/FormCustomListsPage';
 import TrainingCourse from './pages/TrainingCourse';
@@ -262,6 +265,10 @@ export default function App(){
           <Route path="/rm-leak-investigations/:id" element={<RmLeakInvestigationDetailRedirect />} />
           <Route path="/rm-projects" element={shell(<BusinessLineProvider line={BUSINESS_LINE_REPAIRS_MAINTENANCE}><Projects /></BusinessLineProvider>)} />
           <Route path="/rm-warranty-review" element={shell(<WarrantyReview />)} />
+          <Route path="/field-reports" element={shell(<FieldReportsPage line="construction" />)} />
+          <Route path="/field-reports/:projectId/:recordId" element={shell(<FieldReportReviewPage />)} />
+          <Route path="/rm-field-reports" element={shell(<FieldReportsPage line="repairs_maintenance" />)} />
+          <Route path="/rm-field-reports/:projectId/:recordId" element={shell(<FieldReportReviewPage />)} />
           <Route path="/rm-projects/new" element={shell(<BusinessLineProvider line={BUSINESS_LINE_REPAIRS_MAINTENANCE}><ProjectNew /></BusinessLineProvider>)} />
           <Route path="/rm-projects/:id" element={shell(<RmProjectDetail />)} />
           <Route path="/rm-business" element={shell(<BusinessLineProvider line={BUSINESS_LINE_REPAIRS_MAINTENANCE}><BusinessDashboard /></BusinessLineProvider>)} />
@@ -277,7 +284,16 @@ export default function App(){
           <Route path="/documents/form-templates" element={shell(<FormTemplatesPage />)} />
           <Route path="/documents/form-templates/:id" element={shell(<FormTemplateEditorPage />)} />
           <Route path="/documents/form-custom-lists" element={shell(<FormCustomListsPage />)} />
-          <Route path="/rm-fieldwork/form-templates" element={shell(<FormTemplatesPage variant="fieldwork" />)} />
+          <Route
+            path="/fieldwork/form-templates"
+            element={shell(<FieldworkTemplatesHubPage businessLine="construction" />)}
+          />
+          <Route path="/fieldwork/form-templates/:id" element={shell(<FormTemplateEditorPage />)} />
+          <Route path="/fieldwork/form-custom-lists" element={shell(<FormCustomListsPage variant="fieldwork" />)} />
+          <Route
+            path="/rm-fieldwork/form-templates"
+            element={shell(<FieldworkTemplatesHubPage businessLine="repairs_maintenance" />)}
+          />
           <Route path="/rm-fieldwork/form-templates/:id" element={shell(<FormTemplateEditorPage />)} />
           <Route path="/rm-fieldwork/form-custom-lists" element={shell(<FormCustomListsPage variant="fieldwork" />)} />
           <Route path="/log-hours" element={shell(<LogHours/>)} />

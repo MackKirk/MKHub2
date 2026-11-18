@@ -80,6 +80,31 @@ export type FieldworkRecord = {
   events?: FieldworkRecordEvent[];
 };
 
+/** Inbox list row (cross-project). */
+export type FieldworkInboxRecord = FieldworkRecord & {
+  project_name?: string | null;
+  project_code?: string | null;
+  project_address?: string | null;
+  is_bidding?: boolean;
+  business_line?: string | null;
+};
+
+export type FieldworkInboxResponse = {
+  items: FieldworkInboxRecord[];
+  total: number;
+  page: number;
+  limit: number;
+  counts?: {
+    draft?: number;
+    submitted?: number;
+    pending?: number;
+    changes_requested?: number;
+    approved?: number;
+    superseded?: number;
+    all?: number;
+  };
+};
+
 export type FieldworkTemplatePick = {
   id: string;
   name: string;

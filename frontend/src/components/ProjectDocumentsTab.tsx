@@ -110,6 +110,8 @@ type ProjectDocumentsTabProps = {
   /** If false, user can only view documents (no Create/Delete; Edit button becomes View and opens in read-only). Default true. */
   canEditDocuments?: boolean;
   designSystem?: boolean;
+  /** Enables Document Creator Insert → Field report (photos + captions). */
+  enableInsertFromFieldReport?: boolean;
 };
 
 export type ProjectDocumentsTabHandle = {
@@ -123,6 +125,7 @@ const ProjectDocumentsTab = forwardRef<ProjectDocumentsTabHandle, ProjectDocumen
     isBidding,
     canEditDocuments = true,
     designSystem = false,
+    enableInsertFromFieldReport = false,
   },
   ref,
 ) {
@@ -140,21 +143,25 @@ const ProjectDocumentsTab = forwardRef<ProjectDocumentsTabHandle, ProjectDocumen
 
   const docFromUrl = searchParams.get('doc');
   const renameFromUrl = searchParams.get('rename');
+  const insertFieldReportFromUrl = searchParams.get('insert_field_report');
+  const [pendingInsertFieldReportId, setPendingInsertFieldReportId] = useState<string | null>(null);
   useEffect(() => {
     if (!docFromUrl) return;
     setModalDocumentId(docFromUrl);
     setShowModal(true);
     if (renameFromUrl === '1') setPromptRenameOnOpen(true);
+    if (insertFieldReportFromUrl) setPendingInsertFieldReportId(insertFieldReportFromUrl);
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev);
         next.delete('doc');
         next.delete('rename');
+        next.delete('insert_field_report');
         return next;
       },
       { replace: true },
     );
-  }, [docFromUrl, renameFromUrl, setSearchParams]);
+  }, [docFromUrl, renameFromUrl, insertFieldReportFromUrl, setSearchParams]);
 
   const inlineEditorOpen = !!(showModal && modalDocumentId && !isExpanded);
   const { shellRef: inlineEditorShellRef, heightPx: inlineEditorHeightPx } =
@@ -516,6 +523,9 @@ const ProjectDocumentsTab = forwardRef<ProjectDocumentsTabHandle, ProjectDocumen
           promptRenameOnOpen={promptRenameOnOpen}
           closeSlotBelow={isExpanded ? compressButton : expandButton}
           stickyToolbar={!isExpanded}
+          enableInsertFromFieldReport={enableInsertFromFieldReport}
+          autoOpenInsertFieldReportId={pendingInsertFieldReportId}
+          onAutoOpenInsertFieldReportConsumed={() => setPendingInsertFieldReportId(null)}
         />
       </div>
     );

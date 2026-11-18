@@ -43,6 +43,21 @@ export function ImageAreaIcon({ className }: { className?: string }) {
   );
 }
 
+/** Insert photos + captions from an approved Field Report (R&M only). */
+export function FieldReportIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"
+      />
+      <rect x="9" y="3" width="6" height="4" rx="1" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6M9 16h4" />
+    </svg>
+  );
+}
+
 /** Free initials overlay field. */
 export function InitialsIcon({ className }: { className?: string }) {
   return (

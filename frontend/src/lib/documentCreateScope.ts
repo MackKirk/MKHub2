@@ -17,13 +17,15 @@ export type ProjectRouteMeta = {
 export type DocumentOpenQueryOptions = {
   docId?: string;
   rename?: boolean;
+  /** When set, Documents tab opens Insert from Field Report for this record. */
+  insertFieldReportId?: string;
 };
 
 /** List/detail URL for a project or opportunity Documents tab, with optional open-doc query. */
 export function documentsTabPathForProject(
   project: ProjectRouteMeta,
   docId?: string,
-  options?: Pick<DocumentOpenQueryOptions, 'rename'>,
+  options?: Pick<DocumentOpenQueryOptions, 'rename' | 'insertFieldReportId'>,
 ): string {
   const rm = project.business_line === BUSINESS_LINE_REPAIRS_MAINTENANCE;
   const base = project.is_bidding
@@ -36,6 +38,7 @@ export function documentsTabPathForProject(
   const qs = new URLSearchParams({ tab: 'documents' });
   if (docId) qs.set('doc', docId);
   if (options?.rename) qs.set('rename', '1');
+  if (options?.insertFieldReportId) qs.set('insert_field_report', options.insertFieldReportId);
   return `${base}/${project.id}?${qs.toString()}`;
 }
 

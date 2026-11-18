@@ -202,17 +202,19 @@ class JourneyDFilesIntegrationTests(unittest.TestCase):
 
 
 class PermissionIntegrityTests(unittest.TestCase):
-    def test_construction_project_rejected(self):
+    def test_construction_project_allowed_with_permission(self):
         db = MagicMock()
         user = MagicMock()
         user.roles = []
         project = MagicMock()
         project.deleted_at = None
         project.business_line = BUSINESS_LINE_CONSTRUCTION
-        with patch.object(access, "_user_is_admin", return_value=False):
-            with self.assertRaises(HTTPException) as ctx:
-                access.assert_rm_fieldwork_project(db, user, project, "read")
-        self.assertEqual(ctx.exception.status_code, 400)
+        with patch.object(access, "_user_is_admin", return_value=False), patch.object(
+            access, "can_access_business_line", return_value=True
+        ), patch.object(access, "is_project_visible_to_user", return_value=True), patch.object(
+            access, "user_has_fieldwork_permission", return_value=True
+        ):
+            access.assert_rm_fieldwork_project(db, user, project, "read")
 
     def test_missing_write_permission(self):
         db = MagicMock()
@@ -223,7 +225,7 @@ class PermissionIntegrityTests(unittest.TestCase):
         with patch.object(access, "_user_is_admin", return_value=False), patch.object(
             access, "can_access_business_line", return_value=True
         ), patch.object(access, "is_project_visible_to_user", return_value=True), patch.object(
-            access, "user_has_any_rm_fieldwork_permission", return_value=False
+            access, "user_has_fieldwork_permission", return_value=False
         ):
             with self.assertRaises(HTTPException) as ctx:
                 access.assert_rm_fieldwork_project(db, user, project, "write")

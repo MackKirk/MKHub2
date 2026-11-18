@@ -413,33 +413,37 @@ def seed_business_permissions():
                 "sort_index": base_sort + 20,
             })
 
-        # R&M Fieldwork (Form Engine domain + future records). Construction out of MVP scope.
-        for action, label, desc in (
-            (
-                "read",
-                "View Fieldwork",
-                "Allows viewing R&M Fieldwork templates and records on opportunities and projects",
-            ),
-            (
-                "write",
-                "Edit Fieldwork",
-                "Allows creating and editing R&M Fieldwork templates and field reports",
-            ),
-            (
-                "review",
-                "Review Fieldwork",
-                "Allows approving or requesting changes on R&M Fieldwork reports",
-            ),
+        # Fieldwork (Form Engine) — per business line (Production + R&M).
+        for prefix, line_label in (
+            ("business:construction:projects", "Production"),
+            ("business:rm:projects", "R&M"),
         ):
-            business_permissions.append(
-                {
-                    "key": f"business:rm:projects:fieldwork:{action}",
-                    "label": label,
-                    "description": desc,
-                    "sort_index": sort,
-                }
-            )
-            sort += 1
+            for action, label, desc in (
+                (
+                    "read",
+                    "View Fieldwork",
+                    f"Allows viewing {line_label} Fieldwork templates and records on opportunities and projects",
+                ),
+                (
+                    "write",
+                    "Edit Fieldwork",
+                    f"Allows creating and editing {line_label} Fieldwork templates and field reports",
+                ),
+                (
+                    "review",
+                    "Review Fieldwork",
+                    f"Allows approving or requesting changes on {line_label} Fieldwork reports",
+                ),
+            ):
+                business_permissions.append(
+                    {
+                        "key": f"{prefix}:fieldwork:{action}",
+                        "label": label,
+                        "description": desc,
+                        "sort_index": sort,
+                    }
+                )
+                sort += 1
         
         for perm_data in business_permissions:
             # Find or create permission

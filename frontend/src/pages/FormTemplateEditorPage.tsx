@@ -77,12 +77,16 @@ const FIELDWORK_PICTURES_FOLDER_OPTIONS = [
   { value: 'Photos for Additional Recommendations', label: 'Photos for Additional Recommendations' },
 ];
 
-function defaultFieldworkSettings(category: string): NonNullable<SafetyFormDefinition['fieldwork_settings']> {
+function defaultFieldworkSettings(
+  category: string,
+  businessLine: 'construction' | 'repairs_maintenance' = 'repairs_maintenance'
+): NonNullable<SafetyFormDefinition['fieldwork_settings']> {
   const cat = (category || '').toLowerCase();
   return {
     require_final_comments: true,
     require_min_photos: 0,
     default_pictures_folder: cat === 'work_report' ? 'Invoice Photos' : 'Proposal Photos',
+    business_lines: [businessLine],
   };
 }
 
@@ -113,10 +117,14 @@ function serializePersistedFormState(
 ): string {
   const definition = buildPersistedDefinition(def, sigRequired);
   if (fieldworkSettings) {
+    const lines = (fieldworkSettings.business_lines || []).filter(
+      (x) => x === 'construction' || x === 'repairs_maintenance'
+    );
     definition.fieldwork_settings = {
       require_final_comments: Boolean(fieldworkSettings.require_final_comments),
       require_min_photos: Math.max(0, Number(fieldworkSettings.require_min_photos) || 0),
       default_pictures_folder: fieldworkSettings.default_pictures_folder || undefined,
+      business_lines: lines.length ? [...new Set(lines)] : ['repairs_maintenance'],
     };
   }
   return JSON.stringify({
@@ -145,6 +153,10 @@ function snapshotFormFromTmpl(t: TemplateDetail, includeFieldworkSettings = fals
         require_min_photos:
           typeof fw.require_min_photos === 'number' ? Math.max(0, fw.require_min_photos) : defaults.require_min_photos,
         default_pictures_folder: fw.default_pictures_folder || defaults.default_pictures_folder,
+        business_lines:
+          Array.isArray(fw.business_lines) && fw.business_lines.length
+            ? fw.business_lines
+            : defaults.business_lines,
       }
     : null;
   return serializePersistedFormState(
@@ -193,6 +205,32 @@ function RequiredAsteriskIcon({ className }: { className?: string }) {
   );
 }
 
+function RequireCommentIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className ?? 'w-5 h-5'} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+      />
+    </svg>
+  );
+}
+
+function RequireImageIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className ?? 'w-5 h-5'} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+      />
+    </svg>
+  );
+}
+
 function newSection(order: number): SafetyFormSection {
   return {
     id: crypto.randomUUID(),
@@ -212,6 +250,8 @@ function newField(type: SafetyFormFieldType, order: number): SafetyFormField {
     label: FIELD_TYPE_OPTIONS.find((x) => x.type === type)?.label || 'Field',
     order,
     required: false,
+    requireComment: false,
+    requireImage: false,
   };
   if (type === 'image_view') {
     base.settings = { allowMultipleFiles: true, maxFiles: 8 };
@@ -306,13 +346,24 @@ export default function FormTemplateEditorPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const isEmployeeReviewEditor = location.pathname.startsWith('/reviews/form-templates');
-  const isFieldworkEditor = location.pathname.startsWith('/rm-fieldwork/form-templates');
+  const isConstructionFieldworkEditor = location.pathname.startsWith('/fieldwork/form-templates');
+  const isRmFieldworkEditor = location.pathname.startsWith('/rm-fieldwork/form-templates');
+  const isFieldworkEditor = isConstructionFieldworkEditor || isRmFieldworkEditor;
+  const fieldworkDefaultLine: 'construction' | 'repairs_maintenance' = isConstructionFieldworkEditor
+    ? 'construction'
+    : 'repairs_maintenance';
   const listPath = isEmployeeReviewEditor
     ? '/reviews/form-templates'
-    : isFieldworkEditor
-      ? '/rm-fieldwork/form-templates'
-      : '/documents/form-templates';
-  const customListsPath = isFieldworkEditor ? '/rm-fieldwork/form-custom-lists' : '/documents/form-custom-lists';
+    : isConstructionFieldworkEditor
+      ? '/fieldwork/form-templates'
+      : isRmFieldworkEditor
+        ? '/rm-fieldwork/form-templates'
+        : '/documents/form-templates';
+  const customListsPath = isConstructionFieldworkEditor
+    ? '/fieldwork/form-custom-lists'
+    : isRmFieldworkEditor
+      ? '/rm-fieldwork/form-custom-lists'
+      : '/documents/form-custom-lists';
   const qc = useQueryClient();
   const confirm = useConfirm();
   const [localName, setLocalName] = useState('');
@@ -322,7 +373,9 @@ export default function FormTemplateEditorPage() {
   const [category, setCategory] = useState('inspection');
   const [status, setStatus] = useState('active');
   const [definition, setDefinition] = useState<SafetyFormDefinition>(DEFAULT_DEFINITION);
-  const [fieldworkSettings, setFieldworkSettings] = useState(() => defaultFieldworkSettings('site_assessment'));
+  const [fieldworkSettings, setFieldworkSettings] = useState(() =>
+    defaultFieldworkSettings('site_assessment', fieldworkDefaultLine)
+  );
   const [versionLabel, setVersionLabel] = useState('');
   const [previewPayload, setPreviewPayload] = useState<Record<string, unknown>>({});
   const [tab, setTab] = useState<'build' | 'preview'>('build');
@@ -397,7 +450,7 @@ export default function FormTemplateEditorPage() {
     setDefinition(normalized);
     const wr = tmpl.definition?.signature_policy?.worker;
     setSigRequired(Boolean(wr?.required));
-    const defaults = defaultFieldworkSettings(tmpl.category || 'site_assessment');
+    const defaults = defaultFieldworkSettings(tmpl.category || 'site_assessment', fieldworkDefaultLine);
     const fw = normalized.fieldwork_settings || {};
     setFieldworkSettings({
       require_final_comments:
@@ -405,8 +458,22 @@ export default function FormTemplateEditorPage() {
       require_min_photos:
         typeof fw.require_min_photos === 'number' ? Math.max(0, fw.require_min_photos) : defaults.require_min_photos,
       default_pictures_folder: fw.default_pictures_folder || defaults.default_pictures_folder,
+      business_lines:
+        Array.isArray(fw.business_lines) && fw.business_lines.length
+          ? fw.business_lines
+          : defaults.business_lines,
     });
-  }, [tmpl?.id, tmpl?.name, tmpl?.version_label, tmpl?.description, tmpl?.category, tmpl?.status, tmpl?.definition, isFieldworkEditor]);
+  }, [
+    tmpl?.id,
+    tmpl?.name,
+    tmpl?.version_label,
+    tmpl?.description,
+    tmpl?.category,
+    tmpl?.status,
+    tmpl?.definition,
+    isFieldworkEditor,
+    fieldworkDefaultLine,
+  ]);
 
   const categoryForSave = isEmployeeReviewEditor
     ? 'employee_review'
@@ -434,7 +501,13 @@ export default function FormTemplateEditorPage() {
               fieldwork_settings: {
                 require_final_comments: Boolean(fieldworkSettings.require_final_comments),
                 require_min_photos: Math.max(0, Number(fieldworkSettings.require_min_photos) || 0),
-                default_pictures_folder: fieldworkSettings.default_pictures_folder || defaultFieldworkSettings(categoryForSave).default_pictures_folder,
+                default_pictures_folder:
+                  fieldworkSettings.default_pictures_folder ||
+                  defaultFieldworkSettings(categoryForSave, fieldworkDefaultLine).default_pictures_folder,
+                business_lines:
+                  Array.isArray(fieldworkSettings.business_lines) && fieldworkSettings.business_lines.length
+                    ? fieldworkSettings.business_lines
+                    : [fieldworkDefaultLine],
               },
             }
           : {}),
@@ -638,7 +711,7 @@ export default function FormTemplateEditorPage() {
     const wr = tmpl.definition?.signature_policy?.worker;
     setSigRequired(Boolean(wr?.required));
     if (isFieldworkEditor) {
-      const defaults = defaultFieldworkSettings(tmpl.category || 'site_assessment');
+      const defaults = defaultFieldworkSettings(tmpl.category || 'site_assessment', fieldworkDefaultLine);
       const fw = normalized.fieldwork_settings || {};
       setFieldworkSettings({
         require_final_comments:
@@ -646,9 +719,13 @@ export default function FormTemplateEditorPage() {
         require_min_photos:
           typeof fw.require_min_photos === 'number' ? Math.max(0, fw.require_min_photos) : defaults.require_min_photos,
         default_pictures_folder: fw.default_pictures_folder || defaults.default_pictures_folder,
+        business_lines:
+          Array.isArray(fw.business_lines) && fw.business_lines.length
+            ? fw.business_lines
+            : defaults.business_lines,
       });
     }
-  }, [tmpl, isFieldworkEditor]);
+  }, [tmpl, isFieldworkEditor, fieldworkDefaultLine]);
 
   useUnsavedChangesGuard(hasUnsavedChanges, flushSaveAll, handleGuardDiscard);
 
@@ -1154,11 +1231,25 @@ export default function FormTemplateEditorPage() {
                   </div>
                   {/* Row 2: required hint (left) | Type + Active (right) */}
                   <div className="flex flex-row items-center justify-between gap-4 min-w-0">
-                    <div className="flex items-center gap-2 text-sm text-gray-800 min-w-0 flex-1">
-                      <span className="text-red-600 shrink-0 inline-flex" aria-hidden>
-                        <RequiredAsteriskIcon className="w-4 h-4" />
+                    <div className="flex items-center gap-3 text-sm text-gray-800 min-w-0 flex-1 flex-wrap">
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="text-red-600 shrink-0 inline-flex" aria-hidden>
+                          <RequiredAsteriskIcon className="w-4 h-4" />
+                        </span>
+                        <span>Required</span>
                       </span>
-                      <span>Indicate Required Fields</span>
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="text-blue-600 shrink-0 inline-flex" aria-hidden>
+                          <RequireCommentIcon className="w-4 h-4" />
+                        </span>
+                        <span>Comment</span>
+                      </span>
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="text-violet-600 shrink-0 inline-flex" aria-hidden>
+                          <RequireImageIcon className="w-4 h-4" />
+                        </span>
+                        <span>Image</span>
+                      </span>
                     </div>
                     <div className="flex shrink-0 items-center gap-2.5">
                       {!isEmployeeReviewEditor ? (
@@ -1310,10 +1401,38 @@ export default function FormTemplateEditorPage() {
                     />
                   </div>
                 </div>
+                <div className="flex flex-wrap gap-4">
+                  <AppCheckbox
+                    label="Production (Construction)"
+                    checked={(fieldworkSettings.business_lines || []).includes('construction')}
+                    onChange={(checked) =>
+                      setFieldworkSettings((prev) => {
+                        const cur = new Set(prev.business_lines || []);
+                        if (checked) cur.add('construction');
+                        else cur.delete('construction');
+                        if (cur.size === 0) cur.add(fieldworkDefaultLine);
+                        return { ...prev, business_lines: [...cur] };
+                      })
+                    }
+                  />
+                  <AppCheckbox
+                    label="Repairs & Maintenance"
+                    checked={(fieldworkSettings.business_lines || []).includes('repairs_maintenance')}
+                    onChange={(checked) =>
+                      setFieldworkSettings((prev) => {
+                        const cur = new Set(prev.business_lines || []);
+                        if (checked) cur.add('repairs_maintenance');
+                        else cur.delete('repairs_maintenance');
+                        if (cur.size === 0) cur.add(fieldworkDefaultLine);
+                        return { ...prev, business_lines: [...cur] };
+                      })
+                    }
+                  />
+                </div>
                 <p className={uiCx(uiTypography.helper)}>
                   Phrase libraries:{' '}
                   <Link to={customListsPath} className="text-brand-red hover:underline">
-                    R&amp;M Observed Conditions / Work Performed
+                    Observed Conditions / Work Performed
                   </Link>
                 </p>
               </div>
@@ -1462,24 +1581,78 @@ export default function FormTemplateEditorPage() {
                                           >
                                             ⋮
                                           </button>
-                                          <div className="flex shrink-0 items-center gap-1">
+                                          <div className="flex shrink-0 items-center gap-0.5">
                                             {field.type !== 'text_info' && (
-                                              <button
-                                                type="button"
-                                                aria-label={field.required ? 'Required field. Click to make optional.' : 'Optional field. Click to require.'}
-                                                aria-pressed={Boolean(field.required)}
-                                                title={field.required ? 'Required — click to make optional' : 'Optional — click to require'}
-                                                onClick={() =>
-                                                  updateField(sec.id, field.id, {
-                                                    required: !Boolean(field.required),
-                                                  })
-                                                }
-                                                className={`h-9 w-9 shrink-0 inline-flex items-center justify-center bg-transparent border-0 cursor-pointer transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/25 focus-visible:rounded ${
-                                                  field.required ? 'text-red-600 hover:text-red-700' : 'text-gray-400 hover:text-gray-500'
-                                                }`}
-                                              >
-                                                <RequiredAsteriskIcon className="w-5 h-5" />
-                                              </button>
+                                              <>
+                                                <button
+                                                  type="button"
+                                                  aria-label={field.required ? 'Required field. Click to make optional.' : 'Optional field. Click to require.'}
+                                                  aria-pressed={Boolean(field.required)}
+                                                  title={field.required ? 'Required answer — click to make optional' : 'Optional answer — click to require'}
+                                                  onClick={() =>
+                                                    updateField(sec.id, field.id, {
+                                                      required: !Boolean(field.required),
+                                                    })
+                                                  }
+                                                  className={`h-9 w-9 shrink-0 inline-flex items-center justify-center bg-transparent border-0 cursor-pointer transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/25 focus-visible:rounded ${
+                                                    field.required ? 'text-red-600 hover:text-red-700' : 'text-gray-400 hover:text-gray-500'
+                                                  }`}
+                                                >
+                                                  <RequiredAsteriskIcon className="w-5 h-5" />
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  aria-label={
+                                                    field.requireComment
+                                                      ? 'Comment required. Click to make optional.'
+                                                      : 'Comment optional. Click to require a comment.'
+                                                  }
+                                                  aria-pressed={Boolean(field.requireComment)}
+                                                  title={
+                                                    field.requireComment
+                                                      ? 'Comment required — click to make optional'
+                                                      : 'Require comment — click to force a comment'
+                                                  }
+                                                  onClick={() =>
+                                                    updateField(sec.id, field.id, {
+                                                      requireComment: !Boolean(field.requireComment),
+                                                    })
+                                                  }
+                                                  className={`h-9 w-9 shrink-0 inline-flex items-center justify-center bg-transparent border-0 cursor-pointer transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40 focus-visible:rounded ${
+                                                    field.requireComment
+                                                      ? 'text-blue-600 hover:text-blue-700'
+                                                      : 'text-gray-400 hover:text-gray-500'
+                                                  }`}
+                                                >
+                                                  <RequireCommentIcon className="w-5 h-5" />
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  aria-label={
+                                                    field.requireImage
+                                                      ? 'Image required. Click to make optional.'
+                                                      : 'Image optional. Click to require an image.'
+                                                  }
+                                                  aria-pressed={Boolean(field.requireImage)}
+                                                  title={
+                                                    field.requireImage
+                                                      ? 'Image required — click to make optional'
+                                                      : 'Require image — click to force a photo'
+                                                  }
+                                                  onClick={() =>
+                                                    updateField(sec.id, field.id, {
+                                                      requireImage: !Boolean(field.requireImage),
+                                                    })
+                                                  }
+                                                  className={`h-9 w-9 shrink-0 inline-flex items-center justify-center bg-transparent border-0 cursor-pointer transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/40 focus-visible:rounded ${
+                                                    field.requireImage
+                                                      ? 'text-violet-600 hover:text-violet-700'
+                                                      : 'text-gray-400 hover:text-gray-500'
+                                                  }`}
+                                                >
+                                                  <RequireImageIcon className="w-5 h-5" />
+                                                </button>
+                                              </>
                                             )}
                                             <span
                                               className="h-9 w-9 shrink-0 inline-flex items-center justify-center"

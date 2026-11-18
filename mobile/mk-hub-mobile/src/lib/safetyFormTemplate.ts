@@ -28,6 +28,8 @@ export type SafetyFormField = {
   label: string;
   order: number;
   required?: boolean;
+  requireComment?: boolean;
+  requireImage?: boolean;
   placeholder?: string;
   options?: string[];
   optionsSource?: { type: "custom_list"; customListId: string };
@@ -153,6 +155,8 @@ export function normalizeDefinition(raw: unknown): SafetyFormDefinition {
         label: String(field.label || field.key || "Field"),
         order: Number(field.order || 0),
         required: Boolean(field.required),
+        requireComment: Boolean(field.requireComment),
+        requireImage: Boolean(field.requireImage),
         placeholder: field.placeholder ? String(field.placeholder) : undefined,
         options: Array.isArray(field.options)
           ? field.options.map((item) => String(item))
@@ -246,6 +250,39 @@ export function isEmptyFieldValue(
   return false;
 }
 
+function getFieldAttachmentNote(
+  field: SafetyFormField,
+  payload: Record<string, unknown>
+): { text: string; imageIds: string[] } {
+  if (field.type === "yes_no_na") {
+    const v = payload[field.key];
+    const o = v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+    const imgs = o.commentImageIds;
+    return {
+      text: typeof o.comments === "string" ? o.comments : "",
+      imageIds: Array.isArray(imgs)
+        ? imgs.filter((x): x is string => typeof x === "string" && !!x.trim())
+        : []
+    };
+  }
+  const bag = payload._fieldComments;
+  const raw =
+    bag && typeof bag === "object" && !Array.isArray(bag)
+      ? (bag as Record<string, unknown>)[field.key]
+      : undefined;
+  if (typeof raw === "string") return { text: raw, imageIds: [] };
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    const o = raw as Record<string, unknown>;
+    const t = typeof o.text === "string" ? o.text : "";
+    const arr = o.imageIds ?? o.images;
+    const imageIds = Array.isArray(arr)
+      ? arr.filter((x): x is string => typeof x === "string" && !!x.trim())
+      : [];
+    return { text: t, imageIds };
+  }
+  return { text: "", imageIds: [] };
+}
+
 export function validateRequiredFields(
   definition: SafetyFormDefinition,
   payload: Record<string, unknown>
@@ -253,37 +290,43 @@ export function validateRequiredFields(
   const missing: string[] = [];
   for (const section of [...definition.sections].sort((a, b) => a.order - b.order)) {
     for (const field of [...section.fields].sort((a, b) => a.order - b.order)) {
-      if (!field.required || !isFieldVisible(field, payload)) continue;
+      if (!isFieldVisible(field, payload)) continue;
       if (field.type === "text_info" || field.type === "pass_fail_total" || field.type === "pdf_view") {
         continue;
       }
       const value = payload[field.key];
       const label = field.label || field.key;
-      if (field.type === "checkbox") {
-        if (value !== true) missing.push(label);
-        continue;
+      if (field.required) {
+        if (field.type === "checkbox") {
+          if (value !== true) missing.push(label);
+        } else if (
+          field.type === "dropdown_multi" ||
+          field.type === "user_multi" ||
+          field.type === "equipment_multi"
+        ) {
+          if (!Array.isArray(value) || value.length === 0) missing.push(label);
+        } else if (field.type === "yes_no_na") {
+          const o =
+            value && typeof value === "object" && !Array.isArray(value)
+              ? (value as { status?: string })
+              : {};
+          if (!o.status || !["yes", "no", "na"].includes(o.status)) missing.push(label);
+        } else if (field.type === "pass_fail_na") {
+          if (value !== "pass" && value !== "fail" && value !== "na") missing.push(label);
+        } else if (isEmptyFieldValue(field, value)) {
+          missing.push(label);
+        }
       }
-      if (
-        field.type === "dropdown_multi" ||
-        field.type === "user_multi" ||
-        field.type === "equipment_multi"
-      ) {
-        if (!Array.isArray(value) || value.length === 0) missing.push(label);
-        continue;
+      if (field.requireComment || field.requireImage) {
+        // Pass/Fail: only force comment/image when the answer is Fail.
+        if (field.type === "pass_fail_na" && value !== "fail") {
+          // pass / na / unanswered — skip
+        } else {
+          const note = getFieldAttachmentNote(field, payload);
+          if (field.requireComment && !note.text.trim()) missing.push(`${label} (comment)`);
+          if (field.requireImage && note.imageIds.length === 0) missing.push(`${label} (image)`);
+        }
       }
-      if (field.type === "yes_no_na") {
-        const o =
-          value && typeof value === "object" && !Array.isArray(value)
-            ? (value as { status?: string })
-            : {};
-        if (!o.status || !["yes", "no", "na"].includes(o.status)) missing.push(label);
-        continue;
-      }
-      if (field.type === "pass_fail_na") {
-        if (value !== "pass" && value !== "fail" && value !== "na") missing.push(label);
-        continue;
-      }
-      if (isEmptyFieldValue(field, value)) missing.push(label);
     }
   }
 

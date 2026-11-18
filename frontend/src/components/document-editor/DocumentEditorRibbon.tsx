@@ -19,6 +19,7 @@ import {
   BlockIcon,
   CloseIcon,
   ExportPdfIcon,
+  FieldReportIcon,
   ImageAreaIcon,
   ImageIcon,
   InitialsIcon,
@@ -65,6 +66,8 @@ export type DocumentEditorRibbonProps = {
   onAddText: () => void;
   onAddImage: () => void;
   onAddImagePlaceholder: () => void;
+  /** R&M only: open approved Field Report photo picker (optional; omitted elsewhere). */
+  onInsertFromFieldReport?: () => void;
   onAddInitials?: (assigneeRoleId: string) => void;
   /** Document signers for insert chooser. */
   signerRoles?: DocumentSignerRoleDef[];
@@ -168,6 +171,7 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
     onAddText,
     onAddImage,
     onAddImagePlaceholder,
+    onInsertFromFieldReport,
     onAddInitials,
     signerRoles = [],
     onRequestOtherSigner,
@@ -475,6 +479,14 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
               onClick={onAddImagePlaceholder}
               title="Insert image placeholder"
             />
+            {onInsertFromFieldReport ? (
+              <RibbonLargeButton
+                icon={<FieldReportIcon />}
+                label="Field report"
+                onClick={onInsertFromFieldReport}
+                title="Insert photos and descriptions from an approved Field Report"
+              />
+            ) : null}
             {showBlock && onAddBlock && (
               <RibbonLargeButton icon={<BlockIcon />} label="Block" onClick={onAddBlock} title="Insert block area" />
             )}
