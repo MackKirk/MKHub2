@@ -8,12 +8,22 @@ export type ProjectCalendarOnsiteLead = ProjectCalendarPerson & {
   division_label?: string | null;
 };
 
+export type ProjectCalendarDivision = {
+  id: string;
+  label: string;
+  color?: string | null;
+};
+
 export type ProjectCalendarShift = {
   id: string;
   worker_id?: string;
   worker_name?: string | null;
   start_time?: string | null;
   end_time?: string | null;
+  crew_group_id?: string | null;
+  crew_role?: string | null;
+  ack_status?: string | null;
+  job_name?: string | null;
 };
 
 export type ProjectCalendarAppearance = 'in_range' | 'shift_only' | 'both' | 'scheduled';
@@ -24,7 +34,10 @@ export type ProjectCalendarDayEntry = {
   name: string;
   status_label?: string | null;
   client_display_name?: string | null;
+  address?: string | null;
   appearance: ProjectCalendarAppearance;
+  divisions: ProjectCalendarDivision[];
+  primary_division?: ProjectCalendarDivision | null;
   estimators: ProjectCalendarPerson[];
   project_admin?: ProjectCalendarPerson | null;
   onsite_leads: ProjectCalendarOnsiteLead[];

@@ -16,13 +16,13 @@ import {
   uiCx,
   uiLayout,
   uiRadius,
-  uiTypography,
 } from '@/components/ui';
 
 type ShiftAckQuickActionsProps = {
   shiftId: string;
   ackStatus?: string | null;
   onUpdated?: (updated: any) => void;
+  className?: string;
 };
 
 /**
@@ -32,6 +32,7 @@ export function ShiftAckQuickActions({
   shiftId,
   ackStatus,
   onUpdated,
+  className,
 }: ShiftAckQuickActionsProps) {
   const queryClient = useQueryClient();
   const [saving, setSaving] = useState(false);
@@ -72,7 +73,11 @@ export function ShiftAckQuickActions({
   return (
     <>
       <div
-        className={uiCx('mt-2 grid gap-1.5', isDeclined ? 'grid-cols-1' : 'grid-cols-2')}
+        className={uiCx(
+          'grid gap-1.5',
+          isDeclined ? 'grid-cols-1' : 'grid-cols-2',
+          className ?? 'mt-2',
+        )}
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.stopPropagation()}
       >
@@ -81,7 +86,7 @@ export function ShiftAckQuickActions({
           disabled={saving}
           onClick={() => respond('accepted')}
           className={uiCx(
-            'flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 transition-colors',
+            'flex min-w-[5.5rem] flex-col items-center justify-center gap-0.5 px-3.5 py-1.5 transition-colors',
             uiRadius.control,
             uiBorders.subtle,
             'border-green-200 bg-green-50 text-green-800 hover:bg-green-100',
@@ -90,7 +95,7 @@ export function ShiftAckQuickActions({
           aria-label="Accept shift"
         >
           <Check className="h-4 w-4" strokeWidth={2.5} aria-hidden />
-          <span className={uiCx(uiTypography.helper, 'font-semibold text-green-800')}>Accept</span>
+          <span className="text-sm font-semibold text-green-800">Accept</span>
         </button>
         {needsResponse ? (
           <button
@@ -98,7 +103,7 @@ export function ShiftAckQuickActions({
             disabled={saving}
             onClick={() => setDeclineOpen(true)}
             className={uiCx(
-              'flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 transition-colors',
+              'flex min-w-[5.5rem] flex-col items-center justify-center gap-0.5 px-3.5 py-1.5 transition-colors',
               uiRadius.control,
               uiBorders.subtle,
               'border-red-200 bg-red-50 text-red-800 hover:bg-red-100',
@@ -107,7 +112,7 @@ export function ShiftAckQuickActions({
             aria-label="Decline shift"
           >
             <X className="h-4 w-4" strokeWidth={2.5} aria-hidden />
-            <span className={uiCx(uiTypography.helper, 'font-semibold text-red-800')}>Decline</span>
+            <span className="text-sm font-semibold text-red-800">Decline</span>
           </button>
         ) : null}
       </div>

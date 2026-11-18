@@ -38,6 +38,7 @@ import {
   AppButton,
   AppCalendarBase,
   type AppCalendarDay,
+  AppBadge,
   AppCard,
   AppCheckbox,
   AppChoiceCards,
@@ -46,7 +47,6 @@ import {
   AppEmptyState,
   AppFormModal,
   AppInput,
-  AppMultiSelect,
   AppSectionHeader,
   AppSelect,
   AppTabs,
@@ -66,6 +66,7 @@ import {
 import { jobTypeSelectOptions } from '@/lib/jobTypes';
 import { shiftAckMeta, shiftAckTracked } from '@/lib/shiftAck';
 import ShiftNoteField from '@/components/ShiftNoteField';
+import { ShiftCrewMemberCards } from '@/components/ShiftCrewMemberCards';
 import { ShiftWorkerDivisionPicker } from '@/components/ShiftWorkerDivisionPicker';
 import { persistShiftNoteLibrary } from '@/lib/shiftNoteLibrary';
 
@@ -100,13 +101,56 @@ const SHIFT_TIME_PRESET_ICONS: Record<ShiftTimePreset, LucideIcon> = {
   custom: SlidersHorizontal,
 };
 
-const CREATE_SHIFT_STEPS = [
+const CREATE_SHIFT_STEPS_SINGLE = [
   'Choose people',
   'Choose dates & time',
   'Notes & details',
   'Review',
 ] as const;
 
+const CREATE_SHIFT_STEPS_CREW = [
+  'Choose people',
+  'Crew',
+  'Choose dates & time',
+  'Notes & details',
+  'Review',
+] as const;
+
+type DispatchDayShiftGroup =
+  | { kind: 'solo'; shift: any }
+  | { kind: 'crew'; crewGroupId: string; shifts: any[] };
+
+/** Group same-day shifts that share a crew_group_id (2+ members). Lead first. */
+function groupDispatchDayShifts(dayShifts: any[]): DispatchDayShiftGroup[] {
+  const list = Array.isArray(dayShifts) ? dayShifts : [];
+  const seenCrew = new Set<string>();
+  const items: DispatchDayShiftGroup[] = [];
+
+  for (const shift of list) {
+    const gid = shift?.crew_group_id ? String(shift.crew_group_id) : '';
+    if (!gid) {
+      items.push({ kind: 'solo', shift });
+      continue;
+    }
+    if (seenCrew.has(gid)) continue;
+    seenCrew.add(gid);
+    const members = list
+      .filter((s) => String(s?.crew_group_id || '') === gid)
+      .slice()
+      .sort((a, b) => {
+        if (a?.crew_role === 'lead' && b?.crew_role !== 'lead') return -1;
+        if (b?.crew_role === 'lead' && a?.crew_role !== 'lead') return 1;
+        return 0;
+      });
+    if (members.length >= 2) {
+      items.push({ kind: 'crew', crewGroupId: gid, shifts: members });
+    } else if (members[0]) {
+      items.push({ kind: 'solo', shift: members[0] });
+    }
+  }
+
+  return items;
+}
 
 export default function DispatchTab({
   projectId,
@@ -699,7 +743,7 @@ export default function DispatchTab({
                   <div
                     key={key}
                     onClick={() => !deleteMode && setSelectedDate(dateStr)}
-                    className={`h-64 rounded border bg-white p-1.5 flex flex-col ${
+                    className={`min-h-64 h-full rounded border bg-white p-1.5 flex flex-col ${
                       deleteMode ? '' : 'cursor-pointer'
                     } ${
                       isSelected && !deleteMode ? 'ring-2 ring-brand-red border-brand-red' : ''
@@ -709,13 +753,15 @@ export default function DispatchTab({
                       <div className="text-xs text-gray-600 uppercase">{dayName}</div>
                       <div>{dayNumber}</div>
                     </div>
-                    <div 
-                      className="flex-1 overflow-y-auto min-h-0 space-y-1" 
-                      style={{ scrollbarWidth: 'thin' }}
+                    <div
+                      className="flex-1 space-y-1"
                       onMouseDown={(e) => e.stopPropagation()}
                     >
                       {dayShifts.length > 0 ? (
-                        dayShifts.map((shift: any) => {
+                        groupDispatchDayShifts(dayShifts).map((item) => {
+                          const shiftsInItem =
+                            item.kind === 'crew' ? item.shifts : [item.shift];
+                          const cards = shiftsInItem.map((shift: any) => {
                           const worker = employees?.find((e: any) => e.id === shift.worker_id);
                           const isShiftSelected = selectedShiftsForDelete.has(shift.id);
                           const canDelete = !isPastDate;
@@ -800,8 +846,18 @@ export default function DispatchTab({
                               )}
                               <div className="flex items-start justify-between gap-1">
                                 <div className={`flex-1 min-w-0 ${deleteMode ? 'ml-4' : ''}`}>
-                                  <div className="font-semibold truncate text-xs">
-                                    {worker?.name || shift.worker_id}
+                                  <div className="flex items-center gap-1 min-w-0">
+                                    <div className="font-semibold truncate text-xs">
+                                      {worker?.name || shift.worker_id}
+                                    </div>
+                                    {shift.crew_role === 'lead' ? (
+                                      <AppBadge
+                                        variant="info"
+                                        className="shrink-0 normal-case !text-[9px] !px-1 !py-0"
+                                      >
+                                        Lead
+                                      </AppBadge>
+                                    ) : null}
                                   </div>
                                   <span className="text-xs text-gray-600">
                                     {formatTime12h(shift.start_time)} - {formatTime12h(shift.end_time)}
@@ -819,18 +875,6 @@ export default function DispatchTab({
                                       Backdated
                                     </div>
                                   ) : null}
-                                  {shiftAckTracked(shift.ack_status) ? (
-                                    <div
-                                      className={`text-[10px] font-semibold mt-0.5 truncate ${shiftAckMeta(shift.ack_status).tone}`}
-                                      title={
-                                        shift.ack_status === 'declined' && shift.ack_note
-                                          ? `Declined: ${shift.ack_note}`
-                                          : shiftAckMeta(shift.ack_status).longLabel
-                                      }
-                                    >
-                                      {shiftAckMeta(shift.ack_status).shortLabel}
-                                    </div>
-                                  ) : null}
                                   {/* NOTE: During testing phase, past date validation is disabled */}
                                   {/* {deleteMode && !canDelete && (
                                     <div className="text-[8px] text-red-600 mt-0.5 font-semibold">
@@ -838,8 +882,28 @@ export default function DispatchTab({
                                     </div>
                                   )} */}
                                 </div>
+                                {shiftAckTracked(shift.ack_status) ? (
+                                  <AppTooltip
+                                    content={
+                                      shift.ack_status === 'declined' && shift.ack_note
+                                        ? `Declined: ${shift.ack_note}`
+                                        : shiftAckMeta(shift.ack_status).longLabel
+                                    }
+                                    placement="top"
+                                  >
+                                    <span
+                                      className={uiCx(
+                                        'absolute top-1 right-1 z-[1] h-2 w-2 rounded-full ring-1 ring-white/90',
+                                        shiftAckMeta(shift.ack_status).dotClass,
+                                      )}
+                                      aria-label={shiftAckMeta(shift.ack_status).longLabel}
+                                      onMouseDown={(e) => e.stopPropagation()}
+                                      onClick={(e) => e.stopPropagation()}
+                                    />
+                                  </AppTooltip>
+                                ) : null}
                                 {!deleteMode && (
-                                  <div className="flex items-center gap-0.5 flex-shrink-0">
+                                  <div className="flex items-center gap-0.5 flex-shrink-0 pr-2.5">
                                     {shiftHasNotes(shift) && (
                                       <AppTooltip
                                         content={shiftNotesPreview(String(shift.notes))}
@@ -923,6 +987,28 @@ export default function DispatchTab({
                               </div>
                             </div>
                           );
+                          });
+
+                          if (item.kind === 'crew') {
+                            return (
+                              <div
+                                key={`crew-${item.crewGroupId}`}
+                                className="rounded-md border border-slate-300/90 bg-slate-50/90 p-0.5 space-y-0.5"
+                                onMouseDown={(e) => e.stopPropagation()}
+                                title={`Crew of ${item.shifts.length} people`}
+                              >
+                                <div className="flex items-center justify-between gap-1 px-1 pt-0.5">
+                                  <span className="text-[9px] font-semibold uppercase tracking-wide text-slate-600">
+                                    Crew · {item.shifts.length}{' '}
+                                    {item.shifts.length === 1 ? 'person' : 'people'}
+                                  </span>
+                                </div>
+                                <div className="space-y-0.5">{cards}</div>
+                              </div>
+                            );
+                          }
+
+                          return <Fragment key={item.shift.id}>{cards}</Fragment>;
                         })
                       ) : (
                         <div className="text-xs text-gray-600" onMouseDown={(e) => e.stopPropagation()}>No shifts</div>
@@ -1233,6 +1319,7 @@ export function CreateShiftModal({
   designSystem,
   jobTypeOptions,
   canEditOnsiteLeads = false,
+  initialDate,
   onClose,
   onSave,
 }: {
@@ -1245,24 +1332,38 @@ export function CreateShiftModal({
   designSystem?: boolean;
   jobTypeOptions?: { value: string; label: string }[];
   canEditOnsiteLeads?: boolean;
+  /** YYYY-MM-DD — seeds single/range start when opening from calendar drop. */
+  initialDate?: string;
   onClose: () => void;
   onSave: () => Promise<void>;
 }) {
   const confirm = useConfirm();
   const queryClient = useQueryClient();
+  const seedDate = initialDate && /^\d{4}-\d{2}-\d{2}$/.test(initialDate)
+    ? initialDate
+    : formatDateLocal(new Date());
   const [step, setStep] = useState(1);
   const [selectedWorkers, setSelectedWorkers] = useState<string[]>([]);
   const [dateMode, setDateMode] = useState<'single' | 'range'>('single');
-  const [date, setDate] = useState(formatDateLocal(new Date()));
-  const [dateFrom, setDateFrom] = useState(formatDateLocal(new Date()));
+  const [date, setDate] = useState(seedDate);
+  const [dateFrom, setDateFrom] = useState(seedDate);
   const [dateTo, setDateTo] = useState(() => {
-    const nextWeek = new Date();
-    nextWeek.setDate(nextWeek.getDate() + 6);
-    return formatDateLocal(nextWeek);
+    const base = new Date(`${seedDate}T12:00:00`);
+    if (Number.isNaN(base.getTime())) {
+      const nextWeek = new Date();
+      nextWeek.setDate(nextWeek.getDate() + 6);
+      return formatDateLocal(nextWeek);
+    }
+    base.setDate(base.getDate() + 6);
+    return formatDateLocal(base);
   });
   const [excludeWeekends, setExcludeWeekends] = useState(false);
   const [calMonth, setCalMonth] = useState(() => {
-    const d = new Date();
+    const d = new Date(`${seedDate}T12:00:00`);
+    if (Number.isNaN(d.getTime())) {
+      const today = new Date();
+      return new Date(today.getFullYear(), today.getMonth(), 1);
+    }
     return new Date(d.getFullYear(), d.getMonth(), 1);
   });
   const [timePreset, setTimePreset] = useState<ShiftTimePreset>('all_day');
@@ -1279,9 +1380,17 @@ export function CreateShiftModal({
   const [workerDropdownOpen, setWorkerDropdownOpen] = useState(false);
   const [workerSearch, setWorkerSearch] = useState('');
   const workerDropdownRef = useRef<HTMLDivElement>(null);
-  const [assignAsOnsiteLead, setAssignAsOnsiteLead] = useState(false);
-  const [leadWorkerId, setLeadWorkerId] = useState<string | null>(null);
-  const [leadDivisionIds, setLeadDivisionIds] = useState<string[]>([]);
+  /** Draft project on-site leads for this create batch: divisionId → workerId (one lead per division). */
+  const [onsiteLeadByDivision, setOnsiteLeadByDivision] = useState<Record<string, string>>({});
+  /** Optional lead of the multi-worker crew for this create batch (not project on-site lead). */
+  const [groupLeadWorkerId, setGroupLeadWorkerId] = useState<string | null>(null);
+  const [onsiteLeadModalWorkerId, setOnsiteLeadModalWorkerId] = useState<string | null>(null);
+  const [onsiteLeadModalDivisionIds, setOnsiteLeadModalDivisionIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    const maxSteps = (Array.isArray(selectedWorkers) ? selectedWorkers.length : 0) >= 2 ? 5 : 4;
+    setStep((s) => Math.min(s, maxSteps));
+  }, [selectedWorkers]);
 
   const { data: projectDivisions } = useQuery({
     queryKey: PROJECT_DIVISIONS_QUERY_KEY,
@@ -1303,17 +1412,28 @@ export function CreateShiftModal({
     });
   }, [project?.project_division_ids, project?.division_onsite_leads]);
 
-  const showOnsiteLeadSection = canEditOnsiteLeads && availableDivisions.length > 0;
+  const onsiteLeadEnabled = canEditOnsiteLeads && availableDivisions.length > 0;
 
   const leadAssignments = useMemo(() => {
-    if (!assignAsOnsiteLead || !leadWorkerId || leadDivisionIds.length === 0) return {};
     const allowed = new Set(availableDivisions);
     const next: Record<string, string> = {};
-    for (const divId of leadDivisionIds) {
-      if (allowed.has(divId)) next[divId] = leadWorkerId;
+    for (const [divId, workerId] of Object.entries(onsiteLeadByDivision)) {
+      const w = String(workerId || '').trim();
+      if (allowed.has(divId) && w) next[divId] = w;
     }
     return next;
-  }, [assignAsOnsiteLead, leadWorkerId, leadDivisionIds, availableDivisions]);
+  }, [onsiteLeadByDivision, availableDivisions]);
+
+  const hasOnsiteLeadAssignment = Object.keys(leadAssignments).length > 0;
+  const onsiteLeadWorkerIds = useMemo(
+    () => new Set(Object.values(leadAssignments).map(String)),
+    [leadAssignments],
+  );
+
+  const divisionsForOnsiteWorker = (workerId: string) =>
+    Object.entries(leadAssignments)
+      .filter(([, w]) => String(w) === String(workerId))
+      .map(([divId]) => divId);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -1332,22 +1452,38 @@ export function CreateShiftModal({
     };
   }, [workerDropdownOpen]);
 
-  // Keep lead worker/divisions in sync with selected workers and open slots
+  // Keep on-site / group lead drafts in sync with selected workers and open slots
   useEffect(() => {
     const selected = selectedWorkers.map(String);
     if (selected.length === 0) {
-      setAssignAsOnsiteLead(false);
-      setLeadWorkerId(null);
-      setLeadDivisionIds([]);
+      setOnsiteLeadByDivision({});
+      setGroupLeadWorkerId(null);
       return;
     }
-    if (leadWorkerId && !selected.includes(String(leadWorkerId))) {
-      setLeadWorkerId(selected.length === 1 ? selected[0] : null);
-    } else if (!leadWorkerId && assignAsOnsiteLead && selected.length === 1) {
-      setLeadWorkerId(selected[0]);
+    setOnsiteLeadByDivision((prev) => {
+      let changed = false;
+      const next: Record<string, string> = {};
+      for (const [divId, workerId] of Object.entries(prev)) {
+        if (!availableDivisions.includes(divId)) {
+          changed = true;
+          continue;
+        }
+        if (!selected.includes(String(workerId))) {
+          changed = true;
+          continue;
+        }
+        next[divId] = String(workerId);
+      }
+      if (!changed && Object.keys(next).length === Object.keys(prev).length) return prev;
+      return next;
+    });
+    if (groupLeadWorkerId && !selected.includes(String(groupLeadWorkerId))) {
+      setGroupLeadWorkerId(null);
     }
-    setLeadDivisionIds((prev) => prev.filter((id) => availableDivisions.includes(id)));
-  }, [selectedWorkers, leadWorkerId, assignAsOnsiteLead, availableDivisions]);
+    if (selected.length < 2) {
+      setGroupLeadWorkerId(null);
+    }
+  }, [selectedWorkers, availableDivisions, groupLeadWorkerId]);
 
   // Generate list of dates based on mode
   const selectedDates = useMemo(() => {
@@ -1681,24 +1817,6 @@ export function CreateShiftModal({
     };
   }, [selectedWorkers, selectedDates, startTime, endTime, employeeNameById]);
 
-  const leadWorkerOptions = useMemo(
-    () =>
-      (Array.isArray(selectedWorkers) ? selectedWorkers : []).map((id) => ({
-        value: String(id),
-        label: employeeNameById.get(String(id)) || String(id),
-      })),
-    [selectedWorkers, employeeNameById],
-  );
-
-  const divisionOptions = useMemo(
-    () =>
-      availableDivisions.map((divId) => ({
-        value: divId,
-        label: getProjectDivisionLabel(divId, projectDivisions),
-      })),
-    [availableDivisions, projectDivisions],
-  );
-
   const toggleWorker = (workerId: string) => {
     setSelectedWorkers((prev) => {
       const prevArray = Array.isArray(prev) ? prev : [];
@@ -1708,21 +1826,64 @@ export function CreateShiftModal({
     });
   };
 
-  const handleAssignAsOnsiteLeadChange = (checked: boolean) => {
-    setAssignAsOnsiteLead(checked);
-    if (!checked) {
-      setLeadWorkerId(null);
-      setLeadDivisionIds([]);
+  const closeOnsiteLeadModal = () => {
+    setOnsiteLeadModalWorkerId(null);
+    setOnsiteLeadModalDivisionIds([]);
+  };
+
+  const handleOnsiteLeadStarClick = (workerId: string) => {
+    const id = String(workerId);
+    setSelectedWorkers((prev) => {
+      const prevArray = (Array.isArray(prev) ? prev : []).map(String);
+      return prevArray.includes(id) ? prevArray : [...prevArray, id];
+    });
+    setOnsiteLeadModalWorkerId(id);
+    const ownDivisions = divisionsForOnsiteWorker(id);
+    if (ownDivisions.length > 0) {
+      setOnsiteLeadModalDivisionIds(ownDivisions);
+    } else {
+      const freeDivisions = availableDivisions.filter((divId) => !leadAssignments[divId]);
+      setOnsiteLeadModalDivisionIds(freeDivisions.length === 1 ? [freeDivisions[0]] : []);
+    }
+  };
+
+  const handleConfirmOnsiteLead = () => {
+    if (!onsiteLeadModalWorkerId || onsiteLeadModalDivisionIds.length === 0) return;
+    const workerId = String(onsiteLeadModalWorkerId);
+    const selectedDivs = onsiteLeadModalDivisionIds.filter((divId) =>
+      availableDivisions.includes(divId),
+    );
+    if (selectedDivs.length === 0) return;
+    setOnsiteLeadByDivision((prev) => {
+      const next: Record<string, string> = {};
+      for (const [divId, w] of Object.entries(prev)) {
+        if (String(w) === workerId) continue;
+        if (selectedDivs.includes(divId)) continue;
+        next[divId] = String(w);
+      }
+      for (const divId of selectedDivs) {
+        next[divId] = workerId;
+      }
+      return next;
+    });
+    closeOnsiteLeadModal();
+  };
+
+  const handleClearOnsiteLead = () => {
+    if (!onsiteLeadModalWorkerId) {
+      closeOnsiteLeadModal();
       return;
     }
-    const workers = (Array.isArray(selectedWorkers) ? selectedWorkers : []).map(String);
-    const nextWorker = workers.length === 1 ? workers[0] : leadWorkerId && workers.includes(String(leadWorkerId)) ? String(leadWorkerId) : null;
-    setLeadWorkerId(nextWorker);
-    if (availableDivisions.length === 1) {
-      setLeadDivisionIds([availableDivisions[0]]);
-    } else if (leadDivisionIds.length === 0) {
-      setLeadDivisionIds([]);
-    }
+    const workerId = String(onsiteLeadModalWorkerId);
+    setOnsiteLeadByDivision((prev) => {
+      const next: Record<string, string> = {};
+      for (const [divId, w] of Object.entries(prev)) {
+        if (String(w) === workerId) continue;
+        next[divId] = String(w);
+      }
+      return next;
+    });
+    closeOnsiteLeadModal();
   };
 
   const handleSave = async () => {
@@ -1739,19 +1900,16 @@ export function CreateShiftModal({
       return;
     }
 
-    if (showOnsiteLeadSection && assignAsOnsiteLead) {
-      if (!leadWorkerId || !workersArray.map(String).includes(String(leadWorkerId))) {
-        setError('Select which worker should be the on-site lead.');
-        return;
-      }
-      if (leadDivisionIds.length === 0) {
-        setError('Select at least one division for the on-site lead.');
-        return;
-      }
+    if (hasOnsiteLeadAssignment) {
+      const selectedSet = new Set(workersArray.map(String));
       const availableSet = new Set(availableDivisions);
-      for (const divId of leadDivisionIds) {
+      for (const [divId, workerId] of Object.entries(leadAssignments)) {
         if (!availableSet.has(divId)) {
           setError('One or more selected lead divisions are no longer available.');
+          return;
+        }
+        if (!selectedSet.has(String(workerId))) {
+          setError('On-site lead must be one of the selected workers.');
           return;
         }
       }
@@ -1761,7 +1919,7 @@ export function CreateShiftModal({
     setSaving(true);
 
     try {
-      if (showOnsiteLeadSection && Object.keys(leadAssignments).length > 0) {
+      if (onsiteLeadEnabled && Object.keys(leadAssignments).length > 0) {
         const existing =
           project?.division_onsite_leads && typeof project.division_onsite_leads === 'object'
             ? { ...(project.division_onsite_leads as Record<string, string>) }
@@ -1811,10 +1969,21 @@ export function CreateShiftModal({
           ]
         : [];
 
-      const shiftsToCreate = [];
-      for (const workerId of workersArray) {
-        for (const dateStr of datesArray) {
-          shiftsToCreate.push({
+      const multiCrew = workersArray.length >= 2;
+      const groupLead =
+        multiCrew && groupLeadWorkerId && workersArray.map(String).includes(String(groupLeadWorkerId))
+          ? String(groupLeadWorkerId)
+          : null;
+
+      const shiftsToCreate: Record<string, unknown>[] = [];
+      for (const dateStr of datesArray) {
+        const crewGroupId = multiCrew
+          ? typeof crypto !== 'undefined' && crypto.randomUUID
+            ? crypto.randomUUID()
+            : `${Date.now()}-${Math.random().toString(16).slice(2)}`
+          : null;
+        for (const workerId of workersArray) {
+          const row: Record<string, unknown> = {
             worker_id: workerId,
             date: dateStr,
             start_time: startTime,
@@ -1824,7 +1993,14 @@ export function CreateShiftModal({
             job_type: jobType || null,
             job_name: jobType || null,
             notes: notes.trim() || null,
-          });
+          };
+          if (crewGroupId) {
+            row.crew_group_id = crewGroupId;
+            if (groupLead) {
+              row.crew_role = String(workerId) === groupLead ? 'lead' : 'helper';
+            }
+          }
+          shiftsToCreate.push(row);
         }
       }
 
@@ -1847,12 +2023,12 @@ export function CreateShiftModal({
         } catch (e: any) {
           errorCount++;
           const employeesArray = Array.isArray(employees) ? employees : [];
+          const workerIdStr = String(shiftData.worker_id || '');
           const workerName =
-            employeesArray.find((emp: any) => emp.id === shiftData.worker_id)?.name ||
-            shiftData.worker_id;
+            employeesArray.find((emp: any) => emp.id === workerIdStr)?.name || workerIdStr;
           const errorMsg = e.response?.data?.detail || e.message || 'Failed';
           errors.push(
-            `${workerName} on ${new Date(shiftData.date).toLocaleDateString()}: ${errorMsg}`,
+            `${workerName} on ${new Date(String(shiftData.date)).toLocaleDateString()}: ${errorMsg}`,
           );
         }
       }
@@ -1922,69 +2098,123 @@ export function CreateShiftModal({
     (Array.isArray(selectedWorkers) ? selectedWorkers.length : 0) *
     (Array.isArray(selectedDates) ? selectedDates.length : 0);
 
-  const onsiteLeadSection =
-    showOnsiteLeadSection && Array.isArray(selectedWorkers) && selectedWorkers.length > 0 ? (
-      <div className={uiCx(uiSpacing.sectionStack, 'space-y-3')}>
-        <AppCheckbox
-          label="Also assign as on-site lead"
-          checked={assignAsOnsiteLead}
-          onChange={handleAssignAsOnsiteLeadChange}
-          disabled={saving}
-          fieldHint={
-            'Also assign as on-site lead\n\nOptional. Fills project divisions that do not yet have an on-site lead. Existing leads are never overwritten.'
-          }
-        />
-        {assignAsOnsiteLead ? (
-          <>
-            <p className={uiCx(uiTypography.helper, 'text-gray-600')}>
-              Fills open division slots only. One lead per division.
-            </p>
-            {selectedWorkers.length > 1 ? (
-              <AppSelect
-                label="Lead worker"
-                value={leadWorkerId || ''}
-                onChange={(e) => setLeadWorkerId(e.target.value || null)}
-                options={[
-                  { value: '', label: 'Select worker…' },
-                  ...leadWorkerOptions,
-                ]}
+  const onsiteLeadModalWorkerName = onsiteLeadModalWorkerId
+    ? employeeNameById.get(String(onsiteLeadModalWorkerId)) || 'Worker'
+    : '';
+  const onsiteLeadModalEditing =
+    Boolean(onsiteLeadModalWorkerId) &&
+    divisionsForOnsiteWorker(String(onsiteLeadModalWorkerId || '')).length > 0;
+
+  const onsiteLeadReviewText = useMemo(() => {
+    if (!hasOnsiteLeadAssignment) return '';
+    const byWorker = new Map<string, string[]>();
+    for (const [divId, workerId] of Object.entries(leadAssignments)) {
+      const list = byWorker.get(workerId) || [];
+      list.push(getProjectDivisionLabel(divId, projectDivisions));
+      byWorker.set(workerId, list);
+    }
+    return Array.from(byWorker.entries())
+      .map(
+        ([workerId, labels]) =>
+          `${employeeNameById.get(String(workerId)) || 'Worker'} (${labels.join(', ')})`,
+      )
+      .join('; ');
+  }, [hasOnsiteLeadAssignment, leadAssignments, projectDivisions, employeeNameById]);
+
+  const onsiteLeadMiniModal = (
+    <AppFormModal
+      open={Boolean(onsiteLeadModalWorkerId)}
+      onClose={closeOnsiteLeadModal}
+      title="Assign as on-site lead"
+      description={onsiteLeadModalWorkerName}
+      size="sm"
+      overlayClassName="z-[200]"
+      bodyFill={false}
+      footer={
+        <div className={uiCx(uiLayout.actionsRow, 'w-full justify-between gap-2')}>
+          {onsiteLeadModalEditing ? (
+            <AppButton
+              variant="secondary"
+              size="sm"
+              type="button"
+              onClick={handleClearOnsiteLead}
+              disabled={saving}
+            >
+              Remove
+            </AppButton>
+          ) : (
+            <span />
+          )}
+          <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+            <AppButton
+              variant="secondary"
+              size="sm"
+              type="button"
+              onClick={closeOnsiteLeadModal}
+              disabled={saving}
+            >
+              Cancel
+            </AppButton>
+            <AppButton
+              size="sm"
+              type="button"
+              onClick={handleConfirmOnsiteLead}
+              disabled={saving || onsiteLeadModalDivisionIds.length === 0}
+            >
+              Assign
+            </AppButton>
+          </div>
+        </div>
+      }
+    >
+      <div className={uiSpacing.sectionStack}>
+        <p className={uiCx(uiTypography.helper, 'text-gray-600')}>
+          Choose which empty project divisions this person should lead. Different people can lead
+          different divisions. Existing project leads are not changed.
+        </p>
+        <div className="space-y-2">
+          {availableDivisions.map((divId) => {
+            const checked = onsiteLeadModalDivisionIds.includes(divId);
+            const assignedTo = leadAssignments[divId] ? String(leadAssignments[divId]) : null;
+            const assignedToOther =
+              Boolean(assignedTo) &&
+              Boolean(onsiteLeadModalWorkerId) &&
+              assignedTo !== String(onsiteLeadModalWorkerId);
+            const baseLabel = getProjectDivisionLabel(divId, projectDivisions);
+            const label = assignedToOther
+              ? `${baseLabel} (currently ${employeeNameById.get(assignedTo!) || 'another person'})`
+              : baseLabel;
+            return (
+              <AppCheckbox
+                key={divId}
+                label={label}
+                checked={checked}
                 disabled={saving}
+                onChange={(next) => {
+                  setOnsiteLeadModalDivisionIds((prev) =>
+                    next
+                      ? [...prev.filter((id) => id !== divId), divId]
+                      : prev.filter((id) => id !== divId),
+                  );
+                }}
               />
-            ) : null}
-            {availableDivisions.length > 1 ? (
-              <AppMultiSelect
-                label="Divisions"
-                value={leadDivisionIds}
-                onChange={setLeadDivisionIds}
-                options={divisionOptions}
-                placeholder="Select division(s)…"
-                disabled={saving}
-                showSelectedChips
-              />
-            ) : availableDivisions.length === 1 ? (
-              <p className={uiCx(uiTypography.helper, 'text-gray-600')}>
-                Will assign:{' '}
-                {getProjectDivisionLabel(availableDivisions[0], projectDivisions)}
-              </p>
-            ) : null}
-          </>
-        ) : null}
+            );
+          })}
+        </div>
       </div>
-    ) : null;
+    </AppFormModal>
+  );
 
   if (designSystem) {
-    const totalSteps = CREATE_SHIFT_STEPS.length;
-    const canProceedStep1 =
-      Array.isArray(selectedWorkers) &&
-      selectedWorkers.length > 0 &&
-      !(
-        showOnsiteLeadSection &&
-        assignAsOnsiteLead &&
-        (!leadWorkerId ||
-          !selectedWorkers.map(String).includes(String(leadWorkerId)) ||
-          leadDivisionIds.length === 0)
-      );
-    const canProceedStep2 =
+    const multiCrew =
+      Array.isArray(selectedWorkers) && selectedWorkers.length >= 2;
+    const wizardSteps = multiCrew ? CREATE_SHIFT_STEPS_CREW : CREATE_SHIFT_STEPS_SINGLE;
+    const totalSteps = wizardSteps.length;
+    const datesStep = multiCrew ? 3 : 2;
+    const notesStep = multiCrew ? 4 : 3;
+    const reviewStep = multiCrew ? 5 : 4;
+    const canProceedStep1 = Array.isArray(selectedWorkers) && selectedWorkers.length > 0;
+    const canProceedDatesStep =
       Array.isArray(selectedDates) && selectedDates.length > 0 && !!startTime && !!endTime;
 
     const stepPillClass = (n: number) =>
@@ -1995,7 +2225,7 @@ export function CreateShiftModal({
 
     const stepIndicators = (
       <div className={uiCx(uiLayout.actionsRow, uiTypography.helper, 'text-xs font-semibold')}>
-        {CREATE_SHIFT_STEPS.map((_, index) => (
+        {wizardSteps.map((_, index) => (
           <Fragment key={index}>
             {index > 0 ? <span className="text-gray-600">→</span> : null}
             <span className={stepPillClass(index + 1)}>{index + 1}</span>
@@ -2007,14 +2237,10 @@ export function CreateShiftModal({
     const goNext = () => {
       setError('');
       if (step === 1 && !canProceedStep1) {
-        setError(
-          assignAsOnsiteLead
-            ? 'Select workers and finish on-site lead settings before continuing.'
-            : 'Select at least one worker to continue.',
-        );
+        setError('Select at least one worker to continue.');
         return;
       }
-      if (step === 2 && !canProceedStep2) {
+      if (step === datesStep && !canProceedDatesStep) {
         setError('Choose at least one date and a time range to continue.');
         return;
       }
@@ -2056,12 +2282,16 @@ export function CreateShiftModal({
       ) : null;
 
     return (
+      <>
       <AppFormModal
         open
         onClose={onClose}
         title="Create Shift"
-        description={CREATE_SHIFT_STEPS[step - 1]}
+        description={wizardSteps[step - 1]}
         formWidth="wide"
+        dialogClassName="!w-[min(96vw,72rem)] !max-w-[min(96vw,72rem)]"
+        dialogClassNameExpanded="!w-[min(96vw,calc(72rem+1.5rem+16rem))] !max-w-[min(96vw,calc(72rem+1.5rem+16rem))]"
+        scrollBody={step !== 1}
         quickInfo={createShiftQuickInfo}
         headerExtra={stepIndicators}
         footer={
@@ -2095,7 +2325,7 @@ export function CreateShiftModal({
                   disabled={
                     saving ||
                     (step === 1 && !canProceedStep1) ||
-                    (step === 2 && !canProceedStep2)
+                    (step === datesStep && !canProceedDatesStep)
                   }
                   onClick={goNext}
                 >
@@ -2143,6 +2373,12 @@ export function CreateShiftModal({
             <div className={uiSpacing.sectionStack}>
               <p className={uiCx(uiTypography.helper, 'text-gray-600')}>
                 Who should be scheduled? Filter by division, then tap people to select.
+                {onsiteLeadEnabled
+                  ? ' Use the star to assign someone as on-site lead for empty divisions.'
+                  : ''}
+                {multiCrew
+                  ? ' With 2+ people you can set an optional group lead on the next step.'
+                  : ''}
               </p>
               <ShiftWorkerDivisionPicker
                 employees={Array.isArray(employees) ? employees : []}
@@ -2151,12 +2387,37 @@ export function CreateShiftModal({
                 value={Array.isArray(selectedWorkers) ? selectedWorkers : []}
                 onChange={setSelectedWorkers}
                 disabled={saving}
+                onsiteLeadEnabled={onsiteLeadEnabled}
+                onsiteLeadWorkerIds={onsiteLeadWorkerIds}
+                onOnsiteLeadStarClick={handleOnsiteLeadStarClick}
               />
-              {onsiteLeadSection}
             </div>
           ) : null}
 
-          {step === 2 ? (
+          {multiCrew && step === 2 ? (
+            <div className={uiSpacing.sectionStack}>
+              <p className={uiCx(uiTypography.helper, 'text-gray-600')}>
+                Optional. Tap a person (or the crown) to set the group lead for this crew. Use the
+                star to change the project on-site lead. Each person still gets their own shift.
+              </p>
+              <ShiftCrewMemberCards
+                employees={Array.isArray(employees) ? employees : []}
+                workerIds={Array.isArray(selectedWorkers) ? selectedWorkers : []}
+                disabled={saving}
+                groupLeadWorkerId={groupLeadWorkerId}
+                onGroupLeadClick={(workerId) => {
+                  setGroupLeadWorkerId((prev) =>
+                    prev && String(prev) === String(workerId) ? null : String(workerId),
+                  );
+                }}
+                onsiteLeadEnabled={onsiteLeadEnabled}
+                onsiteLeadWorkerIds={onsiteLeadWorkerIds}
+                onOnsiteLeadStarClick={handleOnsiteLeadStarClick}
+              />
+            </div>
+          ) : null}
+
+          {step === datesStep ? (
             <div className={uiSpacing.sectionStack}>
               <p className={uiCx(uiTypography.helper, 'text-gray-600')}>
                 How do you want to pick the dates?
@@ -2310,7 +2571,7 @@ export function CreateShiftModal({
             </div>
           ) : null}
 
-          {step === 3 ? (
+          {step === notesStep ? (
             <div className={uiSpacing.sectionStack}>
               <p className={uiCx(uiTypography.helper, 'text-gray-600')}>
                 Optional. Add a job type or a note the worker will see.
@@ -2333,7 +2594,7 @@ export function CreateShiftModal({
             </div>
           ) : null}
 
-          {step === 4 ? (
+          {step === reviewStep ? (
             <div className={uiSpacing.sectionStack}>
               <p className={uiCx(uiTypography.helper, 'text-gray-600')}>
                 Check the details, then create {shiftCount} shift{shiftCount === 1 ? '' : 's'}.
@@ -2347,6 +2608,19 @@ export function CreateShiftModal({
                         .map((id) => employeeNameById.get(String(id)) || 'Worker')
                         .join(', ') || 'None',
                     ],
+                    ...(multiCrew
+                      ? ([
+                          [
+                            'Group lead',
+                            groupLeadWorkerId
+                              ? employeeNameById.get(String(groupLeadWorkerId)) || 'Worker'
+                              : 'None',
+                          ],
+                        ] as const)
+                      : []),
+                    ...(hasOnsiteLeadAssignment && onsiteLeadReviewText
+                      ? ([['On-site lead', onsiteLeadReviewText]] as const)
+                      : []),
                     ['Dates', dateRangeSummary || 'None'],
                     [
                       'Time',
@@ -2383,10 +2657,14 @@ export function CreateShiftModal({
           ) : null}
         </form>
       </AppFormModal>
+      {onsiteLeadMiniModal}
+      </>
     );
   }
 
   return (
+    <>
+    {onsiteLeadMiniModal}
     <OverlayPortal><div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
       onClick={onClose}
@@ -2550,8 +2828,6 @@ export function CreateShiftModal({
               </div>
             )}
           </div>
-
-            {onsiteLeadSection}
 
             <div>
               <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide block mb-1">Date Selection</label>
@@ -2748,5 +3024,6 @@ export function CreateShiftModal({
         </div>
       </div>
     </div></OverlayPortal>
+    </>
   );
 }

@@ -2,7 +2,7 @@
 Dispatch & Time Tracking API routes.
 Handles shifts, attendance, and approvals.
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, func, update
 from typing import List, Optional, Dict
@@ -278,11 +278,62 @@ def _is_retroactive_shift(shift: Shift, timezone_str: Optional[str] = None) -> b
     return shift.date < created_local
 
 
+def _parse_crew_fields(payload: dict) -> tuple[Optional[uuid.UUID], Optional[str]]:
+    """Validate optional crew_group_id / crew_role from create/update payloads."""
+    raw_group = payload.get("crew_group_id")
+    crew_group_id: Optional[uuid.UUID] = None
+    if raw_group is not None and str(raw_group).strip() != "":
+        try:
+            crew_group_id = uuid.UUID(str(raw_group))
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="Invalid crew_group_id")
+
+    raw_role = payload.get("crew_role")
+    crew_role: Optional[str] = None
+    if raw_role is not None and str(raw_role).strip() != "":
+        role = str(raw_role).strip().lower()
+        if role not in ("lead", "helper"):
+            raise HTTPException(status_code=400, detail="crew_role must be 'lead' or 'helper'")
+        crew_role = role
+
+    if crew_role and not crew_group_id:
+        raise HTTPException(status_code=400, detail="crew_role requires crew_group_id")
+    return crew_group_id, crew_role
+
+
+def _project_address_label(project: Optional[Project]) -> Optional[str]:
+    """Short one-line project address for schedule / shift list cards."""
+    if not project:
+        return None
+    parts = [
+        getattr(project, "address", None),
+        getattr(project, "address_city", None),
+        getattr(project, "address_province", None),
+        getattr(project, "address_country", None),
+    ]
+    parts = [str(p).strip() for p in parts if p and str(p).strip()]
+    if not parts:
+        parts = [
+            getattr(project, "site_address_line1", None),
+            getattr(project, "site_city", None),
+            getattr(project, "site_province", None),
+            getattr(project, "site_country", None),
+        ]
+        parts = [str(p).strip() for p in parts if p and str(p).strip()]
+    if not parts:
+        geo = getattr(project, "geocoded_address", None)
+        if geo and str(geo).strip():
+            return str(geo).strip()
+        return None
+    return ", ".join(parts)
+
+
 def _shift_to_dict(
     shift: Shift,
     *,
     geofences: list,
     project_name: Optional[str] = None,
+    project_address: Optional[str] = None,
     conflicts: Optional[List[Dict]] = None,
     timezone_str: Optional[str] = None,
 ) -> dict:
@@ -299,6 +350,8 @@ def _shift_to_dict(
         "job_id": str(shift.job_id) if shift.job_id else None,
         "job_name": shift.job_name,
         "notes": shift.notes,
+        "crew_group_id": str(shift.crew_group_id) if getattr(shift, "crew_group_id", None) else None,
+        "crew_role": getattr(shift, "crew_role", None),
         "ack_status": shift.ack_status or "pending",
         "ack_viewed_at": shift.ack_viewed_at.isoformat() if shift.ack_viewed_at else None,
         "ack_responded_at": shift.ack_responded_at.isoformat() if shift.ack_responded_at else None,
@@ -310,6 +363,8 @@ def _shift_to_dict(
     }
     if project_name is not None:
         payload["project_name"] = project_name
+    if project_address is not None:
+        payload["project_address"] = project_address
     if shift.updated_at:
         payload["updated_at"] = shift.updated_at.isoformat()
     return payload
@@ -396,6 +451,7 @@ def create_shift(
     project_timezone = project.timezone or settings.tz_default
     is_retroactive = shift_date < _local_today(project_timezone)
     now_utc = datetime.now(timezone.utc)
+    crew_group_id, crew_role = _parse_crew_fields(payload)
 
     # Create shift
     shift = Shift(
@@ -410,6 +466,8 @@ def create_shift(
         job_id=job_id,  # Can be None if using job_type
         job_name=job_name,  # Store the job type name
         notes=notes,
+        crew_group_id=crew_group_id,
+        crew_role=crew_role,
         created_by=user.id,
         ack_status="accepted" if is_retroactive else "pending",
         ack_responded_at=now_utc if is_retroactive else None,
@@ -483,6 +541,7 @@ def create_shift(
         shift,
         geofences=get_geofences_for_shift(shift, project, db),
         project_name=project.name,
+        project_address=_project_address_label(project),
         conflicts=conflict_payload,
         timezone_str=project_timezone,
     )
@@ -565,6 +624,7 @@ def create_shift_without_project(
     
     is_retroactive = shift_date < _local_today(settings.tz_default)
     now_utc = datetime.now(timezone.utc)
+    crew_group_id, crew_role = _parse_crew_fields(payload)
 
     # Create shift with "General" project but store job_type to indicate it's not project-specific
     shift = Shift(
@@ -578,6 +638,8 @@ def create_shift_without_project(
         geofences=[],  # No geofences for shifts without specific projects
         job_id=None,
         job_name=job_type,  # Store the job type name (e.g., "0", "37", "47", etc.)
+        crew_group_id=crew_group_id,
+        crew_role=crew_role,
         created_by=user.id,
         ack_status="accepted" if is_retroactive else "pending",
         ack_responded_at=now_utc if is_retroactive else None,
@@ -639,6 +701,8 @@ def create_shift_without_project(
         "status": shift.status,
         "job_name": shift.job_name,
         "notes": shift.notes,
+        "crew_group_id": str(shift.crew_group_id) if getattr(shift, "crew_group_id", None) else None,
+        "crew_role": getattr(shift, "crew_role", None),
         "ack_status": shift.ack_status or "pending",
         "created_at": shift.created_at.isoformat() if shift.created_at else None,
         "retroactive": _is_retroactive_shift(shift, settings.tz_default),
@@ -756,6 +820,7 @@ def list_shifts(
                 s,
                 geofences=geofences,
                 project_name=project.name if project else None,
+                project_address=_project_address_label(project),
                 timezone_str=(project.timezone if project and project.timezone else settings.tz_default),
             )
         )
@@ -830,6 +895,7 @@ def list_all_shifts(
                 s,
                 geofences=geofences,
                 project_name=project.name if project else None,
+                project_address=_project_address_label(project),
                 timezone_str=(project.timezone if project and project.timezone else settings.tz_default),
             )
         )
@@ -869,6 +935,7 @@ def get_shift(
         shift,
         geofences=geofences,
         project_name=project_name,
+        project_address=_project_address_label(project),
         timezone_str=(project.timezone if project and project.timezone else settings.tz_default),
     )
 
@@ -1014,6 +1081,7 @@ def respond_to_shift(
         shift,
         geofences=get_geofences_for_shift(shift, project, db) if project else (shift.geofences or []),
         project_name=project.name if project else None,
+        project_address=_project_address_label(project),
         timezone_str=(project.timezone if project and project.timezone else settings.tz_default),
     )
 
@@ -1228,6 +1296,8 @@ def update_shift(
     return _shift_to_dict(
         shift,
         geofences=geofences,
+        project_name=project.name if project else None,
+        project_address=_project_address_label(project),
         conflicts=conflict_payload,
         timezone_str=(project.timezone if project and project.timezone else settings.tz_default),
     )
@@ -1323,6 +1393,238 @@ def delete_shift(
         )
     
     return {"status": "ok"}
+
+
+def _active_crew_shifts(db: Session, crew_group_id: uuid.UUID) -> List[Shift]:
+    return (
+        db.query(Shift)
+        .filter(
+            Shift.crew_group_id == crew_group_id,
+            Shift.status != "deleted",
+            Shift.cancelled_at.is_(None),
+        )
+        .order_by(Shift.start_time.asc())
+        .all()
+    )
+
+
+def _crew_member_dict(db: Session, shift: Shift) -> dict:
+    profile = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == shift.worker_id).first()
+    name = None
+    if profile:
+        name = f"{profile.first_name or ''} {profile.last_name or ''}".strip() or None
+    if not name:
+        u = db.query(User).filter(User.id == shift.worker_id).first()
+        name = u.username if u else None
+    return {
+        "shift_id": str(shift.id),
+        "worker_id": str(shift.worker_id),
+        "worker_name": name,
+        "crew_role": shift.crew_role,
+        "date": shift.date.isoformat(),
+        "start_time": shift.start_time.isoformat(),
+        "end_time": shift.end_time.isoformat(),
+        "project_id": str(shift.project_id),
+        "job_name": shift.job_name,
+        "notes": shift.notes,
+    }
+
+
+@router.get("/crew-groups/{crew_group_id}")
+def get_crew_group(
+    crew_group_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """List active members of a shift crew group."""
+    try:
+        gid = uuid.UUID(str(crew_group_id))
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid crew_group_id")
+
+    members = _active_crew_shifts(db, gid)
+    if not members:
+        raise HTTPException(status_code=404, detail="Crew group not found")
+
+    project = db.query(Project).filter(Project.id == members[0].project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    assert_project_workload_permission(user, project, "read", db)
+
+    lead = next((m for m in members if m.crew_role == "lead"), None)
+    return {
+        "crew_group_id": str(gid),
+        "project_id": str(project.id),
+        "date": members[0].date.isoformat(),
+        "start_time": members[0].start_time.isoformat(),
+        "end_time": members[0].end_time.isoformat(),
+        "lead_worker_id": str(lead.worker_id) if lead else None,
+        "members": [_crew_member_dict(db, m) for m in members],
+    }
+
+
+@router.patch("/crew-groups/{crew_group_id}")
+def patch_crew_group(
+    crew_group_id: str,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Edit a crew group:
+    - lead_worker_id: set lead (or null to clear all roles)
+    - add_worker_ids: create cloned shifts for new workers
+    - remove_worker_ids: soft-delete those members' shifts; clearing lead clears roles
+    """
+    try:
+        gid = uuid.UUID(str(crew_group_id))
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid crew_group_id")
+
+    members = _active_crew_shifts(db, gid)
+    if not members:
+        raise HTTPException(status_code=404, detail="Crew group not found")
+
+    template = members[0]
+    project = db.query(Project).filter(Project.id == template.project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    assert_project_workload_permission(user, project, "write", db)
+
+    now_utc = datetime.now(timezone.utc)
+    project_timezone = project.timezone or settings.tz_default
+    is_retroactive = template.date < _local_today(project_timezone)
+
+    remove_ids_raw = payload.get("remove_worker_ids") or []
+    add_ids_raw = payload.get("add_worker_ids") or []
+    lead_in_payload = "lead_worker_id" in payload
+    lead_raw = payload.get("lead_worker_id") if lead_in_payload else None
+
+    remove_ids: set[uuid.UUID] = set()
+    for wid in remove_ids_raw:
+        try:
+            remove_ids.add(uuid.UUID(str(wid)))
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="Invalid worker id in remove_worker_ids")
+
+    add_ids: list[uuid.UUID] = []
+    for wid in add_ids_raw:
+        try:
+            add_ids.append(uuid.UUID(str(wid)))
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="Invalid worker id in add_worker_ids")
+
+    # Soft-delete removed members
+    removed_lead = False
+    for shift in list(members):
+        if shift.worker_id not in remove_ids:
+            continue
+        if shift.crew_role == "lead":
+            removed_lead = True
+        shift.status = "deleted"
+        shift.cancelled_at = now_utc
+        shift.cancelled_by = user.id
+        shift.updated_at = now_utc
+        send_shift_notification(
+            db=db,
+            user_id=str(shift.worker_id),
+            notification_type="cancelled",
+            shift_data={"project_id": str(project.id), "date": shift.date.isoformat()},
+            timezone_str=project_timezone,
+        )
+
+    members = [m for m in members if m.worker_id not in remove_ids]
+
+    # Add workers (clone template fields)
+    existing_worker_ids = {m.worker_id for m in members}
+    for wid in add_ids:
+        if wid in existing_worker_ids or wid in remove_ids:
+            continue
+        worker = db.query(User).filter(User.id == wid).first()
+        if not worker:
+            raise HTTPException(status_code=404, detail=f"Worker not found: {wid}")
+        new_shift = Shift(
+            project_id=template.project_id,
+            worker_id=wid,
+            date=template.date,
+            start_time=template.start_time,
+            end_time=template.end_time,
+            status="scheduled",
+            default_break_min=template.default_break_min,
+            geofences=template.geofences,
+            job_id=template.job_id,
+            job_name=template.job_name,
+            notes=template.notes,
+            crew_group_id=gid,
+            crew_role=None,
+            created_by=user.id,
+            ack_status="accepted" if is_retroactive else "pending",
+            ack_responded_at=now_utc if is_retroactive else None,
+        )
+        db.add(new_shift)
+        members.append(new_shift)
+        existing_worker_ids.add(wid)
+        if not is_retroactive:
+            send_shift_notification(
+                db=db,
+                user_id=str(wid),
+                notification_type="created",
+                shift_data={
+                    "project_id": str(project.id),
+                    "date": template.date.isoformat(),
+                    "start_time": template.start_time.isoformat(),
+                    "end_time": template.end_time.isoformat(),
+                },
+                timezone_str=project_timezone,
+            )
+
+    db.flush()
+
+    # Resolve lead
+    if removed_lead and not lead_in_payload:
+        for m in members:
+            m.crew_role = None
+            m.updated_at = now_utc
+    elif lead_in_payload:
+        if lead_raw is None or str(lead_raw).strip() == "":
+            for m in members:
+                m.crew_role = None
+                m.updated_at = now_utc
+        else:
+            try:
+                lead_uuid = uuid.UUID(str(lead_raw))
+            except (ValueError, TypeError):
+                raise HTTPException(status_code=400, detail="Invalid lead_worker_id")
+            if lead_uuid not in {m.worker_id for m in members}:
+                raise HTTPException(status_code=400, detail="lead_worker_id must be a crew member")
+            for m in members:
+                m.crew_role = "lead" if m.worker_id == lead_uuid else "helper"
+                m.updated_at = now_utc
+    else:
+        # Keep existing lead/helpers; newly added stay null unless a lead already exists
+        has_lead = any(m.crew_role == "lead" for m in members)
+        if has_lead:
+            for m in members:
+                if m.crew_role != "lead":
+                    m.crew_role = "helper"
+                    m.updated_at = now_utc
+
+    # If only one member left, dissolve roles/group optional — keep group id, clear roles
+    if len(members) <= 1:
+        for m in members:
+            m.crew_role = None
+            m.updated_at = now_utc
+
+    db.commit()
+    members = _active_crew_shifts(db, gid)
+    lead = next((m for m in members if m.crew_role == "lead"), None)
+    return {
+        "crew_group_id": str(gid),
+        "project_id": str(project.id),
+        "date": members[0].date.isoformat() if members else template.date.isoformat(),
+        "lead_worker_id": str(lead.worker_id) if lead else None,
+        "members": [_crew_member_dict(db, m) for m in members],
+    }
 
 
 # Attendance Management

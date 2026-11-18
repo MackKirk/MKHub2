@@ -13,12 +13,14 @@ export function shiftAckNeedsResponse(status?: string | null): boolean {
 }
 
 export function shiftAckMeta(status?: string | null) {
-  switch (status) {
+  switch ((status || 'pending').toLowerCase()) {
     case 'accepted':
       return {
         shortLabel: 'Accepted',
         longLabel: 'Accepted',
         tone: 'text-green-700',
+        /** Calendar card status dot */
+        dotClass: 'bg-green-500',
         variant: 'success' as const,
       };
     case 'declined':
@@ -26,20 +28,23 @@ export function shiftAckMeta(status?: string | null) {
         shortLabel: 'Declined',
         longLabel: 'Declined',
         tone: 'text-red-700',
+        dotClass: 'bg-red-500',
         variant: 'danger' as const,
       };
     case 'viewed':
       return {
-        shortLabel: 'Pending',
-        longLabel: 'Pending confirmation',
-        tone: 'text-amber-700',
-        variant: 'warning' as const,
+        shortLabel: 'Seen',
+        longLabel: 'Seen — awaiting response',
+        tone: 'text-blue-700',
+        dotClass: 'bg-blue-500',
+        variant: 'info' as const,
       };
     default:
       return {
         shortLabel: 'Pending',
         longLabel: 'Pending confirmation',
         tone: 'text-amber-700',
+        dotClass: 'bg-amber-400',
         variant: 'warning' as const,
       };
   }

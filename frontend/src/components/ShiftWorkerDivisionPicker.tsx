@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react';
-import { Loader2, Search } from 'lucide-react';
-import {
-  GRID_CARD_CLASS,
-  GRID_CLASS,
-  PICKER_BODY_HEIGHT_CLASS,
-} from '@/components/DocumentTypePicker';
+import { Loader2, Search, Star } from 'lucide-react';
+import { GRID_CARD_CLASS, GRID_CLASS } from '@/components/DocumentTypePicker';
+
+/** Tall enough for Create Shift; only divisions + people panes should scroll. */
+const SHIFT_PICKER_BODY_HEIGHT_CLASS = 'h-[min(58vh,34rem)]';
 import {
   AppInput,
+  AppTooltip,
   AppUserAvatar,
   SelectDropdownCheckbox,
   uiCx,
@@ -110,6 +110,9 @@ export function ShiftWorkerDivisionPicker({
   onChange,
   disabled,
   loading = false,
+  onsiteLeadEnabled = false,
+  onsiteLeadWorkerIds,
+  onOnsiteLeadStarClick,
 }: {
   employees: ShiftWorkerCandidate[];
   projectDivisions?: ProjectDivisionNode[];
@@ -117,7 +120,15 @@ export function ShiftWorkerDivisionPicker({
   onChange: (ids: string[]) => void;
   disabled?: boolean;
   loading?: boolean;
+  onsiteLeadEnabled?: boolean;
+  onsiteLeadWorkerIds?: Set<string> | string[] | null;
+  onOnsiteLeadStarClick?: (workerId: string) => void;
 }) {
+  const onsiteLeadIdSet = useMemo(() => {
+    if (!onsiteLeadWorkerIds) return new Set<string>();
+    if (onsiteLeadWorkerIds instanceof Set) return onsiteLeadWorkerIds;
+    return new Set(onsiteLeadWorkerIds.map(String));
+  }, [onsiteLeadWorkerIds]);
   const [activeDivision, setActiveDivision] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -228,7 +239,7 @@ export function ShiftWorkerDivisionPicker({
     return (
       <div
         className={uiCx(
-          PICKER_BODY_HEIGHT_CLASS,
+          SHIFT_PICKER_BODY_HEIGHT_CLASS,
           'flex items-center justify-center gap-2 text-sm text-gray-500',
         )}
       >
@@ -241,7 +252,7 @@ export function ShiftWorkerDivisionPicker({
   return (
     <div
       className={uiCx(
-        PICKER_BODY_HEIGHT_CLASS,
+        SHIFT_PICKER_BODY_HEIGHT_CLASS,
         'flex flex-col gap-3 sm:flex-row sm:gap-4 sm:items-stretch',
       )}
     >
@@ -298,7 +309,9 @@ export function ShiftWorkerDivisionPicker({
           ) : (
             <div className={GRID_CLASS}>
               {filteredEmployees.map((emp) => {
-                const selected = selectedSet.has(String(emp.id));
+                const id = String(emp.id);
+                const selected = selectedSet.has(id);
+                const isOnsiteLead = onsiteLeadIdSet.has(id);
                 const name = getUserDisplayName(emp) || emp.name || emp.username || 'Worker';
                 return (
                   <button
@@ -306,29 +319,83 @@ export function ShiftWorkerDivisionPicker({
                     type="button"
                     disabled={disabled}
                     aria-pressed={selected}
-                    onClick={() => toggle(String(emp.id))}
+                    onClick={() => toggle(id)}
                     title={name}
                     className={uiCx(
                       GRID_CARD_CLASS,
-                      '!flex-row items-center gap-2.5 p-2 text-left',
+                      '!flex-row items-center gap-2 p-2 text-left',
                       selected &&
                         'border-brand-red bg-red-50 ring-1 ring-inset ring-brand-red/30',
                       disabled && 'opacity-60 cursor-not-allowed',
                     )}
                   >
-                    <span className="relative shrink-0">
-                      <AppUserAvatar
-                        user={emp}
-                        size="md"
-                        className="!h-11 !w-11 !rounded-lg !text-sm"
-                      />
-                      <span
-                        className="absolute -left-0.5 -top-0.5 pointer-events-none drop-shadow-sm"
-                        aria-hidden
-                      >
+                    <span
+                      className={uiCx(
+                        'flex w-5 shrink-0 flex-col items-center',
+                        onsiteLeadEnabled ? 'h-11 justify-between py-0.5' : 'justify-center',
+                      )}
+                    >
+                      <span className="pointer-events-none" aria-hidden>
                         <SelectDropdownCheckbox checked={selected} />
                       </span>
+                      {onsiteLeadEnabled ? (
+                        <AppTooltip
+                          content={
+                            isOnsiteLead
+                              ? 'On-site lead — click to edit'
+                              : 'Assign as on-site lead'
+                          }
+                          placement="top"
+                        >
+                          <span
+                            role="button"
+                            tabIndex={disabled ? -1 : 0}
+                            aria-label={
+                              isOnsiteLead
+                                ? `Edit on-site lead for ${name}`
+                                : `Assign ${name} as on-site lead`
+                            }
+                            aria-pressed={isOnsiteLead}
+                            className={uiCx(
+                              'inline-flex h-4 w-4 items-center justify-center rounded',
+                              disabled
+                                ? 'pointer-events-none opacity-50'
+                                : 'hover:bg-amber-50 cursor-pointer',
+                            )}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              if (disabled) return;
+                              onOnsiteLeadStarClick?.(id);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                if (disabled) return;
+                                onOnsiteLeadStarClick?.(id);
+                              }
+                            }}
+                          >
+                            <Star
+                              className={uiCx(
+                                'h-3.5 w-3.5',
+                                isOnsiteLead
+                                  ? 'fill-amber-400 text-amber-500'
+                                  : 'text-gray-400',
+                              )}
+                              strokeWidth={2}
+                              aria-hidden
+                            />
+                          </span>
+                        </AppTooltip>
+                      ) : null}
                     </span>
+                    <AppUserAvatar
+                      user={emp}
+                      size="md"
+                      className="!h-11 !w-11 shrink-0 !rounded-lg !text-sm"
+                    />
                     <span className="min-w-0 flex-1 self-stretch flex items-center">
                       <span className="text-sm font-semibold text-gray-900 line-clamp-2 leading-snug">
                         {name}
