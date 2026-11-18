@@ -198,7 +198,19 @@ export function hasProjectLineWritePermission(
   return hasPerm(permissions, `${PROJECT_LINE_PREFIX[line]}:write`);
 }
 
-/** Create/edit/upload: line write only (view-only must not pass). */
+/** Fieldwork templates / records write — line-scoped (not implied by review). */
+export function hasFieldworkWritePermission(
+  permissions: Set<string> | Record<string, boolean>,
+  businessLine: string | undefined | null,
+  isAdmin = false,
+  pathname?: string
+): boolean {
+  if (isAdmin) return true;
+  const line = resolveProjectBusinessLine(businessLine, pathname);
+  const prefix = PROJECT_LINE_PREFIX[projectLineFromBusinessLine(line)];
+  return hasPerm(permissions, `${prefix}:fieldwork:write`);
+}
+
 /** Fieldwork review (approve / request changes) — line-scoped, not implied by write. */
 export function hasFieldworkReviewPermission(
   permissions: Set<string> | Record<string, boolean>,

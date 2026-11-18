@@ -703,7 +703,7 @@ export default function AppShell({ children }: PropsWithChildren){
         { id: 'opportunities', label: 'Opportunities', path: '/opportunities', icon: <IconOpportunities />, requiredPermission: 'business:construction:projects:read' },
         { id: 'projects', label: 'Projects', path: '/projects', icon: <IconProjects />, requiredPermission: 'business:construction:projects:read' },
         { id: 'field-reports', label: 'Field Reports', path: '/field-reports', icon: <IconClipboard />, requiredPermission: 'business:construction:projects:fieldwork:read' },
-        { id: 'fieldwork-form-templates', label: 'Fieldwork Templates', path: '/fieldwork/form-templates', icon: <IconDocument />, requiredPermission: 'business:construction:projects:fieldwork:read' },
+        { id: 'fieldwork-form-templates', label: 'Templates', path: '/fieldwork/form-templates', icon: <IconDocument />, requiredPermission: 'business:construction:projects:fieldwork:read' },
         { id: 'fieldwork-phrase-lists', label: 'Fieldwork Phrases', path: '/fieldwork/form-custom-lists', icon: <IconDocument />, requiredPermission: 'business:construction:projects:fieldwork:read' },
       ]
     },
@@ -717,7 +717,7 @@ export default function AppShell({ children }: PropsWithChildren){
         { id: 'rm-projects', label: 'Projects', path: '/rm-projects', icon: <IconProjects />, requiredPermission: 'business:rm:projects:read' },
         { id: 'rm-warranty-review', label: 'Warranty Review', path: '/rm-warranty-review', icon: <IconClipboard />, requiredPermission: 'business:rm:projects:read' },
         { id: 'rm-field-reports', label: 'Field Reports', path: '/rm-field-reports', icon: <IconClipboard />, requiredPermission: 'business:rm:projects:fieldwork:read' },
-        { id: 'rm-fieldwork-form-templates', label: 'Fieldwork Templates', path: '/rm-fieldwork/form-templates', icon: <IconDocument />, requiredPermission: 'business:rm:projects:fieldwork:read' },
+        { id: 'rm-fieldwork-form-templates', label: 'Templates', path: '/rm-fieldwork/form-templates', icon: <IconDocument />, requiredPermission: 'business:rm:projects:fieldwork:read' },
         { id: 'rm-fieldwork-phrase-lists', label: 'Fieldwork Phrases', path: '/rm-fieldwork/form-custom-lists', icon: <IconDocument />, requiredPermission: 'business:rm:projects:fieldwork:read' },
       ]
     },

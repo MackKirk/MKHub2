@@ -120,6 +120,7 @@ import SafetyFollowUpsPage from './pages/SafetyFollowUpsPage';
 import SafetyInspectionSignPage from './pages/SafetyInspectionSignPage';
 import SafetySchedulePage from './pages/SafetySchedulePage';
 import FormTemplatesPage from './pages/FormTemplatesPage';
+import FieldworkTemplatesHubPage from './pages/FieldworkTemplatesHubPage';
 import FormTemplateEditorPage from './pages/FormTemplateEditorPage';
 import FormCustomListsPage from './pages/FormCustomListsPage';
 import TrainingCourse from './pages/TrainingCourse';
@@ -285,13 +286,13 @@ export default function App(){
           <Route path="/documents/form-custom-lists" element={shell(<FormCustomListsPage />)} />
           <Route
             path="/fieldwork/form-templates"
-            element={shell(<FormTemplatesPage variant="fieldwork" businessLine="construction" />)}
+            element={shell(<FieldworkTemplatesHubPage businessLine="construction" />)}
           />
           <Route path="/fieldwork/form-templates/:id" element={shell(<FormTemplateEditorPage />)} />
           <Route path="/fieldwork/form-custom-lists" element={shell(<FormCustomListsPage variant="fieldwork" />)} />
           <Route
             path="/rm-fieldwork/form-templates"
-            element={shell(<FormTemplatesPage variant="fieldwork" businessLine="repairs_maintenance" />)}
+            element={shell(<FieldworkTemplatesHubPage businessLine="repairs_maintenance" />)}
           />
           <Route path="/rm-fieldwork/form-templates/:id" element={shell(<FormTemplateEditorPage />)} />
           <Route path="/rm-fieldwork/form-custom-lists" element={shell(<FormCustomListsPage variant="fieldwork" />)} />

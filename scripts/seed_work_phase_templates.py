@@ -24,7 +24,7 @@ from sqlalchemy import text
 
 from app.db import SessionLocal, engine
 from app.models.models import Base, WorkPhaseTemplate
-from app.services.business_line import BUSINESS_LINE_CONSTRUCTION
+from app.services.business_line import BUSINESS_LINE_CONSTRUCTION, BUSINESS_LINE_REPAIRS_MAINTENANCE
 from app.services.work_phases import normalize_template_phases
 
 
@@ -78,6 +78,32 @@ TEMPLATES = [
             {"key": "envelope", "label": "Envelope / weatherproofing"},
             {"key": "finishes", "label": "Finishes"},
             {"key": "punch_list", "label": "Punch list & close-out"},
+        ],
+    },
+    {
+        "name": "R&M — Roof repair",
+        "description": "Broad R&M phases for repair / maintenance jobs.",
+        "business_line": BUSINESS_LINE_REPAIRS_MAINTENANCE,
+        "sort_index": 10,
+        "phases": [
+            {"key": "diagnose", "label": "Diagnose / leak investigation"},
+            {"key": "protect", "label": "Protect area / temporary measures"},
+            {"key": "repair", "label": "Execute repair"},
+            {"key": "verify", "label": "Verify / water test"},
+            {"key": "cleanup", "label": "Cleanup & client walkthrough"},
+        ],
+    },
+    {
+        "name": "R&M — Maintenance visit",
+        "description": "Routine maintenance progress map.",
+        "business_line": BUSINESS_LINE_REPAIRS_MAINTENANCE,
+        "sort_index": 20,
+        "phases": [
+            {"key": "arrive_setup", "label": "Arrive & site setup"},
+            {"key": "inspect", "label": "Inspect & document"},
+            {"key": "service", "label": "Service / preventive work"},
+            {"key": "report", "label": "Report & photos"},
+            {"key": "closeout", "label": "Close-out"},
         ],
     },
 ]
