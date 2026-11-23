@@ -133,7 +133,12 @@ import {
   uiTypography,
   uiUserSelect,
 } from '@/components/ui';
-import { Briefcase, ChevronDown, ChevronUp, ClipboardList, FolderKanban } from 'lucide-react';
+import { Bell, Briefcase, ChevronDown, ChevronUp, ClipboardList, FolderKanban } from 'lucide-react';
+import { ProjectFavoriteButton } from '@/features/projects/components/ProjectFavoriteButton';
+import {
+  ProjectStartRemindersModal,
+  projectStartRemindersQueryKey,
+} from '@/features/projects/components/ProjectStartRemindersModal';
 import { useProjectTabCounts } from '@/hooks/useProjectTabCounts';
 
 /** Hero expand/collapse — same timing as CustomerDetail. */
@@ -1279,6 +1284,15 @@ export default function ProjectDetail(){
     location.pathname.startsWith('/rm-projects/');
   const useDesignSystem =
     isOpportunityDetailRoute || isProjectDetailRoute;
+  const { data: startReminders = [] } = useQuery({
+    queryKey: projectStartRemindersQueryKey(String(id || '')),
+    queryFn: async () => {
+      const rows = await api('GET', `/projects/${id}/start-reminders`);
+      return Array.isArray(rows) ? rows : [];
+    },
+    enabled: !!id && !isOpportunityStyleTabs && isProjectDetailRoute,
+  });
+  const hasActiveStartReminders = startReminders.some((r: any) => r?.is_active);
   const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
   const { data:projectDivisions } = useQuery({ queryKey:PROJECT_DIVISIONS_QUERY_KEY, queryFn: ()=>api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
   const { data:files, refetch: refetchFiles } = useQuery({ queryKey:['projectFiles', id], queryFn: ()=>api<ProjectFile[]>('GET', `/projects/${id}/files`), enabled: !!id && loadFiles });
@@ -1552,6 +1566,7 @@ export default function ProjectDetail(){
   const [editProjectAdminModal, setEditProjectAdminModal] = useState(false);
   const [editEtaModal, setEditEtaModal] = useState(false);
   const [editStartDateModal, setEditStartDateModal] = useState(false);
+  const [startRemindersModal, setStartRemindersModal] = useState(false);
   const [editAwardedDateModal, setEditAwardedDateModal] = useState(false);
   const [editLeadSourceModal, setEditLeadSourceModal] = useState(false);
   const [editProjectNumberModal, setEditProjectNumberModal] = useState(false);
@@ -2336,6 +2351,13 @@ export default function ProjectDetail(){
                   >
                     {proj?.name || 'Untitled Project'}
                   </h3>
+                  {id ? (
+                    <ProjectFavoriteButton
+                      projectId={String(id)}
+                      favorited={!!(proj as any)?.favorited}
+                      stopPropagation={false}
+                    />
+                  ) : null}
                   {hasEditPermission &&
                     (useDesignSystem ? (
                       <AppHeroEditButton
@@ -2663,6 +2685,26 @@ export default function ProjectDetail(){
                               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                               </svg>
+                            </button>
+                          )}
+                          {hasEditPermission && (
+                            <button
+                              type="button"
+                              onClick={() => setStartRemindersModal(true)}
+                              className={uiCx(
+                                'transition-colors',
+                                hasActiveStartReminders
+                                  ? 'text-[#7f1010] hover:text-[#9a1a1a]'
+                                  : 'text-gray-600 hover:text-[#7f1010]',
+                              )}
+                              title="Start date reminders"
+                              aria-label="Start date reminders"
+                            >
+                              <Bell
+                                className="h-3.5 w-3.5"
+                                fill={hasActiveStartReminders ? 'currentColor' : 'none'}
+                                aria-hidden
+                              />
                             </button>
                           )}
                         </div>
@@ -3994,6 +4036,13 @@ export default function ProjectDetail(){
           }}
         />
       )}
+
+      <ProjectStartRemindersModal
+        open={startRemindersModal}
+        projectId={String(id || '')}
+        startDate={proj?.date_start ? proj.date_start.slice(0, 10) : ''}
+        onClose={() => setStartRemindersModal(false)}
+      />
 
       {editAwardedDateModal && (
         <EditAwardedDateModal

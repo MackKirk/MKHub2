@@ -21,10 +21,13 @@ import {
   buildOpportunityListSearchParams,
   convertParamsToRules,
   convertRulesToParams,
+  isFavoritedParamActive,
   isRelatedToMeParamActive,
   OPPORTUNITY_FIELD_LABELS,
+  setFavoritedParam,
   setRelatedToMeParam,
 } from '@/lib/opportunityFilters';
+import { ProjectFavoriteButton } from '@/features/projects/components/ProjectFavoriteButton';
 import {
   applyCreatedWithinPreset,
   CREATED_WITHIN_PRESETS,
@@ -150,6 +153,7 @@ type Opportunity = {
   address?: string;
   address_city?: string;
   address_postal_code?: string;
+  favorited?: boolean;
 };
 type ClientFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string };
 
@@ -415,6 +419,7 @@ export default function Opportunities() {
     return (
       hasRuleFilters ||
       isRelatedToMeParamActive(searchParams) ||
+      isFavoritedParamActive(searchParams) ||
       statusSelection !== null ||
       !!createdWithinPreset
     );
@@ -485,6 +490,7 @@ export default function Opportunities() {
   });
 
   const relatedToMeCount = tabCounts?.related_to_me;
+  const favoritedCount = tabCounts?.favorited;
   const statusCountsByKey = tabCounts || {};
 
   const filterFields: FieldConfig[] = useMemo(() => {
@@ -573,6 +579,7 @@ export default function Opportunities() {
     const params = convertRulesToParams(rules);
     if (q) params.set('q', q);
     if (isRelatedToMeParamActive(searchParams)) setRelatedToMeParam(params, true);
+    if (isFavoritedParamActive(searchParams)) setFavoritedParam(params, true);
     params.set('page', '1');
     setSearchParams(params);
     refetch();
@@ -780,6 +787,26 @@ export default function Opportunities() {
                     />
                   ) : null}
                 </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const params = new URLSearchParams(searchParams);
+                    const enabling = !isFavoritedParamActive(searchParams);
+                    setFavoritedParam(params, enabling);
+                    params.set('page', '1');
+                    setSearchParams(params, { replace: true });
+                  }}
+                  className={getAppTabButtonClassName(isFavoritedParamActive(searchParams))}
+                  aria-pressed={isFavoritedParamActive(searchParams)}
+                >
+                  <span>Favorites</span>
+                  {typeof favoritedCount === 'number' ? (
+                    <AppTabCountBadge
+                      count={favoritedCount}
+                      isActive={isFavoritedParamActive(searchParams)}
+                    />
+                  ) : null}
+                </button>
                 {CREATED_WITHIN_PRESETS.map((preset) => {
                   const active = createdWithinPreset === preset.key;
                   return (
@@ -815,6 +842,7 @@ export default function Opportunities() {
                   const params = convertRulesToParams(updatedRules);
                   if (q) params.set('q', q);
                   if (isRelatedToMeParamActive(searchParams)) setRelatedToMeParam(params, true);
+                  if (isFavoritedParamActive(searchParams)) setFavoritedParam(params, true);
                   setSearchParams(params);
                   refetch();
                 }}
@@ -1275,11 +1303,14 @@ export function OpportunityListItem({ opportunity, onOpenReportModal, projectSta
   const opportunityName = opportunity.name || 'Opportunity';
   const col1 = (
     <div className="min-w-0">
-      <AppTooltip content={opportunityName} wrap constrain followCursor>
-        <span className="block min-w-0 max-w-full truncate text-sm font-bold text-gray-900 group-hover:text-[#7f1010] transition-colors">
-          {opportunityName}
-        </span>
-      </AppTooltip>
+      <div className="flex items-center gap-1.5 min-w-0">
+        <ProjectFavoriteButton projectId={String(opportunity.id)} favorited={!!opportunity.favorited} />
+        <AppTooltip content={opportunityName} wrap constrain followCursor>
+          <span className="block min-w-0 max-w-full truncate text-sm font-bold text-gray-900 group-hover:text-[#7f1010] transition-colors">
+            {opportunityName}
+          </span>
+        </AppTooltip>
+      </div>
       <div className="flex items-center gap-2 mt-0.5 text-sm text-gray-600">
         <span className="truncate">{opportunity.code || '—'}</span>
         {clientName && (
@@ -1574,6 +1605,7 @@ function OpportunityListCard({ opportunity, onOpenReportModal, projectStatuses, 
             {/* Customer + name + code - font sizes like ProjectDetail */}
             <div className="flex items-start justify-between gap-2">
               <div className="text-sm font-semibold text-gray-600 uppercase tracking-wide truncate min-w-0">{clientName || 'No client'}</div>
+              <ProjectFavoriteButton projectId={String(opportunity.id)} favorited={!!opportunity.favorited} />
             </div>
             <div className="min-w-0">
               <div className="text-sm font-bold text-gray-900 group-hover:text-[#7f1010] transition-colors whitespace-normal break-words">

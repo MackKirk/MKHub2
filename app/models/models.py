@@ -1140,6 +1140,85 @@ class OpportunityAlertEvent(Base):
     )
 
 
+class ProjectFavorite(Base):
+    """Per-user favorite bookmark for a project or opportunity."""
+
+    __tablename__ = "project_favorites"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, nullable=False
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True, nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    __table_args__ = (Index("ix_project_favorites_project_id", "project_id"),)
+
+
+class ProjectStartReminder(Base):
+    """User-configured reminders anchored to a project's start date."""
+
+    __tablename__ = "project_start_reminders"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    recipient_user_ids: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    anchor: Mapped[str] = mapped_column(String(40), nullable=False, default="date_start")
+    # relative = offset from date_start; absolute = absolute_start_date is first send day
+    start_mode: Mapped[str] = mapped_column(String(20), nullable=False, default="relative")
+    absolute_start_date: Mapped[Optional[date]] = mapped_column(Date)
+    offset_direction: Mapped[str] = mapped_column(String(10), nullable=False, default="before")
+    offset_unit: Mapped[str] = mapped_column(String(10), nullable=False, default="days")
+    offset_value: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    recurrence: Mapped[str] = mapped_column(String(20), nullable=False, default="once")
+    recurrence_interval: Mapped[Optional[int]] = mapped_column(Integer)
+    ends: Mapped[str] = mapped_column(String(20), nullable=False, default="on_anchor")
+    end_count: Mapped[Optional[int]] = mapped_column(Integer)
+    end_date: Mapped[Optional[date]] = mapped_column(Date)
+    send_time_local: Mapped[str] = mapped_column(String(10), nullable=False, default="08:00")
+    timezone: Mapped[str] = mapped_column(String(100), nullable=False, default="America/Vancouver")
+    message: Mapped[Optional[str]] = mapped_column(String(2000))
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    __table_args__ = (Index("ix_project_start_reminders_project_active", "project_id", "is_active"),)
+
+
+class ProjectStartReminderEvent(Base):
+    """Idempotency for project start reminder sends (one per recipient per occurrence day)."""
+
+    __tablename__ = "project_start_reminder_events"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    reminder_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("project_start_reminders.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    recipient_user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    occurrence_date: Mapped[date] = mapped_column(Date, nullable=False)
+    sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "reminder_id",
+            "recipient_user_id",
+            "occurrence_date",
+            name="uq_project_start_reminder_event",
+        ),
+        Index("ix_project_start_reminder_events_reminder", "reminder_id"),
+    )
+
+
 class ProjectEvent(Base):
     __tablename__ = "project_events"
 

@@ -10,6 +10,10 @@ export type AggregatedShiftAck = {
   status: 'declined' | 'pending' | 'accepted';
   meta: ReturnType<typeof shiftAckMeta>;
   people: { name: string; statusLabel: string }[];
+  /** Tracked shifts with ack_status === accepted. */
+  acceptedCount: number;
+  /** Tracked shifts (same set as people / tooltip). */
+  total: number;
 };
 
 /** Worst-first ack rollup for calendar chips. Returns null when nothing is tracked. */
@@ -24,16 +28,19 @@ export function aggregateShiftAck(
   let hasDeclined = false;
   let hasPending = false;
   let allAccepted = true;
+  let acceptedCount = 0;
 
   const people = tracked.map((s) => {
     const status = (s.ack_status || 'pending').toLowerCase();
-    if (status === 'declined') {
+    if (status === 'accepted') {
+      acceptedCount += 1;
+    } else if (status === 'declined') {
       hasDeclined = true;
       allAccepted = false;
     } else if (shiftAckNeedsResponse(s.ack_status) || status === 'pending' || status === 'viewed') {
       hasPending = true;
       allAccepted = false;
-    } else if (status !== 'accepted') {
+    } else {
       allAccepted = false;
       hasPending = true;
     }
@@ -53,6 +60,8 @@ export function aggregateShiftAck(
     status,
     meta: shiftAckMeta(status === 'pending' ? 'pending' : status),
     people,
+    acceptedCount,
+    total: tracked.length,
   };
 }
 
@@ -189,4 +198,55 @@ export function collectPrimaryDivisionsFromDays(
     }
   }
   return [...byId.values()].sort((a, b) => a.label.localeCompare(b.label));
+}
+
+export type ProjectCalendarStatusLegendItem = {
+  label: string;
+  color?: string | null;
+};
+
+/** Resolve status settings hex, with stable palette fallback by label. */
+export function resolveStatusColor(
+  color?: string | null,
+  statusLabel?: string | null,
+): string {
+  const hex = normalizeDivisionHex(color);
+  if (hex && hex !== '#cccccc' && hex !== '#ccc') return hex;
+  return fallbackDivisionColor(statusLabel);
+}
+
+/**
+ * Chip surface from project status color.
+ * Status hex values are already soft badge fills — use them more directly than division chips.
+ */
+export function statusChipStyle(
+  color?: string | null,
+  statusLabel?: string | null,
+): CSSProperties {
+  const hex = resolveStatusColor(color, statusLabel);
+  return {
+    backgroundColor: hex,
+    borderColor: mixWithWhite(darkenHex(hex, 0.18), 0.35),
+    color: darkenHex(hex, 0.58),
+  };
+}
+
+export function statusSwatchColor(color?: string | null, statusLabel?: string | null): string {
+  return resolveStatusColor(color, statusLabel);
+}
+
+export function collectStatusesFromDays(
+  daysByKey: Record<string, { status_label?: string | null; status_color?: string | null }[]>,
+): ProjectCalendarStatusLegendItem[] {
+  const byLabel = new Map<string, ProjectCalendarStatusLegendItem>();
+  for (const entries of Object.values(daysByKey)) {
+    for (const entry of entries || []) {
+      const label = String(entry.status_label || '').trim();
+      if (!label) continue;
+      const key = label.toLowerCase();
+      if (byLabel.has(key)) continue;
+      byLabel.set(key, { label, color: entry.status_color ?? null });
+    }
+  }
+  return [...byLabel.values()].sort((a, b) => a.label.localeCompare(b.label));
 }

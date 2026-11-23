@@ -6,10 +6,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import Date as SaDate, String, and_, cast, func, or_
+from sqlalchemy import Date as SaDate, String, and_, cast, func, or_, select
 from sqlalchemy.orm import Query, Session
 
-from ..models.models import Client, Project, User
+from ..models.models import Client, Project, ProjectFavorite, User
 
 
 @dataclass
@@ -32,6 +32,7 @@ class BusinessProjectListFilters:
     value_min: Optional[int] = None
     value_max: Optional[int] = None
     related_to_me: bool = False
+    favorited: bool = False
 
 
 def as_str_list(value: Any) -> list[str]:
@@ -51,12 +52,13 @@ def as_str_list(value: Any) -> list[str]:
     return out
 
 
+def _bool_query_flag(value: Any) -> bool:
+    if isinstance(value, str):
+        return value.lower() in ("1", "true", "yes")
+    return bool(value)
+
+
 def filters_from_query_params(**kwargs: Any) -> BusinessProjectListFilters:
-    related = kwargs.get("related_to_me")
-    if isinstance(related, str):
-        related_active = related.lower() in ("1", "true", "yes")
-    else:
-        related_active = bool(related)
     return BusinessProjectListFilters(
         division_id=kwargs.get("division_id"),
         division_id_not=kwargs.get("division_id_not"),
@@ -75,7 +77,8 @@ def filters_from_query_params(**kwargs: Any) -> BusinessProjectListFilters:
         eta_end=kwargs.get("eta_end"),
         value_min=kwargs.get("value_min"),
         value_max=kwargs.get("value_max"),
-        related_to_me=related_active,
+        related_to_me=_bool_query_flag(kwargs.get("related_to_me")),
+        favorited=_bool_query_flag(kwargs.get("favorited")),
     )
 
 
@@ -104,6 +107,13 @@ def build_business_projects_query(
 
     if filters.related_to_me:
         query = query.filter(_project_related_to_user_filter(user.id))
+
+    if filters.favorited:
+        query = query.filter(
+            Project.id.in_(
+                select(ProjectFavorite.project_id).where(ProjectFavorite.user_id == user.id)
+            )
+        )
 
     query = apply_any_clients(query, filters.client_id)
     query = apply_excluded_clients(query, filters.client_id_not)

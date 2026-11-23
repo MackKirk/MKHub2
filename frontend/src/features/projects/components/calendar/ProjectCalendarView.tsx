@@ -51,8 +51,8 @@ import {
 import { parseDayDropId, parseProjectDragId } from './projectCalendar.dnd';
 import type { ProjectCalendarDayEntry } from './projectCalendar.types';
 import {
-  collectPrimaryDivisionsFromDays,
-  divisionSwatchColor,
+  collectStatusesFromDays,
+  statusSwatchColor,
 } from './projectCalendar.utils';
 
 const MONTH_NAMES = [
@@ -213,8 +213,8 @@ export default function ProjectCalendarView({ searchParams, businessLine, detail
   const monthLabel = `${MONTH_NAMES[currentMonth.getMonth()]} ${currentMonth.getFullYear()}`;
   const daysByKey = data?.days ?? {};
   const dragActive = activeProject != null;
-  const divisionLegend = useMemo(
-    () => collectPrimaryDivisionsFromDays(daysByKey),
+  const statusLegend = useMemo(
+    () => collectStatusesFromDays(daysByKey),
     [daysByKey],
   );
 
@@ -291,7 +291,7 @@ export default function ProjectCalendarView({ searchParams, businessLine, detail
           ) : null}
         </div>
         <div className={uiCx(uiLayout.actionsRow, 'relative flex-wrap justify-end')}>
-          {divisionLegend.length > 0 ? (
+          {statusLegend.length > 0 ? (
             <div className="relative">
               <AppButton
                 type="button"
@@ -319,20 +319,20 @@ export default function ProjectCalendarView({ searchParams, businessLine, detail
                       uiRadius.card,
                     )}
                     role="dialog"
-                    aria-label="Division color legend"
+                    aria-label="Status color legend"
                   >
-                    <div className={uiCx(uiTypography.overline, 'mb-2 text-gray-500')}>Divisions</div>
+                    <div className={uiCx(uiTypography.overline, 'mb-2 text-gray-500')}>Statuses</div>
                     <ul className="max-h-64 space-y-1.5 overflow-y-auto">
-                      {divisionLegend.map((d) => (
-                        <li key={d.id} className="flex items-center gap-2 text-sm text-gray-800">
+                      {statusLegend.map((s) => (
+                        <li key={s.label} className="flex items-center gap-2 text-sm text-gray-800">
                           <span
                             className="h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-black/10"
                             style={{
-                              backgroundColor: divisionSwatchColor(d.color, d.id),
+                              backgroundColor: statusSwatchColor(s.color, s.label),
                             }}
                             aria-hidden
                           />
-                          <span className="min-w-0 truncate">{d.label}</span>
+                          <span className="min-w-0 truncate">{s.label}</span>
                         </li>
                       ))}
                     </ul>
@@ -424,6 +424,7 @@ export default function ProjectCalendarView({ searchParams, businessLine, detail
                 activeProjectId={activeProject?.id ?? null}
                 collapsed={railCollapsed}
                 onCollapsedChange={handleRailCollapsedChange}
+                businessLine={businessLine}
               />
             </div>
             {calendarMain}

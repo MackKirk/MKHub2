@@ -38,6 +38,8 @@ from ..models.models import (
     ProjectFolder,
     FormTemplate,
     ProjectMember,
+    ProjectFavorite,
+    ProjectStartReminder,
 )
 from datetime import date, datetime, timezone, time, timedelta
 from ..auth.security import (
@@ -1903,6 +1905,10 @@ def get_project(
         "billing_differs_from_customer": _billing_differs_from_customer(p, client),
         "related_rm_opportunities": _related_rm_opportunities(db, p.id),
         "source_production_project": _source_production_project_summary(db, p),
+        "favorited": db.query(ProjectFavorite.project_id)
+        .filter(ProjectFavorite.user_id == user.id, ProjectFavorite.project_id == p.id)
+        .first()
+        is not None,
     }
 
 
@@ -3105,6 +3111,266 @@ def remove_project_member(
     )
     if not row:
         raise HTTPException(status_code=404, detail="Member not found")
+    db.delete(row)
+    db.commit()
+    return {"status": "ok"}
+
+
+def _load_project_for_reminders(db: Session, project_id: str, user: User) -> Project:
+    proj = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project not found")
+    _assert_project_visible(user, proj)
+    return proj
+
+
+def _project_favorited_by_user_filter(user_id):
+    """Filter to projects the user has favorited."""
+    return Project.id.in_(
+        select(ProjectFavorite.project_id).where(ProjectFavorite.user_id == user_id)
+    )
+
+
+def _favorited_project_id_set(db: Session, user_id, project_ids: list) -> set[str]:
+    if not project_ids:
+        return set()
+    rows = (
+        db.query(ProjectFavorite.project_id)
+        .filter(ProjectFavorite.user_id == user_id, ProjectFavorite.project_id.in_(project_ids))
+        .all()
+    )
+    return {str(r[0]) for r in rows}
+
+
+@router.post("/{project_id}/favorite")
+def add_project_favorite(
+    project_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    try:
+        pid = uuid.UUID(str(project_id))
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Invalid project ID format")
+    proj = db.query(Project).filter(Project.id == pid, Project.deleted_at.is_(None)).first()
+    if not proj:
+        raise HTTPException(status_code=404, detail="Not found")
+    _assert_project_line_read(user, proj)
+    existing = (
+        db.query(ProjectFavorite)
+        .filter(ProjectFavorite.user_id == user.id, ProjectFavorite.project_id == proj.id)
+        .first()
+    )
+    if not existing:
+        db.add(ProjectFavorite(user_id=user.id, project_id=proj.id))
+        db.commit()
+    return {"favorited": True}
+
+
+@router.delete("/{project_id}/favorite")
+def remove_project_favorite(
+    project_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    try:
+        pid = uuid.UUID(str(project_id))
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Invalid project ID format")
+    proj = db.query(Project).filter(Project.id == pid, Project.deleted_at.is_(None)).first()
+    if not proj:
+        raise HTTPException(status_code=404, detail="Not found")
+    _assert_project_line_read(user, proj)
+    row = (
+        db.query(ProjectFavorite)
+        .filter(ProjectFavorite.user_id == user.id, ProjectFavorite.project_id == proj.id)
+        .first()
+    )
+    if row:
+        db.delete(row)
+        db.commit()
+    return {"favorited": False}
+
+
+@router.get("/{project_id}/start-reminders")
+def list_project_start_reminders(
+    project_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    from ..services.project_start_reminders import serialize_reminder
+
+    proj = _load_project_for_reminders(db, project_id, user)
+    rows = (
+        db.query(ProjectStartReminder)
+        .filter(ProjectStartReminder.project_id == proj.id)
+        .order_by(ProjectStartReminder.created_at.asc())
+        .all()
+    )
+    return [serialize_reminder(row, proj) for row in rows]
+
+
+@router.post("/{project_id}/start-reminders")
+def create_project_start_reminder(
+    project_id: str,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    from ..services.project_start_reminders import (
+        all_occurrences_past,
+        compute_window_and_occurrences,
+        project_anchor_date,
+        serialize_reminder,
+        validate_reminder_fields,
+        _today,
+    )
+
+    proj = _load_project_for_reminders(db, project_id, user)
+    _assert_project_line_write(user, proj)
+
+    try:
+        fields = validate_reminder_fields(payload or {}, partial=False)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    is_active = bool(fields.get("is_active", True))
+    anchor = project_anchor_date(proj)
+    start_mode = fields.get("start_mode", "relative")
+    if is_active and (start_mode == "absolute" or anchor):
+        tmp = ProjectStartReminder(
+            project_id=proj.id,
+            recipient_user_ids=fields["recipient_user_ids"],
+            anchor=fields.get("anchor", "date_start"),
+            start_mode=start_mode,
+            absolute_start_date=fields.get("absolute_start_date"),
+            offset_direction=fields.get("offset_direction", "before"),
+            offset_unit=fields.get("offset_unit", "days"),
+            offset_value=fields.get("offset_value", 0),
+            recurrence=fields["recurrence"],
+            recurrence_interval=fields.get("recurrence_interval"),
+            ends=fields["ends"],
+            end_count=fields.get("end_count"),
+            end_date=fields.get("end_date"),
+            send_time_local=fields.get("send_time_local", "08:00"),
+            timezone=fields.get("timezone", "America/Vancouver"),
+            message=fields.get("message"),
+            is_active=True,
+        )
+        _ws, _we, occurrences = compute_window_and_occurrences(tmp, anchor)
+        if all_occurrences_past(occurrences, _today(tmp.timezone)):
+            raise HTTPException(
+                status_code=400,
+                detail="All reminder dates are in the past. Save as paused or adjust the schedule.",
+            )
+
+    row = ProjectStartReminder(
+        project_id=proj.id,
+        recipient_user_ids=fields["recipient_user_ids"],
+        anchor=fields.get("anchor", "date_start"),
+        start_mode=start_mode,
+        absolute_start_date=fields.get("absolute_start_date"),
+        offset_direction=fields.get("offset_direction", "before"),
+        offset_unit=fields.get("offset_unit", "days"),
+        offset_value=fields.get("offset_value", 0),
+        recurrence=fields["recurrence"],
+        recurrence_interval=fields.get("recurrence_interval"),
+        ends=fields["ends"],
+        end_count=fields.get("end_count"),
+        end_date=fields.get("end_date"),
+        send_time_local=fields.get("send_time_local", "08:00"),
+        timezone=fields.get("timezone", "America/Vancouver"),
+        message=fields.get("message"),
+        is_active=is_active,
+        created_by_user_id=user.id,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return serialize_reminder(row, proj)
+
+
+@router.patch("/{project_id}/start-reminders/{reminder_id}")
+def update_project_start_reminder(
+    project_id: str,
+    reminder_id: str,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    from ..services.project_start_reminders import (
+        all_occurrences_past,
+        compute_window_and_occurrences,
+        project_anchor_date,
+        serialize_reminder,
+        validate_reminder_fields,
+        _today,
+    )
+
+    proj = _load_project_for_reminders(db, project_id, user)
+    _assert_project_line_write(user, proj)
+
+    try:
+        rid = uuid.UUID(str(reminder_id))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid reminder id")
+
+    row = (
+        db.query(ProjectStartReminder)
+        .filter(ProjectStartReminder.id == rid, ProjectStartReminder.project_id == proj.id)
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Reminder not found")
+
+    try:
+        fields = validate_reminder_fields(payload or {}, partial=True)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    for key, value in fields.items():
+        if key == "anchor":
+            continue
+        setattr(row, key, value)
+
+    will_be_active = bool(row.is_active)
+    anchor = project_anchor_date(proj)
+    if will_be_active and anchor:
+        _ws, _we, occurrences = compute_window_and_occurrences(row, anchor)
+        if all_occurrences_past(occurrences, _today(row.timezone or "America/Vancouver")):
+            raise HTTPException(
+                status_code=400,
+                detail="All reminder dates are in the past. Pause the reminder or adjust the schedule.",
+            )
+
+    row.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(row)
+    return serialize_reminder(row, proj)
+
+
+@router.delete("/{project_id}/start-reminders/{reminder_id}")
+def delete_project_start_reminder(
+    project_id: str,
+    reminder_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    proj = _load_project_for_reminders(db, project_id, user)
+    _assert_project_line_write(user, proj)
+
+    try:
+        rid = uuid.UUID(str(reminder_id))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid reminder id")
+
+    row = (
+        db.query(ProjectStartReminder)
+        .filter(ProjectStartReminder.id == rid, ProjectStartReminder.project_id == proj.id)
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Reminder not found")
     db.delete(row)
     db.commit()
     return {"status": "ok"}
@@ -8147,9 +8413,12 @@ def _apply_business_opportunity_list_filters(
     value_min: Optional[int],
     value_max: Optional[int],
     q: Optional[str],
+    favorited: bool = False,
 ):
     if related_to_me:
         query = query.filter(_project_related_to_user_filter(user.id))
+    if favorited:
+        query = query.filter(_project_favorited_by_user_filter(user.id))
 
     from ..services.project_list_filters import apply_any_clients, apply_excluded_clients
 
@@ -8548,7 +8817,7 @@ def _business_list_tab_counts(
 ) -> dict[str, int]:
     bl_clause = _dashboard_business_line_clause(user, business_line)
     if bl_clause is None:
-        return {"related_to_me": 0, **{key: 0 for key, _ in status_specs}}
+        return {"related_to_me": 0, "favorited": 0, **{key: 0 for key, _ in status_specs}}
 
     base = (
         db.query(Project)
@@ -8580,6 +8849,7 @@ def _business_list_tab_counts(
 
     counts: dict[str, int] = {
         "related_to_me": base.filter(_project_related_to_user_filter(user.id)).count(),
+        "favorited": base.filter(_project_favorited_by_user_filter(user.id)).count(),
     }
     # Per-status UUID keys so list chips always get a count (not only hardcoded labels).
     status_list = db.query(SettingList).filter(SettingList.name == "project_statuses").first()
@@ -8642,6 +8912,7 @@ def _paginate_and_serialize_business_opportunity_style(
     estimated_values_map, proposal_cover_by_project, proposal_card_totals, proposal_division_pcts = _load_latest_proposals_by_project(db, project_ids)
     clients_map = _build_clients_map(db, client_ids)
     leak_div_id = get_leak_investigation_division_id(db)
+    favorited_ids = _favorited_project_id_set(db, user.id, project_ids)
 
     estimator_ids = list(set([getattr(p, 'estimator_id', None) for p in projects if getattr(p, 'estimator_id', None)]))
     onsite_lead_ids = list(set([getattr(p, 'onsite_lead_id', None) for p in projects if getattr(p, 'onsite_lead_id', None)]))
@@ -8700,6 +8971,7 @@ def _paginate_and_serialize_business_opportunity_style(
             "estimator_ids": [str(eid) for eid in (getattr(p, 'estimator_ids', None) or [])] if getattr(p, 'estimator_ids', None) else ([str(getattr(p, 'estimator_id', None))] if getattr(p, 'estimator_id', None) else []),
             "onsite_lead_id": getattr(p, 'onsite_lead_id', None),
             "lead_source": getattr(p, 'lead_source', None),
+            "favorited": pid in favorited_ids,
         }
     
         # Add estimator name and avatar from list so UI does not wait for /employees
@@ -8760,6 +9032,7 @@ def business_opportunities(
     limit: int = Query(25, ge=1, le=200),
     business_line: Optional[str] = None,
     related_to_me: Optional[bool] = False,
+    favorited: Optional[bool] = False,
     sort: Optional[str] = None,
     sort_dir: Optional[str] = Query("asc", alias="dir"),
     db: Session = Depends(get_db),
@@ -8775,6 +9048,7 @@ def business_opportunities(
         division_id, division_id_not, subdivision_id, status, status_not,
         client_id, client_id_not, date_start, date_end, estimator_id, estimator_id_not,
         eta_start, eta_end, value_min, value_max, q,
+        favorited=bool(favorited),
     )
     return _paginate_and_serialize_business_opportunity_style(
         db, user, query, page, limit, sort, sort_dir,
@@ -8923,6 +9197,7 @@ def business_projects(
     limit: int = Query(25, ge=1, le=200),
     business_line: Optional[str] = None,
     related_to_me: Optional[bool] = False,
+    favorited: Optional[bool] = False,
     sort: Optional[str] = None,
     sort_dir: Optional[str] = Query("asc", alias="dir"),
     db: Session = Depends(get_db),
@@ -8942,6 +9217,8 @@ def business_projects(
     )
     if related_to_me:
         query = query.filter(_project_related_to_user_filter(user.id))
+    if favorited:
+        query = query.filter(_project_favorited_by_user_filter(user.id))
 
     from ..services.project_list_filters import apply_any_clients, apply_excluded_clients
 
@@ -9197,6 +9474,7 @@ def business_projects(
     cover_images = _load_legacy_cover_images(db, project_ids)
     clients_map = _build_clients_map(db, client_ids)
     estimated_values_map, proposal_cover_by_project, proposal_card_totals, proposal_division_pcts = _load_latest_proposals_by_project(db, project_ids)
+    favorited_ids = _favorited_project_id_set(db, user.id, project_ids)
 
     # Fetch estimator, onsite lead and project_admin names/avatars in batch (so UI does not wait for /employees)
     estimator_ids = list(set([getattr(p, 'estimator_id', None) for p in projects[:limit] if getattr(p, 'estimator_id', None)]))
@@ -9247,6 +9525,7 @@ def business_projects(
             "project_admin_id": str(getattr(p, 'project_admin_id', None)) if getattr(p, 'project_admin_id', None) else None,
             "onsite_lead_id": getattr(p, 'onsite_lead_id', None),
             "lead_source": getattr(p, 'lead_source', None),
+            "favorited": str(p.id) in favorited_ids,
         }
         
         # Add cover image URL - same priority as General Information
@@ -9339,6 +9618,7 @@ def business_projects_map_points(
     value_max: Optional[int] = None,
     business_line: Optional[str] = None,
     related_to_me: Optional[bool] = False,
+    favorited: Optional[bool] = False,
     north: Optional[float] = None,
     south: Optional[float] = None,
     east: Optional[float] = None,
@@ -9370,6 +9650,7 @@ def business_projects_map_points(
         value_min=value_min,
         value_max=value_max,
         related_to_me=related_to_me,
+        favorited=favorited,
     )
     return get_project_map_points(
         db,
@@ -9408,6 +9689,7 @@ def business_projects_calendar(
     value_max: Optional[int] = None,
     business_line: Optional[str] = None,
     related_to_me: Optional[bool] = False,
+    favorited: Optional[bool] = False,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -9436,6 +9718,7 @@ def business_projects_calendar(
         value_min=value_min,
         value_max=value_max,
         related_to_me=related_to_me,
+        favorited=favorited,
     )
     try:
         return get_project_calendar_data(
@@ -9471,6 +9754,7 @@ def business_opportunities_map_points(
     value_max: Optional[int] = None,
     business_line: Optional[str] = None,
     related_to_me: Optional[bool] = False,
+    favorited: Optional[bool] = False,
     north: Optional[float] = None,
     south: Optional[float] = None,
     east: Optional[float] = None,
@@ -9501,6 +9785,7 @@ def business_opportunities_map_points(
         value_min=value_min,
         value_max=value_max,
         related_to_me=related_to_me,
+        favorited=favorited,
     )
     return get_project_map_points(
         db,

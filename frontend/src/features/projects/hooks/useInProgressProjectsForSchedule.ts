@@ -8,6 +8,7 @@ export type ScheduleRailProject = {
   name?: string | null;
   status?: string | null;
   status_label?: string | null;
+  project_division_ids?: string[] | null;
 };
 
 const IN_PROGRESS_LABELS = new Set(['in progress', 'on progress']);

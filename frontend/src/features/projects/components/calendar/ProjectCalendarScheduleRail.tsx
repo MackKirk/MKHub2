@@ -1,16 +1,31 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useDraggable } from '@dnd-kit/core';
-import { ChevronLeft, ChevronRight, GripVertical, Loader2, Search } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, GripVertical, Loader2, Search } from 'lucide-react';
 import {
   AppInput,
+  AppTooltip,
   uiBorders,
   uiColors,
   uiCx,
   uiRadius,
   uiTypography,
 } from '@/components/ui';
+import { api } from '@/lib/api';
+import {
+  filterProjectDivisionsForBusinessLine,
+  PROJECT_DIVISIONS_QUERY_KEY,
+} from '@/lib/businessLine';
 import type { ScheduleRailProject } from '../../hooks/useInProgressProjectsForSchedule';
 import { projectDragId } from './projectCalendar.dnd';
+import { divisionSwatchColor } from './projectCalendar.utils';
+import {
+  flattenDivisionCatalog,
+  groupProjectsByDivisionSections,
+  readSectionCollapsedMap,
+  writeSectionCollapsedMap,
+  type RailDivisionNode,
+} from './projectCalendarRail.utils';
 
 const STORAGE_PREFIX = 'mkhub.projectCalendar.scheduleRail.collapsed.';
 
@@ -39,7 +54,7 @@ export function ProjectDragCard({
 }) {
   const title = project.name || 'Project';
   const code = project.code?.trim() || null;
-  return (
+  const card = (
     <div
       className={uiCx(
         'flex items-start gap-2 border bg-white px-2.5 py-2',
@@ -61,17 +76,37 @@ export function ProjectDragCard({
       </div>
     </div>
   );
+
+  if (isOverlay) return card;
+
+  return (
+    <AppTooltip
+      wrap
+      constrain
+      content={
+        <div className="max-w-xs space-y-0.5 text-left">
+          {code ? <div className="font-semibold">{code}</div> : null}
+          <div className="font-normal whitespace-pre-wrap">{title}</div>
+        </div>
+      }
+      placement="top"
+    >
+      {card}
+    </AppTooltip>
+  );
 }
 
 function DraggableRailItem({
   project,
+  sectionKey,
   isActive,
 }: {
   project: ScheduleRailProject;
+  sectionKey: string;
   isActive: boolean;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: projectDragId(project.id),
+    id: projectDragId(project.id, sectionKey),
     data: { project },
   });
   const faded = isDragging || isActive;
@@ -115,6 +150,7 @@ type Props = {
   activeProjectId: string | null;
   collapsed: boolean;
   onCollapsedChange: (collapsed: boolean) => void;
+  businessLine: string;
 };
 
 export function ProjectCalendarScheduleRail({
@@ -123,8 +159,27 @@ export function ProjectCalendarScheduleRail({
   activeProjectId,
   collapsed,
   onCollapsedChange,
+  businessLine,
 }: Props) {
   const [search, setSearch] = useState('');
+  const [sectionCollapsed, setSectionCollapsed] = useState<Record<string, boolean>>(() =>
+    readSectionCollapsedMap(businessLine),
+  );
+
+  useEffect(() => {
+    setSectionCollapsed(readSectionCollapsedMap(businessLine));
+  }, [businessLine]);
+
+  const { data: divisionTree, isLoading: divisionsLoading } = useQuery({
+    queryKey: PROJECT_DIVISIONS_QUERY_KEY,
+    queryFn: () => api<RailDivisionNode[]>('GET', '/settings/project-divisions'),
+    staleTime: 300_000,
+  });
+
+  const catalog = useMemo(() => {
+    const filtered = filterProjectDivisionsForBusinessLine(divisionTree || [], businessLine);
+    return flattenDivisionCatalog(filtered as RailDivisionNode[]);
+  }, [divisionTree, businessLine]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -134,6 +189,21 @@ export function ProjectCalendarScheduleRail({
       return hay.includes(q);
     });
   }, [projects, search]);
+
+  const sections = useMemo(
+    () => groupProjectsByDivisionSections(filtered, catalog),
+    [filtered, catalog],
+  );
+
+  const toggleSection = (sectionId: string) => {
+    setSectionCollapsed((prev) => {
+      // Default collapsed when key is missing
+      const currentlyCollapsed = prev[sectionId] ?? true;
+      const next = { ...prev, [sectionId]: !currentlyCollapsed };
+      writeSectionCollapsedMap(businessLine, next);
+      return next;
+    });
+  };
 
   if (collapsed) {
     return (
@@ -167,6 +237,8 @@ export function ProjectCalendarScheduleRail({
       </aside>
     );
   }
+
+  const listLoading = isLoading || divisionsLoading;
 
   return (
     <aside
@@ -204,8 +276,8 @@ export function ProjectCalendarScheduleRail({
         />
       </div>
 
-      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-2">
-        {isLoading ? (
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-2">
+        {listLoading ? (
           <p className={uiCx(uiTypography.helper, 'flex items-center gap-2 px-1 py-4 text-gray-500')}>
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
             Loading projects…
@@ -217,13 +289,57 @@ export function ProjectCalendarScheduleRail({
               : 'No projects match your search.'}
           </p>
         ) : (
-          filtered.map((project) => (
-            <DraggableRailItem
-              key={project.id}
-              project={project}
-              isActive={activeProjectId === project.id}
-            />
-          ))
+          sections.map((section) => {
+            // While searching, expand every section that still has matches
+            const isSectionCollapsed = search.trim()
+              ? false
+              : (sectionCollapsed[section.id] ?? true);
+            return (
+              <div key={section.id} className="space-y-1.5">
+                <button
+                  type="button"
+                  onClick={() => toggleSection(section.id)}
+                  className={uiCx(
+                    'flex w-full items-center gap-1.5 rounded-lg px-1.5 py-1 text-left transition-colors hover:bg-gray-50',
+                  )}
+                  aria-expanded={!isSectionCollapsed}
+                >
+                  <ChevronDown
+                    className={uiCx(
+                      'h-3.5 w-3.5 shrink-0 text-gray-500 transition-transform',
+                      isSectionCollapsed && '-rotate-90',
+                    )}
+                    aria-hidden
+                  />
+                  <span
+                    className="h-2 w-2 shrink-0 rounded-full ring-1 ring-black/10"
+                    style={{
+                      backgroundColor: divisionSwatchColor(section.color, section.id),
+                    }}
+                    aria-hidden
+                  />
+                  <span className={uiCx('min-w-0 flex-1 truncate', uiTypography.controlLabel)}>
+                    {section.label}
+                  </span>
+                  <span className={uiCx(uiTypography.helper, 'shrink-0 tabular-nums text-gray-500')}>
+                    {section.projects.length}
+                  </span>
+                </button>
+                {!isSectionCollapsed ? (
+                  <div className="space-y-2 pl-1">
+                    {section.projects.map((project) => (
+                      <DraggableRailItem
+                        key={`${section.id}:${project.id}`}
+                        project={project}
+                        sectionKey={section.id}
+                        isActive={activeProjectId === project.id}
+                      />
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })
         )}
       </div>
 

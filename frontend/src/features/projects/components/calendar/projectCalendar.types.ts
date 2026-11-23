@@ -33,6 +33,8 @@ export type ProjectCalendarDayEntry = {
   code?: string | null;
   name: string;
   status_label?: string | null;
+  /** Hex from Settings project_statuses.value (or meta.color). */
+  status_color?: string | null;
   client_display_name?: string | null;
   address?: string | null;
   appearance: ProjectCalendarAppearance;

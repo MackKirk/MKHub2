@@ -132,6 +132,45 @@ def _division_meta_map(db: Session) -> dict[str, dict[str, Optional[str]]]:
     return out
 
 
+def _status_meta_map(db: Session) -> dict[str, dict[str, Optional[str]]]:
+    """id -> {label, color} for project_statuses (color from item.value)."""
+    out: dict[str, dict[str, Optional[str]]] = {}
+    statuses_list = db.query(SettingList).filter(SettingList.name == "project_statuses").first()
+    if not statuses_list:
+        return out
+    items = db.query(SettingItem).filter(SettingItem.list_id == statuses_list.id).all()
+    for item in items:
+        meta = getattr(item, "meta", None) or {}
+        color = None
+        if isinstance(meta, dict):
+            color = _normalize_hex_color(meta.get("color"))
+        if not color:
+            color = _normalize_hex_color(getattr(item, "value", None))
+        out[str(item.id)] = {
+            "label": item.label or str(item.id),
+            "color": color,
+        }
+    return out
+
+
+def _resolve_status_color(
+    status_meta: dict[str, dict[str, Optional[str]]],
+    status_id: Optional[Any],
+    status_label: Optional[str],
+) -> Optional[str]:
+    if status_id is not None:
+        by_id = status_meta.get(str(status_id))
+        if by_id and by_id.get("color"):
+            return by_id.get("color")
+    label = (status_label or "").strip().lower()
+    if not label:
+        return None
+    for meta in status_meta.values():
+        if (meta.get("label") or "").strip().lower() == label:
+            return meta.get("color")
+    return None
+
+
 def _pick_primary_division_id(
     raw_div_ids: list,
     percentages: Optional[dict],
@@ -290,6 +329,7 @@ def get_project_calendar_data(
 
     users_map = _load_users_map(db, list(user_ids))
     div_meta = _division_meta_map(db)
+    status_meta = _status_meta_map(db)
 
     client_ids = list({getattr(p, "client_id", None) for p in projects if getattr(p, "client_id", None)})
     clients_map: dict[str, Client] = {}
@@ -451,11 +491,17 @@ def get_project_calendar_data(
         if primary_division is None and divisions:
             primary_division = divisions[0]
 
+        status_label = getattr(project, "status_label", None)
         entry: dict[str, Any] = {
             "project_id": str(project.id),
             "code": project.code,
             "name": project.name,
-            "status_label": getattr(project, "status_label", None),
+            "status_label": status_label,
+            "status_color": _resolve_status_color(
+                status_meta,
+                getattr(project, "status_id", None),
+                status_label,
+            ),
             "client_display_name": client_display,
             "address": address_label,
             "appearance": appearance,

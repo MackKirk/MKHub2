@@ -21,6 +21,17 @@ export function setRelatedToMeParam(params: URLSearchParams, active: boolean): v
   else params.delete('related_to_me');
 }
 
+/** Per-user favorites filter (`favorited=true`). */
+export function isFavoritedParamActive(params: URLSearchParams): boolean {
+  const v = params.get('favorited');
+  return v === 'true' || v === '1';
+}
+
+export function setFavoritedParam(params: URLSearchParams, active: boolean): void {
+  if (active) params.set('favorited', 'true');
+  else params.delete('favorited');
+}
+
 /** Align list + quick-filter count queries (always includes current business line). */
 export function buildOpportunityListSearchParams(
   searchParams: URLSearchParams,
@@ -33,6 +44,7 @@ export function buildOpportunityListSearchParams(
     params.delete('status');
     params.delete('status_not');
     params.delete('related_to_me');
+    params.delete('favorited');
     params.delete('view');
     params.delete('sort');
     params.delete('dir');

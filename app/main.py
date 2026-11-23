@@ -560,6 +560,42 @@ def create_app() -> FastAPI:
                     print(f"[startup] opportunity alert tables create_all (non-critical): {_e}")
 
                 try:
+                    from .models.models import ProjectFavorite
+
+                    Base.metadata.create_all(bind=engine, tables=[ProjectFavorite.__table__])
+                except Exception as _e:
+                    print(f"[startup] project_favorites create_all (non-critical): {_e}")
+
+                try:
+                    from .models.models import ProjectStartReminder, ProjectStartReminderEvent
+                    from sqlalchemy import text as _sa_text
+
+                    Base.metadata.create_all(
+                        bind=engine,
+                        tables=[
+                            ProjectStartReminder.__table__,
+                            ProjectStartReminderEvent.__table__,
+                        ],
+                    )
+                    # Additive columns if table already existed without them
+                    with engine.begin() as _conn:
+                        _conn.execute(
+                            _sa_text(
+                                "ALTER TABLE project_start_reminders "
+                                "ADD COLUMN IF NOT EXISTS start_mode VARCHAR(20) "
+                                "NOT NULL DEFAULT 'relative'"
+                            )
+                        )
+                        _conn.execute(
+                            _sa_text(
+                                "ALTER TABLE project_start_reminders "
+                                "ADD COLUMN IF NOT EXISTS absolute_start_date DATE"
+                            )
+                        )
+                except Exception as _e:
+                    print(f"[startup] project start reminder tables create_all (non-critical): {_e}")
+
+                try:
                     from .models.models import ClientNote
 
                     Base.metadata.create_all(bind=engine, tables=[ClientNote.__table__])
@@ -4079,6 +4115,15 @@ def create_app() -> FastAPI:
             start_opportunity_alerts_scheduler()
         except Exception as e:
             print(f"⚠️  Could not start opportunity alerts scheduler: {e}")
+
+        try:
+            from .services.project_start_reminders_scheduler import (
+                start_project_start_reminders_scheduler,
+            )
+
+            start_project_start_reminders_scheduler()
+        except Exception as e:
+            print(f"⚠️  Could not start project start reminders scheduler: {e}")
 
         print("[startup] Application startup complete - server ready!")
 

@@ -2,9 +2,9 @@ import { AppBadge, AppTooltip, AppUserAvatar, uiCx, uiTypography } from '@/compo
 import type { ProjectCalendarDayEntry } from './projectCalendar.types';
 import {
   aggregateShiftAck,
-  divisionChipStyle,
   formatTime12h,
   personToAvatarUser,
+  statusChipStyle,
 } from './projectCalendar.utils';
 
 type Props = {
@@ -14,13 +14,14 @@ type Props = {
   onOpen: () => void;
 };
 
-function AckDot({
+function AckCount({
   aggregate,
   size,
 }: {
   aggregate: NonNullable<ReturnType<typeof aggregateShiftAck>>;
   size: 'sm' | 'md';
 }) {
+  const label = `${aggregate.acceptedCount}/${aggregate.total}`;
   return (
     <AppTooltip
       wrap
@@ -38,29 +39,23 @@ function AckDot({
       placement="top"
       className="absolute right-0 top-0 z-[1]"
     >
-      {/* Larger hit area so hover does not flicker on the tiny dot edge. */}
+      {/* Padding keeps hover stable on the small fraction text. */}
       <span
-        className="flex h-5 w-5 items-start justify-end p-0.5"
-        aria-label={aggregate.meta.longLabel}
+        className={uiCx(
+          'flex items-start justify-end tabular-nums font-semibold opacity-80',
+          size === 'sm' ? 'px-0.5 py-0.5 text-[9px] leading-none' : 'px-1 py-0.5 text-[10px] leading-none',
+        )}
+        aria-label={`${aggregate.acceptedCount} of ${aggregate.total} accepted`}
         onClick={(e) => e.stopPropagation()}
       >
-        <span
-          className={uiCx(
-            'mt-0.5 block shrink-0 rounded-full ring-1 ring-white/90',
-            size === 'sm' ? 'h-1.5 w-1.5' : 'h-2 w-2',
-            aggregate.meta.dotClass,
-          )}
-        />
+        {label}
       </span>
     </AppTooltip>
   );
 }
 
 export function ProjectCalendarProjectChip({ entry, compact = false, onOpen }: Props) {
-  const chipStyle = divisionChipStyle(
-    entry.primary_division?.color,
-    entry.primary_division?.id,
-  );
+  const chipStyle = statusChipStyle(entry.status_color, entry.status_label);
   const isDense = compact === 'dense';
   const isCompact = compact === true || isDense;
   const ackAggregate =
@@ -112,7 +107,7 @@ export function ProjectCalendarProjectChip({ entry, compact = false, onOpen }: P
       }}
       className={uiCx(
         'relative w-full border text-left transition-[filter] hover:brightness-95',
-        ackAggregate && (isDense ? 'pr-3' : 'pr-3.5'),
+        ackAggregate && (isDense ? 'pr-6' : 'pr-7'),
         isDense
           ? 'rounded px-1 py-0.5 text-[11px] leading-tight shadow-none'
           : uiCx('rounded-lg px-2 py-1.5 text-xs shadow-sm'),
@@ -127,7 +122,7 @@ export function ProjectCalendarProjectChip({ entry, compact = false, onOpen }: P
         .filter(Boolean)
         .join(' · ')}
     >
-      {ackAggregate ? <AckDot aggregate={ackAggregate} size={isDense ? 'sm' : 'md'} /> : null}
+      {ackAggregate ? <AckCount aggregate={ackAggregate} size={isDense ? 'sm' : 'md'} /> : null}
       {isDense ? (
         <div className="flex min-w-0 items-center gap-0.5">
           <span className="min-w-0 flex-1 truncate font-semibold">{denseLabel}</span>
