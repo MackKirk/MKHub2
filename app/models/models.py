@@ -1958,6 +1958,8 @@ class DocumentType(Base):
     page_templates: Mapped[Optional[list]] = mapped_column(JSON)
     # Free-form signer roles for Document Builder send-for-signature presets.
     signer_roles: Mapped[Optional[list]] = mapped_column(JSON)
+    # When true, this type appears in Insert from Field Report and supplies photo_N/caption_N pages.
+    valid_for_field_report: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
 

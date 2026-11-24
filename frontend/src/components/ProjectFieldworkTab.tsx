@@ -1,16 +1,25 @@
-import { useCallback, useEffect, useMemo, useState, type MutableRefObject } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { ClipboardList } from 'lucide-react';
+import {
+  CheckCircle2,
+  ClipboardList,
+  Copy,
+  ExternalLink,
+  FileDown,
+  FilePlus,
+  History,
+  MessageSquareWarning,
+  Save,
+  Send,
+  Trash2,
+} from 'lucide-react';
 import { ApiError, api, fetchAuthorizedBinary, formatApiErrorDetail } from '@/lib/api';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import DynamicForm from '@/components/DynamicForm';
-import {
-  FieldworkSupervisorReportView,
-  SUPERVISOR_COMMENTS_KEY,
-} from '@/components/fieldwork/FieldworkSupervisorReportView';
+import { FieldworkSupervisorReportView } from '@/components/fieldwork/FieldworkSupervisorReportView';
 import {
   AppBadge,
   AppButton,
@@ -18,7 +27,10 @@ import {
   AppEmptyState,
   AppFormModal,
   AppInput,
+  AppListRowIconButton,
   AppSelect,
+  AppStickyActionBar,
+  AppTextarea,
   uiCx,
   uiLayout,
   uiSpacing,
@@ -27,6 +39,10 @@ import {
 import { BUSINESS_LINE_CONSTRUCTION, BUSINESS_LINE_REPAIRS_MAINTENANCE } from '@/lib/businessLine';
 import { createQuoteFromFieldReport } from '@/lib/createQuoteFromFieldReport';
 import { formatDateLocal } from '@/lib/dateUtils';
+import {
+  collectFieldworkImageClassifications,
+  ensureFieldworkPhotosLinked,
+} from '@/lib/fieldworkPhotoLink';
 import {
   normalizeDefinition,
   validateDynamicFormMissing,
@@ -46,6 +62,8 @@ type Props = {
   canRead: boolean;
   canWrite: boolean;
   canReview: boolean;
+  /** Admins may delete non-draft reports; writers may delete drafts. */
+  isAdmin?: boolean;
   flushSaveRef?: MutableRefObject<(() => Promise<void>) | undefined>;
 };
 
@@ -83,6 +101,16 @@ function isFieldworkConflict(err: unknown): boolean {
   return err instanceof ApiError && err.status === 409;
 }
 
+function canDeleteFieldworkRecord(
+  status: string | null | undefined,
+  canWrite: boolean,
+  isAdmin: boolean
+): boolean {
+  const st = (status || '').toLowerCase();
+  if (isAdmin) return true;
+  return canWrite && st === 'draft';
+}
+
 export default function ProjectFieldworkTab({
   projectId,
   businessLine,
@@ -90,6 +118,7 @@ export default function ProjectFieldworkTab({
   canRead,
   canWrite,
   canReview,
+  isAdmin = false,
   flushSaveRef,
 }: Props) {
   const qc = useQueryClient();
@@ -110,6 +139,7 @@ export default function ProjectFieldworkTab({
   const [finalComments, setFinalComments] = useState('');
   const [baseline, setBaseline] = useState<{ payload: string; comments: string; rowVersion: number } | null>(null);
   const [fieldErrors, setFieldErrors] = useState<string[]>([]);
+  const [requiredFieldHighlightKeys, setRequiredFieldHighlightKeys] = useState<string[]>([]);
   const [reviewNote, setReviewNote] = useState('');
   const [showHistory, setShowHistory] = useState(false);
   const [requestChangesOpen, setRequestChangesOpen] = useState(false);
@@ -120,6 +150,8 @@ export default function ProjectFieldworkTab({
     localComments: string;
     serverRowVersion: number | null;
   } | null>(null);
+  /** Record id whose form was last hydrated from the server (avoid wiping unsaved edits on row_version bumps). */
+  const hydratedDetailIdRef = useRef<string | null>(null);
   useEffect(() => {
     setSelectedId(recordFromUrl);
   }, [recordFromUrl]);
@@ -191,34 +223,57 @@ export default function ProjectFieldworkTab({
   );
 
   useEffect(() => {
-    if (!detail) return;
+    if (!detail) {
+      // Only clear when no record is selected — keep id across transient loading flickers.
+      if (!selectedId) hydratedDetailIdRef.current = null;
+      return;
+    }
+    const serverRv = Number(detail.row_version || 1);
     // Preserve in-progress edits during a concurrency conflict; only refresh baseline row_version.
     if (conflictHold && conflictHold.localPayload) {
       setFormPayload(conflictHold.localPayload);
       setFinalComments(conflictHold.localComments);
-      const serverRv =
-        conflictHold.serverRowVersion != null
-          ? conflictHold.serverRowVersion
-          : Number(detail.row_version || 1);
+      const holdRv =
+        conflictHold.serverRowVersion != null ? conflictHold.serverRowVersion : serverRv;
       setBaseline((prev) => ({
         payload: prev?.payload ?? JSON.stringify(conflictHold.localPayload),
         comments: prev?.comments ?? conflictHold.localComments,
-        rowVersion: serverRv,
+        rowVersion: holdRv,
       }));
+      hydratedDetailIdRef.current = detail.id;
       return;
     }
-    const payload = detail.form_payload && typeof detail.form_payload === 'object' ? { ...detail.form_payload } : {};
+
+    const payload =
+      detail.form_payload && typeof detail.form_payload === 'object' ? { ...detail.form_payload } : {};
     const comments = detail.final_comments || '';
+    const sameRecord = hydratedDetailIdRef.current === detail.id;
+
+    // Photo classify / photo delete bump row_version on the server. A detail refetch must NOT
+    // replace unsaved checklist answers with the last saved (often empty) form_payload.
+    if (sameRecord) {
+      setBaseline((prev) => {
+        if (!prev) {
+          return { payload: JSON.stringify(payload), comments, rowVersion: serverRv };
+        }
+        if (prev.rowVersion === serverRv) return prev;
+        return { ...prev, rowVersion: serverRv };
+      });
+      return;
+    }
+
     setFormPayload(payload);
     setFinalComments(comments);
     setBaseline({
       payload: JSON.stringify(payload),
       comments,
-      rowVersion: Number(detail.row_version || 1),
+      rowVersion: serverRv,
     });
     setFieldErrors([]);
+    setRequiredFieldHighlightKeys([]);
     setReviewNote('');
-  }, [detail?.id, detail?.row_version, detail?.updated_at, conflictHold]);
+    hydratedDetailIdRef.current = detail.id;
+  }, [detail, detail?.id, detail?.row_version, detail?.updated_at, conflictHold, selectedId]);
 
   const definition: SafetyFormDefinition = useMemo(
     () => normalizeDefinition(detail?.form_definition_snapshot || { sections: [] }),
@@ -288,6 +343,7 @@ export default function ProjectFieldworkTab({
 
   const discardLocalAndReload = useCallback(async () => {
     setConflictHold(null);
+    hydratedDetailIdRef.current = null; // force next detail effect to hydrate from server
     const res = await refetchDetail();
     const row = res.data;
     if (row) {
@@ -300,6 +356,7 @@ export default function ProjectFieldworkTab({
         comments,
         rowVersion: Number(row.row_version || 1),
       });
+      hydratedDetailIdRef.current = row.id;
     }
     toast.success('Loaded the latest server version');
   }, [refetchDetail]);
@@ -326,6 +383,44 @@ export default function ProjectFieldworkTab({
       toast.error(formatApiErrorDetail((err as ApiError)?.detail) || 'Could not create report');
     },
   });
+
+  const deleteMut = useMutation({
+    mutationFn: (recordId: string) =>
+      api<{ ok: boolean }>(
+        'DELETE',
+        `/projects/${encodeURIComponent(projectId)}/fieldwork-records/${encodeURIComponent(recordId)}`
+      ),
+    onSuccess: (_data, recordId) => {
+      qc.removeQueries({ queryKey: ['fieldworkRecord', projectId, recordId] });
+      void qc.invalidateQueries({ queryKey: ['fieldworkRecords', projectId] });
+      void qc.invalidateQueries({ queryKey: ['projectFiles', projectId] });
+      toast.success('Field report deleted');
+      if (selectedId === recordId) openRecord(null);
+    },
+    onError: (err: unknown) => {
+      toast.error(
+        err instanceof ApiError
+          ? formatApiErrorDetail(err) || err.message
+          : 'Could not delete field report'
+      );
+    },
+  });
+
+  const askDeleteRecord = async (row: { id: string; status?: string | null; kind?: string | null }) => {
+    if (!canDeleteFieldworkRecord(row.status, canWrite, isAdmin)) return;
+    const st = (row.status || '').toLowerCase();
+    const res = await confirm({
+      title: st === 'draft' ? 'Delete draft report?' : 'Delete field report?',
+      message:
+        st === 'draft'
+          ? `Delete this ${kindLabel(row.kind)} draft? This cannot be undone.`
+          : `Delete this ${kindLabel(row.kind)} (${st || 'report'})? Only admins can delete non-draft reports. This cannot be undone.`,
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+    });
+    if (res !== 'confirm') return;
+    deleteMut.mutate(row.id);
+  };
 
   const saveMut = useMutation({
     mutationFn: async () => {
@@ -485,20 +580,107 @@ export default function ProjectFieldworkTab({
     setFinalComments(baseline.comments);
   });
 
+  useEffect(() => {
+    if (requiredFieldHighlightKeys.length === 0) return;
+    const stillMissing = new Set(validateDynamicFormMissing(definition, formPayload).map((m) => m.key));
+    const unclassifiedKeys = new Set(
+      collectFieldworkImageClassifications(formPayload)
+        .filter((g) => g.fileObjectIds.length && !g.classify)
+        .map((g) => g.fieldKey)
+    );
+    setRequiredFieldHighlightKeys((prev) => {
+      const next = prev.filter((k) => stillMissing.has(k) || unclassifiedKeys.has(k));
+      return next.length === prev.length ? prev : next;
+    });
+    setFieldErrors((prev) => {
+      if (!prev.length) return prev;
+      const labels = validateDynamicFormMissing(definition, formPayload).map(
+        (m) => `${m.label || m.key} is required`
+      );
+      const photoErr =
+        unclassifiedKeys.size > 0
+          ? 'Some photos still need catalog phrases. Open Images on those fields, pick phrase(s), then Done.'
+          : null;
+      const next = photoErr ? [...labels, photoErr] : labels;
+      return next.length === prev.length && next.every((x, i) => x === prev[i]) ? prev : next;
+    });
+  }, [definition, formPayload, requiredFieldHighlightKeys]);
+
   const askSubmit = async () => {
     if (!detail) return;
-    const missing = validateDynamicFormMissing(definition, formPayload).map(
-      (m) => `${m.label || m.key} is required`
-    );
-    const errs = [...missing];
-    if (settings.require_min_photos > 0 && Number(detail.photo_count || 0) < settings.require_min_photos) {
-      errs.push(`At least ${settings.require_min_photos} photo(s) are required before submit.`);
+    const missingFields = validateDynamicFormMissing(definition, formPayload);
+    const errs = missingFields.map((m) => `${m.label || m.key} is required`);
+
+    // Link any checklist photos that still need PhotoObservations (photo first / phrase later).
+    const groups = collectFieldworkImageClassifications(formPayload);
+    const unclassified = groups.filter((g) => g.fileObjectIds.length && !g.classify);
+    if (unclassified.length) {
+      errs.push(
+        'Some photos still need catalog phrases. Open Images on those fields, pick phrase(s), then Done.'
+      );
     }
+    const highlightKeys = [
+      ...new Set([
+        ...missingFields.map((m) => m.key),
+        ...unclassified.map((g) => g.fieldKey).filter(Boolean),
+      ]),
+    ];
     setFieldErrors(errs);
+    setRequiredFieldHighlightKeys(highlightKeys);
     if (errs.length) {
-      toast.error('Please complete required fields before submitting');
+      toast.error(
+        highlightKeys.length
+          ? 'Please complete the highlighted required fields before submitting'
+          : 'Please complete required fields before submitting'
+      );
       return;
     }
+    setFieldErrors([]);
+    setRequiredFieldHighlightKeys([]);
+
+    let rowVersion = Number(baseline?.rowVersion || detail.row_version || 1);
+    try {
+      for (const group of groups) {
+        if (!group.classify || !group.fileObjectIds.length) continue;
+        const result = await ensureFieldworkPhotosLinked({
+          projectId,
+          recordId: detail.id,
+          fileObjectIds: group.fileObjectIds,
+          classify: group.classify,
+          expectedRowVersion: rowVersion,
+        });
+        if (typeof result.recordRowVersion === 'number') rowVersion = result.recordRowVersion;
+      }
+      const refreshed = await refetchDetail();
+      if (refreshed.data) {
+        qc.setQueryData(['fieldworkRecord', projectId, refreshed.data.id], refreshed.data);
+        void qc.invalidateQueries({ queryKey: ['fieldworkRecords', projectId] });
+        void qc.invalidateQueries({ queryKey: ['projectFiles', projectId] });
+        if (baseline) {
+          setBaseline((prev) =>
+            prev
+              ? { ...prev, rowVersion: Number(refreshed.data!.row_version || prev.rowVersion) }
+              : prev
+          );
+        }
+      }
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError
+          ? formatApiErrorDetail(err) || err.message
+          : 'Could not classify photos before submit'
+      );
+      return;
+    }
+
+    const photoCount = Number(
+      (await refetchDetail()).data?.photo_count ?? detail.photo_count ?? 0
+    );
+    if (settings.require_min_photos > 0 && photoCount < settings.require_min_photos) {
+      toast.error(`At least ${settings.require_min_photos} classified photo(s) are required before submit.`);
+      return;
+    }
+
     const res = await confirm({
       title: 'Submit for review?',
       message: 'The report will be locked for editing until a reviewer responds.',
@@ -596,12 +778,13 @@ export default function ProjectFieldworkTab({
                 {list.map((row) => {
                   const owner = row.created_by_name || row.updated_by_name || '—';
                   const photos = Number(row.photo_count || 0);
+                  const showDelete = canDeleteFieldworkRecord(row.status, canWrite, isAdmin);
                   return (
-                    <li key={row.id}>
+                    <li key={row.id} className="flex items-stretch">
                       <button
                         type="button"
                         onClick={() => openRecord(row.id)}
-                        className="w-full text-left px-4 py-3 hover:bg-gray-50 flex items-start justify-between gap-3"
+                        className="min-w-0 flex-1 text-left px-4 py-3 hover:bg-gray-50 flex items-start justify-between gap-3"
                       >
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
@@ -619,6 +802,21 @@ export default function ProjectFieldworkTab({
                         </div>
                         <ClipboardList className="h-4 w-4 text-gray-400 shrink-0 mt-1" aria-hidden />
                       </button>
+                      {showDelete ? (
+                        <div className="flex items-center pr-3">
+                          <AppListRowIconButton
+                            preset="delete"
+                            label={`Delete ${kindLabel(row.kind)}`}
+                            icon={<Trash2 className="h-4 w-4" />}
+                            disabled={deleteMut.isPending}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              void askDeleteRecord(row);
+                            }}
+                          />
+                        </div>
+                      ) : null}
                     </li>
                   );
                 })}
@@ -716,141 +914,25 @@ export default function ProjectFieldworkTab({
 
   return (
     <div className={uiCx(uiSpacing.pageStack)}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <button
-            type="button"
-            onClick={() => openRecord(null)}
-            className="text-sm text-brand-red hover:underline mb-1"
-          >
-            ← Field reports
-          </button>
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className={uiTypography.sectionTitle}>{kindLabel(detail.kind)}</h2>
-            {statusBadge(detail.status, detail.pending_review)}
-            {detail.version > 1 ? (
-              <span className={uiCx(uiTypography.helper)}>v{detail.version}</span>
-            ) : null}
-          </div>
-          <p className={uiCx(uiTypography.helper, 'mt-1')}>
-            Created {fmtWhen(detail.created_at)} by {detail.created_by_name || '—'} · Updated{' '}
-            {fmtWhen(detail.updated_at)}
-          </p>
-        </div>
-        <div className={uiCx(uiLayout.actionsRow, 'flex-wrap')}>
-          {!editable ? (
-            <Link
-              to={`${reviewBasePath}/${projectId}/${detail.id}`}
-              className="inline-flex items-center rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-            >
-              Open review report
-            </Link>
-          ) : null}
-          <AppButton
-            type="button"
-            variant="secondary"
-            size="sm"
-            loading={pdfBusy}
-            onClick={() => void downloadPdf()}
-          >
-            Download PDF
-          </AppButton>
-          {showCreateQuote ? (
-            <AppButton
-              type="button"
-              size="sm"
-              loading={quoteBusy}
-              onClick={async () => {
-                try {
-                  setQuoteBusy(true);
-                  const { path } = await createQuoteFromFieldReport({
-                    project: {
-                      id: projectId,
-                      business_line: businessLine || BUSINESS_LINE_REPAIRS_MAINTENANCE,
-                      is_bidding: isOpportunity,
-                    },
-                    recordId: detail.id,
-                    recordKind: detail.kind,
-                  });
-                  toast.success('Quote document created — pick photos to insert');
-                  navigate(path);
-                } catch (err) {
-                  toast.error(
-                    err instanceof ApiError
-                      ? formatApiErrorDetail(err) || err.message
-                      : err instanceof Error
-                        ? err.message
-                        : 'Could not create quote'
-                  );
-                } finally {
-                  setQuoteBusy(false);
-                }
-              }}
-            >
-              Create quote
-            </AppButton>
-          ) : null}
-          <AppButton type="button" variant="secondary" size="sm" onClick={() => setShowHistory((v) => !v)}>
-            {showHistory ? 'Hide history' : 'Status history'}
-          </AppButton>
-          {editable ? (
-            <>
-              <AppButton
-                type="button"
-                variant="secondary"
-                size="sm"
-                loading={saveMut.isPending}
-                disabled={!dirty || saveMut.isPending}
-                onClick={() => saveMut.mutate()}
-              >
-                Save draft
-              </AppButton>
-              <AppButton
-                type="button"
-                size="sm"
-                loading={submitMut.isPending}
-                disabled={submitMut.isPending}
-                onClick={() => void askSubmit()}
-              >
-                Submit for review
-              </AppButton>
-            </>
-          ) : null}
-          {showReviewActions ? (
-            <>
-              <AppButton
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => {
-                  setReviewNote('');
-                  setRequestChangesOpen(true);
-                }}
-              >
-                Request changes
-              </AppButton>
-              <AppButton
-                type="button"
-                size="sm"
-                loading={approveMut.isPending}
-                onClick={() => approveMut.mutate()}
-              >
-                Approve
-              </AppButton>
-            </>
-          ) : null}
-          {showRevision ? (
-            <AppButton
-              type="button"
-              variant="secondary"
-              size="sm"
-              loading={revisionMut.isPending}
-              onClick={() => revisionMut.mutate()}
-            >
-              Create revision
-            </AppButton>
+      <div className="min-w-0">
+        <button
+          type="button"
+          onClick={() => openRecord(null)}
+          className="mb-1 text-sm text-brand-red hover:underline"
+        >
+          ← Field reports
+        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className={uiTypography.sectionTitle}>{kindLabel(detail.kind)}</h2>
+          {statusBadge(detail.status, detail.pending_review)}
+          {detail.version > 1 ? (
+            <span className={uiCx(uiTypography.helper)}>v{detail.version}</span>
           ) : null}
         </div>
+        <p className={uiCx(uiTypography.helper, 'mt-1')}>
+          Created {fmtWhen(detail.created_at)} by {detail.created_by_name || '—'} · Updated{' '}
+          {fmtWhen(detail.updated_at)}
+        </p>
       </div>
 
       {conflictHold ? (
@@ -886,11 +968,14 @@ export default function ProjectFieldworkTab({
         </AppCard>
       ) : null}
 
-      {status === 'changes_requested' && detail.review_note ? (
-        <AppCard bodyClassName={uiSpacing.cardPadding}>
-          <p className="text-sm font-semibold text-amber-900">Reviewer requested changes</p>
-          <p className={uiCx(uiTypography.body, 'mt-1 whitespace-pre-wrap')}>{detail.review_note}</p>
-        </AppCard>
+      {status === 'changes_requested' ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+          <p className="text-sm font-semibold text-red-900">Returned for changes</p>
+          <p className={uiCx(uiTypography.body, 'mt-1 whitespace-pre-wrap text-red-950')}>
+            {(detail.review_note || '').trim() ||
+              'Your supervisor asked you to revise this report. Update it below and submit again.'}
+          </p>
+        </div>
       ) : null}
 
       {fieldErrors.length > 0 ? (
@@ -939,22 +1024,85 @@ export default function ProjectFieldworkTab({
             canWrite={editable}
             readOnly={readOnly}
             projectId={projectId}
+            highlightRequiredFieldKeys={requiredFieldHighlightKeys}
             enableFieldworkPhraseInsert={editable}
+            fieldworkRecordId={detail.id}
+            fieldworkRowVersion={Number(baseline?.rowVersion || detail.row_version || 1)}
+            onFieldworkPhotosSynced={async (info) => {
+              // Only bump concurrency token / photo count — never reload form_payload over unsaved edits.
+              const nextRv =
+                typeof info.recordRowVersion === 'number'
+                  ? info.recordRowVersion
+                  : Number(baseline?.rowVersion || detail.row_version || 1);
+              setBaseline((prev) => (prev ? { ...prev, rowVersion: nextRv } : prev));
+              qc.setQueryData(
+                ['fieldworkRecord', projectId, detail.id],
+                (old: FieldworkRecord | undefined) =>
+                  old
+                    ? {
+                        ...old,
+                        row_version: nextRv,
+                        photo_count: Math.max(Number(old.photo_count || 0), Number(old.photo_count || 0)),
+                      }
+                    : old
+              );
+              void qc.invalidateQueries({ queryKey: ['fieldworkRecords', projectId] });
+              void qc.invalidateQueries({ queryKey: ['projectFiles', projectId] });
+            }}
+            onFieldworkPhotoRemoved={async (fileObjectId) => {
+              if (!detail?.id) return;
+              try {
+                const photos = await api<
+                  { id: string; file_object_id?: string | null }[]
+                >(
+                  'GET',
+                  `/projects/${encodeURIComponent(projectId)}/fieldwork-records/${encodeURIComponent(detail.id)}/photos`
+                );
+                const match = (photos || []).find(
+                  (p) => String(p.file_object_id || '') === String(fileObjectId)
+                );
+                if (!match?.id) return;
+                await api(
+                  'DELETE',
+                  `/projects/${encodeURIComponent(projectId)}/fieldwork-records/${encodeURIComponent(detail.id)}/photos/${encodeURIComponent(match.id)}`
+                );
+                // Keep local checklist; bump version via a light list invalidate only.
+                setBaseline((prev) =>
+                  prev ? { ...prev, rowVersion: prev.rowVersion + 1 } : prev
+                );
+                qc.setQueryData(
+                  ['fieldworkRecord', projectId, detail.id],
+                  (old: FieldworkRecord | undefined) =>
+                    old
+                      ? {
+                          ...old,
+                          row_version: Number(old.row_version || 1) + 1,
+                          photo_count: Math.max(0, Number(old.photo_count || 0) - 1),
+                        }
+                      : old
+                );
+                void qc.invalidateQueries({ queryKey: ['fieldworkRecords', projectId] });
+                void qc.invalidateQueries({ queryKey: ['projectFiles', projectId] });
+              } catch {
+                // Thumbnail already removed from form; toast handled by modal on throw
+                throw new Error('unlink failed');
+              }
+            }}
           />
         </AppCard>
       ) : (
         <FieldworkSupervisorReportView
           record={detail}
-          supervisorComments={supervisorComments}
-          canEditSupervisorComments={false}
+          supervisorComments={{}}
+          showSupervisorNotes={false}
         />
       )}
 
       <AppFormModal
         open={requestChangesOpen}
         onClose={() => setRequestChangesOpen(false)}
-        title="Request changes"
-        description="Explain what the technician must correct. The report returns to editable status."
+        title="Deny / request changes"
+        description="Tell the technician why this report is being returned. They will see this message at the top when they revise it."
         footer={
           <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
             <AppButton type="button" variant="secondary" size="sm" onClick={() => setRequestChangesOpen(false)}>
@@ -967,19 +1115,165 @@ export default function ProjectFieldworkTab({
               loading={requestChangesMut.isPending}
               onClick={() => requestChangesMut.mutate()}
             >
-              Send request
+              Return for changes
             </AppButton>
           </div>
         }
       >
-        <AppInput
+        <AppTextarea
           id="fw-review-note"
-          label="Review note"
+          label="Why is this being returned?"
           value={reviewNote}
           onChange={(e) => setReviewNote(e.target.value)}
-          placeholder="Required comment for the technician"
+          placeholder="Required — explain what must be corrected"
+          rows={4}
         />
       </AppFormModal>
+
+      <AppStickyActionBar status={editable ? (dirty ? 'dirty' : 'saved') : 'idle'}>
+        {canDeleteFieldworkRecord(detail.status, canWrite, isAdmin) ? (
+          <AppButton
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="text-red-700 hover:bg-red-50"
+            loading={deleteMut.isPending}
+            leftIcon={<Trash2 className="h-3.5 w-3.5" aria-hidden />}
+            onClick={() => void askDeleteRecord(detail)}
+          >
+            Delete
+          </AppButton>
+        ) : null}
+        <AppButton
+          type="button"
+          variant="secondary"
+          size="sm"
+          leftIcon={<History className="h-3.5 w-3.5" aria-hidden />}
+          onClick={() => setShowHistory((v) => !v)}
+        >
+          {showHistory ? 'Hide history' : 'History'}
+        </AppButton>
+        <AppButton
+          type="button"
+          variant="secondary"
+          size="sm"
+          loading={pdfBusy}
+          leftIcon={<FileDown className="h-3.5 w-3.5" aria-hidden />}
+          onClick={() => void downloadPdf()}
+        >
+          PDF
+        </AppButton>
+        {!editable ? (
+          <AppButton
+            type="button"
+            variant="secondary"
+            size="sm"
+            leftIcon={<ExternalLink className="h-3.5 w-3.5" aria-hidden />}
+            onClick={() => navigate(`${reviewBasePath}/${projectId}/${detail.id}`)}
+          >
+            Review report
+          </AppButton>
+        ) : null}
+        {showCreateQuote ? (
+          <AppButton
+            type="button"
+            variant="secondary"
+            size="sm"
+            loading={quoteBusy}
+            leftIcon={<FilePlus className="h-3.5 w-3.5" aria-hidden />}
+            onClick={async () => {
+              try {
+                setQuoteBusy(true);
+                const { path } = await createQuoteFromFieldReport({
+                  project: {
+                    id: projectId,
+                    business_line: businessLine || BUSINESS_LINE_REPAIRS_MAINTENANCE,
+                    is_bidding: isOpportunity,
+                  },
+                  recordId: detail.id,
+                  recordKind: detail.kind,
+                });
+                toast.success('Quote document created — pick photos to insert');
+                navigate(path);
+              } catch (err) {
+                toast.error(
+                  err instanceof ApiError
+                    ? formatApiErrorDetail(err) || err.message
+                    : err instanceof Error
+                      ? err.message
+                      : 'Could not create quote'
+                );
+              } finally {
+                setQuoteBusy(false);
+              }
+            }}
+          >
+            Create quote
+          </AppButton>
+        ) : null}
+        {showRevision ? (
+          <AppButton
+            type="button"
+            variant="secondary"
+            size="sm"
+            loading={revisionMut.isPending}
+            leftIcon={<Copy className="h-3.5 w-3.5" aria-hidden />}
+            onClick={() => revisionMut.mutate()}
+          >
+            Create revision
+          </AppButton>
+        ) : null}
+        {showReviewActions ? (
+          <>
+            <AppButton
+              type="button"
+              variant="secondary"
+              size="sm"
+              leftIcon={<MessageSquareWarning className="h-3.5 w-3.5" aria-hidden />}
+              onClick={() => {
+                setReviewNote('');
+                setRequestChangesOpen(true);
+              }}
+            >
+              Deny / request changes
+            </AppButton>
+            <AppButton
+              type="button"
+              size="sm"
+              loading={approveMut.isPending}
+              leftIcon={<CheckCircle2 className="h-3.5 w-3.5" aria-hidden />}
+              onClick={() => approveMut.mutate()}
+            >
+              Approve
+            </AppButton>
+          </>
+        ) : null}
+        {editable ? (
+          <>
+            <AppButton
+              type="button"
+              variant="secondary"
+              size="sm"
+              loading={saveMut.isPending}
+              disabled={!dirty || saveMut.isPending}
+              leftIcon={<Save className="h-3.5 w-3.5" aria-hidden />}
+              onClick={() => saveMut.mutate()}
+            >
+              Save draft
+            </AppButton>
+            <AppButton
+              type="button"
+              size="sm"
+              loading={submitMut.isPending}
+              disabled={submitMut.isPending}
+              leftIcon={<Send className="h-3.5 w-3.5" aria-hidden />}
+              onClick={() => void askSubmit()}
+            >
+              Submit for review
+            </AppButton>
+          </>
+        ) : null}
+      </AppStickyActionBar>
     </div>
   );
 }

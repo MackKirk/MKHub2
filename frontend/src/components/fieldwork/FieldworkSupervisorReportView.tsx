@@ -1,8 +1,11 @@
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { withFileAccessToken } from '@/lib/api';
 import {
+  AppBadge,
   AppCard,
+  uiBorders,
   uiCx,
+  uiRadius,
   uiSpacing,
   uiTypography,
 } from '@/components/ui';
@@ -16,6 +19,34 @@ import type { FieldworkPhotoObservation, FieldworkRecord } from '@/types/fieldwo
 
 const SIDE_COMMENTS_KEY = '_fieldComments';
 const SUPERVISOR_COMMENTS_KEY = '_supervisorComments';
+
+/** Match DynamicSafetyForm status tiles so review reads like the filled form. */
+const STATUS_TILE =
+  'inline-flex h-9 min-w-[2.25rem] items-center justify-center rounded-xl border-2 px-2 text-sm font-bold tabular-nums';
+
+const PFNA = [
+  { v: 'pass' as const, label: 'P', title: 'Pass', cls: 'bg-green-100 text-green-800 border-green-400' },
+  { v: 'fail' as const, label: 'F', title: 'Fail', cls: 'bg-red-100 text-red-800 border-red-400' },
+  { v: 'na' as const, label: 'NA', title: 'N/A', cls: 'bg-gray-100 text-gray-700 border-gray-300' },
+];
+
+const YNA = [
+  { v: 'yes' as const, label: 'Y', title: 'Yes', cls: 'bg-green-100 text-green-800 border-green-400' },
+  { v: 'no' as const, label: 'N', title: 'No', cls: 'bg-red-100 text-red-800 border-red-400' },
+  { v: 'na' as const, label: 'NA', title: 'N/A', cls: 'bg-gray-100 text-gray-700 border-gray-300' },
+];
+
+const SCALE_1_5 = (
+  [
+    { v: '1', cls: 'bg-rose-50 text-rose-900 border-rose-400' },
+    { v: '2', cls: 'bg-orange-50 text-orange-900 border-orange-400' },
+    { v: '3', cls: 'bg-amber-50 text-amber-900 border-amber-400' },
+    { v: '4', cls: 'bg-lime-50 text-lime-900 border-lime-400' },
+    { v: '5', cls: 'bg-green-100 text-green-900 border-green-500' },
+  ] as const
+).map((x) => ({ ...x, label: x.v, title: x.v }));
+
+const IDLE_TILE = 'bg-white text-gray-300 border-gray-200';
 
 type SideNote = { text: string; imageIds: string[] };
 
@@ -58,7 +89,7 @@ function getSupervisorText(fieldKey: string, payload: Record<string, unknown>): 
   return '';
 }
 
-function formatAnswer(field: SafetyFormField, value: unknown): string {
+function formatPlainAnswer(field: SafetyFormField, value: unknown): string {
   if (value === undefined || value === null || value === '') return '—';
   switch (field.type) {
     case 'text_info':
@@ -116,18 +147,111 @@ function formatAnswer(field: SafetyFormField, value: unknown): string {
   }
 }
 
+function StatusTiles({
+  options,
+  selected,
+}: {
+  options: { v: string; label: string; title: string; cls: string }[];
+  selected: string;
+}) {
+  return (
+    <div className="flex shrink-0 flex-wrap items-center gap-1.5" role="group">
+      {options.map((opt) => (
+        <span
+          key={opt.v}
+          title={opt.title}
+          className={uiCx(STATUS_TILE, selected === opt.v ? opt.cls : IDLE_TILE)}
+        >
+          {opt.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function AnswerDisplay({ field, value }: { field: SafetyFormField; value: unknown }): ReactNode {
+  if (field.type === 'pass_fail_na') {
+    const st = value === 'pass' || value === 'fail' || value === 'na' ? value : '';
+    return <StatusTiles options={PFNA} selected={st} />;
+  }
+  if (field.type === 'yes_no_na') {
+    const o = value && typeof value === 'object' && !Array.isArray(value) ? (value as { status?: string }) : {};
+    const st = o.status === 'yes' || o.status === 'no' || o.status === 'na' ? o.status : '';
+    return <StatusTiles options={YNA} selected={st} />;
+  }
+  if (field.type === 'scale_1_5') {
+    const st =
+      value === '1' || value === '2' || value === '3' || value === '4' || value === '5' ? String(value) : '';
+    return <StatusTiles options={SCALE_1_5} selected={st} />;
+  }
+  if (field.type === 'pass_fail_total') {
+    const o =
+      value && typeof value === 'object' && !Array.isArray(value)
+        ? (value as { pass?: number; fail?: number; na?: number })
+        : {};
+    return (
+      <div className="flex shrink-0 flex-wrap items-center gap-1.5" aria-label="Pass, Fail, and NA counts">
+        {PFNA.map((opt) => {
+          const n = opt.v === 'pass' ? o.pass ?? 0 : opt.v === 'fail' ? o.fail ?? 0 : o.na ?? 0;
+          return (
+            <span key={opt.v} title={`${opt.title}: ${n}`} className={uiCx(STATUS_TILE, opt.cls)}>
+              {n}
+            </span>
+          );
+        })}
+      </div>
+    );
+  }
+  if (field.type === 'checkbox') {
+    return (
+      <AppBadge variant={value === true ? 'success' : 'neutral'}>
+        {value === true ? 'Yes' : 'No'}
+      </AppBadge>
+    );
+  }
+
+  const plain = formatPlainAnswer(field, value);
+  if (!plain || plain === '—') {
+    return <span className={uiTypography.helper}>—</span>;
+  }
+  return <AppBadge variant="neutral">{plain}</AppBadge>;
+}
+
+function isInlineAnswerType(type: SafetyFormField['type']): boolean {
+  return (
+    type === 'pass_fail_na' ||
+    type === 'yes_no_na' ||
+    type === 'scale_1_5' ||
+    type === 'pass_fail_total' ||
+    type === 'checkbox' ||
+    type === 'dropdown_single' ||
+    type === 'dropdown_multi' ||
+    type === 'number' ||
+    type === 'date' ||
+    type === 'time' ||
+    type === 'user_single' ||
+    type === 'user_multi' ||
+    type === 'equipment_single' ||
+    type === 'equipment_multi' ||
+    type === 'image_view' ||
+    type === 'pdf_insert' ||
+    type === 'pdf_view' ||
+    type === 'gps'
+  );
+}
+
 function Thumb({ fileId, alt }: { fileId: string; alt: string }) {
   return (
     <a
       href={withFileAccessToken(`/files/${encodeURIComponent(fileId)}`)}
       target="_blank"
       rel="noreferrer"
-      className="block shrink-0 overflow-hidden rounded-lg border border-gray-200 bg-gray-50"
+      className={uiCx('block shrink-0 overflow-hidden border bg-gray-50', uiBorders.subtle, uiRadius.control)}
     >
       <img
         src={withFileAccessToken(`/files/${encodeURIComponent(fileId)}/thumbnail?w=480`)}
         alt={alt}
-        className="h-28 w-36 object-cover"
+        className="h-24 w-32 object-cover"
         loading="lazy"
       />
     </a>
@@ -139,6 +263,11 @@ type Props = {
   supervisorComments: Record<string, string>;
   onSupervisorCommentChange?: (fieldKey: string, text: string) => void;
   canEditSupervisorComments?: boolean;
+  /**
+   * Per-item supervisor notes are reviewer-only.
+   * Technicians never see them — denial feedback uses `review_note` at the top of the report.
+   */
+  showSupervisorNotes?: boolean;
 };
 
 export function FieldworkSupervisorReportView({
@@ -146,6 +275,7 @@ export function FieldworkSupervisorReportView({
   supervisorComments,
   onSupervisorCommentChange,
   canEditSupervisorComments = false,
+  showSupervisorNotes = false,
 }: Props) {
   const definition = useMemo(
     () => normalizeDefinition((record.form_definition_snapshot || { sections: [] }) as SafetyFormDefinition),
@@ -185,7 +315,7 @@ export function FieldworkSupervisorReportView({
     return (
       <figure
         key={p.id}
-        className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm"
+        className={uiCx('overflow-hidden border bg-white', uiBorders.subtle, uiRadius.card)}
       >
         <a
           href={withFileAccessToken(`/files/${encodeURIComponent(p.file_object_id)}`)}
@@ -201,10 +331,10 @@ export function FieldworkSupervisorReportView({
           />
         </a>
         <figcaption className="space-y-1 p-3">
-          <p className="text-sm font-medium text-gray-900 whitespace-pre-wrap">
+          <p className={uiCx(uiTypography.body, 'font-medium text-gray-900 whitespace-pre-wrap')}>
             {caption || 'No description'}
           </p>
-          {notes ? <p className="text-xs text-gray-600 whitespace-pre-wrap">{notes}</p> : null}
+          {notes ? <p className={uiCx(uiTypography.helper, 'whitespace-pre-wrap')}>{notes}</p> : null}
         </figcaption>
       </figure>
     );
@@ -213,35 +343,41 @@ export function FieldworkSupervisorReportView({
   return (
     <div className={uiCx(uiSpacing.pageStack)}>
       {sections.map((sec) => (
-        <section key={sec.id} className="space-y-3">
-          <h3 className={uiTypography.sectionTitle}>{sec.title || 'Section'}</h3>
-          <div className="space-y-3">
-            {sec.fields.map((field) => {
-              const answer = formatAnswer(field, payload[field.key]);
+        <AppCard key={sec.id} title={sec.title || 'Section'} bodyClassName="!p-0">
+          <ul>
+            {sec.fields.map((field, fieldIndex) => {
               const tech = getTechNote(field, payload);
               const supervisorValue =
                 supervisorComments[field.key] ?? getSupervisorText(field.key, payload);
               const hasTech = !!tech.text.trim() || tech.imageIds.length > 0;
+              const plain = formatPlainAnswer(field, payload[field.key]);
+              const inline = isInlineAnswerType(field.type);
+
               return (
-                <AppCard key={field.id} bodyClassName="!p-4 space-y-3">
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                        Item
-                      </p>
-                      <h4 className="text-base font-semibold text-gray-900">{field.label || field.key}</h4>
-                    </div>
-                    {answer && field.type !== 'pass_fail_total' ? (
-                      <span className="inline-flex max-w-full rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white">
-                        {answer}
-                      </span>
-                    ) : answer ? (
-                      <span className="text-sm font-medium text-gray-700">{answer}</span>
-                    ) : null}
-                  </div>
+                <li
+                  key={field.id}
+                  className={uiCx(
+                    uiSpacing.cardPadding,
+                    'space-y-2',
+                    fieldIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50/80',
+                  )}
+                >
+                  <p className="text-sm font-semibold text-gray-600">{field.label || field.key}</p>
+                  {inline ? (
+                    <AnswerDisplay field={field} value={payload[field.key]} />
+                  ) : (
+                    <p className={uiCx(uiTypography.body, 'whitespace-pre-wrap text-gray-900')}>
+                      {plain === '—' ? <span className={uiTypography.helper}>—</span> : plain}
+                    </p>
+                  )}
 
                   {hasTech ? (
-                    <div className="rounded-lg border border-blue-100 bg-blue-50/60 p-3">
+                    <div
+                      className={uiCx(
+                        'rounded-lg border border-blue-100 bg-blue-50/70 px-3 py-2.5',
+                        uiRadius.control
+                      )}
+                    >
                       <p className="text-xs font-semibold uppercase tracking-wide text-blue-800">
                         Technician note
                       </p>
@@ -258,36 +394,39 @@ export function FieldworkSupervisorReportView({
                     </div>
                   ) : null}
 
-                  <div className="rounded-lg border border-amber-100 bg-amber-50/50 p-3">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-amber-900">
-                      Supervisor note
-                    </p>
-                    {canEditSupervisorComments && onSupervisorCommentChange ? (
-                      <textarea
-                        className="mt-2 w-full min-h-[72px] rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-200"
-                        placeholder="Add a note about this item…"
-                        value={supervisorValue}
-                        onChange={(e) => onSupervisorCommentChange(field.key, e.target.value)}
-                      />
-                    ) : supervisorValue.trim() ? (
-                      <p className="mt-1 text-sm text-amber-950 whitespace-pre-wrap">{supervisorValue}</p>
-                    ) : (
-                      <p className="mt-1 text-sm text-amber-800/70">No supervisor note.</p>
-                    )}
-                  </div>
-                </AppCard>
+                  {showSupervisorNotes ? (
+                    <div className="rounded-lg border border-amber-100 bg-amber-50/50 px-3 py-2.5">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-amber-900">
+                        Supervisor note
+                      </p>
+                      {canEditSupervisorComments && onSupervisorCommentChange ? (
+                        <textarea
+                          className="mt-2 w-full min-h-[72px] rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-200"
+                          placeholder="Add a note about this item…"
+                          value={supervisorValue}
+                          onChange={(e) => onSupervisorCommentChange(field.key, e.target.value)}
+                        />
+                      ) : supervisorValue.trim() ? (
+                        <p className="mt-1 text-sm text-amber-950 whitespace-pre-wrap">{supervisorValue}</p>
+                      ) : (
+                        <p className="mt-1 text-sm text-amber-800/70">No supervisor note.</p>
+                      )}
+                    </div>
+                  ) : null}
+                </li>
               );
             })}
-          </div>
-        </section>
+          </ul>
+        </AppCard>
       ))}
 
       {photos.length > 0 ? (
-        <section className="space-y-4">
-          <h3 className={uiTypography.sectionTitle}>Photos with descriptions</h3>
+        <AppCard title="Photos with descriptions" bodyClassName="space-y-4">
           {photosByEntry.obs.length ? (
             <div className="space-y-2">
-              <p className="text-sm font-semibold text-gray-700">Observed conditions</p>
+              <p className={uiCx(uiTypography.helper, 'font-semibold text-gray-700')}>
+                Observed conditions
+              </p>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {photosByEntry.obs.map(renderPhotoCard)}
               </div>
@@ -295,7 +434,7 @@ export function FieldworkSupervisorReportView({
           ) : null}
           {photosByEntry.work.length ? (
             <div className="space-y-2">
-              <p className="text-sm font-semibold text-gray-700">Work performed</p>
+              <p className={uiCx(uiTypography.helper, 'font-semibold text-gray-700')}>Work performed</p>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {photosByEntry.work.map(renderPhotoCard)}
               </div>
@@ -306,13 +445,14 @@ export function FieldworkSupervisorReportView({
               {photosByEntry.other.map(renderPhotoCard)}
             </div>
           ) : null}
-        </section>
+        </AppCard>
       ) : null}
 
       {(record.final_comments || '').trim() ? (
-        <AppCard bodyClassName="!p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Additional comments</p>
-          <p className="mt-2 text-sm text-gray-900 whitespace-pre-wrap">{record.final_comments}</p>
+        <AppCard title="Additional comments">
+          <p className={uiCx(uiTypography.body, 'whitespace-pre-wrap text-gray-900')}>
+            {record.final_comments}
+          </p>
         </AppCard>
       ) : null}
     </div>

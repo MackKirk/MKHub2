@@ -36,6 +36,20 @@ from ..auth.security import get_current_user, require_permissions, _has_permissi
 
 router = APIRouter(prefix="/document-creator", tags=["document-creator"])
 
+
+def _document_type_to_dict(t: DocumentType) -> dict:
+    return {
+        "id": str(t.id),
+        "name": t.name,
+        "description": t.description,
+        "category": getattr(t, "category", None),
+        "page_templates": t.page_templates or [],
+        "signer_roles": getattr(t, "signer_roles", None) or [],
+        "valid_for_field_report": bool(getattr(t, "valid_for_field_report", False)),
+        "created_at": t.created_at.isoformat() if t.created_at else None,
+    }
+
+
 _HR_USER_DOC_READ_PERMS = (
     "document_hub:builder:read",
     "business:projects:documents:read",
@@ -844,6 +858,10 @@ def list_document_types(
         False,
         description="Kept for clients; category allow-list always applies for non-admins.",
     ),
+    for_field_report: bool = Query(
+        False,
+        description="When true, only return types marked valid_for_field_report.",
+    ),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     _=Depends(require_permissions(
@@ -861,21 +879,13 @@ def list_document_types(
     """List document type presets (e.g. cover + back cover + content page)."""
     from ..services.document_template_categories import filter_document_types_for_user
 
-    types = db.query(DocumentType).order_by(DocumentType.category or "", DocumentType.name).all()
+    q = db.query(DocumentType)
+    if for_field_report:
+        q = q.filter(DocumentType.valid_for_field_report.is_(True))
+    types = q.order_by(DocumentType.category or "", DocumentType.name).all()
     # Always filter by category allow-list (admin bypass inside helper).
     types = filter_document_types_for_user(user, db, types, for_picker=for_picker)
-    return [
-        {
-            "id": str(t.id),
-            "name": t.name,
-            "description": t.description,
-            "category": getattr(t, "category", None),
-            "page_templates": t.page_templates or [],
-            "signer_roles": getattr(t, "signer_roles", None) or [],
-            "created_at": t.created_at.isoformat() if t.created_at else None,
-        }
-        for t in types
-    ]
+    return [_document_type_to_dict(t) for t in types]
 
 
 class DocumentTypeCreate(BaseModel):
@@ -884,6 +894,7 @@ class DocumentTypeCreate(BaseModel):
     category: Optional[str] = None
     page_templates: Optional[List[dict]] = None  # [{ "template_id": "uuid", "label": "Cover", "margins?", "elements?" }]
     signer_roles: Optional[List[dict]] = None
+    valid_for_field_report: Optional[bool] = None
 
 
 class DocumentTypeUpdate(BaseModel):
@@ -892,6 +903,7 @@ class DocumentTypeUpdate(BaseModel):
     category: Optional[str] = None
     page_templates: Optional[List[dict]] = None
     signer_roles: Optional[List[dict]] = None
+    valid_for_field_report: Optional[bool] = None
 
 
 @router.post("/document-types", response_model=dict)
@@ -925,19 +937,12 @@ def create_document_type(
         category=validated_category,
         page_templates=body.page_templates if body.page_templates is not None else [],
         signer_roles=normalize_signer_roles_list(body.signer_roles) if body.signer_roles is not None else None,
+        valid_for_field_report=bool(body.valid_for_field_report) if body.valid_for_field_report is not None else False,
     )
     db.add(doc_type)
     db.commit()
     db.refresh(doc_type)
-    return {
-        "id": str(doc_type.id),
-        "name": doc_type.name,
-        "description": doc_type.description,
-        "category": doc_type.category,
-        "page_templates": doc_type.page_templates or [],
-        "signer_roles": getattr(doc_type, "signer_roles", None) or [],
-        "created_at": doc_type.created_at.isoformat() if doc_type.created_at else None,
-    }
+    return _document_type_to_dict(doc_type)
 
 
 @router.patch("/document-types/{document_type_id}", response_model=dict)
@@ -990,17 +995,11 @@ def update_document_type(
         from ..services.document_signer_roles import normalize_signer_roles_list
 
         doc_type.signer_roles = normalize_signer_roles_list(body.signer_roles)
+    if body.valid_for_field_report is not None:
+        doc_type.valid_for_field_report = bool(body.valid_for_field_report)
     db.commit()
     db.refresh(doc_type)
-    return {
-        "id": str(doc_type.id),
-        "name": doc_type.name,
-        "description": doc_type.description,
-        "category": doc_type.category,
-        "page_templates": doc_type.page_templates or [],
-        "signer_roles": getattr(doc_type, "signer_roles", None) or [],
-        "created_at": doc_type.created_at.isoformat() if doc_type.created_at else None,
-    }
+    return _document_type_to_dict(doc_type)
 
 
 @router.delete("/document-types/{document_type_id}")
@@ -1064,19 +1063,12 @@ def duplicate_document_type(
         category=doc_type.category,
         page_templates=page_templates or [],
         signer_roles=copy.deepcopy(getattr(doc_type, "signer_roles", None)) if getattr(doc_type, "signer_roles", None) else None,
+        valid_for_field_report=bool(getattr(doc_type, "valid_for_field_report", False)),
     )
     db.add(new_type)
     db.commit()
     db.refresh(new_type)
-    return {
-        "id": str(new_type.id),
-        "name": new_type.name,
-        "description": new_type.description,
-        "category": new_type.category,
-        "page_templates": new_type.page_templates or [],
-        "signer_roles": getattr(new_type, "signer_roles", None) or [],
-        "created_at": new_type.created_at.isoformat() if new_type.created_at else None,
-    }
+    return _document_type_to_dict(new_type)
 
 
 @router.get("/document-types/{document_type_id}/expand-pages", response_model=List[dict])

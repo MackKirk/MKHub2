@@ -27,7 +27,101 @@ type PhotoSlotRef = {
   index: number;
 };
 
-/** Find empty image slots tagged photo_N, sorted by N. */
+export function pageHasFieldReportPhotoSlots(page: DocumentPage | null | undefined): boolean {
+  return (page?.elements || []).some((el) => el.type === 'image' && parsePhotoSlotIndex(slotName(el)) != null);
+}
+
+/** Count unique photo_N indices on a page (empty or filled). */
+export function countPhotoSlotsOnPage(page: DocumentPage | null | undefined): number {
+  const idxs = new Set<number>();
+  for (const el of page?.elements || []) {
+    if (el.type !== 'image') continue;
+    const idx = parsePhotoSlotIndex(slotName(el));
+    if (idx != null) idxs.add(idx);
+  }
+  return idxs.size;
+}
+
+/** Pages from a document type that carry photo_N slots (skip covers without slots). */
+export function extractFieldReportLayoutPages(
+  pages: DocumentPage[]
+): DocumentPage[] {
+  return pages.filter((p) => pageHasFieldReportPhotoSlots(p));
+}
+
+function newElementId(prefix: string): string {
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function isCaptionSlot(el: DocElement): boolean {
+  return el.type === 'text' && /^caption_\d+$/i.test(slotName(el));
+}
+
+/** Promote visible rich-run styles onto the element (preview inherits element styles once richLines are cleared). */
+function withCaptionTypographyPreserved(el: DocElement): DocElement {
+  const sampleRun = (el.richLines || [])
+    .flat()
+    .find(
+      (r) =>
+        r &&
+        typeof r.text === 'string' &&
+        r.text.length > 0 &&
+        r.kind !== 'signature' &&
+        r.kind !== 'date',
+    );
+  if (!sampleRun) return el;
+  return {
+    ...el,
+    fontWeight:
+      sampleRun.bold === true ? 'bold' : sampleRun.bold === false ? 'normal' : el.fontWeight,
+    fontStyle:
+      sampleRun.italic === true
+        ? 'italic'
+        : sampleRun.italic === false
+          ? 'normal'
+          : el.fontStyle,
+    fontSize:
+      typeof sampleRun.fontSize === 'number' && sampleRun.fontSize > 0
+        ? sampleRun.fontSize
+        : el.fontSize,
+    fontFamily: sampleRun.fontFamily || el.fontFamily,
+    color: sampleRun.color || el.color,
+  };
+}
+
+/** Deep-clone a page with fresh element ids (keeps slot meta). */
+export function cloneDocumentPage(page: DocumentPage): DocumentPage {
+  return {
+    template_id: page.template_id ?? null,
+    margins: page.margins ? { ...page.margins } : page.margins,
+    elements: (page.elements || []).map((el) => {
+      const clearCaption = isCaptionSlot(el);
+      const clearPhoto =
+        el.type === 'image' && parsePhotoSlotIndex(slotName(el)) != null;
+      const base = clearCaption ? withCaptionTypographyPreserved(el) : el;
+      return {
+        ...base,
+        id: newElementId(el.type || 'el'),
+        meta: base.meta ? { ...base.meta } : base.meta,
+        // Caption slots must drop richLines too — preview prefers richLines over content.
+        richLines: clearCaption
+          ? undefined
+          : base.richLines
+            ? base.richLines.map((line) => line.map((r) => ({ ...r })))
+            : base.richLines,
+        lineListStyles: clearCaption
+          ? undefined
+          : base.lineListStyles
+            ? [...base.lineListStyles]
+            : base.lineListStyles,
+        lineTextAligns: base.lineTextAligns ? [...base.lineTextAligns] : base.lineTextAligns,
+        content: clearPhoto || clearCaption ? '' : base.content,
+      };
+    }),
+  };
+}
+
+/** Find empty image slots tagged photo_N. Page-major order (fill one page fully, then next). */
 export function listEmptyPhotoSlots(pages: DocumentPage[]): PhotoSlotRef[] {
   const out: PhotoSlotRef[] = [];
   pages.forEach((page, pageIndex) => {
@@ -39,11 +133,11 @@ export function listEmptyPhotoSlots(pages: DocumentPage[]): PhotoSlotRef[] {
       out.push({ pageIndex, elementIndex, index: idx });
     });
   });
-  return out.sort((a, b) => a.index - b.index || a.pageIndex - b.pageIndex);
+  return out.sort((a, b) => a.pageIndex - b.pageIndex || a.index - b.index);
 }
 
 /**
- * Fill Quotation photo_N / caption_N slots from Field Report photos.
+ * Fill photo_N / caption_N slots from Field Report photos.
  * Returns updated pages, how many slots were filled, and leftover photos.
  */
 export function fillFieldReportPhotoSlots(
@@ -80,7 +174,8 @@ export function fillFieldReportPhotoSlots(
     page.elements[slot.elementIndex] = {
       ...img,
       content: String(photo.file_object_id),
-      imageFit: img.imageFit || 'contain',
+      // Field photos look best filling the slot (crop edges) rather than letterboxing.
+      imageFit: 'cover',
     };
 
     const captionSlot = `caption_${slot.index}`;
@@ -88,13 +183,13 @@ export function fillFieldReportPhotoSlots(
       (el) => el.type === 'text' && slotName(el) === captionSlot
     );
     if (captionIdx >= 0) {
-      const cap = page.elements[captionIdx];
+      const cap = withCaptionTypographyPreserved(page.elements[captionIdx]);
       page.elements[captionIdx] = {
         ...cap,
         content: photoCaption(photo),
-        fontWeight: cap.fontWeight || 'normal',
-        fontSize: cap.fontSize || 10,
-        color: cap.color || '#0f172a',
+        // Preview renders richLines when present — must clear template placeholder runs.
+        richLines: undefined,
+        lineListStyles: undefined,
       };
     }
     filledCount += 1;
@@ -105,6 +200,31 @@ export function fillFieldReportPhotoSlots(
     filledCount,
     overflow: usable.slice(photoCursor),
   };
+}
+
+/**
+ * Build enough clones of the layout unit to hold all photos, then fill slots.
+ * `layoutPages` should be the photo-slot page(s) from a Field Report document type.
+ */
+export function buildFilledFieldReportPages(
+  layoutPages: DocumentPage[],
+  photos: FieldworkPhotoObservation[]
+): { pages: DocumentPage[]; filledCount: number; overflow: FieldworkPhotoObservation[] } {
+  const unit = layoutPages.filter((p) => pageHasFieldReportPhotoSlots(p));
+  if (!unit.length) {
+    return { pages: [], filledCount: 0, overflow: photos.filter((p) => String(p.file_object_id || '').trim()) };
+  }
+  const slotsPerUnit = unit.reduce((n, p) => n + countPhotoSlotsOnPage(p), 0);
+  if (slotsPerUnit <= 0) {
+    return { pages: [], filledCount: 0, overflow: photos.filter((p) => String(p.file_object_id || '').trim()) };
+  }
+  const usable = photos.filter((p) => String(p.file_object_id || '').trim());
+  const copies = Math.max(1, Math.ceil(usable.length / slotsPerUnit));
+  const blank: DocumentPage[] = [];
+  for (let c = 0; c < copies; c++) {
+    for (const page of unit) blank.push(cloneDocumentPage(page));
+  }
+  return fillFieldReportPhotoSlots(blank, usable);
 }
 
 /** Free-form dump used when no slots (or for overflow). Two-column layout on one page. */
@@ -129,7 +249,7 @@ export function buildOverflowPhotoElements(
       y_pct: y,
       width_pct: colW,
       height_pct: 26,
-      imageFit: 'contain',
+      imageFit: 'cover',
     });
     const textBase = createTextElement();
     newElements.push({
@@ -140,7 +260,7 @@ export function buildOverflowPhotoElements(
       y_pct: Math.min(92, y + 27),
       width_pct: colW,
       height_pct: 8,
-      fontSize: 10,
+      fontSize: 12,
       fontWeight: 'normal',
       color: '#0f172a',
     });

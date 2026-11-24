@@ -39,12 +39,14 @@ import {
 import { readDocumentCreatorClipboard, writeDocumentCreatorClipboard } from '@/utils/documentCreatorClipboard';
 import OverlayPortal from '@/components/OverlayPortal';
 import DocumentEditorRibbon from '@/components/document-editor/DocumentEditorRibbon';
-import InsertFromFieldReportDialog from '@/components/document-editor/InsertFromFieldReportDialog';
+import InsertFromFieldReportDialog, {
+  type FieldReportInsertPayload,
+} from '@/components/document-editor/InsertFromFieldReportDialog';
 import {
+  buildFilledFieldReportPages,
   buildOverflowPhotoElements,
   fillFieldReportPhotoSlots,
 } from '@/lib/fillFieldReportPhotoSlots';
-import type { FieldworkPhotoObservation } from '@/types/fieldwork';
 import DocumentExportPdfOverlay, {
   type DocumentExportPdfProgress,
 } from '@/components/document-editor/DocumentExportPdfOverlay';
@@ -352,7 +354,11 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
   const pageScrollLockRef = useRef(false);
 
   const handlePreviewElementClick = useCallback(
-    (pageIndex: number | undefined, elementId: string, e?: React.PointerEvent) => {
+    (
+      pageIndex: number | undefined,
+      elementId: string,
+      e?: { ctrlKey?: boolean; metaKey?: boolean; shiftKey?: boolean },
+    ) => {
       if (pageIndex != null) setCurrentPageIndex(pageIndex);
       if (textEditingElementId && textEditingElementId !== elementId) {
         setSelectedElementIds([elementId]);
@@ -411,6 +417,15 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
   const clipboardRef = useRef<DocElement[] | null>(null);
   /** Set on Ctrl/Cmd+V so the paste handler can paste copied elements when no image is on the clipboard. */
   const pasteShortcutRef = useRef(false);
+  /** Timestamp of last in-app Ctrl/Cmd+C — paste uses canvas click only if it happened after this. */
+  const copyStampRef = useRef(0);
+  /** Last click on a page canvas (Photoshop-style paste target). */
+  const pasteAnchorRef = useRef<{
+    x_pct: number;
+    y_pct: number;
+    pageIndex: number;
+    t: number;
+  } | null>(null);
 
   const newElementId = useCallback(() => {
     return `el-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -1204,9 +1219,10 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
   const mediaLoading = useDocumentMediaLoading(canvasMediaUrls);
 
   // Keyboard shortcuts: Delete, Arrow keys, Undo/Redo, Copy/Paste/Duplicate
+  // Template page-layout editor uses the same shortcuts (incl. blocks); only true read-only disables them.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (readOnly || isTemplate) return;
+      if (readOnly) return;
       // ImagePicker / ImageEditor own the keyboard while open — do not delete/move canvas elements underneath.
       if (imagePickerOpenRef.current) return;
       const t = e.target as HTMLElement | null;
@@ -1311,6 +1327,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
           const clones = toCopy.map((el) => JSON.parse(JSON.stringify(el)) as DocElement);
           clipboardRef.current = clones;
           writeDocumentCreatorClipboard(clones);
+          copyStampRef.current = Date.now();
           toast.success(toCopy.length === 1 ? 'Copied.' : `Copied ${toCopy.length} elements.`);
         }
         return;
@@ -2009,9 +2026,10 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
     handleAddElement(createImagePlaceholder());
   }, [handleAddElement]);
 
-  /** Prefer Quotation photo_N/caption_N slots; overflow falls back to free image+text dump. */
+  /** Prefer Field Report template pages (cloned as needed); else fill existing photo_N slots / overflow dump. */
   const handleInsertFromFieldReportPhotos = useCallback(
-    (photos: FieldworkPhotoObservation[]) => {
+    (payload: FieldReportInsertPayload) => {
+      const photos = payload.photos || [];
       if (!photos.length || readOnly) return;
       if (textEditingElementId) {
         notifyBlockedByTextEdit();
@@ -2019,6 +2037,51 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
       }
       const currentPages = stateRef.current.pages;
       const pageIndex = stateRef.current.currentPageIndex;
+
+      // Dedicated Field Report layout: clone slotted pages and splice before/after current.
+      if (payload.layoutPages?.length) {
+        const { pages: filled, filledCount, overflow } = buildFilledFieldReportPages(
+          payload.layoutPages,
+          photos
+        );
+        if (!filledCount && !filled.length) {
+          toast.error('No photos to insert.');
+          return;
+        }
+        const insertAt =
+          payload.insertPosition === 'before'
+            ? pageIndex
+            : Math.min(pageIndex + 1, currentPages.length);
+        let nextPages = [
+          ...currentPages.slice(0, insertAt),
+          ...filled,
+          ...currentPages.slice(insertAt),
+        ];
+        // Rare: leftover if layout had 0 slots somehow — dump onto last inserted page.
+        if (overflow.length) {
+          const overflowEls = buildOverflowPhotoElements(overflow);
+          const target = Math.min(insertAt + Math.max(0, filled.length - 1), nextPages.length - 1);
+          nextPages = nextPages.map((p, i) =>
+            i === target ? { ...p, elements: [...(p.elements || []), ...overflowEls] } : p
+          );
+        }
+        pushHistory();
+        setPages(nextPages);
+        stateRef.current.pages = nextPages;
+        setCurrentPageIndex(insertAt);
+        toast.success(
+          filled.length === 1
+            ? `Inserted ${filledCount} photo${filledCount === 1 ? '' : 's'} from Field Report${
+                payload.documentTypeName ? ` (${payload.documentTypeName})` : ''
+              }.`
+            : `Inserted ${filled.length} pages · ${filledCount} photos from Field Report${
+                payload.documentTypeName ? ` (${payload.documentTypeName})` : ''
+              }.`
+        );
+        return;
+      }
+
+      // Legacy: fill empty slots already on the document.
       const { pages: slottedPages, filledCount, overflow } = fillFieldReportPhotoSlots(
         currentPages,
         photos
@@ -2069,8 +2132,8 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
       } else if (filledCount) {
         toast.success(
           filledCount === 1
-            ? 'Photo and caption filled into Quotation slot.'
-            : `Filled ${filledCount} Quotation photo slots.`
+            ? 'Photo and caption filled into Field Report slot.'
+            : `Filled ${filledCount} Field Report photo slots.`
         );
       } else {
         toast.success(
@@ -2236,23 +2299,42 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
     const buf = isTemplate ? raw : raw.filter((el) => el.type !== 'block');
     if (buf.length === 0) return;
     pushHistory();
-    const clones: DocElement[] = buf.map((src) => ({
-      ...(JSON.parse(JSON.stringify(src)) as DocElement),
-      id: newElementId(),
-      // Same geometry across documents/templates (no offset).
-      x_pct: src.x_pct ?? 0,
-      y_pct: src.y_pct ?? 0,
-      width_pct: src.width_pct,
-      height_pct: src.height_pct,
-    }));
+
+    const anchor = pasteAnchorRef.current;
+    const useAnchor = !!anchor && anchor.t > copyStampRef.current;
+    const groupMinX = Math.min(...buf.map((el) => el.x_pct ?? 0));
+    const groupMinY = Math.min(...buf.map((el) => el.y_pct ?? 0));
+    // If user clicked after copy → place group top-left at click. Else nudge so it is not stacked.
+    const dx = useAnchor ? anchor!.x_pct - groupMinX : 2;
+    const dy = useAnchor ? anchor!.y_pct - groupMinY : 2;
+    const targetPageIndex = useAnchor
+      ? Math.max(0, Math.min(stateRef.current.pages.length - 1, anchor!.pageIndex))
+      : stateRef.current.currentPageIndex;
+
+    const clones: DocElement[] = buf.map((src) => {
+      const w = src.width_pct ?? 0;
+      const h = src.height_pct ?? 0;
+      const x = Math.max(0, Math.min(100 - w, (src.x_pct ?? 0) + dx));
+      const y = Math.max(0, Math.min(100 - h, (src.y_pct ?? 0) + dy));
+      return {
+        ...(JSON.parse(JSON.stringify(src)) as DocElement),
+        id: newElementId(),
+        x_pct: x,
+        y_pct: y,
+        width_pct: src.width_pct,
+        height_pct: src.height_pct,
+      };
+    });
     setPages((prev) => {
       const next = [...prev];
-      const idx = stateRef.current.currentPageIndex;
-      if (!next[idx]) return prev;
-      const els = next[idx].elements ?? [];
-      next[idx] = { ...next[idx], elements: [...els, ...clones] };
+      if (!next[targetPageIndex]) return prev;
+      const els = next[targetPageIndex].elements ?? [];
+      next[targetPageIndex] = { ...next[targetPageIndex], elements: [...els, ...clones] };
       return next;
     });
+    if (targetPageIndex !== stateRef.current.currentPageIndex) {
+      setCurrentPageIndex(targetPageIndex);
+    }
     setSelectedElementIds(clones.map((c) => c.id));
   }, [newElementId, pushHistory, isTemplate]);
 
@@ -2267,21 +2349,25 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
       if (isTyping) return;
       if ((t?.isContentEditable ?? false) && textEditingElementId) return;
 
+      // Prefer in-app copy ("Copied.") over stale Windows clipboard images.
+      // OS image paste still works when nothing was copied in the document.
+      if (pasteShortcutRef.current) {
+        pasteShortcutRef.current = false;
+        const raw = readDocumentCreatorClipboard(clipboardRef.current);
+        const buf = isTemplate ? raw : raw.filter((el) => el.type !== 'block');
+        if (buf.length > 0) {
+          e.preventDefault();
+          pasteInternalElements();
+          return;
+        }
+      }
+
       const images = imageFilesFromClipboardData(e.clipboardData);
       if (images.length) {
         e.preventDefault();
         pasteShortcutRef.current = false;
         void insertImagesFromFiles(images);
-        return;
       }
-
-      if (!pasteShortcutRef.current) return;
-      pasteShortcutRef.current = false;
-      const raw = readDocumentCreatorClipboard(clipboardRef.current);
-      const buf = isTemplate ? raw : raw.filter((el) => el.type !== 'block');
-      if (buf.length === 0) return;
-      e.preventDefault();
-      pasteInternalElements();
     };
     window.addEventListener('paste', onPaste);
     return () => window.removeEventListener('paste', onPaste);
@@ -2894,6 +2980,9 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
                     editingElementId={textEditingElementId}
                     onEditingElementIdChange={setTextEditingElementId}
                     onElementClick={(elementId, e) => handlePreviewElementClick(pageIndex, elementId, e)}
+                    onPasteAnchorPoint={(point) => {
+                      pasteAnchorRef.current = { ...point, pageIndex, t: Date.now() };
+                    }}
                     onCanvasClick={() => {
                       if (textEditingElementId) {
                         notifyBlockedByTextEdit();
@@ -2951,6 +3040,13 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
             editingElementId={textEditingElementId}
             onEditingElementIdChange={setTextEditingElementId}
             onElementClick={(elementId, e) => handlePreviewElementClick(undefined, elementId, e)}
+            onPasteAnchorPoint={(point) => {
+              pasteAnchorRef.current = {
+                ...point,
+                pageIndex: stateRef.current.currentPageIndex,
+                t: Date.now(),
+              };
+            }}
             onCanvasClick={() => {
               if (textEditingElementId) {
                 notifyBlockedByTextEdit();

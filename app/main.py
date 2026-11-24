@@ -2217,6 +2217,25 @@ def create_app() -> FastAPI:
                     except Exception as _e:
                         db.rollback()
                         print(f"[startup] document_types.signer_roles (non-critical): {_e}")
+                    try:
+                        if not db.execute(
+                            text(
+                                "SELECT 1 FROM information_schema.columns "
+                                "WHERE table_schema = 'public' AND table_name = 'document_types' "
+                                "AND column_name = 'valid_for_field_report' LIMIT 1"
+                            )
+                        ).fetchall():
+                            db.execute(
+                                text(
+                                    "ALTER TABLE document_types "
+                                    "ADD COLUMN valid_for_field_report BOOLEAN NOT NULL DEFAULT false"
+                                )
+                            )
+                            db.commit()
+                            print("[startup] Added document_types.valid_for_field_report")
+                    except Exception as _e:
+                        db.rollback()
+                        print(f"[startup] document_types.valid_for_field_report (non-critical): {_e}")
 
                     try:
                         if db.execute(

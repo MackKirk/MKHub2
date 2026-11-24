@@ -3757,6 +3757,7 @@ export default function ProjectDetail(){
                     isAdmin,
                     location.pathname
                   )}
+                  isAdmin={isAdmin}
                   flushSaveRef={fieldworkTabSaveRef}
                 />
               )}

@@ -173,6 +173,8 @@ def upsert(*, update: bool, photo_slots: int) -> None:
             )
             existing.category = None
             existing.page_templates = pages
+            if hasattr(existing, "valid_for_field_report"):
+                existing.valid_for_field_report = True
             db.add(existing)
             db.commit()
             db.refresh(existing)
@@ -188,6 +190,7 @@ def upsert(*, update: bool, photo_slots: int) -> None:
             category=None,
             page_templates=pages,
             signer_roles=None,
+            valid_for_field_report=True,
         )
         db.add(dt)
         db.commit()

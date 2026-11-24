@@ -731,6 +731,52 @@ def patch_fieldwork_record(
     return _record_to_dict(db, row, include_photos=True, include_events=True)
 
 
+@router.delete("/projects/{project_id}/fieldwork-records/{record_id}")
+def delete_fieldwork_record(
+    project_id: str,
+    record_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Delete a Fieldwork record.
+
+    - draft: allowed for users with fieldwork write
+    - any other status: admin only
+    """
+    from ..auth.security import _user_is_admin
+
+    proj = _load_project(db, project_id)
+    assert_fieldwork_project(db, user, proj, "write")
+    row = _load_record(db, proj.id, record_id, for_update=True)
+    status = (row.status or "").strip().lower()
+    if status != "draft" and not _user_is_admin(user):
+        raise HTTPException(
+            status_code=403,
+            detail="Only admins can delete non-draft field reports",
+        )
+
+    # Clear self-FKs that could block delete when revising / superseding chains exist.
+    dependents = (
+        db.query(FieldworkRecord)
+        .filter(
+            (FieldworkRecord.revision_of_id == row.id)
+            | (FieldworkRecord.superseded_by_id == row.id)
+        )
+        .all()
+    )
+    for dep in dependents:
+        if dep.revision_of_id == row.id:
+            dep.revision_of_id = None
+        if dep.superseded_by_id == row.id:
+            dep.superseded_by_id = None
+        db.add(dep)
+
+    db.delete(row)
+    db.commit()
+    return {"ok": True, "id": str(record_id)}
+
+
 @router.post("/projects/{project_id}/fieldwork-records/{record_id}/submit")
 def submit_fieldwork_record(
     project_id: str,
@@ -1152,7 +1198,10 @@ def create_fieldwork_photo(
                 return _photo_to_dict(existing)
         raise
     db.refresh(photo)
-    return _photo_to_dict(photo)
+    db.refresh(row)
+    out = _photo_to_dict(photo)
+    out["record_row_version"] = int(getattr(row, "row_version", None) or 1)
+    return out
 
 
 @router.patch("/projects/{project_id}/fieldwork-records/{record_id}/photos/{photo_id}")
@@ -1231,7 +1280,10 @@ def patch_fieldwork_photo(
     row.updated_by = user.id
     db.commit()
     db.refresh(photo)
-    return _photo_to_dict(photo)
+    db.refresh(row)
+    out = _photo_to_dict(photo)
+    out["record_row_version"] = int(getattr(row, "row_version", None) or 1)
+    return out
 
 
 @router.delete("/projects/{project_id}/fieldwork-records/{record_id}/photos/{photo_id}")

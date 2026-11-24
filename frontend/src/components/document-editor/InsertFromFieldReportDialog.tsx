@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { withFileAccessToken, api } from '@/lib/api';
 import {
   AppButton,
+  AppChoiceCards,
   AppEmptyState,
   AppFormModal,
   AppSelect,
@@ -10,7 +11,25 @@ import {
   uiLayout,
   uiTypography,
 } from '@/components/ui';
+import type { DocumentTypePreset } from '@/components/DocumentTypePicker';
+import { previewPagesFromDocumentType, type BackgroundTemplate } from '@/components/DocumentTypePicker';
+import {
+  countPhotoSlotsOnPage,
+  extractFieldReportLayoutPages,
+} from '@/lib/fillFieldReportPhotoSlots';
+import type { DocumentPage } from '@/types/documentCreator';
 import type { FieldworkPhotoObservation, FieldworkRecord } from '@/types/fieldwork';
+import { FileStack, ArrowDownToLine, ArrowUpToLine } from 'lucide-react';
+
+export type FieldReportInsertPosition = 'before' | 'after';
+
+export type FieldReportInsertPayload = {
+  photos: FieldworkPhotoObservation[];
+  insertPosition: FieldReportInsertPosition;
+  /** Empty-slot layout pages from a Field Report document type (may be empty → fill existing doc slots). */
+  layoutPages: DocumentPage[];
+  documentTypeName?: string | null;
+};
 
 type Props = {
   open: boolean;
@@ -18,7 +37,7 @@ type Props = {
   /** Pre-select this approved record when the dialog opens. */
   preferredRecordId?: string | null;
   onClose: () => void;
-  onInsert: (photos: FieldworkPhotoObservation[]) => void;
+  onInsert: (payload: FieldReportInsertPayload) => void;
 };
 
 function kindLabel(kind: string | null | undefined): string {
@@ -44,11 +63,15 @@ export function InsertFromFieldReportDialog({
 }: Props) {
   const [recordId, setRecordId] = useState('');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [documentTypeId, setDocumentTypeId] = useState('');
+  const [insertPosition, setInsertPosition] = useState<FieldReportInsertPosition>('after');
 
   useEffect(() => {
     if (!open) {
       setRecordId('');
       setSelectedIds([]);
+      setDocumentTypeId('');
+      setInsertPosition('after');
     }
   }, [open]);
 
@@ -66,6 +89,25 @@ export function InsertFromFieldReportDialog({
     enabled: open && !!projectId,
   });
 
+  const {
+    data: fieldReportTypes = [],
+    isLoading: typesLoading,
+  } = useQuery({
+    queryKey: ['document-creator-document-types', 'for-field-report'],
+    queryFn: () =>
+      api<DocumentTypePreset[]>(
+        'GET',
+        '/document-creator/document-types?for_picker=1&for_field_report=1'
+      ),
+    enabled: open,
+  });
+
+  const { data: backgroundTemplates = [] } = useQuery({
+    queryKey: ['document-creator-templates'],
+    queryFn: () => api<BackgroundTemplate[]>('GET', '/document-creator/templates'),
+    enabled: open && fieldReportTypes.length > 0,
+  });
+
   const approved = useMemo(
     () => (Array.isArray(records) ? records.filter((r) => (r.status || '').toLowerCase() === 'approved') : []),
     [records]
@@ -81,6 +123,27 @@ export function InsertFromFieldReportDialog({
     }
     if (approved.length === 1) setRecordId(approved[0].id);
   }, [open, approved, recordId, preferredRecordId]);
+
+  useEffect(() => {
+    if (!open || documentTypeId) return;
+    if (fieldReportTypes.length === 1) setDocumentTypeId(fieldReportTypes[0].id);
+  }, [open, fieldReportTypes, documentTypeId]);
+
+  const selectedType = useMemo(
+    () => fieldReportTypes.find((t) => t.id === documentTypeId) || null,
+    [fieldReportTypes, documentTypeId]
+  );
+
+  const layoutPages = useMemo(() => {
+    if (!selectedType) return [] as DocumentPage[];
+    const pages = previewPagesFromDocumentType(selectedType, backgroundTemplates);
+    return extractFieldReportLayoutPages(pages);
+  }, [selectedType, backgroundTemplates]);
+
+  const slotsPerInsert = useMemo(
+    () => layoutPages.reduce((n, p) => n + countPhotoSlotsOnPage(p), 0),
+    [layoutPages]
+  );
 
   const {
     data: detail,
@@ -115,13 +178,21 @@ export function InsertFromFieldReportDialog({
   };
 
   const selectedPhotos = photos.filter((p) => selectedIds.includes(p.id));
+  const pagesNeeded =
+    slotsPerInsert > 0 && selectedPhotos.length
+      ? Math.ceil(selectedPhotos.length / slotsPerInsert)
+      : 0;
+
+  const canInsert =
+    selectedPhotos.length > 0 &&
+    (fieldReportTypes.length === 0 || (Boolean(documentTypeId) && layoutPages.length > 0));
 
   return (
     <AppFormModal
       open={open}
       onClose={onClose}
       title="Insert from Field Report"
-      description="Pick an approved report, then choose photos with their descriptions. They are added as normal image + text boxes on the current page."
+      description="Pick an approved report and a Field Report document template. Extra photos clone more pages of that layout."
       size="lg"
       footer={
         <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
@@ -131,13 +202,19 @@ export function InsertFromFieldReportDialog({
           <AppButton
             type="button"
             size="sm"
-            disabled={!selectedPhotos.length}
+            disabled={!canInsert}
             onClick={() => {
-              onInsert(selectedPhotos);
+              onInsert({
+                photos: selectedPhotos,
+                insertPosition,
+                layoutPages,
+                documentTypeName: selectedType?.name || null,
+              });
               onClose();
             }}
           >
             Insert {selectedPhotos.length ? `(${selectedPhotos.length})` : ''}
+            {pagesNeeded > 1 ? ` · ${pagesNeeded} pages` : ''}
           </AppButton>
         </div>
       }
@@ -168,11 +245,80 @@ export function InsertFromFieldReportDialog({
               }))}
             />
 
+            {typesLoading ? (
+              <p className={uiTypography.helper}>Loading Field Report templates…</p>
+            ) : fieldReportTypes.length === 0 ? (
+              <p className="text-sm text-amber-800 rounded-xl border border-amber-200 bg-amber-50/80 px-3 py-2">
+                No document templates are marked <strong>Valid for Field Report</strong> yet. Photos
+                will fill empty <code className="text-xs">photo_N</code> slots already on this
+                document (or dump onto the page). Mark a template in Document Templates to use a
+                dedicated layout.
+              </p>
+            ) : (
+              <>
+                <AppSelect
+                  label="Field Report template"
+                  value={documentTypeId}
+                  onChange={(e) => setDocumentTypeId(e.target.value)}
+                  placeholder="Select a layout…"
+                  options={fieldReportTypes.map((t) => ({
+                    value: t.id,
+                    label: `${t.name}${
+                      t.category ? ` · ${t.category}` : ''
+                    }${(() => {
+                      const pages = extractFieldReportLayoutPages(
+                        previewPagesFromDocumentType(t, backgroundTemplates)
+                      );
+                      const slots = pages.reduce((n, p) => n + countPhotoSlotsOnPage(p), 0);
+                      return slots ? ` · ${slots} slots/page` : '';
+                    })()}`,
+                  }))}
+                />
+                {selectedType && layoutPages.length === 0 ? (
+                  <p className="text-sm text-red-700">
+                    This template has no photo slots. In page layout, set image slots to photo_1…
+                    and text slots to caption_1…
+                  </p>
+                ) : null}
+                {slotsPerInsert > 0 && selectedPhotos.length > slotsPerInsert ? (
+                  <p className={uiCx(uiTypography.helper)}>
+                    {selectedPhotos.length} photos · {slotsPerInsert} slots per insert →{' '}
+                    <strong>{pagesNeeded} pages</strong> will be added.
+                  </p>
+                ) : null}
+                <div>
+                  <p className="mb-2 text-sm font-semibold text-gray-800">Insert pages</p>
+                  <AppChoiceCards
+                    size="compact"
+                    columns={2}
+                    value={insertPosition}
+                    onChange={setInsertPosition}
+                    options={[
+                      {
+                        value: 'before',
+                        title: 'Before current page',
+                        icon: ArrowUpToLine,
+                      },
+                      {
+                        value: 'after',
+                        title: 'After current page',
+                        icon: ArrowDownToLine,
+                      },
+                    ]}
+                  />
+                </div>
+              </>
+            )}
+
             {recordId ? (
               detailLoading ? (
                 <p className={uiTypography.helper}>Loading photos…</p>
               ) : photos.length === 0 ? (
-                <p className={uiTypography.helper}>This report has no classified photos yet.</p>
+                <p className={uiTypography.helper}>
+                  This report has no classified photos yet. On the Field Report, open Images on a
+                  field, pick catalog phrase(s), then upload — free-text comments alone are not
+                  enough.
+                </p>
               ) : (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between gap-2">
@@ -187,7 +333,7 @@ export function InsertFromFieldReportDialog({
                       {allSelected ? 'Clear all' : 'Select all'}
                     </button>
                   </div>
-                  <ul className="max-h-[min(52vh,420px)] space-y-2 overflow-y-auto pr-1">
+                  <ul className="max-h-[min(40vh,320px)] space-y-2 overflow-y-auto pr-1">
                     {photos.map((p) => {
                       const checked = selectedIds.includes(p.id);
                       const caption = photoCaption(p);
@@ -237,6 +383,16 @@ export function InsertFromFieldReportDialog({
                   </ul>
                 </div>
               )
+            ) : null}
+
+            {fieldReportTypes.length > 0 ? (
+              <p className={uiCx(uiTypography.helper, 'flex items-start gap-2')}>
+                <FileStack className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" aria-hidden />
+                <span>
+                  Tip: mark templates in Document Templates and assign <code className="text-xs">photo_N</code> /{' '}
+                  <code className="text-xs">caption_N</code> on images and text boxes in the page layout editor.
+                </span>
+              </p>
             ) : null}
           </>
         )}

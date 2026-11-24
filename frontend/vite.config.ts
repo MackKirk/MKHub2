@@ -74,6 +74,7 @@ const backendProxyPrefixes = [
   '/tutorials',
   '/ui',
   '/users',
+  '/work-phase-templates',
 ] as const;
 
 const backendDevProxy = Object.fromEntries(

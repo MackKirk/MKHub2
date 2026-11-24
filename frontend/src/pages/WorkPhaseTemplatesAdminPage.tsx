@@ -118,16 +118,25 @@ export default function WorkPhaseTemplatesAdminPage({ businessLine }: Props) {
 
   const queryKey = ['work-phase-templates-admin', businessLine] as const;
 
-  const { data: rows = [], isLoading } = useQuery({
+  const {
+    data: rows = [],
+    isLoading,
+    isError,
+    error,
+    refetch,
+    isFetching,
+  } = useQuery({
     queryKey,
     queryFn: () => {
       const qs = new URLSearchParams({
         business_line: businessLine,
-        admin: '1',
-        include_inactive: '1',
+        admin: 'true',
+        include_inactive: 'true',
       });
       return api<WorkPhaseTemplateRow[]>('GET', `/work-phase-templates?${qs.toString()}`);
     },
+    retry: 1,
+    staleTime: 30_000,
   });
 
   const filtered = useMemo(() => {
@@ -196,6 +205,25 @@ export default function WorkPhaseTemplatesAdminPage({ businessLine }: Props) {
     onError: (err) => {
       toast.error(
         err instanceof ApiError ? formatApiErrorDetail(err) || err.message : 'Could not delete'
+      );
+    },
+  });
+
+  const reactivateMut = useMutation({
+    mutationFn: (id: string) =>
+      api<WorkPhaseTemplateRow>('PUT', `/work-phase-templates/${encodeURIComponent(id)}`, {
+        is_active: true,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey });
+      qc.invalidateQueries({ queryKey: ['work-phase-templates'] });
+      toast.success('Template reactivated');
+    },
+    onError: (err) => {
+      toast.error(
+        err instanceof ApiError
+          ? formatApiErrorDetail(err) || err.message
+          : 'Could not reactivate'
       );
     },
   });
@@ -279,7 +307,24 @@ export default function WorkPhaseTemplatesAdminPage({ businessLine }: Props) {
 
       <AppCard className={uiShadows.card} bodyClassName="!p-0">
         {isLoading ? (
-          <div className={uiCx(uiTypography.helper, 'px-4 py-8 text-center')}>Loading…</div>
+          <div className={uiCx(uiTypography.helper, 'px-4 py-8 text-center')}>Loading templates…</div>
+        ) : isError ? (
+          <div className={uiSpacing.cardPadding}>
+            <AppEmptyState
+              title="Could not load templates"
+              description={
+                error instanceof ApiError
+                  ? formatApiErrorDetail(error) || error.message
+                  : 'Check that the API is running, then try again.'
+              }
+              className="mt-2"
+            />
+            <div className={uiCx(uiLayout.actionsRow, 'mt-3 justify-center')}>
+              <AppButton type="button" size="sm" variant="secondary" onClick={() => void refetch()}>
+                Retry
+              </AppButton>
+            </div>
+          </div>
         ) : rows.length === 0 ? (
           <div className={uiSpacing.cardPadding}>
             {canWrite ? (
@@ -430,7 +475,23 @@ export default function WorkPhaseTemplatesAdminPage({ businessLine }: Props) {
                                 void askDelete(r);
                               }}
                             />
-                          ) : null}
+                          ) : (
+                            <AppButton
+                              type="button"
+                              size="sm"
+                              variant="secondary"
+                              loading={
+                                reactivateMut.isPending && reactivateMut.variables === r.id
+                              }
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                reactivateMut.mutate(r.id);
+                              }}
+                            >
+                              Reactivate
+                            </AppButton>
+                          )}
                         </>
                       ) : null}
                     </div>

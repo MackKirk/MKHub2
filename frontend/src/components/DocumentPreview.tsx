@@ -71,8 +71,14 @@ type DocumentPreviewProps = {
   onBeginUserAction?: () => void;
   /** Zoom factor applied to the page canvas (1 = 100%). */
   zoom?: number;
-  onElementClick?: (elementId: string, event?: React.PointerEvent) => void;
-  onCanvasClick?: () => void;
+  /** Second arg may be a real pointer event or modifier flags captured at pointerdown (commit runs later). */
+  onElementClick?: (
+    elementId: string,
+    event?: { ctrlKey?: boolean; metaKey?: boolean; shiftKey?: boolean },
+  ) => void;
+  onCanvasClick?: (position?: { x_pct: number; y_pct: number }) => void;
+  /** Last pointer on the page canvas — used to paste copied elements at the click (Photoshop-style). */
+  onPasteAnchorPoint?: (point: { x_pct: number; y_pct: number }) => void;
   /** When array: multi-selection. When empty: none selected. */
   selectedElementIds: string[];
   onUpdateElement?: (elementId: string, updater: (el: DocElement) => DocElement) => void;
@@ -2587,6 +2593,7 @@ export default function DocumentPreview({
   zoom = 1,
   onElementClick,
   onCanvasClick,
+  onPasteAnchorPoint,
   selectedElementIds,
   onUpdateElement,
   onRemoveElement,
@@ -2609,6 +2616,23 @@ export default function DocumentPreview({
   const isViewOnly = !onUpdateElement && !onBatchUpdateElements;
   const scrollRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
+  const clientPointToCanvasPct = useCallback((clientX: number, clientY: number) => {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect?.width || !rect?.height) return null;
+    const x_pct = ((clientX - rect.left) / rect.width) * 100;
+    const y_pct = ((clientY - rect.top) / rect.height) * 100;
+    return {
+      x_pct: Math.max(0, Math.min(100, x_pct)),
+      y_pct: Math.max(0, Math.min(100, y_pct)),
+    };
+  }, []);
+  const reportPasteAnchor = useCallback(
+    (clientX: number, clientY: number) => {
+      const point = clientPointToCanvasPct(clientX, clientY);
+      if (point) onPasteAnchorPoint?.(point);
+    },
+    [clientPointToCanvasPct, onPasteAnchorPoint],
+  );
   const [canvasWidthPx, setCanvasWidthPx] = useState<number>(REFERENCE_CANVAS_WIDTH_PX);
   const [imageDropActive, setImageDropActive] = useState(false);
   const imageDropDepthRef = useRef(0);
@@ -2631,6 +2655,8 @@ export default function DocumentPreview({
     historyPushed: boolean;
     /** Set on element pointerup when gesture was a click (select). */
     selectOnClickId?: string | null;
+    /** Modifiers from pointerdown — needed because commit calls onElementClick without the DOM event. */
+    selectModifiers?: { ctrlKey: boolean; metaKey: boolean; shiftKey: boolean };
   } | null>(null);
   const resizeRef = useRef<{
     elementId: string;
@@ -2845,6 +2871,7 @@ export default function DocumentPreview({
         return;
       }
       if (target.closest('textarea') || target.closest('input') || target.closest('[contenteditable="true"]')) return;
+      reportPasteAnchor(e.clientX, e.clientY);
       // Locked / position-locked: no drag, but capture pointer so click still selects (unlock, ribbon, etc.).
       const movingIds = el.locked || el.lockPosition
         ? []
@@ -2867,10 +2894,15 @@ export default function DocumentPreview({
         startY: e.clientY,
         hasMoved: false,
         historyPushed: false,
+        selectModifiers: {
+          ctrlKey: e.ctrlKey,
+          metaKey: e.metaKey,
+          shiftKey: e.shiftKey,
+        },
       };
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     },
-    [isViewOnly, lockBlockElements, selectedElementIds, elements, onPageInteraction, isOtherElementWhileEditing, editingElementId, notifyBlockedByTextEdit]
+    [isViewOnly, lockBlockElements, selectedElementIds, elements, onPageInteraction, isOtherElementWhileEditing, editingElementId, notifyBlockedByTextEdit, reportPasteAnchor]
   );
 
   const handleResizePointerDown = useCallback(
@@ -2948,6 +2980,7 @@ export default function DocumentPreview({
     const drag = dragRef.current;
     if (!drag) return;
     const selectId = !drag.hasMoved ? drag.selectOnClickId ?? null : null;
+    const selectModifiers = drag.selectModifiers;
     if (drag.hasMoved && Object.keys(drag.livePositions).length > 0) {
       const patches = drag.livePositions;
       const batch = onBatchUpdateElementsRef.current;
@@ -2971,7 +3004,10 @@ export default function DocumentPreview({
     dragRef.current = null;
     setGuidesIfChanged(null);
     setGestureGeom({});
-    if (selectId) onElementClickRef.current?.(selectId);
+    if (selectId) {
+      // Pass modifiers from pointerdown — DOM event is gone by commit time.
+      onElementClickRef.current?.(selectId, selectModifiers);
+    }
   }, [setGuidesIfChanged]);
 
   const commitResizeGesture = useCallback(() => {
@@ -3293,17 +3329,6 @@ export default function DocumentPreview({
     ? 'flex w-full min-w-0 flex-shrink-0 flex-col'
     : 'relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-sm ring-1 ring-slate-900/[0.04]';
 
-  const clientPointToCanvasPct = useCallback((clientX: number, clientY: number) => {
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect?.width || !rect?.height) return null;
-    const x_pct = ((clientX - rect.left) / rect.width) * 100;
-    const y_pct = ((clientY - rect.top) / rect.height) * 100;
-    return {
-      x_pct: Math.max(0, Math.min(100, x_pct)),
-      y_pct: Math.max(0, Math.min(100, y_pct)),
-    };
-  }, []);
-
   const handleImageDragEnter = useCallback(
     (e: DragEvent) => {
       if (!onInsertImages) return;
@@ -3391,7 +3416,9 @@ export default function DocumentPreview({
               notifyBlockedByTextEdit();
               return;
             }
-            onCanvasClick?.();
+            const position = clientPointToCanvasPct(e.clientX, e.clientY) ?? undefined;
+            if (position) onPasteAnchorPoint?.(position);
+            onCanvasClick?.(position);
           }
         }}
         onPointerDown={(e) => {
@@ -3445,7 +3472,9 @@ export default function DocumentPreview({
                 notifyBlockedByTextEdit();
                 return;
               }
-              onCanvasClick?.();
+              const position = clientPointToCanvasPct(e.clientX, e.clientY) ?? undefined;
+              if (position) onPasteAnchorPoint?.(position);
+              onCanvasClick?.(position);
             }
           }}
         >

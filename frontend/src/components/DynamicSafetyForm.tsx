@@ -10,6 +10,7 @@ import {
   type SetStateAction,
 } from 'react';
 import { useQuery, useQueries } from '@tanstack/react-query';
+import { Check, ChevronDown, ImageIcon, MessageSquareText, PenLine } from 'lucide-react';
 import { api } from '@/lib/api';
 import { mapEmployeeToAppUserSelect } from '@/lib/clientUi';
 import { withSignSessionQuery, type SafetySignSession } from '@/lib/safetySignSessionQuery';
@@ -21,6 +22,10 @@ import { SafetyFieldCommentPanel } from '@/components/SafetyFieldCommentPanel';
 import FieldworkFieldNoteModal, {
   type FieldworkNoteModalTab,
 } from '@/components/fieldwork/FieldworkFieldNoteModal';
+import {
+  isPhotoClassifyMeta,
+  type FieldworkPhotoClassifyMeta,
+} from '@/lib/fieldworkPhotoLink';
 import {
   AppCheckbox,
   AppCombobox,
@@ -37,6 +42,7 @@ import {
   uiCx,
   uiRadius,
   uiSpacing,
+  uiTypography,
 } from '@/components/ui';
 import {
   collectPassFailNaKeysOrdered,
@@ -167,7 +173,11 @@ function ImageAttachmentIcon({ className }: { className?: string }) {
   );
 }
 
-type SideCommentEntry = { text: string; imageIds: string[] };
+type SideCommentEntry = {
+  text: string;
+  imageIds: string[];
+  photoClassify?: FieldworkPhotoClassifyMeta | null;
+};
 
 function parseSideCommentRaw(raw: unknown): SideCommentEntry {
   if (typeof raw === 'string') return { text: raw, imageIds: [] };
@@ -176,7 +186,8 @@ function parseSideCommentRaw(raw: unknown): SideCommentEntry {
     const t = typeof o.text === 'string' ? o.text : '';
     const arr = o.imageIds ?? o.images;
     const imageIds = Array.isArray(arr) ? arr.filter((x): x is string => typeof x === 'string') : [];
-    return { text: t, imageIds };
+    const photoClassify = isPhotoClassifyMeta(o.photoClassify) ? o.photoClassify : null;
+    return { text: t, imageIds, photoClassify };
   }
   return { text: '', imageIds: [] };
 }
@@ -184,9 +195,12 @@ function parseSideCommentRaw(raw: unknown): SideCommentEntry {
 function serializeSideCommentEntry(entry: SideCommentEntry): unknown | undefined {
   const text = entry.text;
   const ids = [...new Set(entry.imageIds.filter(Boolean))];
-  if (!text.trim() && ids.length === 0) return undefined;
-  if (ids.length === 0) return text;
-  return { text, imageIds: ids };
+  const classify = entry.photoClassify || null;
+  if (!text.trim() && ids.length === 0 && !classify) return undefined;
+  if (ids.length === 0 && !classify) return text;
+  const out: Record<string, unknown> = { text, imageIds: ids };
+  if (classify) out.photoClassify = classify;
+  return out;
 }
 
 function getRawSideCommentsBucket(p: Record<string, unknown>): Record<string, unknown> {
@@ -381,15 +395,28 @@ function getYn(p: Record<string, unknown>, k: string): {
   status: 'yes' | 'no' | 'na' | '';
   comments: string;
   commentImageIds: string[];
+  photoClassify: FieldworkPhotoClassifyMeta | null;
 } {
   const v = p[k];
-  if (!v || typeof v !== 'object' || Array.isArray(v)) return { status: '', comments: '', commentImageIds: [] };
-  const o = v as { status?: string; comments?: string; commentImageIds?: unknown };
+  if (!v || typeof v !== 'object' || Array.isArray(v)) {
+    return { status: '', comments: '', commentImageIds: [], photoClassify: null };
+  }
+  const o = v as {
+    status?: string;
+    comments?: string;
+    commentImageIds?: unknown;
+    photoClassify?: unknown;
+  };
   const s = o.status;
   const status = s === 'yes' || s === 'no' || s === 'na' ? s : '';
   const imgs = o.commentImageIds;
   const commentImageIds = Array.isArray(imgs) ? imgs.filter((x): x is string => typeof x === 'string') : [];
-  return { status, comments: typeof o.comments === 'string' ? o.comments : '', commentImageIds };
+  return {
+    status,
+    comments: typeof o.comments === 'string' ? o.comments : '',
+    commentImageIds,
+    photoClassify: isPhotoClassifyMeta(o.photoClassify) ? o.photoClassify : null,
+  };
 }
 
 function getPft(p: Record<string, unknown>, k: string): { pass: number; fail: number; na: number } {
@@ -435,6 +462,12 @@ type Props = {
   fieldCommentTextOnly?: boolean;
   /** Fieldwork reports: allow inserting R&M phrase-library text into comment panels. */
   enableFieldworkPhraseInsert?: boolean;
+  /** Fieldwork record id — required so image attach creates classified PhotoObservations. */
+  fieldworkRecordId?: string | null;
+  fieldworkRowVersion?: number | null;
+  /** After images are linked on Done; parent should refresh record / Files. */
+  onFieldworkPhotosSynced?: (info: { recordRowVersion?: number | null }) => Promise<void> | void;
+  onFieldworkPhotoRemoved?: (fileObjectId: string) => Promise<void> | void;
   /** Show SiteDocs-style flag icon per field (safety inspections). */
   enableFieldFlags?: boolean;
   /** Flag state by field key (pending = yellow). */
@@ -496,6 +529,10 @@ export default function DynamicSafetyForm({
   hidePerFieldSideComments = false,
   fieldCommentTextOnly = false,
   enableFieldworkPhraseInsert = false,
+  fieldworkRecordId = null,
+  fieldworkRowVersion = null,
+  onFieldworkPhotosSynced,
+  onFieldworkPhotoRemoved,
   enableFieldFlags = false,
   fieldFlagStates,
   onFlagField,
@@ -536,6 +573,8 @@ export default function DynamicSafetyForm({
     el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [highlightRequiredFieldKeys]);
   const [commentOpen, setCommentOpen] = useState<Record<string, boolean>>({});
+  const [extraNotesOpen, setExtraNotesOpen] = useState(false);
+  const [extraPhotosOpen, setExtraPhotosOpen] = useState(false);
   const [fieldNoteModal, setFieldNoteModal] = useState<null | {
     fieldKey: string;
     fieldLabel: string;
@@ -615,6 +654,23 @@ export default function DynamicSafetyForm({
       });
     },
     [setFormPayload]
+  );
+
+  const setYnPhotoClassify = useCallback(
+    (fieldKey: string, meta: FieldworkPhotoClassifyMeta | null) => {
+      setFormPayload((prev) => {
+        const yn = getYn(prev, fieldKey);
+        return { ...prev, [fieldKey]: { ...yn, photoClassify: meta } };
+      });
+    },
+    [setFormPayload]
+  );
+
+  const setSidePhotoClassify = useCallback(
+    (fieldKey: string, meta: FieldworkPhotoClassifyMeta | null) => {
+      updateSideComment(fieldKey, { photoClassify: meta });
+    },
+    [updateSideComment]
   );
 
   const needEmployees = useMemo(
@@ -1748,6 +1804,16 @@ export default function DynamicSafetyForm({
   }, [workerSigFileId]);
 
   const additionalComments = getAdditionalComments(formPayload);
+  const hasExtraNotes = additionalComments.text.trim().length > 0;
+  const hasExtraPhotos = additionalComments.imageIds.length > 0;
+
+  useEffect(() => {
+    if (hasExtraNotes) setExtraNotesOpen(true);
+  }, [hasExtraNotes]);
+
+  useEffect(() => {
+    if (hasExtraPhotos) setExtraPhotosOpen(true);
+  }, [hasExtraPhotos]);
 
   const modalNote =
     fieldNoteModal == null
@@ -1756,6 +1822,7 @@ export default function DynamicSafetyForm({
         ? {
             text: getYn(formPayload, fieldNoteModal.fieldKey).comments,
             imageIds: getYn(formPayload, fieldNoteModal.fieldKey).commentImageIds,
+            photoClassify: getYn(formPayload, fieldNoteModal.fieldKey).photoClassify,
           }
         : getSideCommentForField(formPayload, fieldNoteModal.fieldKey);
 
@@ -1779,8 +1846,18 @@ export default function DynamicSafetyForm({
               ? (updater) => setYnCommentImageIds(fieldNoteModal.fieldKey, updater)
               : setSideCommentImageIds(fieldNoteModal.fieldKey)
           }
+          photoClassify={modalNote.photoClassify || null}
+          onPhotoClassifyChange={
+            fieldNoteModal.storage === 'yn'
+              ? (meta) => setYnPhotoClassify(fieldNoteModal.fieldKey, meta)
+              : (meta) => setSidePhotoClassify(fieldNoteModal.fieldKey, meta)
+          }
           projectId={projectId}
           uploadFile={uploadFile}
+          fieldworkRecordId={enableFieldworkPhraseInsert ? fieldworkRecordId : null}
+          fieldworkRowVersion={enableFieldworkPhraseInsert ? fieldworkRowVersion : null}
+          onClassifiedPhotosSynced={enableFieldworkPhraseInsert ? onFieldworkPhotosSynced : undefined}
+          onClassifiedPhotoRemoved={enableFieldworkPhraseInsert ? onFieldworkPhotoRemoved : undefined}
         />
       ) : null}
       {sections.map((section) => {
@@ -1796,87 +1873,226 @@ export default function DynamicSafetyForm({
           </div>
         );
       })}
-      {!hideAdditionalCommentsBlock && (
-        <div
-          data-safety-field-key="_additionalComments"
-          className="rounded-xl border border-gray-200 bg-white overflow-visible"
-        >
-          <div className="px-4 py-3 border-b border-gray-200 bg-gray-200 rounded-t-xl">
-            <h3 className="text-sm font-semibold text-gray-700">Additional Comments / Photos</h3>
-          </div>
-          <div className="p-4">
-            <SafetyFieldCommentPanel
-              expanded={!disabled}
-              disabled={disabled}
-              text={additionalComments.text}
-              imageIds={additionalComments.imageIds}
-              onTextChange={(s) => updateAdditionalComments({ text: s })}
-              onImageIdsChange={setAdditionalCommentImageIds}
-              projectId={projectId}
-              uploadFile={uploadFile}
-              enableFieldworkPhrases={false}
-            />
-          </div>
-        </div>
-      )}
-      {workerSig != null && !hideWorkerSignatureBlock && (
-        <div
-          data-safety-field-key={DYNAMIC_FORM_WORKER_SIGNATURE_HIGHLIGHT_KEY}
-          className={`rounded-xl border border-gray-200 bg-white p-4 pt-5 space-y-3 scroll-mt-3 ${
-            highlightKeySet?.has(DYNAMIC_FORM_WORKER_SIGNATURE_HIGHLIGHT_KEY) ? 'ring-2 ring-red-500/90' : ''
-          }`}
-        >
-          <div className={FIELD_QUESTION_CLASS}>
-            {workerSig.required ? (
-              <span className="inline-flex flex-wrap items-baseline gap-x-1">
-                <span>Worker signature</span>
-                <span className="text-red-600 font-semibold" aria-hidden>
-                  *
-                </span>
-                <span className="sr-only"> (required)</span>
-              </span>
-            ) : (
-              <>Worker signature (optional)</>
-            )}
-          </div>
-          {(sigMode === 'typed' || sigMode === 'any') && (
-            <AppInput
-              value={getStr(formPayload, '_worker_signature')}
-              onChange={(e) => setKey('_worker_signature', e.target.value)}
-              disabled={disabled}
-              placeholder="Type full name to sign"
-            />
+      {(!hideAdditionalCommentsBlock || (workerSig != null && !hideWorkerSignatureBlock)) && (
+        <div className="space-y-2 pt-2">
+          <p className={uiCx(uiTypography.overline, 'px-0.5 text-gray-500')}>Extras</p>
+
+          {!hideAdditionalCommentsBlock && (
+            <div data-safety-field-key="_additionalComments" className="space-y-2">
+              <div
+                className={uiCx(
+                  'overflow-hidden rounded-xl border border-dashed transition-colors',
+                  extraNotesOpen || hasExtraNotes
+                    ? 'border-gray-200 bg-white'
+                    : 'border-gray-200/80 bg-gray-50/40 hover:border-gray-300 hover:bg-white/80'
+                )}
+              >
+                <button
+                  type="button"
+                  disabled={disabled && !hasExtraNotes}
+                  aria-expanded={extraNotesOpen}
+                  onClick={() => {
+                    if (disabled) return;
+                    setExtraNotesOpen((v) => !v);
+                  }}
+                  className={uiCx(
+                    'flex w-full items-center gap-3 px-3.5 py-3 text-left',
+                    disabled ? 'cursor-default' : 'cursor-pointer'
+                  )}
+                >
+                  <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-500">
+                    <MessageSquareText className="h-4 w-4" aria-hidden />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-semibold text-gray-800">Additional notes</span>
+                    <span className={uiCx(uiTypography.helper, 'mt-0.5 block')}>
+                      {hasExtraNotes
+                        ? 'Optional free-text note added'
+                        : 'Optional — only if something is not covered above'}
+                    </span>
+                  </span>
+                  {hasExtraNotes ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-800 ring-1 ring-emerald-200/80">
+                      <Check className="h-3 w-3" aria-hidden />
+                      Added
+                    </span>
+                  ) : null}
+                  {!disabled ? (
+                    <ChevronDown
+                      className={uiCx(
+                        'h-4 w-4 shrink-0 text-gray-400 transition-transform',
+                        extraNotesOpen && 'rotate-180'
+                      )}
+                      aria-hidden
+                    />
+                  ) : null}
+                </button>
+                {(extraNotesOpen || (disabled && hasExtraNotes)) && (
+                  <div className="border-t border-gray-100 px-3.5 py-3">
+                    {disabled ? (
+                      hasExtraNotes ? (
+                        <p className="whitespace-pre-wrap break-words text-sm text-gray-700">
+                          {additionalComments.text}
+                        </p>
+                      ) : null
+                    ) : (
+                      <AppTextarea
+                        value={additionalComments.text}
+                        onChange={(e) => updateAdditionalComments({ text: e.target.value })}
+                        placeholder="Optional note — only if something is not covered above"
+                        rows={3}
+                      />
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div
+                className={uiCx(
+                  'overflow-hidden rounded-xl border border-dashed transition-colors',
+                  extraPhotosOpen || hasExtraPhotos
+                    ? 'border-gray-200 bg-white'
+                    : 'border-gray-200/80 bg-gray-50/40 hover:border-gray-300 hover:bg-white/80'
+                )}
+              >
+                <button
+                  type="button"
+                  disabled={disabled && !hasExtraPhotos}
+                  aria-expanded={extraPhotosOpen}
+                  onClick={() => {
+                    if (disabled) return;
+                    setExtraPhotosOpen((v) => !v);
+                  }}
+                  className={uiCx(
+                    'flex w-full items-center gap-3 px-3.5 py-3 text-left',
+                    disabled ? 'cursor-default' : 'cursor-pointer'
+                  )}
+                >
+                  <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-500">
+                    <ImageIcon className="h-4 w-4" aria-hidden />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-semibold text-gray-800">Additional photos</span>
+                    <span className={uiCx(uiTypography.helper, 'mt-0.5 block')}>
+                      {hasExtraPhotos
+                        ? `${additionalComments.imageIds.length} photo${
+                            additionalComments.imageIds.length === 1 ? '' : 's'
+                          } attached`
+                        : 'Optional — extras beyond field photos'}
+                    </span>
+                  </span>
+                  {hasExtraPhotos ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-800 ring-1 ring-emerald-200/80">
+                      <Check className="h-3 w-3" aria-hidden />
+                      {additionalComments.imageIds.length}
+                    </span>
+                  ) : null}
+                  {!disabled ? (
+                    <ChevronDown
+                      className={uiCx(
+                        'h-4 w-4 shrink-0 text-gray-400 transition-transform',
+                        extraPhotosOpen && 'rotate-180'
+                      )}
+                      aria-hidden
+                    />
+                  ) : null}
+                </button>
+                {(extraPhotosOpen || (disabled && hasExtraPhotos)) && (
+                  <div className="border-t border-gray-100 px-3.5 pb-3.5 pt-3">
+                    <SafetyFieldCommentPanel
+                      expanded={!disabled}
+                      disabled={disabled}
+                      text=""
+                      imageIds={additionalComments.imageIds}
+                      onTextChange={() => {}}
+                      onImageIdsChange={setAdditionalCommentImageIds}
+                      projectId={projectId}
+                      uploadFile={uploadFile}
+                      imagesOnly
+                      enableFieldworkPhrases={false}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
           )}
-          {(sigMode === 'drawn' || sigMode === 'any') && projectId && (
-            <>
-              {workerSigFileId && !disabled && canWrite && (
-                <p className="text-sm text-gray-600 mb-1">
-                  Signature on file.{' '}
-                  <button
-                    type="button"
-                    className="font-semibold text-brand-red hover:underline"
-                    onClick={() => clearWorkerSignaturePersisted()}
-                  >
-                    Replace signature
-                  </button>
-                </p>
+
+          {workerSig != null && !hideWorkerSignatureBlock && (
+            <div
+              data-safety-field-key={DYNAMIC_FORM_WORKER_SIGNATURE_HIGHLIGHT_KEY}
+              className={uiCx(
+                'scroll-mt-3 overflow-hidden rounded-xl border border-dashed border-gray-200 bg-white',
+                highlightKeySet?.has(DYNAMIC_FORM_WORKER_SIGNATURE_HIGHLIGHT_KEY) &&
+                  'ring-2 ring-red-500/90'
               )}
-              {workerSigFileId && disabled && (
-                <p className="text-sm text-gray-600 mb-1">Signature on file — see signatures below.</p>
-              )}
-              {!workerSigFileId && (
-                <SafetySignaturePad
-                  projectId={projectId}
-                  disabled={disabled}
-                  fileObjectId={workerSigFileId}
-                  onFileObjectId={(id) => setKey('_worker_signature_file_id', id || '')}
-                  signerDisplayName={signerDisplayName}
-                  signerUserId={signerUserId}
-                  onSignatureSaved={applyWorkerSignatureSaved}
-                  onSignatureClear={clearWorkerSignaturePersisted}
-                />
-              )}
-            </>
+            >
+              <div className="flex items-start gap-3 px-3.5 py-3">
+                <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-500">
+                  <PenLine className="h-4 w-4" aria-hidden />
+                </span>
+                <div className="min-w-0 flex-1 space-y-3">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-800">
+                      {workerSig.required ? (
+                        <span className="inline-flex flex-wrap items-baseline gap-x-1">
+                          <span>Worker signature</span>
+                          <span className="text-red-600" aria-hidden>
+                            *
+                          </span>
+                          <span className="sr-only"> (required)</span>
+                        </span>
+                      ) : (
+                        'Worker signature'
+                      )}
+                    </p>
+                    <p className={uiCx(uiTypography.helper, 'mt-0.5')}>
+                      {workerSig.required
+                        ? 'Required before submit'
+                        : 'Optional — sign when the template asks for it'}
+                    </p>
+                  </div>
+                  {(sigMode === 'typed' || sigMode === 'any') && (
+                    <AppInput
+                      value={getStr(formPayload, '_worker_signature')}
+                      onChange={(e) => setKey('_worker_signature', e.target.value)}
+                      disabled={disabled}
+                      placeholder="Type full name to sign"
+                    />
+                  )}
+                  {(sigMode === 'drawn' || sigMode === 'any') && projectId && (
+                    <>
+                      {workerSigFileId && !disabled && canWrite && (
+                        <p className="text-sm text-gray-600">
+                          Signature on file.{' '}
+                          <button
+                            type="button"
+                            className="font-semibold text-brand-red hover:underline"
+                            onClick={() => clearWorkerSignaturePersisted()}
+                          >
+                            Replace signature
+                          </button>
+                        </p>
+                      )}
+                      {workerSigFileId && disabled && (
+                        <p className="text-sm text-gray-600">Signature on file — see signatures below.</p>
+                      )}
+                      {!workerSigFileId && (
+                        <SafetySignaturePad
+                          projectId={projectId}
+                          disabled={disabled}
+                          fileObjectId={workerSigFileId}
+                          onFileObjectId={(id) => setKey('_worker_signature_file_id', id || '')}
+                          signerDisplayName={signerDisplayName}
+                          signerUserId={signerUserId}
+                          onSignatureSaved={applyWorkerSignatureSaved}
+                          onSignatureClear={clearWorkerSignaturePersisted}
+                        />
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
           )}
         </div>
       )}

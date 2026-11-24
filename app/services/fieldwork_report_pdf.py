@@ -31,7 +31,6 @@ logger = logging.getLogger(__name__)
 
 _PDF_TZ = pytz.timezone("America/Vancouver")
 _SIDE = "_fieldComments"
-_SUPER = "_supervisorComments"
 
 _INK = colors.HexColor("#0f172a")
 _MUTED = colors.HexColor("#64748b")
@@ -39,8 +38,6 @@ _LINE = colors.HexColor("#e2e8f0")
 _CARD = colors.HexColor("#f8fafc")
 _BLUE_BG = colors.HexColor("#eff6ff")
 _BLUE_BD = colors.HexColor("#bfdbfe")
-_AMBER_BG = colors.HexColor("#fffbeb")
-_AMBER_BD = colors.HexColor("#fde68a")
 _BRAND = colors.HexColor("#b91c1c")
 
 
@@ -96,14 +93,6 @@ def _tech_note(field: dict, payload: dict) -> Tuple[str, List[str]]:
     if isinstance(bag, dict):
         return _parse_note(bag.get(field.get("key")))
     return "", []
-
-
-def _supervisor_text(field_key: str, payload: dict) -> str:
-    bag = payload.get(_SUPER)
-    if not isinstance(bag, dict):
-        return ""
-    text, _ = _parse_note(bag.get(field_key))
-    return text
 
 
 def _format_answer(field: dict, value: Any) -> str:
@@ -309,6 +298,29 @@ def build_fieldwork_report_pdf_bytes(
     story.append(Spacer(1, 8))
     story.append(meta_t)
 
+    # Denial / return reason (visible to technician when revising) — not per-item supervisor notes.
+    review_note = (getattr(record, "review_note", None) or "").strip()
+    if review_note:
+        note_bits = [
+            Paragraph("RETURNED FOR CHANGES", label_s),
+            Paragraph(_esc(review_note).replace("\n", "<br/>"), small),
+        ]
+        note_box = Table([[note_bits]], colWidths=[7.0 * inch])
+        note_box.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#fef2f2")),
+                    ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor("#fecaca")),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                    ("TOPPADDING", (0, 0), (-1, -1), 6),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                ]
+            )
+        )
+        story.append(Spacer(1, 8))
+        story.append(note_box)
+
     # Form sections
     for sec_title, fields in _sorted_fields(definition, payload):
         story.append(Paragraph(_esc(sec_title), section_style))
@@ -317,7 +329,6 @@ def build_fieldwork_report_pdf_bytes(
             label = str(field.get("label") or key)
             answer = _format_answer(field, payload.get(key))
             tech_text, tech_imgs = _tech_note(field, payload)
-            super_text = _supervisor_text(key, payload)
 
             answer_hex = "#0f172a"
             if field.get("type") == "pass_fail_na":
@@ -369,27 +380,6 @@ def build_fieldwork_report_pdf_bytes(
                 )
                 blocks.append(Spacer(1, 4))
                 blocks.append(tech_box)
-
-            if super_text:
-                bits = [
-                    Paragraph("SUPERVISOR NOTE", label_s),
-                    Paragraph(_esc(super_text).replace("\n", "<br/>"), small),
-                ]
-                super_box = Table([[bits]], colWidths=[7.0 * inch])
-                super_box.setStyle(
-                    TableStyle(
-                        [
-                            ("BACKGROUND", (0, 0), (-1, -1), _AMBER_BG),
-                            ("BOX", (0, 0), (-1, -1), 0.6, _AMBER_BD),
-                            ("LEFTPADDING", (0, 0), (-1, -1), 8),
-                            ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-                            ("TOPPADDING", (0, 0), (-1, -1), 6),
-                            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-                        ]
-                    )
-                )
-                blocks.append(Spacer(1, 4))
-                blocks.append(super_box)
 
             card = Table([[blocks]], colWidths=[7.0 * inch])
             card.setStyle(

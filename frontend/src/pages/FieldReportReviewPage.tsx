@@ -1,19 +1,16 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import {
-  FieldworkSupervisorReportView,
-  SUPERVISOR_COMMENTS_KEY,
-} from '@/components/fieldwork/FieldworkSupervisorReportView';
+import { FieldworkSupervisorReportView } from '@/components/fieldwork/FieldworkSupervisorReportView';
 import { useConfirm } from '@/components/ConfirmProvider';
 import {
   AppBadge,
   AppButton,
   AppCard,
   AppFormModal,
-  AppInput,
   AppPageHeader,
+  AppTextarea,
   uiCx,
   uiLayout,
   uiSpacing,
@@ -52,20 +49,6 @@ function fmtWhen(iso: string | null | undefined): string {
   }
 }
 
-function readSupervisorMap(payload: Record<string, unknown> | undefined): Record<string, string> {
-  const bag = payload?.[SUPERVISOR_COMMENTS_KEY];
-  if (!bag || typeof bag !== 'object' || Array.isArray(bag)) return {};
-  const out: Record<string, string> = {};
-  for (const [k, v] of Object.entries(bag as Record<string, unknown>)) {
-    if (typeof v === 'string') out[k] = v;
-    else if (v && typeof v === 'object' && !Array.isArray(v)) {
-      const t = (v as { text?: unknown }).text;
-      if (typeof t === 'string') out[k] = t;
-    }
-  }
-  return out;
-}
-
 export default function FieldReportReviewPage() {
   const { projectId = '', recordId = '' } = useParams();
   const navigate = useNavigate();
@@ -80,8 +63,6 @@ export default function FieldReportReviewPage() {
   const isAdmin = isAdminRole(me?.roles);
   const permissions = useMemo(() => new Set(me?.permissions || []), [me?.permissions]);
 
-  const [supervisorComments, setSupervisorComments] = useState<Record<string, string>>({});
-  const [supervisorBaseline, setSupervisorBaseline] = useState('');
   const [reviewNote, setReviewNote] = useState('');
   const [requestChangesOpen, setRequestChangesOpen] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -116,20 +97,8 @@ export default function FieldReportReviewPage() {
     isAdmin
   );
 
-  useEffect(() => {
-    if (!record) return;
-    const map = readSupervisorMap(record.form_payload);
-    setSupervisorComments(map);
-    setSupervisorBaseline(JSON.stringify(map));
-    // Only re-sync when the server version changes (not on every payload identity).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [record?.id, record?.row_version]);
-
-  const supervisorDirty = JSON.stringify(supervisorComments) !== supervisorBaseline;
   const status = (record?.status || '').toLowerCase();
   const showReviewActions = canReview && status === 'submitted';
-  const canEditSupervisor =
-    canReview && (status === 'submitted' || status === 'changes_requested' || status === 'approved');
 
   const isRm = projectBusinessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE;
   const projectHref = projectMeta?.is_bidding
@@ -145,58 +114,13 @@ export default function FieldReportReviewPage() {
     await qc.invalidateQueries({ queryKey: ['fieldwork-inbox'] });
   };
 
-  const saveSupervisorMut = useMutation({
-    mutationFn: () => {
-      const comments: Record<string, { text: string }> = {};
-      for (const [k, v] of Object.entries(supervisorComments)) {
-        if (v.trim()) comments[k] = { text: v.trim() };
-      }
-      return api<FieldworkRecord>(
-        'PATCH',
-        `/projects/${projectId}/fieldwork-records/${recordId}/supervisor-comments`,
-        {
-          comments,
-          expected_row_version: record?.row_version,
-        }
-      );
-    },
-    onSuccess: async () => {
-      toast.success('Supervisor notes saved');
-      await invalidate();
-    },
-    onError: (err) => {
-      toast.error(formatApiErrorDetail((err as ApiError)?.detail) || 'Could not save notes');
-    },
-  });
-
   const approveMut = useMutation({
-    mutationFn: async () => {
-      if (supervisorDirty) {
-        const comments: Record<string, { text: string }> = {};
-        for (const [k, v] of Object.entries(supervisorComments)) {
-          if (v.trim()) comments[k] = { text: v.trim() };
-        }
-        await api(
-          'PATCH',
-          `/projects/${projectId}/fieldwork-records/${recordId}/supervisor-comments`,
-          { comments, expected_row_version: record?.row_version }
-        );
-        const fresh = await api<FieldworkRecord>(
-          'GET',
-          `/projects/${projectId}/fieldwork-records/${recordId}`
-        );
-        return api<FieldworkRecord>(
-          'POST',
-          `/projects/${projectId}/fieldwork-records/${recordId}/approve`,
-          { expected_row_version: fresh.row_version }
-        );
-      }
-      return api<FieldworkRecord>(
+    mutationFn: () =>
+      api<FieldworkRecord>(
         'POST',
         `/projects/${projectId}/fieldwork-records/${recordId}/approve`,
         { expected_row_version: record?.row_version }
-      );
-    },
+      ),
     onSuccess: async () => {
       toast.success('Report approved');
       await invalidate();
@@ -207,41 +131,17 @@ export default function FieldReportReviewPage() {
   });
 
   const requestChangesMut = useMutation({
-    mutationFn: async () => {
-      if (supervisorDirty) {
-        const comments: Record<string, { text: string }> = {};
-        for (const [k, v] of Object.entries(supervisorComments)) {
-          if (v.trim()) comments[k] = { text: v.trim() };
-        }
-        await api(
-          'PATCH',
-          `/projects/${projectId}/fieldwork-records/${recordId}/supervisor-comments`,
-          { comments, expected_row_version: record?.row_version }
-        );
-        const fresh = await api<FieldworkRecord>(
-          'GET',
-          `/projects/${projectId}/fieldwork-records/${recordId}`
-        );
-        return api<FieldworkRecord>(
-          'POST',
-          `/projects/${projectId}/fieldwork-records/${recordId}/request-changes`,
-          {
-            review_note: reviewNote.trim(),
-            expected_row_version: fresh.row_version,
-          }
-        );
-      }
-      return api<FieldworkRecord>(
+    mutationFn: () =>
+      api<FieldworkRecord>(
         'POST',
         `/projects/${projectId}/fieldwork-records/${recordId}/request-changes`,
         {
           review_note: reviewNote.trim(),
           expected_row_version: record?.row_version,
         }
-      );
-    },
+      ),
     onSuccess: async () => {
-      toast.success('Changes requested');
+      toast.success('Report returned for changes');
       setRequestChangesOpen(false);
       setReviewNote('');
       await invalidate();
@@ -371,18 +271,6 @@ export default function FieldReportReviewPage() {
             <AppButton type="button" variant="secondary" size="sm" onClick={() => setShowHistory((v) => !v)}>
               {showHistory ? 'Hide history' : 'History'}
             </AppButton>
-            {canEditSupervisor ? (
-              <AppButton
-                type="button"
-                variant="secondary"
-                size="sm"
-                disabled={!supervisorDirty}
-                loading={saveSupervisorMut.isPending}
-                onClick={() => saveSupervisorMut.mutate()}
-              >
-                Save notes
-              </AppButton>
-            ) : null}
             {showReviewActions ? (
               <>
                 <AppButton
@@ -394,7 +282,7 @@ export default function FieldReportReviewPage() {
                     setRequestChangesOpen(true);
                   }}
                 >
-                  Request changes
+                  Deny / request changes
                 </AppButton>
                 <AppButton
                   type="button"
@@ -433,10 +321,15 @@ export default function FieldReportReviewPage() {
             </span>
           ) : null}
         </div>
-        {status === 'changes_requested' && record.review_note ? (
-          <div className="mt-3 rounded-lg border border-red-100 bg-red-50 px-3 py-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-red-800">Changes requested</p>
-            <p className="mt-1 text-sm text-red-950 whitespace-pre-wrap">{record.review_note}</p>
+        {status === 'changes_requested' ? (
+          <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-red-800">
+              Returned for changes
+            </p>
+            <p className="mt-1 text-sm text-red-950 whitespace-pre-wrap">
+              {(record.review_note || '').trim() ||
+                'The supervisor asked for corrections. Open the project report to revise and resubmit.'}
+            </p>
           </div>
         ) : null}
         {status === 'approved' && record.approved_by_name ? (
@@ -474,18 +367,15 @@ export default function FieldReportReviewPage() {
 
       <FieldworkSupervisorReportView
         record={record}
-        supervisorComments={supervisorComments}
-        canEditSupervisorComments={canEditSupervisor}
-        onSupervisorCommentChange={(key, text) =>
-          setSupervisorComments((prev) => ({ ...prev, [key]: text }))
-        }
+        supervisorComments={{}}
+        showSupervisorNotes={false}
       />
 
       <AppFormModal
         open={requestChangesOpen}
         onClose={() => setRequestChangesOpen(false)}
-        title="Request changes"
-        description="Explain what the technician must correct. Supervisor notes on each item are saved with this action."
+        title="Deny / request changes"
+        description="Tell the technician why this report is being returned. They will see this message at the top when they revise it."
         footer={
           <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
             <AppButton type="button" variant="secondary" size="sm" onClick={() => setRequestChangesOpen(false)}>
@@ -498,17 +388,18 @@ export default function FieldReportReviewPage() {
               loading={requestChangesMut.isPending}
               onClick={() => requestChangesMut.mutate()}
             >
-              Send request
+              Return for changes
             </AppButton>
           </div>
         }
       >
-        <AppInput
+        <AppTextarea
           id="fw-review-note-page"
-          label="Review note"
+          label="Why is this being returned?"
           value={reviewNote}
           onChange={(e) => setReviewNote(e.target.value)}
-          placeholder="Required comment for the technician"
+          placeholder="Required — explain what must be corrected"
+          rows={4}
         />
       </AppFormModal>
     </div>

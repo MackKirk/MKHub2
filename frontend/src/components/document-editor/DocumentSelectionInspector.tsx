@@ -46,6 +46,55 @@ function Cluster({ children, className }: { children: ReactNode; className?: str
   return <div className={`${editorContextToolbarGroupClass} ${className ?? ''}`}>{children}</div>;
 }
 
+const FIELD_REPORT_SLOT_COUNT = 12;
+
+function FieldReportSlotSelect({
+  element,
+  onUpdate,
+}: {
+  element: DocElement;
+  onUpdate: (id: string, updater: (el: DocElement) => DocElement) => void;
+}) {
+  const isImage = element.type === 'image';
+  const isText = element.type === 'text';
+  if (!isImage && !isText) return null;
+  const prefix = isImage ? 'photo_' : 'caption_';
+  const current = typeof element.meta?.slot === 'string' ? element.meta.slot.trim().toLowerCase() : '';
+  const options = [
+    { value: '', label: 'None' },
+    ...Array.from({ length: FIELD_REPORT_SLOT_COUNT }, (_, i) => {
+      const v = `${prefix}${i + 1}`;
+      return { value: v, label: v };
+    }),
+  ];
+  return (
+    <StackRow>
+      <span className={editorToolbarMicroLabelClass}>FR slot</span>
+      <select
+        className={editorContextNativeSelectClass}
+        value={options.some((o) => o.value === current) ? current : ''}
+        title="Field Report insert slot (photo_N / caption_N)"
+        onChange={(e) => {
+          const next = e.target.value.trim();
+          onUpdate(element.id, (el) => {
+            const meta = { ...(el.meta || {}) };
+            if (!next) delete meta.slot;
+            else meta.slot = next;
+            const keys = Object.keys(meta);
+            return { ...el, meta: keys.length ? meta : undefined };
+          });
+        }}
+      >
+        {options.map((o) => (
+          <option key={o.value || 'none'} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </StackRow>
+  );
+}
+
 function Stack({ children, className }: { children: ReactNode; className?: string }) {
   return <div className={`${editorContextToolbarStackClass} ${className ?? ''}`}>{children}</div>;
 }
@@ -814,6 +863,7 @@ export default function DocumentSelectionInspector({
               ))}
             </div>
           </StackRow>
+          <FieldReportSlotSelect element={element} onUpdate={onUpdate} />
         </Stack>
       </div>
     );
@@ -863,6 +913,7 @@ export default function DocumentSelectionInspector({
               onChange={(v) => onUpdate(id, (el) => ({ ...el, imagePosition: v }))}
             />
           </StackRow>
+          <FieldReportSlotSelect element={element} onUpdate={onUpdate} />
         </Stack>
       </div>
     );
@@ -906,10 +957,13 @@ export default function DocumentSelectionInspector({
             <GeometryPxInput label="W" valuePx={geo.px.width} disabled={geo.locked} onCommit={(n) => geo.applyField('width', n)} />
             <GeometryPxInput label="H" valuePx={geo.px.height} disabled={geo.locked} onCommit={(n) => geo.applyField('height', n)} />
           </StackRow>
+          {!isLocked ? <FieldReportSlotSelect element={element} onUpdate={onUpdate} /> : null}
         </Stack>
         <Cluster className="self-center">
           <p className="rounded-md border border-slate-200/90 bg-slate-50/80 px-2.5 py-1.5 text-xs text-slate-600">
-            {isLocked ? 'Unlock the image to adjust fit and position.' : 'Add an image to adjust fit and position.'}
+            {isLocked
+              ? 'Unlock the image to adjust fit and position.'
+              : 'Empty image area — set FR slot (photo_N) for Field Report insert, or add an image.'}
           </p>
         </Cluster>
       </div>

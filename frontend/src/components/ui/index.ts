@@ -55,3 +55,4 @@ export * from './AppSortableEntityList';
 export * from './AppCalendarBase';
 export * from './AppHeroEditButton';
 export * from './AppFileUpload';
+export * from './AppStickyActionBar';

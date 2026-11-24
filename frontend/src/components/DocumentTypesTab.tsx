@@ -12,6 +12,7 @@ import DocumentAutoFillTokenPicker from '@/components/document-editor/DocumentAu
 import { useDocumentAutoFillTokens } from '@/hooks/useDocumentAutoFillTokens';
 import {
   AppButton,
+  AppCheckbox,
   AppFormModal,
   AppInput,
   AppSelect,
@@ -153,6 +154,7 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('');
+  const [validForFieldReport, setValidForFieldReport] = useState(false);
   const [pages, setPages] = useState<PageTemplateRow[]>([{ template_id: '', label: '' }]);
   const [isSaving, setIsSaving] = useState(false);
   const [layoutModalPageIndex, setLayoutModalPageIndex] = useState<number | null>(null);
@@ -212,10 +214,11 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
       setName(editing.name);
       setDescription(editing.description || '');
       setCategory(editing.category || '');
+      setValidForFieldReport(Boolean(editing.valid_for_field_report));
       const pt = editing.page_templates || [];
       setPages(
         pt.length > 0
-          ? pt.map((p: { template_id?: string; label?: string; margins?: PageMargins; elements?: DocElement[] }) => ({
+          ? pt.map((p: { template_id?: string | null; label?: string; margins?: PageMargins; elements?: DocElement[] }) => ({
               template_id: p.template_id || '',
               label: p.label || '',
               margins: p.margins,
@@ -225,7 +228,7 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
       );
     } else if (!showForm) {
       setName('');
-      setDescription('');
+      setValidForFieldReport(false);      setDescription('');
       setCategory('');
       setPages([{ template_id: '', label: '' }]);
     }
@@ -390,23 +393,13 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
 
     // Persist immediately when editing an existing template
     if (editingId) {
-      const page_templates = updatedPages
-        .map((p) => {
-          const tid = p.template_id?.trim();
-          if (!tid) return null;
-          return {
-            template_id: tid,
-            label: p.label?.trim() || undefined,
-            margins: p.margins ?? undefined,
-            elements: p.elements ?? [],
-          };
-        })
-        .filter(Boolean) as { template_id: string; label?: string; margins?: PageMargins; elements?: DocElement[] }[];
+      const page_templates = serializePageTemplates(updatedPages);
       try {
         await api('PATCH', `/document-creator/document-types/${editingId}`, {
           name: name.trim(),
           description: description.trim() || undefined,
           category: category.trim() || undefined,
+          valid_for_field_report: validForFieldReport,
           page_templates,
         });
         toast.success('Page layout saved.');
@@ -433,18 +426,7 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
       toast.error('Enter a name for the document template.');
       return;
     }
-    const page_templates = pages
-      .map((p) => {
-        const tid = p.template_id?.trim();
-        if (!tid) return null;
-        return {
-          template_id: tid,
-          label: p.label?.trim() || undefined,
-          margins: p.margins ?? undefined,
-          elements: p.elements ?? [],
-        };
-      })
-      .filter(Boolean) as { template_id: string; label?: string; margins?: PageMargins; elements?: DocElement[] }[];
+    const page_templates = serializePageTemplates(pages);
     if (page_templates.length === 0) {
       toast.error('Add at least one page (select a background template for the first page).');
       return;
@@ -456,6 +438,7 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
           name: name.trim(),
           description: description.trim() || undefined,
           category: category.trim() || undefined,
+          valid_for_field_report: validForFieldReport,
           page_templates,
         });
         toast.success('Document template updated.');
@@ -464,6 +447,7 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
           name: name.trim(),
           description: description.trim() || undefined,
           category: category.trim() || undefined,
+          valid_for_field_report: validForFieldReport,
           page_templates,
         });
         toast.success('Document template created.');
@@ -474,6 +458,7 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
       setName('');
       setDescription('');
       setCategory('');
+      setValidForFieldReport(false);
       setPages([{ template_id: '', label: '' }]);
     } catch (err: any) {
       toast.error(err?.message || (editingId ? 'Failed to update.' : 'Failed to create document template.'));
@@ -487,11 +472,33 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
     setEditingId(null);
   };
 
+  const serializePageTemplates = (rows: PageTemplateRow[]) =>
+    rows
+      .map((p) => {
+        const tid = p.template_id?.trim() || null;
+        const elements = p.elements ?? [];
+        // Allow blank background when the page already has layout elements (e.g. Field Report photo pages).
+        if (!tid && elements.length === 0) return null;
+        return {
+          template_id: tid,
+          label: p.label?.trim() || undefined,
+          margins: p.margins ?? undefined,
+          elements,
+        };
+      })
+      .filter(Boolean) as {
+        template_id: string | null;
+        label?: string;
+        margins?: PageMargins;
+        elements?: DocElement[];
+      }[];
+
   const openCreate = () => {
     setEditingId(null);
     setName('');
     setDescription('');
     setCategory('');
+    setValidForFieldReport(false);
     setPages([{ template_id: '', label: '' }]);
     setShowForm(true);
   };
@@ -622,6 +629,11 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
                           {dt.category}
                         </span>
                       )}
+                      {dt.valid_for_field_report ? (
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-sky-50 text-sky-800 ring-1 ring-sky-200/80">
+                          Field report
+                        </span>
+                      ) : null}
                     </div>
                     {dt.description && (
                       <div className="text-sm text-gray-600 truncate mt-0.5">{dt.description}</div>
@@ -734,6 +746,13 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
               onChange={(e) => setDescription(e.target.value)}
               placeholder="e.g. Cover + back cover + content page"
               disabled={isSaving}
+            />
+            <AppCheckbox
+              checked={validForFieldReport}
+              onChange={setValidForFieldReport}
+              disabled={isSaving}
+              label="Valid for Field Report insert"
+              fieldHint="Shows this template when inserting photos from an approved Field Report. On page layout, set image/text Field Report slots (photo_1 / caption_1, …)."
             />
             <div>
               <div className={uiCx('mb-2 flex items-center justify-between gap-2')}>

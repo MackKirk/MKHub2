@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Search } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -19,10 +19,26 @@ type ParsedPhrase = {
   pathLabel: string;
 };
 
+export type FieldworkPhraseSelection = {
+  entryType: 'observation' | 'work_performed';
+  phraseItemIds: string[];
+  phraseTexts: string[];
+};
+
 type Props = {
   active?: boolean;
   disabled?: boolean;
-  onInsert: (phraseText: string) => void;
+  /** Comment mode: inserts joined phrase text into a note. */
+  onInsert?: (phraseText: string) => void;
+  /**
+   * Classify / photo mode: confirm selected catalog phrases (ids + texts).
+   * When set, the primary action is “Use selected” instead of inserting text.
+   */
+  onConfirmSelection?: (selection: FieldworkPhraseSelection) => void;
+  /** Prefill checkboxes / entry type when editing an existing selection. */
+  initialSelection?: FieldworkPhraseSelection | null;
+  confirmLabel?: string;
+  helperHint?: string;
   className?: string;
 };
 
@@ -61,13 +77,23 @@ export default function FieldworkPhraseLibraryPanel({
   active = true,
   disabled = false,
   onInsert,
+  onConfirmSelection,
+  initialSelection = null,
+  confirmLabel,
+  helperHint,
   className,
 }: Props) {
-  const [entryType, setEntryType] = useState<'observation' | 'work_performed'>('observation');
+  const classifyMode = typeof onConfirmSelection === 'function';
+  const [entryType, setEntryType] = useState<'observation' | 'work_performed'>(
+    initialSelection?.entryType || 'observation'
+  );
   const [search, setSearch] = useState('');
   const [roof, setRoof] = useState<string | null>(null);
   const [category, setCategory] = useState<string | null>(null);
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>(
+    () => initialSelection?.phraseItemIds?.slice() || []
+  );
+  const seedingRef = useRef(false);
 
   const { data: catalogs } = useQuery({
     queryKey: ['fieldworkPhraseCatalogs'],
@@ -147,8 +173,32 @@ export default function FieldworkPhraseLibraryPanel({
     setCategory(first.categories[0]?.name || null);
   }, [active, tree, roof]);
 
+  const initialSelectionKey = initialSelection?.phraseItemIds?.length
+    ? `${initialSelection.entryType}:${initialSelection.phraseItemIds.join(',')}`
+    : '';
+
   useEffect(() => {
     if (!active) return;
+    seedingRef.current = true;
+    setSearch('');
+    setRoof(null);
+    setCategory(null);
+    if (initialSelection?.phraseItemIds?.length) {
+      setEntryType(initialSelection.entryType);
+      setSelectedIds(initialSelection.phraseItemIds.slice());
+    } else {
+      setSelectedIds([]);
+    }
+    const t = window.setTimeout(() => {
+      seedingRef.current = false;
+    }, 0);
+    return () => window.clearTimeout(t);
+    // initialSelectionKey captures id+type; avoid resetting on object identity churn
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, initialSelectionKey]);
+
+  useEffect(() => {
+    if (!active || seedingRef.current) return;
     setSelectedIds([]);
     setSearch('');
     setRoof(null);
@@ -182,8 +232,18 @@ export default function FieldworkPhraseLibraryPanel({
     const texts = selectedIds
       .map((id) => phrasesById.get(id)?.phrase)
       .filter((t): t is string => !!t && t.trim().length > 0);
-    if (!texts.length) return;
-    onInsert(texts.join('\n'));
+    const ids = selectedIds.filter((id) => !!phrasesById.get(id)?.phrase?.trim());
+    if (!texts.length || !ids.length) return;
+    if (classifyMode) {
+      onConfirmSelection?.({
+        entryType,
+        phraseItemIds: ids,
+        phraseTexts: texts,
+      });
+      setSelectedIds([]);
+      return;
+    }
+    onInsert?.(texts.join('\n'));
     setSelectedIds([]);
   };
 
@@ -400,7 +460,10 @@ export default function FieldworkPhraseLibraryPanel({
             <p className={uiCx(uiTypography.helper)}>
               {selectedCount
                 ? `${selectedCount} phrase${selectedCount === 1 ? '' : 's'} selected`
-                : 'Select phrases to insert into the comment'}
+                : helperHint ||
+                  (classifyMode
+                    ? 'Select one or more catalog phrases to classify the photo'
+                    : 'Select phrases to insert into the comment')}
             </p>
             <div className="flex items-center gap-2">
               {selectedCount ? (
@@ -415,8 +478,9 @@ export default function FieldworkPhraseLibraryPanel({
                 disabled={disabled || !selectedCount}
                 onClick={insertSelected}
               >
-                Insert phrase{selectedCount === 1 ? '' : 's'}
-                {selectedCount ? ` (${selectedCount})` : ''}
+                {classifyMode
+                  ? `${confirmLabel || 'Use selected'}${selectedCount ? ` (${selectedCount})` : ''}`
+                  : `Insert phrase${selectedCount === 1 ? '' : 's'}${selectedCount ? ` (${selectedCount})` : ''}`}
               </AppButton>
             </div>
           </div>

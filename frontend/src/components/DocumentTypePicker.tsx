@@ -17,11 +17,13 @@ export type DocumentTypePreset = {
   description?: string | null;
   category?: string | null;
   page_templates: {
-    template_id: string;
+    template_id: string | null;
     label?: string;
     margins?: PageMargins | null;
     elements?: DocElement[];
   }[];
+  /** When true, offered in Insert from Field Report. */
+  valid_for_field_report?: boolean;
   created_at?: string | null;
 };
 
