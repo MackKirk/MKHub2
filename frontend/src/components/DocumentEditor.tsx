@@ -2,6 +2,7 @@ import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, for
 import { createPortal, flushSync } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { useNavigateBack } from '@/hooks/useNavigateBack';
+import { standaloneDocumentEditorPath } from '@/lib/documentCreateScope';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, getToken, withFileAccessToken, ApiError, getApiErrorCode, isDocumentConcurrencyError } from '@/lib/api';
 import { documentFileThumbnailPath } from '@/lib/documentDisplayImage';
@@ -15,6 +16,7 @@ import { useConfirm } from '@/components/ConfirmProvider';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import { useDocumentAutoSave, type DocumentSaveStatus } from '@/hooks/useDocumentAutoSave';
 import { useDocumentMediaLoading } from '@/hooks/useDocumentMediaLoading';
+import { useDocumentEditorPreferences } from '@/hooks/useDocumentEditorPreferences';
 import DocumentPreview from '@/components/DocumentPreview';
 import RenameDocumentModal from '@/components/RenameDocumentModal';
 import DocumentPagesStrip from '@/components/DocumentPagesStrip';
@@ -354,6 +356,22 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
   /** Suppress IntersectionObserver page sync while sidebar scroll is in flight. */
   const pageScrollLockRef = useRef(false);
 
+  const finishTextEditing = useCallback(() => {
+    setTextEditingElementId(null);
+  }, []);
+
+  const {
+    textEditExitMode,
+    setTextEditExitMode,
+    snapToGuides,
+    setSnapToGuides,
+    showDragGuides,
+    setShowDragGuides,
+    defaultZoom,
+    setDefaultZoom,
+    isFetched: documentEditorPrefsFetched,
+  } = useDocumentEditorPreferences(!readOnly);
+
   const handlePreviewElementClick = useCallback(
     (
       pageIndex: number | undefined,
@@ -362,6 +380,9 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
     ) => {
       if (pageIndex != null) setCurrentPageIndex(pageIndex);
       if (textEditingElementId && textEditingElementId !== elementId) {
+        if (textEditExitMode === 'click_outside') {
+          finishTextEditing();
+        }
         setSelectedElementIds([elementId]);
         return;
       }
@@ -374,16 +395,16 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
         setSelectedElementIds([elementId]);
       }
     },
-    [textEditingElementId],
+    [textEditingElementId, textEditExitMode, finishTextEditing],
   );
 
-  const finishTextEditing = useCallback(() => {
-    setTextEditingElementId(null);
-  }, []);
-
   const notifyBlockedByTextEdit = useCallback(() => {
+    if (textEditExitMode === 'click_outside') {
+      finishTextEditing();
+      return;
+    }
     notifyTextEditBlocking(finishTextEditing);
-  }, [finishTextEditing]);
+  }, [finishTextEditing, textEditExitMode]);
 
   useEffect(() => {
     if (!textEditingElementId) dismissTextEditBlockingToast();
@@ -398,7 +419,25 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
     run();
     requestAnimationFrame(run);
   }, []);
-  const [zoom, setZoom] = useState<number>(0.75);
+  const [zoom, setZoom] = useState<number>(0.8);
+  const [marginsVisible, setMarginsVisible] = useState(true);
+  const [blockAreasVisible, setBlockAreasVisible] = useState(true);
+  const [documentInfoOpen, setDocumentInfoOpen] = useState(false);
+  const [duplicatingDocument, setDuplicatingDocument] = useState(false);
+  const zoomHydratedFromPrefsRef = useRef(false);
+  useEffect(() => {
+    if (readOnly || !documentEditorPrefsFetched || zoomHydratedFromPrefsRef.current) return;
+    zoomHydratedFromPrefsRef.current = true;
+    setZoom(defaultZoom);
+  }, [readOnly, documentEditorPrefsFetched, defaultZoom]);
+
+  const handleZoomChange = useCallback(
+    (next: number) => {
+      setZoom(next);
+      if (!readOnly) setDefaultZoom(next);
+    },
+    [readOnly, setDefaultZoom],
+  );
   const [dragLayerIndex, setDragLayerIndex] = useState<number | null>(null);
   /** Bumps when undo/redo stacks change so UI (e.g. ribbon buttons) re-renders. */
   const [historyRevision, setHistoryRevision] = useState(0);
@@ -1447,7 +1486,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
         redo();
         return;
       }
-      // Copy/Paste/Duplicate for elements (multi-select supported)
+      // Copy/Paste/Duplicate/Cut/Select all for elements (multi-select supported)
       // Document mode excludes blocks; template mode allows them.
       const toCopy = isTemplate
         ? selectedEls
@@ -1461,6 +1500,26 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
           copyStampRef.current = Date.now();
           toast.success(toCopy.length === 1 ? 'Copied.' : `Copied ${toCopy.length} elements.`);
         }
+        return;
+      }
+      if (key === 'x') {
+        const unlocked = toCopy.filter((el) => !el.locked);
+        if (unlocked.length === 0) return;
+        e.preventDefault();
+        const clones = unlocked.map((el) => JSON.parse(JSON.stringify(el)) as DocElement);
+        clipboardRef.current = clones;
+        writeDocumentCreatorClipboard(clones);
+        copyStampRef.current = Date.now();
+        pushHistory();
+        const removeIds = new Set(unlocked.map((el) => el.id));
+        const idx = stateRef.current.currentPageIndex;
+        const nextPages = stateRef.current.pages.map((p, i) =>
+          i === idx ? { ...p, elements: (p.elements ?? []).filter((el) => !removeIds.has(el.id)) } : p,
+        );
+        setPages(nextPages);
+        setSignerRoles((prev) => pruneUnusedSigners(prev, nextPages));
+        setSelectedElementIds([]);
+        toast.success(unlocked.length === 1 ? 'Cut.' : `Cut ${unlocked.length} elements.`);
         return;
       }
       if (key === 'd') {
@@ -1482,6 +1541,13 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
           return next;
         });
         setSelectedElementIds(clones.map((c) => c.id));
+        return;
+      }
+      if (key === 'a') {
+        e.preventDefault();
+        const pageEls = stateRef.current.pages[stateRef.current.currentPageIndex]?.elements ?? [];
+        const ids = (isTemplate ? pageEls : pageEls.filter((el) => el.type !== 'block')).map((el) => el.id);
+        setSelectedElementIds(ids);
         return;
       }
       if (key === 'v') {
@@ -1546,22 +1612,31 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
     pageSectionRefs.current[index] = el;
   }, []);
 
+  const syncContinuousPageSectionHeights = useCallback(() => {
+    const root = canvasScrollRef.current;
+    if (!root) return;
+    const viewportH = root.clientHeight;
+    if (viewportH <= 0) return;
+    const lastIndex = pages.length - 1;
+    pageSectionRefs.current.forEach((el, i) => {
+      if (!el) return;
+      // Only the last page needs viewport min-height so it can scroll flush to the top.
+      // Applying it to every page created huge gaps when zoomed out.
+      el.style.minHeight = i === lastIndex ? `${viewportH}px` : '';
+    });
+  }, [pages.length]);
+
   const scrollToPageSection = useCallback((index: number, behavior: ScrollBehavior = 'smooth') => {
     const root = canvasScrollRef.current;
     const section = pageSectionRefs.current[index];
     if (!root || !section) return;
-    const viewportH = root.clientHeight;
-    if (viewportH > 0) {
-      pageSectionRefs.current.forEach((el) => {
-        if (el) el.style.minHeight = `${viewportH}px`;
-      });
-    }
+    syncContinuousPageSectionHeights();
     pageScrollLockRef.current = true;
     root.scrollTo({ top: section.offsetTop, behavior });
     window.setTimeout(() => {
       pageScrollLockRef.current = false;
     }, behavior === 'smooth' ? 520 : 0);
-  }, []);
+  }, [syncContinuousPageSectionHeights]);
 
   const handlePageSelect = useCallback(
     (index: number) => {
@@ -1597,22 +1672,18 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
     if (!useContinuousPageCanvas) return;
     const root = canvasScrollRef.current;
     if (!root) return;
-    const syncSectionHeights = () => {
-      const h = root.clientHeight;
-      if (h <= 0) return;
-      pageSectionRefs.current.forEach((el) => {
-        if (el) el.style.minHeight = `${h}px`;
-      });
-    };
-    syncSectionHeights();
-    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(syncSectionHeights) : null;
+    syncContinuousPageSectionHeights();
+    const ro =
+      typeof ResizeObserver !== 'undefined'
+        ? new ResizeObserver(() => syncContinuousPageSectionHeights())
+        : null;
     ro?.observe(root);
-    window.addEventListener('resize', syncSectionHeights);
+    window.addEventListener('resize', syncContinuousPageSectionHeights);
     return () => {
       ro?.disconnect();
-      window.removeEventListener('resize', syncSectionHeights);
+      window.removeEventListener('resize', syncContinuousPageSectionHeights);
     };
-  }, [useContinuousPageCanvas, pages.length]);
+  }, [useContinuousPageCanvas, pages.length, zoom, syncContinuousPageSectionHeights]);
 
   useLayoutEffect(() => {
     if (!useContinuousPageCanvas) return;
@@ -2469,6 +2540,185 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
     setSelectedElementIds(clones.map((c) => c.id));
   }, [newElementId, pushHistory, isTemplate]);
 
+  const getCopyableSelection = useCallback(() => {
+    const cur = stateRef.current;
+    const pageIdx =
+      (cur.selectedElementIds ?? []).length > 0
+        ? (() => {
+            for (let i = 0; i < cur.pages.length; i++) {
+              if ((cur.pages[i].elements ?? []).some((e) => cur.selectedElementIds.includes(e.id))) return i;
+            }
+            return cur.currentPageIndex;
+          })()
+        : cur.currentPageIndex;
+    const els = cur.pages[pageIdx]?.elements ?? [];
+    const selected = els.filter((e) => (cur.selectedElementIds ?? []).includes(e.id));
+    const copyable = isTemplate ? selected : selected.filter((el) => el.type !== 'block');
+    return { pageIdx, copyable };
+  }, [isTemplate]);
+
+  const copySelection = useCallback(() => {
+    const { copyable } = getCopyableSelection();
+    if (copyable.length === 0) return false;
+    const clones = copyable.map((el) => JSON.parse(JSON.stringify(el)) as DocElement);
+    clipboardRef.current = clones;
+    writeDocumentCreatorClipboard(clones);
+    copyStampRef.current = Date.now();
+    toast.success(copyable.length === 1 ? 'Copied.' : `Copied ${copyable.length} elements.`);
+    return true;
+  }, [getCopyableSelection]);
+
+  const duplicateSelection = useCallback(() => {
+    const { pageIdx, copyable } = getCopyableSelection();
+    if (copyable.length === 0) return;
+    pushHistory();
+    const clones: DocElement[] = copyable.map((src) => ({
+      ...(JSON.parse(JSON.stringify(src)) as DocElement),
+      id: newElementId(),
+      x_pct: Math.min(100 - (src.width_pct ?? 0), (src.x_pct ?? 0) + 1),
+      y_pct: Math.min(100 - (src.height_pct ?? 0), (src.y_pct ?? 0) + 1),
+    }));
+    updateElementsAtPageIndex(pageIdx, (prev) => [...prev, ...clones]);
+    setCurrentPageIndex(pageIdx);
+    setSelectedElementIds(clones.map((c) => c.id));
+  }, [getCopyableSelection, pushHistory, newElementId, updateElementsAtPageIndex]);
+
+  const cutSelection = useCallback(() => {
+    const { pageIdx, copyable } = getCopyableSelection();
+    if (copyable.length === 0) return;
+    const unlocked = copyable.filter((el) => !el.locked);
+    if (unlocked.length === 0) {
+      toast.error('Unlock elements before cutting.');
+      return;
+    }
+    const clones = unlocked.map((el) => JSON.parse(JSON.stringify(el)) as DocElement);
+    clipboardRef.current = clones;
+    writeDocumentCreatorClipboard(clones);
+    copyStampRef.current = Date.now();
+    pushHistory();
+    const removeIds = new Set(unlocked.map((el) => el.id));
+    const nextPages = stateRef.current.pages.map((p, i) =>
+      i === pageIdx ? { ...p, elements: (p.elements ?? []).filter((el) => !removeIds.has(el.id)) } : p,
+    );
+    setPages(nextPages);
+    pruneSignersFromPages(nextPages);
+    setSelectedElementIds([]);
+    toast.success(unlocked.length === 1 ? 'Cut.' : `Cut ${unlocked.length} elements.`);
+  }, [getCopyableSelection, pushHistory, pruneSignersFromPages]);
+
+  const selectAllOnPage = useCallback(() => {
+    const cur = stateRef.current;
+    const els = cur.pages[cur.currentPageIndex]?.elements ?? [];
+    const ids = (isTemplate ? els : els.filter((el) => el.type !== 'block')).map((el) => el.id);
+    setSelectedElementIds(ids);
+  }, [isTemplate]);
+
+  const handleDistributeSelected = useCallback(
+    (axis: 'horizontal' | 'vertical') => {
+      const pageIdx =
+        selectedElementIds.length > 0
+          ? findPageIndexForElement(selectedElementIds[0]) ?? stateRef.current.currentPageIndex
+          : stateRef.current.currentPageIndex;
+      const pageEls = stateRef.current.pages[pageIdx]?.elements ?? [];
+      const ids = selectedElementIds.filter((id) => {
+        const el = pageEls.find((e) => e.id === id);
+        return el && !el.locked && !el.lockPosition;
+      });
+      if (ids.length < 3) return;
+      const sel = pageEls.filter((e) => ids.includes(e.id));
+      const sorted = [...sel].sort((a, b) =>
+        axis === 'horizontal' ? (a.x_pct ?? 0) - (b.x_pct ?? 0) : (a.y_pct ?? 0) - (b.y_pct ?? 0),
+      );
+      const first = sorted[0];
+      const last = sorted[sorted.length - 1];
+      const firstEdge = axis === 'horizontal' ? first.x_pct ?? 0 : first.y_pct ?? 0;
+      const lastEdge =
+        axis === 'horizontal'
+          ? (last.x_pct ?? 0) + (last.width_pct ?? 0)
+          : (last.y_pct ?? 0) + (last.height_pct ?? 0);
+      const totalSize = sorted.reduce(
+        (sum, el) => sum + (axis === 'horizontal' ? el.width_pct ?? 0 : el.height_pct ?? 0),
+        0,
+      );
+      const gap = (lastEdge - firstEdge - totalSize) / (sorted.length - 1);
+      let cursor = firstEdge;
+      const nextPos = new Map<string, number>();
+      sorted.forEach((el) => {
+        nextPos.set(el.id, cursor);
+        cursor += (axis === 'horizontal' ? el.width_pct ?? 0 : el.height_pct ?? 0) + gap;
+      });
+      const page = stateRef.current.pages[pageIdx];
+      const tmpl = templates.find((t) => t.id === (page?.template_id ?? ''));
+      const L = page?.margins?.left_pct ?? tmpl?.margins?.left_pct ?? 0;
+      const R = page?.margins?.right_pct ?? tmpl?.margins?.right_pct ?? 0;
+      const T = page?.margins?.top_pct ?? tmpl?.margins?.top_pct ?? 0;
+      const B = page?.margins?.bottom_pct ?? tmpl?.margins?.bottom_pct ?? 0;
+      pushHistory();
+      updateElementsAtPageIndex(pageIdx, (prev) =>
+        prev.map((el) => {
+          const pos = nextPos.get(el.id);
+          if (pos == null) return el;
+          const w = el.width_pct ?? 80;
+          const h = el.height_pct ?? 8;
+          if (axis === 'horizontal') {
+            return { ...el, x_pct: Math.max(L, Math.min(100 - R - w, pos)) };
+          }
+          return { ...el, y_pct: Math.max(T, Math.min(100 - B - h, pos)) };
+        }),
+      );
+    },
+    [selectedElementIds, findPageIndexForElement, templates, pushHistory, updateElementsAtPageIndex],
+  );
+
+  const fitCanvasZoom = useCallback(
+    (mode: 'width' | 'page') => {
+      const root = canvasScrollRef.current;
+      if (!root) return;
+      const pad = 24;
+      const availW = Math.max(120, root.clientWidth - pad);
+      const availH = Math.max(120, root.clientHeight - pad);
+      const A4_ASPECT = 210 / 297;
+      const baseW = Math.min(1200, Math.max(280, availW));
+      const zWidth = availW / baseW;
+      const zPage = Math.min(zWidth, (availH * A4_ASPECT) / baseW);
+      const next = Math.max(0.25, Math.min(2.5, mode === 'width' ? zWidth : zPage));
+      handleZoomChange(Math.round(next * 100) / 100);
+    },
+    [handleZoomChange],
+  );
+
+  const handleDuplicateDocument = useCallback(async () => {
+    if (!id || isTemplate || readOnly) return;
+    try {
+      setDuplicatingDocument(true);
+      await flushSave();
+      const created = await api<UserDocument>('POST', `/document-creator/documents/${id}/duplicate`);
+      toast.success('Document duplicated.');
+      void queryClient.invalidateQueries({ queryKey: ['document-creator-documents'] });
+      if (projectId) {
+        void queryClient.invalidateQueries({ queryKey: ['document-creator-documents', projectId] });
+      }
+      if (subjectUserId) {
+        void queryClient.invalidateQueries({
+          queryKey: ['document-creator-documents', 'subject', subjectUserId],
+        });
+      }
+      const path = window.location.pathname;
+      if (path.startsWith('/documents/create')) {
+        navigate(standaloneDocumentEditorPath(created.id, { rename: true }));
+        return;
+      }
+      const params = new URLSearchParams(window.location.search);
+      params.set('doc', created.id);
+      params.set('rename', '1');
+      navigate({ pathname: path, search: params.toString() });
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to duplicate document.');
+    } finally {
+      setDuplicatingDocument(false);
+    }
+  }, [id, isTemplate, readOnly, flushSave, queryClient, projectId, subjectUserId, navigate]);
+
   useEffect(() => {
     if (readOnly) return;
     const onPaste = (e: ClipboardEvent) => {
@@ -2791,10 +3041,20 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
         textEditingElementId={textEditingElementId}
         projectId={projectId}
         subjectUserId={subjectUserId}
+        textEditExitMode={textEditExitMode}
+        onTextEditExitModeChange={setTextEditExitMode}
+        snapToGuides={snapToGuides}
+        onSnapToGuidesChange={setSnapToGuides}
+        showDragGuides={showDragGuides}
+        onShowDragGuidesChange={setShowDragGuides}
+        onDefaultZoomChange={handleZoomChange}
         showExportPdf={!isTemplate}
         onExportPdf={handleExportPdf}
         isExportingPdf={isExportingPdf}
         onSave={!isTemplate && !readOnly ? () => flushSave() : undefined}
+        onDuplicateDocument={!isTemplate && !readOnly ? handleDuplicateDocument : undefined}
+        duplicatingDocument={duplicatingDocument}
+        onDocumentInfo={!isTemplate ? () => setDocumentInfoOpen(true) : undefined}
         showSendForSignature={enableSendForSignature && !readOnly}
         onSendForSignature={() => {
           finishTextEditing();
@@ -2806,6 +3066,92 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
         onRedo={redo}
         canUndo={undoRef.current.length > 0}
         canRedo={redoRef.current.length > 0}
+        onCutSelection={readOnly ? undefined : cutSelection}
+        onCopySelection={
+          readOnly
+            ? undefined
+            : () => {
+                copySelection();
+              }
+        }
+        onPasteClipboard={
+          readOnly
+            ? undefined
+            : () => {
+                pasteShortcutRef.current = true;
+                pasteInternalElements();
+              }
+        }
+        onDuplicateSelection={readOnly ? undefined : duplicateSelection}
+        onSelectAll={readOnly ? undefined : selectAllOnPage}
+        onDeselectAll={
+          readOnly
+            ? undefined
+            : () => {
+                if (textEditingElementId) {
+                  notifyBlockedByTextEdit();
+                  return;
+                }
+                setSelectedElementIds([]);
+              }
+        }
+        canCutCopyDuplicate={
+          !readOnly &&
+          selectedElementIds.some((sid) => {
+            const el = selectionPageElements.find((e) => e.id === sid);
+            if (!el) return false;
+            return isTemplate || el.type !== 'block';
+          })
+        }
+        canPaste={
+          !readOnly &&
+          readDocumentCreatorClipboard(clipboardRef.current).some(
+            (el) => isTemplate || el.type !== 'block',
+          )
+        }
+        hasSelection={selectedElementIds.length > 0}
+        selectionCount={selectedElementIds.length}
+        onBringForward={
+          !readOnly && selectedElement
+            ? () => {
+                const idx = selectionPageElements.findIndex((e) => e.id === selectedElement.id);
+                if (idx >= 0) moveForward(idx, selectionPageIndex);
+              }
+            : undefined
+        }
+        onSendBackward={
+          !readOnly && selectedElement
+            ? () => {
+                const idx = selectionPageElements.findIndex((e) => e.id === selectedElement.id);
+                if (idx >= 0) moveBackward(idx, selectionPageIndex);
+              }
+            : undefined
+        }
+        onBringToFront={
+          !readOnly && selectedElement
+            ? () => {
+                const idx = selectionPageElements.findIndex((e) => e.id === selectedElement.id);
+                if (idx >= 0) bringToFront(idx, selectionPageIndex);
+              }
+            : undefined
+        }
+        onSendToBack={
+          !readOnly && selectedElement
+            ? () => {
+                const idx = selectionPageElements.findIndex((e) => e.id === selectedElement.id);
+                if (idx >= 0) sendToBack(idx, selectionPageIndex);
+              }
+            : undefined
+        }
+        canArrangeLayers={!!selectedElement && selectedElement.type !== 'block'}
+        onAlignSelected={readOnly ? undefined : handleAlignSelected}
+        onDistributeSelected={readOnly ? undefined : handleDistributeSelected}
+        onFitWidth={() => fitCanvasZoom('width')}
+        onFitPage={() => fitCanvasZoom('page')}
+        marginsVisible={marginsVisible}
+        onMarginsVisibleChange={setMarginsVisible}
+        blockAreasVisible={blockAreasVisible}
+        onBlockAreasVisibleChange={setBlockAreasVisible}
         readOnly={readOnly}
         showViewOnlyBadge={readOnly && editLockStatus !== 'pending'}
         viewOnlyNotice={
@@ -2875,38 +3221,6 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
               onReplaceImageClick={isTemplate ? undefined : openImagePickerForElement}
               onEditImageClick={isTemplate ? undefined : openImageEditorForElement}
               onAlignSelected={handleAlignSelected}
-              onSendBackward={
-                selectedElement
-                  ? () => {
-                      const idx = selectionPageElements.findIndex((e) => e.id === selectedElement.id);
-                      if (idx >= 0) moveBackward(idx, selectionPageIndex);
-                    }
-                  : undefined
-              }
-              onBringForward={
-                selectedElement
-                  ? () => {
-                      const idx = selectionPageElements.findIndex((e) => e.id === selectedElement.id);
-                      if (idx >= 0) moveForward(idx, selectionPageIndex);
-                    }
-                  : undefined
-              }
-              onSendToBack={
-                selectedElement
-                  ? () => {
-                      const idx = selectionPageElements.findIndex((e) => e.id === selectedElement.id);
-                      if (idx >= 0) sendToBack(idx, selectionPageIndex);
-                    }
-                  : undefined
-              }
-              onBringToFront={
-                selectedElement
-                  ? () => {
-                      const idx = selectionPageElements.findIndex((e) => e.id === selectedElement.id);
-                      if (idx >= 0) bringToFront(idx, selectionPageIndex);
-                    }
-                  : undefined
-              }
             />
           ) : undefined
         }
@@ -2922,7 +3236,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
           ) : undefined
         }
         zoom={zoom}
-        onZoomChange={setZoom}
+        onZoomChange={handleZoomChange}
         extraActions={extraActions}
         closeSlotBelow={closeSlotBelow}
       />
@@ -2984,6 +3298,72 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
           onSave={handleRenameSave}
           onCancel={handleRenameCancel}
         />
+      )}
+      {!isTemplate && (
+        <AppModal
+          open={documentInfoOpen}
+          onClose={() => setDocumentInfoOpen(false)}
+          title="Document info"
+          size="sm"
+          footer={
+            <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+              <AppButton type="button" size="sm" variant="secondary" onClick={() => setDocumentInfoOpen(false)}>
+                Close
+              </AppButton>
+            </div>
+          }
+        >
+          <dl className="space-y-3 text-sm text-slate-700">
+            <div>
+              <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">ID</dt>
+              <dd className="mt-0.5 break-all font-mono text-xs text-slate-800">{id ?? '—'}</dd>
+            </div>
+            <div>
+              <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Title</dt>
+              <dd className="mt-0.5">{title.trim() || 'Untitled document'}</dd>
+            </div>
+            <div>
+              <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Last saved</dt>
+              <dd className="mt-0.5">
+                {doc?.updated_at
+                  ? new Date(doc.updated_at).toLocaleString('en-CA', {
+                      timeZone: 'America/Vancouver',
+                      dateStyle: 'medium',
+                      timeStyle: 'short',
+                    })
+                  : '—'}
+                {doc?.updated_at ? (
+                  <span className="ml-1 text-xs text-slate-500">(America/Vancouver)</span>
+                ) : null}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Page templates</dt>
+              <dd className="mt-0.5">
+                {pages.length === 0 ? (
+                  '—'
+                ) : (
+                  <ul className="list-inside list-disc space-y-0.5">
+                    {pages.map((p, i) => {
+                      const tmpl = templates.find((t) => t.id === (p.template_id ?? ''));
+                      return (
+                        <li key={i}>
+                          Page {i + 1}: {tmpl?.name || 'Blank'}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </dd>
+            </div>
+            {doc?.document_type_id ? (
+              <div>
+                <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Document type ID</dt>
+                <dd className="mt-0.5 break-all font-mono text-xs text-slate-800">{doc.document_type_id}</dd>
+              </div>
+            ) : null}
+          </dl>
+        </AppModal>
       )}
       {!readOnly && <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleAddImage} />}
       {pdfPreview ? (
@@ -3074,7 +3454,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
         {useContinuousPageCanvas ? (
           <div
             ref={canvasScrollRef}
-            className={`min-h-0 flex-1 overflow-x-hidden overflow-y-auto scroll-smooth ${editorCanvasScrollAreaClass}`}
+            className={`flex min-h-0 flex-1 flex-col items-center gap-1.5 overflow-x-hidden overflow-y-auto scroll-smooth py-1.5 ${editorCanvasScrollAreaClass}`}
           >
             {pages.map((page, pageIndex) => {
               const tmplForPage = templates.find((t) => t.id === (page.template_id ?? ''));
@@ -3095,7 +3475,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
                   key={pageIndex}
                   ref={setPageSectionRef(pageIndex)}
                   data-page-index={pageIndex}
-                  className="box-border flex w-full shrink-0 flex-col items-center justify-center py-6"
+                  className="box-border flex w-full shrink-0 flex-col items-center"
                 >
                   {mountInteractivePreview ? (
                   <DocumentPreview
@@ -3105,7 +3485,8 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
                     backgroundUrl={bgForPage}
                     elements={elsForPage}
                     margins={marginsForPage}
-                    blockAreasVisible={true}
+                    blockAreasVisible={blockAreasVisible}
+                    marginsVisible={marginsVisible}
                     lockBlockElements={!isTemplate}
                     showElementOptionsPopover={false}
                     signerRoles={signerRoles}
@@ -3119,8 +3500,16 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
                     onPasteAnchorPoint={(point) => {
                       pasteAnchorRef.current = { ...point, pageIndex, t: Date.now() };
                     }}
+                    textEditExitMode={textEditExitMode}
+                    snapToGuides={snapToGuides}
+                    showDragGuides={showDragGuides}
                     onCanvasClick={() => {
                       if (textEditingElementId) {
+                        if (textEditExitMode === 'click_outside') {
+                          finishTextEditing();
+                          setSelectedElementIds([]);
+                          return;
+                        }
                         notifyBlockedByTextEdit();
                         return;
                       }
@@ -3155,8 +3544,13 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
                   />
                   ) : (
                     <div
-                      className="pointer-events-none w-full max-w-[910px] rounded-xl border border-slate-200/80 bg-slate-100/80 shadow-sm"
-                      style={{ aspectRatio: '210 / 297' }}
+                      className="pointer-events-none rounded-xl border border-slate-200/80 bg-slate-100/80 shadow-sm"
+                      style={{
+                        aspectRatio: '210 / 297',
+                        width: `${Math.max(0.25, zoom) * 100}%`,
+                        minWidth: 280 * zoom,
+                        maxWidth: 1200 * zoom,
+                      }}
                       aria-hidden
                     />
                   )}
@@ -3170,7 +3564,8 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
             backgroundUrl={backgroundUrl}
             elements={elements}
             margins={effectiveMargins}
-            blockAreasVisible={true}
+            blockAreasVisible={blockAreasVisible}
+            marginsVisible={marginsVisible}
             lockBlockElements={!isTemplate}
             showElementOptionsPopover={false}
             signerRoles={signerRoles}
@@ -3188,8 +3583,16 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
                 t: Date.now(),
               };
             }}
+            textEditExitMode={textEditExitMode}
+            snapToGuides={snapToGuides}
+            showDragGuides={showDragGuides}
             onCanvasClick={() => {
               if (textEditingElementId) {
+                if (textEditExitMode === 'click_outside') {
+                  finishTextEditing();
+                  setSelectedElementIds([]);
+                  return;
+                }
                 notifyBlockedByTextEdit();
                 return;
               }

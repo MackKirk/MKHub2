@@ -33,8 +33,37 @@ import {
   ZoomIcon,
   ZoomInIcon,
   ZoomOutIcon,
+  LayerBackwardIcon,
+  LayerForwardIcon,
+  LayerToBackIcon,
+  LayerToFrontIcon,
+  AlignLeftIcon,
+  AlignCenterIcon,
+  AlignRightIcon,
+  AlignTopIcon,
+  AlignMiddleIcon,
+  AlignBottomIcon,
+  CutIcon,
+  CopyIcon,
+  PasteIcon,
+  DuplicateIcon,
+  SelectAllIcon,
+  DeselectIcon,
+  InfoIcon,
+  FitWidthIcon,
+  FitPageIcon,
+  MarginsIcon,
+  DistributeHorizontalIcon,
+  DistributeVerticalIcon,
+  ArrangeIcon,
+  AlignMenuIcon,
+  TextEditExitIcon,
+  SnapGuidesIcon,
+  DragGuidesIcon,
+  AutoFillIcon,
 } from '@/components/document-editor/documentEditorIcons';
 import type { DocumentSaveStatus } from '@/hooks/useDocumentAutoSave';
+import type { AlignKind } from '@/components/document-editor/DocumentSelectionRibbon';
 
 export type DocumentEditorRibbonProps = {
   onCloseOrBack: () => void;
@@ -52,6 +81,9 @@ export type DocumentEditorRibbonProps = {
   isExportingPdf: boolean;
   /** Manual save (autosave flush). Shown in File when available. */
   onSave?: () => void | Promise<boolean | void>;
+  onDuplicateDocument?: () => void | Promise<void>;
+  duplicatingDocument?: boolean;
+  onDocumentInfo?: () => void;
   showSendForSignature?: boolean;
   onSendForSignature?: () => void;
   showSaveTemplate: boolean;
@@ -60,6 +92,30 @@ export type DocumentEditorRibbonProps = {
   onRedo: () => void;
   canUndo: boolean;
   canRedo: boolean;
+  /** Edit → clipboard / selection / arrange / align */
+  onCutSelection?: () => void;
+  onCopySelection?: () => void;
+  onPasteClipboard?: () => void;
+  onDuplicateSelection?: () => void;
+  onSelectAll?: () => void;
+  onDeselectAll?: () => void;
+  canCutCopyDuplicate?: boolean;
+  canPaste?: boolean;
+  hasSelection?: boolean;
+  selectionCount?: number;
+  onBringForward?: () => void;
+  onSendBackward?: () => void;
+  onBringToFront?: () => void;
+  onSendToBack?: () => void;
+  canArrangeLayers?: boolean;
+  onAlignSelected?: (alignment: AlignKind) => void;
+  onDistributeSelected?: (axis: 'horizontal' | 'vertical') => void;
+  onFitWidth?: () => void;
+  onFitPage?: () => void;
+  marginsVisible?: boolean;
+  onMarginsVisibleChange?: (value: boolean) => void;
+  blockAreasVisible?: boolean;
+  onBlockAreasVisibleChange?: (value: boolean) => void;
   readOnly: boolean;
   /**
    * When false, hide the "View only" badge/blur even if `readOnly` is true
@@ -96,11 +152,20 @@ export type DocumentEditorRibbonProps = {
   textEditingElementId?: string | null;
   projectId?: string | null;
   subjectUserId?: string | null;
+  /** How inline text editing ends — persisted per user. */
+  textEditExitMode?: 'require_done' | 'click_outside';
+  onTextEditExitModeChange?: (mode: 'require_done' | 'click_outside') => void;
+  snapToGuides?: boolean;
+  onSnapToGuidesChange?: (value: boolean) => void;
+  showDragGuides?: boolean;
+  onShowDragGuidesChange?: (value: boolean) => void;
+  /** When set with onDefaultZoomChange, Customize includes a Default zoom submenu. */
+  onDefaultZoomChange?: (zoom: number) => void;
 };
 
 const ZOOM_LEVELS = [0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.25, 1.5, 2] as const;
 
-type RibbonMenuId = 'file' | 'edit' | 'insert' | 'page' | 'view';
+type RibbonMenuId = 'file' | 'edit' | 'insert' | 'page' | 'customize' | 'view';
 
 function DocumentSaveStatusBadge({ status }: { status: DocumentSaveStatus }) {
   const badgeClass =
@@ -162,6 +227,9 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
     onExportPdf,
     isExportingPdf,
     onSave,
+    onDuplicateDocument,
+    duplicatingDocument = false,
+    onDocumentInfo,
     showSendForSignature = false,
     onSendForSignature,
     showSaveTemplate,
@@ -170,6 +238,29 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
     onRedo,
     canUndo,
     canRedo,
+    onCutSelection,
+    onCopySelection,
+    onPasteClipboard,
+    onDuplicateSelection,
+    onSelectAll,
+    onDeselectAll,
+    canCutCopyDuplicate = false,
+    canPaste = false,
+    hasSelection = false,
+    selectionCount = 0,
+    onBringForward,
+    onSendBackward,
+    onBringToFront,
+    onSendToBack,
+    canArrangeLayers = false,
+    onAlignSelected,
+    onDistributeSelected,
+    onFitWidth,
+    onFitPage,
+    marginsVisible = true,
+    onMarginsVisibleChange,
+    blockAreasVisible = true,
+    onBlockAreasVisibleChange,
     readOnly,
     showViewOnlyBadge,
     viewOnlyNotice,
@@ -192,7 +283,21 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
     textEditingElementId = null,
     projectId = null,
     subjectUserId = null,
+    textEditExitMode = 'require_done',
+    onTextEditExitModeChange,
+    snapToGuides = true,
+    onSnapToGuidesChange,
+    showDragGuides = true,
+    onShowDragGuidesChange,
+    onDefaultZoomChange,
   } = props;
+
+  const showCustomizeMenu = !!(
+    onTextEditExitModeChange ||
+    onSnapToGuidesChange ||
+    onShowDragGuidesChange ||
+    onDefaultZoomChange
+  );
 
   const [editingTitle, setEditingTitle] = useState(false);
   const [localTitle, setLocalTitle] = useState(title);
@@ -206,22 +311,61 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
   const editTriggerRef = useRef<HTMLButtonElement>(null);
   const insertTriggerRef = useRef<HTMLButtonElement>(null);
   const pageTriggerRef = useRef<HTMLButtonElement>(null);
-  const viewTriggerRef = useRef<HTMLButtonElement>(null);
+  const customizeTriggerRef = useRef<HTMLButtonElement>(null);
+  const viewMenuTriggerRef = useRef<HTMLButtonElement>(null);
+  const viewZoomTriggerRef = useRef<HTMLButtonElement>(null);
+  const viewMenuSourceRef = useRef<'menu' | 'zoom'>('menu');
+  type CustomizeSubmenuId = 'text_edit_exit' | 'snap_guides' | 'show_guides' | 'default_zoom';
+  type EditSubmenuId = 'arrange' | 'align' | 'distribute';
+  type FlyoutSubmenuId = CustomizeSubmenuId | EditSubmenuId;
+  const [flyoutSubmenu, setFlyoutSubmenu] = useState<FlyoutSubmenuId | null>(null);
+  const [flyoutSubmenuPos, setFlyoutSubmenuPos] = useState({ top: 0, left: 0 });
+  const flyoutSubmenuRef = useRef<HTMLDivElement>(null);
+  const flyoutSubmenuItemRefs = useRef<Partial<Record<FlyoutSubmenuId, HTMLButtonElement | null>>>({});
+  /** @deprecated alias kept during rename — customize submenu uses flyout */
+  const customizeSubmenu = flyoutSubmenu;
+  const setCustomizeSubmenu = setFlyoutSubmenu;
+  const customizeSubmenuPos = flyoutSubmenuPos;
+  const setCustomizeSubmenuPos = setFlyoutSubmenuPos;
+  const customizeSubmenuRef = flyoutSubmenuRef;
+  const customizeSubmenuItemRefs = flyoutSubmenuItemRefs;
 
   const menuTriggerRef = (id: RibbonMenuId) => {
     if (id === 'file') return fileTriggerRef;
     if (id === 'edit') return editTriggerRef;
     if (id === 'insert') return insertTriggerRef;
     if (id === 'page') return pageTriggerRef;
-    return viewTriggerRef;
+    if (id === 'customize') return customizeTriggerRef;
+    return viewMenuSourceRef.current === 'zoom' ? viewZoomTriggerRef : viewMenuTriggerRef;
   };
 
   const toggleMenu = (id: RibbonMenuId) => {
     setTokensMenuOpen(false);
+    setFlyoutSubmenu(null);
     setOpenMenu((cur) => (cur === id ? null : id));
   };
 
-  const closeMenus = () => setOpenMenu(null);
+  const closeMenus = () => {
+    setFlyoutSubmenu(null);
+    setOpenMenu(null);
+  };
+
+  const openFlyoutSubmenu = (id: FlyoutSubmenuId) => {
+    const item = flyoutSubmenuItemRefs.current[id];
+    if (item) {
+      const r = item.getBoundingClientRect();
+      const panelW = id === 'default_zoom' || id === 'align' || id === 'distribute' ? 200 : 280;
+      const preferRight = r.right + 4;
+      const left =
+        preferRight + panelW <= window.innerWidth - 8
+          ? preferRight
+          : Math.max(8, r.left - panelW - 4);
+      const top = Math.max(8, Math.min(r.top, window.innerHeight - 160));
+      setFlyoutSubmenuPos({ top, left });
+    }
+    setFlyoutSubmenu(id);
+  };
+  const openCustomizeSubmenu = (id: CustomizeSubmenuId) => openFlyoutSubmenu(id);
 
   const [tokensMenuOpen, setTokensMenuOpen] = useState(false);
   const [tokensMenuPos, setTokensMenuPos] = useState({ top: 0, left: 0 });
@@ -312,7 +456,8 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
     if (!trigger) return;
     const place = () => {
       const r = trigger.getBoundingClientRect();
-      const panelW = openMenu === 'page' ? 360 : openMenu === 'insert' ? 220 : 200;
+      const panelW =
+        openMenu === 'page' ? 360 : openMenu === 'customize' ? 220 : openMenu === 'insert' ? 220 : 200;
       const left = Math.max(8, Math.min(r.left, window.innerWidth - panelW - 8));
       setMenuPos({ top: r.bottom + 4, left });
     };
@@ -331,15 +476,27 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
       const t = e.target as Node | null;
       if (!t) return;
       if (menuTriggerRef(openMenu).current?.contains(t)) return;
+      if (openMenu === 'view') {
+        if (viewMenuTriggerRef.current?.contains(t)) return;
+        if (viewZoomTriggerRef.current?.contains(t)) return;
+      }
       if (menuPanelRef.current?.contains(t)) return;
+      if (flyoutSubmenuRef.current?.contains(t)) return;
       // Background picker portal lives outside the menu panel — keep Page open while using it.
       if (openMenu === 'page' && (t as Element).closest?.('[role="listbox"][aria-label="Page backgrounds"]')) {
         return;
       }
+      setFlyoutSubmenu(null);
       setOpenMenu(null);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpenMenu(null);
+      if (e.key === 'Escape') {
+        if (customizeSubmenu) {
+          setCustomizeSubmenu(null);
+          return;
+        }
+        setOpenMenu(null);
+      }
     };
     window.addEventListener('mousedown', onDown);
     window.addEventListener('keydown', onKey);
@@ -347,6 +504,10 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
       window.removeEventListener('mousedown', onDown);
       window.removeEventListener('keydown', onKey);
     };
+  }, [openMenu, customizeSubmenu]);
+
+  useEffect(() => {
+    if (openMenu !== 'customize' && openMenu !== 'edit') setFlyoutSubmenu(null);
   }, [openMenu]);
 
   useEffect(() => {
@@ -468,13 +629,17 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
         closeMenus();
       }}
     >
-      {opts.icon ? (
-        <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-slate-600 [&>svg]:h-4 [&>svg]:w-4">
-          {opts.icon}
-        </span>
-      ) : null}
+      <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-slate-600 [&>svg]:h-4 [&>svg]:w-4">
+        {opts.icon ?? null}
+      </span>
       <span className="min-w-0 flex-1 truncate">{opts.label}</span>
     </button>
+  );
+
+  const submenuRowIcon = (icon: ReactNode) => (
+    <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-slate-600 [&>svg]:h-4 [&>svg]:w-4">
+      {icon}
+    </span>
   );
 
   return (
@@ -593,6 +758,31 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
                 Page <span className="text-slate-400">▾</span>
               </button>
             ) : null}
+            {!readOnly && showCustomizeMenu ? (
+              <button
+                type="button"
+                ref={customizeTriggerRef}
+                className={ribbonMenuTriggerClass}
+                aria-expanded={openMenu === 'customize'}
+                aria-haspopup="menu"
+                onClick={() => toggleMenu('customize')}
+              >
+                Customize <span className="text-slate-400">▾</span>
+              </button>
+            ) : null}
+            <button
+              type="button"
+              ref={viewMenuTriggerRef}
+              className={ribbonMenuTriggerClass}
+              aria-expanded={openMenu === 'view'}
+              aria-haspopup="menu"
+              onClick={() => {
+                viewMenuSourceRef.current = 'menu';
+                toggleMenu('view');
+              }}
+            >
+              View <span className="text-slate-400">▾</span>
+            </button>
           </div>
 
           {viewOnlyBadge ? (
@@ -649,12 +839,15 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
             </button>
             <button
               type="button"
-              ref={viewTriggerRef}
+              ref={viewZoomTriggerRef}
               className="inline-flex h-8 min-w-[3rem] items-center justify-center rounded-md px-1.5 text-xs font-semibold tabular-nums text-slate-700 hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/35"
               title="Zoom level"
               aria-expanded={openMenu === 'view'}
               aria-haspopup="menu"
-              onClick={() => toggleMenu('view')}
+              onClick={() => {
+                viewMenuSourceRef.current = 'zoom';
+                toggleMenu('view');
+              }}
             >
               {Math.round(zoom * 100)}%
             </button>
@@ -710,7 +903,11 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
               ref={menuPanelRef}
               role="menu"
               className={`${ribbonPortalDropdownPanelClass} ${
-                openMenu === 'page' ? 'w-[min(92vw,360px)]' : openMenu === 'insert' ? 'w-[220px]' : 'w-[200px]'
+                openMenu === 'page'
+                  ? 'w-[min(92vw,360px)]'
+                  : openMenu === 'customize' || openMenu === 'insert' || openMenu === 'edit' || openMenu === 'view'
+                    ? 'w-[220px]'
+                    : 'w-[200px]'
               }`}
               style={{ top: menuPos.top, left: menuPos.left, zIndex: 100060 }}
               data-document-keep-text-selection=""
@@ -734,10 +931,20 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
                         onClick: onSaveTemplate,
                       })
                     : null}
+                  {onDuplicateDocument && !isTemplate && !readOnly
+                    ? menuItem({
+                        icon: <DuplicateIcon />,
+                        label: duplicatingDocument ? 'Duplicating…' : 'Duplicate document',
+                        onClick: () => {
+                          void onDuplicateDocument();
+                        },
+                        disabled: duplicatingDocument,
+                      })
+                    : null}
                   {showExportPdf
                     ? menuItem({
                         icon: <ExportPdfIcon />,
-                        label: isExportingPdf ? 'Exporting…' : 'Export PDF',
+                        label: isExportingPdf ? 'Preparing…' : 'Print / PDF preview',
                         onClick: onExportPdf,
                         disabled: isExportingPdf,
                       })
@@ -749,7 +956,19 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
                         onClick: onSendForSignature,
                       })
                     : null}
-                  {!onSave && !showExportPdf && !showSendForSignature && !showSaveTemplate ? (
+                  {onDocumentInfo && !isTemplate
+                    ? menuItem({
+                        icon: <InfoIcon />,
+                        label: 'Document info…',
+                        onClick: onDocumentInfo,
+                      })
+                    : null}
+                  {!onSave &&
+                  !showExportPdf &&
+                  !showSendForSignature &&
+                  !showSaveTemplate &&
+                  !onDuplicateDocument &&
+                  !onDocumentInfo ? (
                     <p className="px-2.5 py-2 text-xs text-slate-500">No file actions</p>
                   ) : null}
                 </>
@@ -761,16 +980,148 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
                     icon: <UndoIcon />,
                     label: 'Undo',
                     onClick: onUndo,
-                    disabled: !canUndo,
+                    disabled: !canUndo || readOnly,
                     title: 'Ctrl+Z',
                   })}
                   {menuItem({
                     icon: <RedoIcon />,
                     label: 'Redo',
                     onClick: onRedo,
-                    disabled: !canRedo,
+                    disabled: !canRedo || readOnly,
                     title: 'Ctrl+Y',
                   })}
+                  {!readOnly ? (
+                    <>
+                      <div className="my-1 border-t border-slate-100" aria-hidden />
+                      {menuItem({
+                        icon: <CutIcon />,
+                        label: 'Cut',
+                        onClick: () => onCutSelection?.(),
+                        disabled: !canCutCopyDuplicate || !onCutSelection,
+                        title: 'Ctrl+X',
+                      })}
+                      {menuItem({
+                        icon: <CopyIcon />,
+                        label: 'Copy',
+                        onClick: () => onCopySelection?.(),
+                        disabled: !canCutCopyDuplicate || !onCopySelection,
+                        title: 'Ctrl+C',
+                      })}
+                      {menuItem({
+                        icon: <PasteIcon />,
+                        label: 'Paste',
+                        onClick: () => onPasteClipboard?.(),
+                        disabled: !canPaste || !onPasteClipboard,
+                        title: 'Ctrl+V',
+                      })}
+                      {menuItem({
+                        icon: <DuplicateIcon />,
+                        label: 'Duplicate selection',
+                        onClick: () => onDuplicateSelection?.(),
+                        disabled: !canCutCopyDuplicate || !onDuplicateSelection,
+                        title: 'Ctrl+D',
+                      })}
+                      <div className="my-1 border-t border-slate-100" aria-hidden />
+                      {menuItem({
+                        icon: <SelectAllIcon />,
+                        label: 'Select all',
+                        onClick: () => onSelectAll?.(),
+                        disabled: !onSelectAll,
+                        title: 'Ctrl+A',
+                      })}
+                      {menuItem({
+                        icon: <DeselectIcon />,
+                        label: 'Deselect',
+                        onClick: () => onDeselectAll?.(),
+                        disabled: !hasSelection || !onDeselectAll,
+                      })}
+                      <div className="my-1 border-t border-slate-100" aria-hidden />
+                      <button
+                        type="button"
+                        role="menuitem"
+                        aria-haspopup="menu"
+                        aria-expanded={flyoutSubmenu === 'arrange'}
+                        disabled={!canArrangeLayers}
+                        ref={(el) => {
+                          flyoutSubmenuItemRefs.current.arrange = el;
+                        }}
+                        className={`${ribbonMenuItemClass} ${
+                          flyoutSubmenu === 'arrange' ? 'bg-slate-100' : ''
+                        } ${!canArrangeLayers ? 'opacity-50' : ''}`}
+                        onMouseEnter={() => {
+                          if (canArrangeLayers) openFlyoutSubmenu('arrange');
+                        }}
+                        onFocus={() => {
+                          if (canArrangeLayers) openFlyoutSubmenu('arrange');
+                        }}
+                        onClick={() => {
+                          if (canArrangeLayers) openFlyoutSubmenu('arrange');
+                        }}
+                      >
+                        {submenuRowIcon(<ArrangeIcon />)}
+                        <span className="min-w-0 flex-1 truncate">Arrange</span>
+                        <span className="shrink-0 text-slate-400" aria-hidden>
+                          ▸
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        aria-haspopup="menu"
+                        aria-expanded={flyoutSubmenu === 'align'}
+                        disabled={selectionCount < 2 || !onAlignSelected}
+                        ref={(el) => {
+                          flyoutSubmenuItemRefs.current.align = el;
+                        }}
+                        className={`${ribbonMenuItemClass} ${
+                          flyoutSubmenu === 'align' ? 'bg-slate-100' : ''
+                        } ${selectionCount < 2 ? 'opacity-50' : ''}`}
+                        onMouseEnter={() => {
+                          if (selectionCount >= 2 && onAlignSelected) openFlyoutSubmenu('align');
+                        }}
+                        onFocus={() => {
+                          if (selectionCount >= 2 && onAlignSelected) openFlyoutSubmenu('align');
+                        }}
+                        onClick={() => {
+                          if (selectionCount >= 2 && onAlignSelected) openFlyoutSubmenu('align');
+                        }}
+                      >
+                        {submenuRowIcon(<AlignMenuIcon />)}
+                        <span className="min-w-0 flex-1 truncate">Align</span>
+                        <span className="shrink-0 text-slate-400" aria-hidden>
+                          ▸
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        aria-haspopup="menu"
+                        aria-expanded={flyoutSubmenu === 'distribute'}
+                        disabled={selectionCount < 3 || !onDistributeSelected}
+                        ref={(el) => {
+                          flyoutSubmenuItemRefs.current.distribute = el;
+                        }}
+                        className={`${ribbonMenuItemClass} ${
+                          flyoutSubmenu === 'distribute' ? 'bg-slate-100' : ''
+                        } ${selectionCount < 3 ? 'opacity-50' : ''}`}
+                        onMouseEnter={() => {
+                          if (selectionCount >= 3 && onDistributeSelected) openFlyoutSubmenu('distribute');
+                        }}
+                        onFocus={() => {
+                          if (selectionCount >= 3 && onDistributeSelected) openFlyoutSubmenu('distribute');
+                        }}
+                        onClick={() => {
+                          if (selectionCount >= 3 && onDistributeSelected) openFlyoutSubmenu('distribute');
+                        }}
+                      >
+                        {submenuRowIcon(<DistributeHorizontalIcon />)}
+                        <span className="min-w-0 flex-1 truncate">Distribute</span>
+                        <span className="shrink-0 text-slate-400" aria-hidden>
+                          ▸
+                        </span>
+                      </button>
+                    </>
+                  ) : null}
                 </>
               ) : null}
 
@@ -837,9 +1188,7 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
                       });
                     }}
                   >
-                    <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center font-mono text-[11px] text-slate-600">
-                      {'{ }'}
-                    </span>
+                    {submenuRowIcon(<AutoFillIcon />)}
                     <span className="min-w-0 flex-1 truncate">Auto-fill…</span>
                   </button>
                 </>
@@ -849,15 +1198,385 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
                 <div className="flex flex-col gap-2 p-1">{layoutPanel}</div>
               ) : null}
 
+              {openMenu === 'customize' && showCustomizeMenu ? (
+                <>
+                  {(
+                    [
+                      onTextEditExitModeChange
+                        ? ({
+                            id: 'text_edit_exit' as const,
+                            label: 'Finish text editing',
+                            icon: <TextEditExitIcon />,
+                          })
+                        : null,
+                      onSnapToGuidesChange
+                        ? ({
+                            id: 'snap_guides' as const,
+                            label: 'Snap to guides',
+                            icon: <SnapGuidesIcon />,
+                          })
+                        : null,
+                      onShowDragGuidesChange
+                        ? ({
+                            id: 'show_guides' as const,
+                            label: 'Show drag guides',
+                            icon: <DragGuidesIcon />,
+                          })
+                        : null,
+                      onDefaultZoomChange
+                        ? ({
+                            id: 'default_zoom' as const,
+                            label: 'Default zoom',
+                            icon: <ZoomIcon />,
+                          })
+                        : null,
+                    ] as Array<{ id: CustomizeSubmenuId; label: string; icon: ReactNode } | null>
+                  )
+                    .filter(Boolean)
+                    .map((item) => {
+                      const row = item!;
+                      return (
+                        <button
+                          key={row.id}
+                          type="button"
+                          role="menuitem"
+                          aria-haspopup="menu"
+                          aria-expanded={customizeSubmenu === row.id}
+                          ref={(el) => {
+                            customizeSubmenuItemRefs.current[row.id] = el;
+                          }}
+                          className={`${ribbonMenuItemClass} ${
+                            customizeSubmenu === row.id ? 'bg-slate-100' : ''
+                          }`}
+                          onMouseEnter={() => openCustomizeSubmenu(row.id)}
+                          onFocus={() => openCustomizeSubmenu(row.id)}
+                          onClick={() => openCustomizeSubmenu(row.id)}
+                        >
+                          {submenuRowIcon(row.icon)}
+                          <span className="min-w-0 flex-1 truncate">{row.label}</span>
+                          <span className="shrink-0 text-slate-400" aria-hidden>
+                            ▸
+                          </span>
+                        </button>
+                      );
+                    })}
+                </>
+              ) : null}
+
               {openMenu === 'view' ? (
                 <>
+                  {onFitWidth
+                    ? menuItem({
+                        icon: <FitWidthIcon />,
+                        label: 'Fit width',
+                        onClick: onFitWidth,
+                      })
+                    : null}
+                  {onFitPage
+                    ? menuItem({
+                        icon: <FitPageIcon />,
+                        label: 'Fit page',
+                        onClick: onFitPage,
+                      })
+                    : null}
+                  {onFitWidth || onFitPage ? (
+                    <div className="my-1 border-t border-slate-100" aria-hidden />
+                  ) : null}
+                  {onMarginsVisibleChange
+                    ? menuItem({
+                        icon: <MarginsIcon />,
+                        label: marginsVisible ? 'Hide margins' : 'Show margins',
+                        onClick: () => onMarginsVisibleChange(!marginsVisible),
+                      })
+                    : null}
+                  {onBlockAreasVisibleChange
+                    ? menuItem({
+                        icon: <BlockIcon />,
+                        label: blockAreasVisible ? 'Hide blocked areas' : 'Show blocked areas',
+                        onClick: () => onBlockAreasVisibleChange(!blockAreasVisible),
+                      })
+                    : null}
+                  {(onMarginsVisibleChange || onBlockAreasVisibleChange) && (
+                    <div className="my-1 border-t border-slate-100" aria-hidden />
+                  )}
                   {ZOOM_LEVELS.map((z) =>
                     menuItem({
-                      icon: zoom === z ? <ZoomIcon /> : undefined,
-                      label: `${Math.round(z * 100)}%`,
+                      icon: <ZoomIcon />,
+                      label: `${Math.round(z * 100)}%${Math.abs(zoom - z) < 0.001 ? ' ✓' : ''}`,
                       onClick: () => onZoomChange(z),
                     }),
                   )}
+                </>
+              ) : null}
+            </div>,
+            getOverlayRoot(),
+          )
+        : null}
+
+      {(openMenu === 'customize' || openMenu === 'edit') && flyoutSubmenu
+        ? createPortal(
+            <div
+              ref={flyoutSubmenuRef}
+              role="menu"
+              aria-label={
+                flyoutSubmenu === 'text_edit_exit'
+                  ? 'Finish text editing'
+                  : flyoutSubmenu === 'snap_guides'
+                    ? 'Snap to guides'
+                    : flyoutSubmenu === 'show_guides'
+                      ? 'Show drag guides'
+                      : flyoutSubmenu === 'default_zoom'
+                        ? 'Default zoom'
+                        : flyoutSubmenu === 'arrange'
+                          ? 'Arrange'
+                          : flyoutSubmenu === 'align'
+                            ? 'Align'
+                            : 'Distribute'
+              }
+              className={`${ribbonPortalDropdownPanelClass} ${
+                flyoutSubmenu === 'default_zoom' ||
+                flyoutSubmenu === 'align' ||
+                flyoutSubmenu === 'distribute' ||
+                flyoutSubmenu === 'arrange'
+                  ? 'w-[220px]'
+                  : 'w-[280px]'
+              }`}
+              style={{ top: flyoutSubmenuPos.top, left: flyoutSubmenuPos.left, zIndex: 100061 }}
+              data-document-keep-text-selection=""
+              onMouseEnter={() => setFlyoutSubmenu(flyoutSubmenu)}
+            >
+              {customizeSubmenu === 'text_edit_exit' && onTextEditExitModeChange ? (
+                <>
+                  <button
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={textEditExitMode === 'require_done'}
+                    className={ribbonMenuItemClass}
+                    onClick={() => {
+                      onTextEditExitModeChange('require_done');
+                      closeMenus();
+                    }}
+                  >
+                    <span className="inline-flex w-4 shrink-0 justify-center text-brand-red" aria-hidden>
+                      {textEditExitMode === 'require_done' ? '✓' : ''}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate">Require Done</span>
+                      <span className="block truncate text-[11px] font-normal text-slate-500">
+                        Stay in the text box until Done or Escape
+                      </span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={textEditExitMode === 'click_outside'}
+                    className={ribbonMenuItemClass}
+                    onClick={() => {
+                      onTextEditExitModeChange('click_outside');
+                      closeMenus();
+                    }}
+                  >
+                    <span className="inline-flex w-4 shrink-0 justify-center text-brand-red" aria-hidden>
+                      {textEditExitMode === 'click_outside' ? '✓' : ''}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate">Click outside</span>
+                      <span className="block truncate text-[11px] font-normal text-slate-500">
+                        Finish editing when you click away
+                      </span>
+                    </span>
+                  </button>
+                </>
+              ) : null}
+
+              {customizeSubmenu === 'snap_guides' && onSnapToGuidesChange ? (
+                <>
+                  <button
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={snapToGuides}
+                    className={ribbonMenuItemClass}
+                    onClick={() => {
+                      onSnapToGuidesChange(true);
+                      closeMenus();
+                    }}
+                  >
+                    <span className="inline-flex w-4 shrink-0 justify-center text-brand-red" aria-hidden>
+                      {snapToGuides ? '✓' : ''}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate">On</span>
+                      <span className="block truncate text-[11px] font-normal text-slate-500">
+                        Magnetically align while dragging
+                      </span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={!snapToGuides}
+                    className={ribbonMenuItemClass}
+                    onClick={() => {
+                      onSnapToGuidesChange(false);
+                      closeMenus();
+                    }}
+                  >
+                    <span className="inline-flex w-4 shrink-0 justify-center text-brand-red" aria-hidden>
+                      {!snapToGuides ? '✓' : ''}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate">Off</span>
+                      <span className="block truncate text-[11px] font-normal text-slate-500">
+                        Free drag without snapping
+                      </span>
+                    </span>
+                  </button>
+                </>
+              ) : null}
+
+              {customizeSubmenu === 'show_guides' && onShowDragGuidesChange ? (
+                <>
+                  <button
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={showDragGuides}
+                    className={ribbonMenuItemClass}
+                    onClick={() => {
+                      onShowDragGuidesChange(true);
+                      closeMenus();
+                    }}
+                  >
+                    <span className="inline-flex w-4 shrink-0 justify-center text-brand-red" aria-hidden>
+                      {showDragGuides ? '✓' : ''}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate">On</span>
+                      <span className="block truncate text-[11px] font-normal text-slate-500">
+                        Show red alignment lines while dragging
+                      </span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={!showDragGuides}
+                    className={ribbonMenuItemClass}
+                    onClick={() => {
+                      onShowDragGuidesChange(false);
+                      closeMenus();
+                    }}
+                  >
+                    <span className="inline-flex w-4 shrink-0 justify-center text-brand-red" aria-hidden>
+                      {!showDragGuides ? '✓' : ''}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate">Off</span>
+                      <span className="block truncate text-[11px] font-normal text-slate-500">
+                        Hide alignment lines
+                      </span>
+                    </span>
+                  </button>
+                </>
+              ) : null}
+
+              {customizeSubmenu === 'default_zoom' && onDefaultZoomChange
+                ? ZOOM_LEVELS.map((z) => (
+                    <button
+                      key={z}
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={Math.abs(zoom - z) < 0.001}
+                      className={ribbonMenuItemClass}
+                      onClick={() => {
+                        onDefaultZoomChange(z);
+                        closeMenus();
+                      }}
+                    >
+                      <span className="inline-flex w-4 shrink-0 justify-center text-brand-red" aria-hidden>
+                        {Math.abs(zoom - z) < 0.001 ? '✓' : ''}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate">{Math.round(z * 100)}%</span>
+                    </button>
+                  ))
+                : null}
+
+              {flyoutSubmenu === 'arrange' ? (
+                <>
+                  {menuItem({
+                    icon: <LayerToFrontIcon className="h-4 w-4" />,
+                    label: 'Bring to front',
+                    onClick: () => onBringToFront?.(),
+                    disabled: !canArrangeLayers || !onBringToFront,
+                  })}
+                  {menuItem({
+                    icon: <LayerForwardIcon className="h-4 w-4" />,
+                    label: 'Bring forward',
+                    onClick: () => onBringForward?.(),
+                    disabled: !canArrangeLayers || !onBringForward,
+                  })}
+                  {menuItem({
+                    icon: <LayerBackwardIcon className="h-4 w-4" />,
+                    label: 'Send backward',
+                    onClick: () => onSendBackward?.(),
+                    disabled: !canArrangeLayers || !onSendBackward,
+                  })}
+                  {menuItem({
+                    icon: <LayerToBackIcon className="h-4 w-4" />,
+                    label: 'Send to back',
+                    onClick: () => onSendToBack?.(),
+                    disabled: !canArrangeLayers || !onSendToBack,
+                  })}
+                </>
+              ) : null}
+
+              {flyoutSubmenu === 'align' && onAlignSelected ? (
+                <>
+                  {menuItem({
+                    icon: <AlignLeftIcon className="h-4 w-4" />,
+                    label: 'Align left',
+                    onClick: () => onAlignSelected('left'),
+                  })}
+                  {menuItem({
+                    icon: <AlignCenterIcon className="h-4 w-4" />,
+                    label: 'Align center',
+                    onClick: () => onAlignSelected('centerH'),
+                  })}
+                  {menuItem({
+                    icon: <AlignRightIcon className="h-4 w-4" />,
+                    label: 'Align right',
+                    onClick: () => onAlignSelected('right'),
+                  })}
+                  {menuItem({
+                    icon: <AlignTopIcon className="h-4 w-4" />,
+                    label: 'Align top',
+                    onClick: () => onAlignSelected('top'),
+                  })}
+                  {menuItem({
+                    icon: <AlignMiddleIcon className="h-4 w-4" />,
+                    label: 'Align middle',
+                    onClick: () => onAlignSelected('centerV'),
+                  })}
+                  {menuItem({
+                    icon: <AlignBottomIcon className="h-4 w-4" />,
+                    label: 'Align bottom',
+                    onClick: () => onAlignSelected('bottom'),
+                  })}
+                </>
+              ) : null}
+
+              {flyoutSubmenu === 'distribute' && onDistributeSelected ? (
+                <>
+                  {menuItem({
+                    icon: <DistributeHorizontalIcon />,
+                    label: 'Distribute horizontally',
+                    onClick: () => onDistributeSelected('horizontal'),
+                  })}
+                  {menuItem({
+                    icon: <DistributeVerticalIcon />,
+                    label: 'Distribute vertically',
+                    onClick: () => onDistributeSelected('vertical'),
+                  })}
                 </>
               ) : null}
             </div>,

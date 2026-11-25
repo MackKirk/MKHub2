@@ -20,6 +20,7 @@ from ..models.models import (
     EmployeeProfile,
     UserHomeDashboard,
     UserListPreferences,
+    UserDocumentEditorPreferences,
     FileObject,
     Invite,
     ProjectReport,
@@ -39,6 +40,11 @@ from ..services.user_list_preferences import (
     empty_list_preferences,
     merge_list_preferences,
     normalize_list_preferences_data,
+)
+from ..services.user_document_editor_preferences import (
+    empty_document_editor_preferences,
+    merge_document_editor_preferences,
+    normalize_document_editor_preferences_data,
 )
 from ..services.audit_log_entries import audit_rows_to_entry_dicts
 from ..services.user_display import employee_name_match, profile_search_label
@@ -126,6 +132,14 @@ class ListPreferencesUpdate(BaseModel):
     project_status_ids: Optional[Dict[str, Optional[List[str]]]] = None
 
 
+class DocumentEditorPreferencesUpdate(BaseModel):
+    """Partial update for PUT /users/me/document-editor-preferences."""
+    text_edit_exit: Optional[Literal["require_done", "click_outside"]] = None
+    snap_to_guides: Optional[bool] = None
+    show_drag_guides: Optional[bool] = None
+    default_zoom: Optional[float] = None
+
+
 def _home_dashboard_json_equal(a: list, b: list) -> bool:
     try:
         return json.dumps(a, sort_keys=True, default=str) == json.dumps(b, sort_keys=True, default=str)
@@ -197,6 +211,45 @@ def put_my_list_preferences(
     db.commit()
     db.refresh(row)
     return normalize_list_preferences_data(row.data if isinstance(row.data, dict) else {})
+
+
+@router.get("/me/document-editor-preferences")
+def get_my_document_editor_preferences(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Per-user document editor customization (text edit exit mode, etc.)."""
+    row = (
+        db.query(UserDocumentEditorPreferences)
+        .filter(UserDocumentEditorPreferences.user_id == user.id)
+        .first()
+    )
+    if not row:
+        return empty_document_editor_preferences()
+    return normalize_document_editor_preferences_data(row.data if isinstance(row.data, dict) else {})
+
+
+@router.put("/me/document-editor-preferences")
+def put_my_document_editor_preferences(
+    payload: DocumentEditorPreferencesUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Merge document editor preferences for the current user."""
+    patch = payload.model_dump(exclude_unset=True) if hasattr(payload, "model_dump") else payload.dict(exclude_unset=True)
+    row = (
+        db.query(UserDocumentEditorPreferences)
+        .filter(UserDocumentEditorPreferences.user_id == user.id)
+        .first()
+    )
+    existing = row.data if row and isinstance(row.data, dict) else {}
+    merged = merge_document_editor_preferences(existing, patch)
+    if row:
+        row.data = merged
+        row.updated_at = datetime.now(timezone.utc)
+    else:
+        row = UserDocumentEditorPreferences(user_id=user.id, data=merged)
+        db.add(row)
+    db.commit()
+    db.refresh(row)
+    return normalize_document_editor_preferences_data(row.data if isinstance(row.data, dict) else {})
 
 
 @router.put("/me/home-dashboard")

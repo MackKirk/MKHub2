@@ -1,8 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { FieldworkSupervisorReportView } from '@/components/fieldwork/FieldworkSupervisorReportView';
+import {
+  FieldworkSupervisorReportView,
+  SUPERVISOR_COMMENTS_KEY,
+} from '@/components/fieldwork/FieldworkSupervisorReportView';
 import { useConfirm } from '@/components/ConfirmProvider';
 import {
   AppBadge,
@@ -67,6 +70,9 @@ export default function FieldReportReviewPage() {
   const [requestChangesOpen, setRequestChangesOpen] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [pdfBusy, setPdfBusy] = useState(false);
+  const [supervisorComments, setSupervisorComments] = useState<Record<string, string>>({});
+  const supervisorSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const supervisorDraftRef = useRef<Record<string, string>>({});
 
   const { data: record, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['fieldwork-record', projectId, recordId],
@@ -99,6 +105,32 @@ export default function FieldReportReviewPage() {
 
   const status = (record?.status || '').toLowerCase();
   const showReviewActions = canReview && status === 'submitted';
+  const canEditSupervisorComments =
+    canReview &&
+    (status === 'submitted' || status === 'changes_requested' || status === 'approved');
+
+  useEffect(() => {
+    const payload = (record?.form_payload || {}) as Record<string, unknown>;
+    const bag = payload[SUPERVISOR_COMMENTS_KEY];
+    const next: Record<string, string> = {};
+    if (bag && typeof bag === 'object' && !Array.isArray(bag)) {
+      for (const [k, v] of Object.entries(bag as Record<string, unknown>)) {
+        if (typeof v === 'string') next[k] = v;
+        else if (v && typeof v === 'object' && !Array.isArray(v)) {
+          const t = (v as { text?: unknown }).text;
+          if (typeof t === 'string') next[k] = t;
+        }
+      }
+    }
+    setSupervisorComments(next);
+    supervisorDraftRef.current = next;
+  }, [record?.id, record?.row_version, record?.form_payload]);
+
+  useEffect(() => {
+    return () => {
+      if (supervisorSaveTimer.current) clearTimeout(supervisorSaveTimer.current);
+    };
+  }, []);
 
   const isRm = projectBusinessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE;
   const projectHref = projectMeta?.is_bidding
@@ -150,6 +182,37 @@ export default function FieldReportReviewPage() {
       toast.error(formatApiErrorDetail((err as ApiError)?.detail) || 'Request failed');
     },
   });
+
+  const saveSupervisorCommentsMut = useMutation({
+    mutationFn: (comments: Record<string, string>) =>
+      api<FieldworkRecord>(
+        'PATCH',
+        `/projects/${projectId}/fieldwork-records/${recordId}/supervisor-comments`,
+        {
+          comments,
+          expected_row_version: record?.row_version,
+        }
+      ),
+    onSuccess: async (saved) => {
+      qc.setQueryData(['fieldwork-record', projectId, recordId], saved);
+      await qc.invalidateQueries({ queryKey: ['fieldwork-inbox'] });
+    },
+    onError: (err) => {
+      toast.error(formatApiErrorDetail((err as ApiError)?.detail) || 'Could not save supervisor notes');
+    },
+  });
+
+  const handleSupervisorCommentChange = (fieldKey: string, text: string) => {
+    setSupervisorComments((prev) => {
+      const next = { ...prev, [fieldKey]: text };
+      supervisorDraftRef.current = next;
+      return next;
+    });
+    if (supervisorSaveTimer.current) clearTimeout(supervisorSaveTimer.current);
+    supervisorSaveTimer.current = setTimeout(() => {
+      saveSupervisorCommentsMut.mutate(supervisorDraftRef.current);
+    }, 600);
+  };
 
   const events = Array.isArray(record?.events) ? record!.events! : [];
   const title = useMemo(() => kindLabel(record?.kind), [record?.kind]);
@@ -367,8 +430,12 @@ export default function FieldReportReviewPage() {
 
       <FieldworkSupervisorReportView
         record={record}
-        supervisorComments={{}}
-        showSupervisorNotes={false}
+        supervisorComments={supervisorComments}
+        showSupervisorNotes={canReview}
+        canEditSupervisorComments={canEditSupervisorComments}
+        onSupervisorCommentChange={
+          canEditSupervisorComments ? handleSupervisorCommentChange : undefined
+        }
       />
 
       <AppFormModal

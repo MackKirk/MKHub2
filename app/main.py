@@ -682,6 +682,23 @@ def create_app() -> FastAPI:
                         db.commit()
                         print("[startup] Created user_list_preferences table")
 
+                    # Ensure user_document_editor_preferences table exists
+                    rows = db.execute(
+                        text(
+                            """
+                            SELECT 1
+                            FROM information_schema.tables
+                            WHERE table_name = 'user_document_editor_preferences'
+                            LIMIT 1
+                            """
+                        )
+                    ).fetchall()
+                    if not rows:
+                        from .models.models import UserDocumentEditorPreferences
+                        Base.metadata.create_all(bind=engine, tables=[UserDocumentEditorPreferences.__table__])
+                        db.commit()
+                        print("[startup] Created user_document_editor_preferences table")
+
                     # Hub customer portal tables
                     try:
                         from .models.models import (

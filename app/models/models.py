@@ -115,6 +115,19 @@ class UserListPreferences(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
 
+class UserDocumentEditorPreferences(Base):
+    """Per-user document editor customization (e.g. how inline text editing ends)."""
+    __tablename__ = "user_document_editor_preferences"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, nullable=False
+    )
+    data: Mapped[Optional[dict]] = mapped_column(
+        JSON
+    )  # { text_edit_exit, snap_to_guides, show_drag_guides, default_zoom }
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+
 class UsernameReservation(Base):
     __tablename__ = "username_reservations"
 

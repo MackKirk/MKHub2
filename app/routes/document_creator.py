@@ -1819,6 +1819,67 @@ def update_document(
     return _doc_to_out(doc, db)
 
 
+@router.post("/documents/{document_id}/duplicate", response_model=dict)
+def duplicate_document(
+    document_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions(*_HR_USER_DOC_WRITE_PERMS)),
+):
+    """Deep-copy a user document (pages + elements with new ids, same scope/type)."""
+    try:
+        did = uuid.UUID(document_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid document id")
+    doc = db.query(UserDocument).filter(UserDocument.id == did).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    if not _can_access_document(user, doc, db, require_write=True):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    raw_pages = copy.deepcopy(doc.pages) if isinstance(doc.pages, list) else []
+    pages: List[dict] = []
+    for idx, page in enumerate(raw_pages):
+        if not isinstance(page, dict):
+            pages.append({"template_id": None, "elements": []})
+            continue
+        page_copy = dict(page)
+        page_copy["elements"] = _clone_elements_with_new_ids(
+            page.get("elements") if isinstance(page.get("elements"), list) else [],
+            f"dup{idx}",
+        )
+        pages.append(page_copy)
+
+    from ..services.document_title import unique_title_in_scope
+
+    base_title = (doc.title or "Untitled document").strip() or "Untitled document"
+    copy_title = base_title if base_title.endswith(" (copy)") else f"{base_title} (copy)"
+    project_id = getattr(doc, "project_id", None)
+    subject_user_id = getattr(doc, "subject_user_id", None)
+    doc_title = unique_title_in_scope(
+        db,
+        copy_title,
+        project_id=project_id,
+        subject_user_id=subject_user_id,
+    )
+
+    new_doc = UserDocument(
+        title=doc_title,
+        document_type_id=getattr(doc, "document_type_id", None),
+        project_id=project_id,
+        subject_user_id=subject_user_id,
+        pages=pages,
+        signer_roles=copy.deepcopy(getattr(doc, "signer_roles", None))
+        if getattr(doc, "signer_roles", None)
+        else None,
+        created_by=user.id,
+    )
+    db.add(new_doc)
+    db.commit()
+    db.refresh(new_doc)
+    return _doc_to_out(new_doc, db)
+
+
 @router.delete("/documents/{document_id}")
 def delete_document(
     document_id: str,

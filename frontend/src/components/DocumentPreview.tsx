@@ -61,6 +61,8 @@ type DocumentPreviewProps = {
   margins?: TemplateMargins | null;
   /** When false (e.g. creating document), block elements are invisible and not editable but still block placement */
   blockAreasVisible?: boolean;
+  /** When false, hide the margin hatch overlays (placement rules still apply). */
+  marginsVisible?: boolean;
   /** When true (e.g. editing a document created from a type), block elements are visible but not draggable/resizable/deletable */
   lockBlockElements?: boolean;
   /** When false, do not render the floating ElementOptionsPopover (use external ribbon/toolbar instead). */
@@ -126,6 +128,16 @@ type DocumentPreviewProps = {
   projectId?: string | null;
   /** Document signer roles for chip labels/colors. */
   signerRoles?: DocumentSignerRoleDef[];
+  /**
+   * How inline text editing ends.
+   * - require_done: keep editing until Done / Escape (default)
+   * - click_outside: finish when clicking away from the text box
+   */
+  textEditExitMode?: 'require_done' | 'click_outside';
+  /** Magnetically align elements to neighbors/margins while dragging. */
+  snapToGuides?: boolean;
+  /** Show red alignment guide lines while dragging (when snapping finds a match). */
+  showDragGuides?: boolean;
 };
 
 const A4_ASPECT = 210 / 297;
@@ -2596,6 +2608,7 @@ export default function DocumentPreview({
   elements,
   margins,
   blockAreasVisible = true,
+  marginsVisible = true,
   lockBlockElements = false,
   showElementOptionsPopover = true,
   onCanvasWidthPxChange,
@@ -2622,6 +2635,9 @@ export default function DocumentPreview({
   onElementsDragEnd,
   projectId = null,
   signerRoles = [],
+  textEditExitMode = 'require_done',
+  snapToGuides = true,
+  showDragGuides = true,
 }: DocumentPreviewProps) {
   /** No mutation callbacks wired up (view-only mode) — hard-block selection, drag, resize, and hover affordances. */
   const isViewOnly = !onUpdateElement && !onBatchUpdateElements;
@@ -2703,6 +2719,10 @@ export default function DocumentPreview({
   onBatchUpdateElementsRef.current = onBatchUpdateElements;
   const onBeginUserActionRef = useRef(onBeginUserAction);
   onBeginUserActionRef.current = onBeginUserAction;
+  const snapToGuidesRef = useRef(snapToGuides);
+  snapToGuidesRef.current = snapToGuides;
+  const showDragGuidesRef = useRef(showDragGuides);
+  showDragGuidesRef.current = showDragGuides;
   const onGestureChangeRef = useRef(onGestureChange);
   onGestureChangeRef.current = onGestureChange;
   const onElementsDragEndRef = useRef(onElementsDragEnd);
@@ -2780,7 +2800,10 @@ export default function DocumentPreview({
     [editingElementId],
   );
 
-  /** Keep caret in the text block when clicking the canvas outside (edit mode stays active). */
+  /**
+   * require_done: keep caret in the text block when clicking the canvas outside.
+   * click_outside: end editing when clicking away (formatting strip / overlays still ignored).
+   */
   useEffect(() => {
     if (!editingElementId) return;
     const onPointerDownCapture = (e: PointerEvent) => {
@@ -2797,11 +2820,15 @@ export default function DocumentPreview({
         const otherId = otherTextBox.getAttribute(DOCUMENT_TEXT_ELEMENT_ATTR);
         if (otherId && otherId !== editingElementId) return;
       }
+      if (textEditExitMode === 'click_outside') {
+        setEditingElementId(null);
+        return;
+      }
       e.preventDefault();
     };
     document.addEventListener('pointerdown', onPointerDownCapture, true);
     return () => document.removeEventListener('pointerdown', onPointerDownCapture, true);
-  }, [editingElementId]);
+  }, [editingElementId, textEditExitMode, setEditingElementId]);
 
   useEffect(() => {
     const el = canvasRef.current;
@@ -2874,8 +2901,12 @@ export default function DocumentPreview({
         return;
       }
       if (isOtherElementWhileEditing(el.id)) {
-        notifyBlockedByTextEdit();
-        return;
+        if (textEditExitMode === 'click_outside') {
+          commitInlineEdit();
+        } else {
+          notifyBlockedByTextEdit();
+          return;
+        }
       }
       onPageInteraction?.();
       if (e.button !== 0) return;
@@ -2919,7 +2950,7 @@ export default function DocumentPreview({
       };
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     },
-    [isViewOnly, lockBlockElements, selectedElementIds, elements, onPageInteraction, isOtherElementWhileEditing, editingElementId, notifyBlockedByTextEdit, reportPasteAnchor]
+    [isViewOnly, lockBlockElements, selectedElementIds, elements, onPageInteraction, isOtherElementWhileEditing, editingElementId, notifyBlockedByTextEdit, reportPasteAnchor, textEditExitMode, commitInlineEdit]
   );
 
   const handleResizePointerDown = useCallback(
@@ -2927,8 +2958,12 @@ export default function DocumentPreview({
       e.stopPropagation();
       if (isViewOnly) return;
       if (isOtherElementWhileEditing(el.id)) {
-        notifyBlockedByTextEdit();
-        return;
+        if (textEditExitMode === 'click_outside') {
+          commitInlineEdit();
+        } else {
+          notifyBlockedByTextEdit();
+          return;
+        }
       }
       onPageInteraction?.();
       if (e.button !== 0) return;
@@ -2950,7 +2985,7 @@ export default function DocumentPreview({
       };
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     },
-    [isViewOnly, lockBlockElements, onPageInteraction, isOtherElementWhileEditing, notifyBlockedByTextEdit],
+    [isViewOnly, lockBlockElements, onPageInteraction, isOtherElementWhileEditing, notifyBlockedByTextEdit, textEditExitMode, commitInlineEdit],
   );
 
   const handleRotatePointerDown = useCallback(
@@ -2959,8 +2994,12 @@ export default function DocumentPreview({
       e.preventDefault();
       if (isViewOnly) return;
       if (isOtherElementWhileEditing(el.id)) {
-        notifyBlockedByTextEdit();
-        return;
+        if (textEditExitMode === 'click_outside') {
+          commitInlineEdit();
+        } else {
+          notifyBlockedByTextEdit();
+          return;
+        }
       }
       onPageInteraction?.();
       if (e.button !== 0) return;
@@ -2987,7 +3026,7 @@ export default function DocumentPreview({
       };
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     },
-    [isViewOnly, lockBlockElements, onPageInteraction, isOtherElementWhileEditing, notifyBlockedByTextEdit],
+    [isViewOnly, lockBlockElements, onPageInteraction, isOtherElementWhileEditing, notifyBlockedByTextEdit, textEditExitMode, commitInlineEdit],
   );
 
   const onElementClickRef = useRef(onElementClick);
@@ -3155,15 +3194,25 @@ export default function DocumentPreview({
         else dx = 0;
       }
       const bbox = getGroupBbox(drag.movingIds, drag.startPositions, elementsNow, dx, dy);
-      const { vertical: refV, horizontal: refH } = getReferenceLines(
-        elementsNow,
-        drag.movingIds,
-        marginsNow,
-        bbox,
-      );
-      const snapped = computeSnap(bbox, refV, refH, dx, dy);
-      const hasGuides = snapped.guides.v.length > 0 || snapped.guides.h.length > 0;
-      setGuidesIfChanged(hasGuides ? snapped.guides : null);
+      if (snapToGuidesRef.current) {
+        const { vertical: refV, horizontal: refH } = getReferenceLines(
+          elementsNow,
+          drag.movingIds,
+          marginsNow,
+          bbox,
+        );
+        const snapped = computeSnap(bbox, refV, refH, dx, dy);
+        dx = snapped.dx;
+        dy = snapped.dy;
+        if (showDragGuidesRef.current) {
+          const hasGuides = snapped.guides.v.length > 0 || snapped.guides.h.length > 0;
+          setGuidesIfChanged(hasGuides ? snapped.guides : null);
+        } else {
+          setGuidesIfChanged(null);
+        }
+      } else {
+        setGuidesIfChanged(null);
+      }
       const movedEnough = Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5;
       if (!drag.historyPushed && !movedEnough) return true;
       if (movedEnough) {
@@ -3382,7 +3431,7 @@ export default function DocumentPreview({
   }, [embedded, embedScrollParentRef]);
 
   const scrollAreaClassName = embedded
-    ? `flex w-full flex-shrink-0 items-center justify-center px-4 sm:px-6 ${editorCanvasScrollAreaClass} ${spaceDown ? 'cursor-grab' : ''}`
+    ? `flex w-full flex-shrink-0 items-center justify-center px-2 sm:px-3 ${editorCanvasScrollAreaClass} ${spaceDown ? 'cursor-grab' : ''}`
     : `flex min-h-0 flex-1 items-start justify-center overflow-auto ${editorCanvasScrollAreaClass} px-8 pt-5 pb-12 sm:px-16 sm:pt-6 sm:pb-16 ${spaceDown ? 'cursor-grab' : ''}`;
 
   const outerChromeClass = embedded
@@ -3473,6 +3522,11 @@ export default function DocumentPreview({
           if (e.target === e.currentTarget) {
             if (embedded) onPageInteraction?.();
             if (editingElementId) {
+              if (textEditExitMode === 'click_outside') {
+                commitInlineEdit();
+                onCanvasClick?.(clientPointToCanvasPct(e.clientX, e.clientY) ?? undefined);
+                return;
+              }
               notifyBlockedByTextEdit();
               return;
             }
@@ -3530,6 +3584,11 @@ export default function DocumentPreview({
             if (e.target === e.currentTarget) {
               if (embedded) onPageInteraction?.();
               if (editingElementId) {
+                if (textEditExitMode === 'click_outside') {
+                  commitInlineEdit();
+                  onCanvasClick?.(clientPointToCanvasPct(e.clientX, e.clientY) ?? undefined);
+                  return;
+                }
                 notifyBlockedByTextEdit();
                 return;
               }
@@ -3556,7 +3615,7 @@ export default function DocumentPreview({
           {!backgroundUrl && (
             <div className="pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-br from-white to-slate-100" />
           )}
-          {margins && (
+          {margins && marginsVisible && (
             <>
               {/* Off-limits margin bands: soft diagonal hatch */}
               {(margins.left_pct ?? 0) > 0 && (
@@ -3736,7 +3795,9 @@ export default function DocumentPreview({
                     const textLines = contentLines(el.content);
                     const lineStyles = effectiveLineListStyles(el);
                     const editHint =
-                      'Enter: new line. Click Done or press Escape to finish editing.';
+                      textEditExitMode === 'click_outside'
+                        ? 'Enter: new line. Click outside or press Escape to finish editing.'
+                        : 'Enter: new line. Click Done or press Escape to finish editing.';
                     return (
                       <div
                         className="relative flex h-full w-full flex-col"

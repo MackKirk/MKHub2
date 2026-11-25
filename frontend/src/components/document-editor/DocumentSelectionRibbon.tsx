@@ -8,10 +8,6 @@ import {
   AlignMiddleIcon,
   AlignRightIcon,
   AlignTopIcon,
-  LayerBackwardIcon,
-  LayerForwardIcon,
-  LayerToBackIcon,
-  LayerToFrontIcon,
   LockIcon,
   PinIcon,
 } from '@/components/document-editor/documentEditorIcons';
@@ -48,10 +44,6 @@ export default function DocumentSelectionRibbon({
   onReplaceImageClick,
   onEditImageClick,
   onAlignSelected,
-  onBringToFront,
-  onSendToBack,
-  onBringForward,
-  onSendBackward,
 }: {
   selectedElementIds: string[];
   elements: DocElement[];
@@ -63,10 +55,6 @@ export default function DocumentSelectionRibbon({
   onReplaceImageClick?: (elementId: string) => void;
   onEditImageClick?: (elementId: string) => void;
   onAlignSelected?: (alignment: AlignKind) => void;
-  onBringToFront?: () => void;
-  onSendToBack?: () => void;
-  onBringForward?: () => void;
-  onSendBackward?: () => void;
 }) {
   const confirm = useConfirm();
   const id = element?.id ?? '';
@@ -274,62 +262,6 @@ export default function DocumentSelectionRibbon({
               {hasImage ? 'Replace' : 'Add image'}
             </button>
           )}
-        </div>
-      ) : null}
-
-      {!multi &&
-      element &&
-      element.type !== 'block' &&
-      (onBringToFront || onSendToBack || onBringForward || onSendBackward) ? (
-        <div className={editorContextToolbarGroupClass}>
-          {onSendToBack ? (
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={onSendToBack}
-              className={selectionIconToolButtonClass}
-              title="Send to back"
-              aria-label="Send to back"
-            >
-              <LayerToBackIcon className="h-3.5 w-3.5 shrink-0 text-slate-800" />
-            </button>
-          ) : null}
-          {onSendBackward ? (
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={onSendBackward}
-              className={selectionIconToolButtonClass}
-              title="Send backward"
-              aria-label="Send backward"
-            >
-              <LayerBackwardIcon className="h-3.5 w-3.5 shrink-0 text-slate-800" />
-            </button>
-          ) : null}
-          {onBringForward ? (
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={onBringForward}
-              className={selectionIconToolButtonClass}
-              title="Bring forward"
-              aria-label="Bring forward"
-            >
-              <LayerForwardIcon className="h-3.5 w-3.5 shrink-0 text-slate-800" />
-            </button>
-          ) : null}
-          {onBringToFront ? (
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={onBringToFront}
-              className={selectionIconToolButtonClass}
-              title="Bring to front"
-              aria-label="Bring to front"
-            >
-              <LayerToFrontIcon className="h-3.5 w-3.5 shrink-0 text-slate-800" />
-            </button>
-          ) : null}
         </div>
       ) : null}
 

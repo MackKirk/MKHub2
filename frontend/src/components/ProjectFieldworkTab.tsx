@@ -19,7 +19,10 @@ import { ApiError, api, fetchAuthorizedBinary, formatApiErrorDetail } from '@/li
 import { useConfirm } from '@/components/ConfirmProvider';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import DynamicForm from '@/components/DynamicForm';
-import { FieldworkSupervisorReportView } from '@/components/fieldwork/FieldworkSupervisorReportView';
+import {
+  FieldworkSupervisorReportView,
+  SUPERVISOR_COMMENTS_KEY,
+} from '@/components/fieldwork/FieldworkSupervisorReportView';
 import {
   AppBadge,
   AppButton,
@@ -1093,8 +1096,8 @@ export default function ProjectFieldworkTab({
       ) : (
         <FieldworkSupervisorReportView
           record={detail}
-          supervisorComments={{}}
-          showSupervisorNotes={false}
+          supervisorComments={canReview ? supervisorComments : {}}
+          showSupervisorNotes={canReview}
         />
       )}
 

@@ -450,3 +450,172 @@ export function CompressIcon({ className }: { className?: string }) {
     </svg>
   );
 }
+
+export function CutIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+      <circle cx="6" cy="6" r="2.5" />
+      <circle cx="6" cy="18" r="2.5" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M20 4L8.5 12M20 20L8.5 12" />
+    </svg>
+  );
+}
+
+export function CopyIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+      <rect x="9" y="9" width="11" height="11" rx="2" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M5 15V5a2 2 0 012-2h10" />
+    </svg>
+  );
+}
+
+export function PasteIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5h1a2 2 0 012-2h0a2 2 0 012 2h1a2 2 0 012 2v12a2 2 0 01-2 2H9a2 2 0 01-2-2V7a2 2 0 012-2z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5h6v2H9V5z" />
+    </svg>
+  );
+}
+
+export function DuplicateIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+      <rect x="8" y="8" width="11" height="11" rx="2" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6 16V6a2 2 0 012-2h10" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 12v4m0 0l-1.5-1.5M12 16l1.5-1.5" />
+    </svg>
+  );
+}
+
+export function SelectAllIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+      <rect x="4" y="4" width="16" height="16" rx="2" strokeDasharray="3 2" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M8 12l2.5 2.5L16 9" />
+    </svg>
+  );
+}
+
+export function DeselectIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+      <rect x="4" y="4" width="16" height="16" rx="2" strokeDasharray="3 2" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 9l6 6M15 9l-6 6" />
+    </svg>
+  );
+}
+
+export function InfoIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+      <circle cx="12" cy="12" r="9" />
+      <path strokeLinecap="round" d="M12 11v5M12 8h.01" />
+    </svg>
+  );
+}
+
+export function FitWidthIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 12h16M7 9l-3 3 3 3M17 9l3 3-3 3" />
+      <path strokeLinecap="round" d="M4 5v14M20 5v14" />
+    </svg>
+  );
+}
+
+export function FitPageIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+      <rect x="6" y="3" width="12" height="18" rx="1.5" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l2-2 2 2M3 16l2 2 2-2M21 8l-2-2-2 2M21 16l-2 2-2-2" />
+    </svg>
+  );
+}
+
+export function MarginsIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+      <rect x="4" y="4" width="16" height="16" rx="1.5" />
+      <path strokeLinecap="round" strokeDasharray="2 2" d="M8 4v16M16 4v16M4 8h16M4 16h16" />
+    </svg>
+  );
+}
+
+export function DistributeHorizontalIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+      <rect x="1" y="3" width="2" height="10" />
+      <rect x="13" y="3" width="2" height="10" />
+      <rect x="5" y="5" width="2" height="6" />
+      <rect x="9" y="5" width="2" height="6" />
+    </svg>
+  );
+}
+
+export function DistributeVerticalIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+      <rect x="3" y="1" width="10" height="2" />
+      <rect x="3" y="13" width="10" height="2" />
+      <rect x="5" y="5" width="6" height="2" />
+      <rect x="5" y="9" width="6" height="2" />
+    </svg>
+  );
+}
+
+export function ArrangeIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+      <rect x="4" y="8" width="12" height="10" rx="1.5" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M8 8V6a1.5 1.5 0 011.5-1.5H18A1.5 1.5 0 0119.5 6v9A1.5 1.5 0 0118 16.5h-2" />
+    </svg>
+  );
+}
+
+export function AlignMenuIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+      <rect x="2" y="3" width="12" height="2" />
+      <rect x="2" y="7" width="8" height="2" />
+      <rect x="2" y="11" width="10" height="2" />
+    </svg>
+  );
+}
+
+export function TextEditExitIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 19h6M14 5l5 5M9 15l9-9" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M14 5h5v5" />
+    </svg>
+  );
+}
+
+export function SnapGuidesIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+      <path strokeLinecap="round" d="M12 3v18M3 12h18" />
+      <rect x="14" y="14" width="6" height="6" rx="1" />
+    </svg>
+  );
+}
+
+export function DragGuidesIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeDasharray="3 2" d="M12 3v18M3 12h18" />
+      <circle cx="12" cy="12" r="2" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+export function AutoFillIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h.01M12 7h.01M16 7h.01M7 11h10M7 15h6" />
+      <rect x="4" y="4" width="16" height="16" rx="2" />
+    </svg>
+  );
+}

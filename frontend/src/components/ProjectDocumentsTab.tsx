@@ -515,6 +515,7 @@ const ProjectDocumentsTab = forwardRef<ProjectDocumentsTabHandle, ProjectDocumen
         style={isExpanded ? undefined : { height: inlineEditorHeightPx }}
       >
         <DocumentEditor
+          key={modalDocumentId}
           ref={documentEditorRef}
           documentId={modalDocumentId}
           projectId={projectId}
