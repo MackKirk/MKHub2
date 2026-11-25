@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import toast from 'react-hot-toast';
 import { getOverlayRoot } from '@/lib/overlayRoot';
@@ -8,10 +8,11 @@ import { insertDocumentSignatureAtomAtCaret, insertDocumentDateAtomAtCaret, inse
 import type { DocumentSignerRoleDef } from '@/types/documentCreator';
 import {
   RibbonShell,
-  RibbonGroup,
-  RibbonLargeButton,
   RibbonCompactButton,
   ribbonPortalDropdownPanelClass,
+  ribbonMenuTriggerClass,
+  ribbonIconToolClass,
+  ribbonMenuItemClass,
   editorContextStripClass,
 } from '@/components/document-editor/documentEditorRibbonPrimitives';
 import {
@@ -25,10 +26,13 @@ import {
   InitialsIcon,
   DateFieldIcon,
   RedoIcon,
+  SaveIcon,
   SignatureIcon,
   TextIcon,
   UndoIcon,
   ZoomIcon,
+  ZoomInIcon,
+  ZoomOutIcon,
 } from '@/components/document-editor/documentEditorIcons';
 import type { DocumentSaveStatus } from '@/hooks/useDocumentAutoSave';
 
@@ -46,6 +50,8 @@ export type DocumentEditorRibbonProps = {
   showExportPdf: boolean;
   onExportPdf: () => void;
   isExportingPdf: boolean;
+  /** Manual save (autosave flush). Shown in File when available. */
+  onSave?: () => void | Promise<boolean | void>;
   showSendForSignature?: boolean;
   onSendForSignature?: () => void;
   showSaveTemplate: boolean;
@@ -92,11 +98,9 @@ export type DocumentEditorRibbonProps = {
   subjectUserId?: string | null;
 };
 
-const ZOOM_LEVELS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
+const ZOOM_LEVELS = [0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.25, 1.5, 2] as const;
 
-/** Matches "Change background" trigger in DocumentEditor (ribbon layout panel). */
-const ribbonDropdownTriggerClass =
-  'inline-flex items-center gap-2 rounded-xl border border-slate-300/90 bg-white px-2.5 py-2 text-sm font-semibold text-slate-800 shadow-[0_1px_3px_rgba(15,23,42,0.08)] transition-[border-color,box-shadow,background-color] duration-200 ease-out hover:border-slate-400 hover:bg-slate-50 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/35';
+type RibbonMenuId = 'file' | 'edit' | 'insert' | 'page' | 'view';
 
 function DocumentSaveStatusBadge({ status }: { status: DocumentSaveStatus }) {
   const badgeClass =
@@ -157,6 +161,7 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
     showExportPdf,
     onExportPdf,
     isExportingPdf,
+    onSave,
     showSendForSignature = false,
     onSendForSignature,
     showSaveTemplate,
@@ -194,14 +199,32 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
   const titleInputRef = useRef<HTMLInputElement>(null);
   const skipCommitRef = useRef(false);
 
-  const [zoomMenuOpen, setZoomMenuOpen] = useState(false);
-  const [zoomMenuPos, setZoomMenuPos] = useState({ top: 0, left: 0 });
-  const zoomTriggerRef = useRef<HTMLButtonElement>(null);
-  const zoomDropdownRef = useRef<HTMLDivElement>(null);
+  const [openMenu, setOpenMenu] = useState<RibbonMenuId | null>(null);
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
+  const menuPanelRef = useRef<HTMLDivElement>(null);
+  const fileTriggerRef = useRef<HTMLButtonElement>(null);
+  const editTriggerRef = useRef<HTMLButtonElement>(null);
+  const insertTriggerRef = useRef<HTMLButtonElement>(null);
+  const pageTriggerRef = useRef<HTMLButtonElement>(null);
+  const viewTriggerRef = useRef<HTMLButtonElement>(null);
+
+  const menuTriggerRef = (id: RibbonMenuId) => {
+    if (id === 'file') return fileTriggerRef;
+    if (id === 'edit') return editTriggerRef;
+    if (id === 'insert') return insertTriggerRef;
+    if (id === 'page') return pageTriggerRef;
+    return viewTriggerRef;
+  };
+
+  const toggleMenu = (id: RibbonMenuId) => {
+    setTokensMenuOpen(false);
+    setOpenMenu((cur) => (cur === id ? null : id));
+  };
+
+  const closeMenus = () => setOpenMenu(null);
 
   const [tokensMenuOpen, setTokensMenuOpen] = useState(false);
   const [tokensMenuPos, setTokensMenuPos] = useState({ top: 0, left: 0 });
-  const tokensTriggerRef = useRef<HTMLButtonElement>(null);
   const tokensDropdownRef = useRef<HTMLDivElement>(null);
   const { data: tokenValues } = useDocumentAutoFillTokens(projectId, !readOnly, subjectUserId);
   const scopedAutoFillTokens = useMemo(
@@ -283,44 +306,55 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
     };
   }, [roleMenu]);
 
-  const repositionZoomMenu = useCallback(() => {
-    if (!zoomMenuOpen || !zoomTriggerRef.current) return;
-    const r = zoomTriggerRef.current.getBoundingClientRect();
-    const panelW = 200;
-    const left = Math.max(8, Math.min(r.left, window.innerWidth - panelW - 8));
-    const top = r.bottom + 4;
-    setZoomMenuPos({ top, left });
-  }, [zoomMenuOpen]);
-
   useLayoutEffect(() => {
-    if (!zoomMenuOpen) return;
-    repositionZoomMenu();
-    window.addEventListener('resize', repositionZoomMenu);
-    window.addEventListener('scroll', repositionZoomMenu, true);
-    return () => {
-      window.removeEventListener('resize', repositionZoomMenu);
-      window.removeEventListener('scroll', repositionZoomMenu, true);
+    if (!openMenu) return;
+    const trigger = menuTriggerRef(openMenu).current;
+    if (!trigger) return;
+    const place = () => {
+      const r = trigger.getBoundingClientRect();
+      const panelW = openMenu === 'page' ? 360 : openMenu === 'insert' ? 220 : 200;
+      const left = Math.max(8, Math.min(r.left, window.innerWidth - panelW - 8));
+      setMenuPos({ top: r.bottom + 4, left });
     };
-  }, [zoomMenuOpen, repositionZoomMenu]);
+    place();
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    return () => {
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+    };
+  }, [openMenu]);
 
   useEffect(() => {
-    if (!zoomMenuOpen) return;
+    if (!openMenu) return;
     const onDown = (e: MouseEvent) => {
       const t = e.target as Node | null;
       if (!t) return;
-      if (zoomTriggerRef.current?.contains(t)) return;
-      if (zoomDropdownRef.current?.contains(t)) return;
-      setZoomMenuOpen(false);
+      if (menuTriggerRef(openMenu).current?.contains(t)) return;
+      if (menuPanelRef.current?.contains(t)) return;
+      // Background picker portal lives outside the menu panel — keep Page open while using it.
+      if (openMenu === 'page' && (t as Element).closest?.('[role="listbox"][aria-label="Page backgrounds"]')) {
+        return;
+      }
+      setOpenMenu(null);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpenMenu(null);
     };
     window.addEventListener('mousedown', onDown);
-    return () => window.removeEventListener('mousedown', onDown);
-  }, [zoomMenuOpen]);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('mousedown', onDown);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [openMenu]);
 
   useEffect(() => {
     if (!tokensMenuOpen) return;
     const reposition = () => {
-      if (!tokensTriggerRef.current) return;
-      const r = tokensTriggerRef.current.getBoundingClientRect();
+      const anchor = insertTriggerRef.current;
+      if (!anchor) return;
+      const r = anchor.getBoundingClientRect();
       const panelW = 320;
       const left = Math.max(8, Math.min(r.left, window.innerWidth - panelW - 8));
       setTokensMenuPos({ top: r.bottom + 4, left });
@@ -339,12 +373,19 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
     const onDown = (e: MouseEvent) => {
       const t = e.target as Node | null;
       if (!t) return;
-      if (tokensTriggerRef.current?.contains(t)) return;
+      if (insertTriggerRef.current?.contains(t)) return;
       if (tokensDropdownRef.current?.contains(t)) return;
       setTokensMenuOpen(false);
     };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setTokensMenuOpen(false);
+    };
     window.addEventListener('mousedown', onDown);
-    return () => window.removeEventListener('mousedown', onDown);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('mousedown', onDown);
+      window.removeEventListener('keydown', onKey);
+    };
   }, [tokensMenuOpen]);
 
   useEffect(() => {
@@ -393,378 +434,524 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
   const displayTitle = title.trim() || 'Untitled document';
   const viewOnlyBadge = showViewOnlyBadge ?? readOnly;
 
+  const zoomOut = () => {
+    const lower = [...ZOOM_LEVELS].reverse().find((z) => z < zoom - 0.001);
+    onZoomChange(lower ?? ZOOM_LEVELS[0]);
+  };
+  const zoomIn = () => {
+    const higher = ZOOM_LEVELS.find((z) => z > zoom + 0.001);
+    onZoomChange(higher ?? ZOOM_LEVELS[ZOOM_LEVELS.length - 1]);
+  };
+  const canZoomOut = zoom > ZOOM_LEVELS[0] + 0.001;
+  const canZoomIn = zoom < ZOOM_LEVELS[ZOOM_LEVELS.length - 1] - 0.001;
+
+  const menuItem = (
+    opts: {
+      icon?: ReactNode;
+      label: string;
+      onClick: () => void;
+      disabled?: boolean;
+      keepTextSelection?: boolean;
+      title?: string;
+    },
+  ) => (
+    <button
+      type="button"
+      role="menuitem"
+      disabled={opts.disabled}
+      title={opts.title}
+      className={ribbonMenuItemClass}
+      onMouseDown={opts.keepTextSelection ? (e) => e.preventDefault() : undefined}
+      {...(opts.keepTextSelection ? { 'data-document-keep-text-selection': '' } : {})}
+      onClick={() => {
+        opts.onClick();
+        closeMenus();
+      }}
+    >
+      {opts.icon ? (
+        <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-slate-600 [&>svg]:h-4 [&>svg]:w-4">
+          {opts.icon}
+        </span>
+      ) : null}
+      <span className="min-w-0 flex-1 truncate">{opts.label}</span>
+    </button>
+  );
+
   return (
     <RibbonShell>
       <div
-        className="flex min-h-[80px] flex-nowrap items-end gap-0 overflow-x-auto border-b border-slate-200/80 bg-gradient-to-b from-white via-slate-50/90 to-slate-100/80 px-1.5 py-2.5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.9)] sm:px-3 [scrollbar-width:thin]"
+        className="flex h-11 flex-nowrap items-center gap-1 overflow-x-auto border-b border-slate-200/80 bg-gradient-to-b from-white via-slate-50/90 to-slate-100/80 px-1.5 sm:px-2.5 [scrollbar-width:thin]"
         role="toolbar"
         aria-label="Document editor toolbar"
       >
-        <RibbonGroup label="Document">
-          <div className="flex flex-col items-center gap-1 shrink-0 self-center">
+        <div className="flex shrink-0 items-center gap-0.5">
+          <button
+            type="button"
+            onClick={onCloseOrBack}
+            className={ribbonIconToolClass}
+            aria-label={useCloseIcon ? 'Close' : 'Back'}
+          >
+            {useCloseIcon ? <CloseIcon className="h-4 w-4" /> : <BackIcon className="h-4 w-4" />}
+          </button>
+          {closeSlotBelow}
+        </div>
+
+        <div className="flex min-w-0 max-w-[min(220px,36vw)] flex-col justify-center sm:max-w-[280px]">
+          <span className="text-[9px] font-bold uppercase tracking-[0.12em] text-slate-500 leading-none">
+            {modeHeading}
+          </span>
+          {showTitleInput ? (
+            editingTitle ? (
+              <input
+                ref={titleInputRef}
+                value={localTitle}
+                onChange={(e) => setLocalTitle(e.target.value)}
+                onBlur={() => commitTitle()}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    (e.target as HTMLInputElement).blur();
+                  }
+                  if (e.key === 'Escape') {
+                    e.preventDefault();
+                    cancelTitleEdit();
+                  }
+                }}
+                className="mt-0.5 h-7 w-full rounded-md border border-slate-300/90 bg-white px-1.5 text-xs font-bold text-slate-900 focus:border-brand-red/45 focus:outline-none focus:ring-2 focus:ring-brand-red/25"
+                aria-label="Document title"
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={beginTitleEdit}
+                className="mt-0.5 w-full truncate rounded-md px-1 py-0.5 text-left text-xs font-bold text-slate-900 hover:bg-white"
+                title="Click to edit document name"
+              >
+                {displayTitle}
+              </button>
+            )
+          ) : (
+            !isTemplate &&
+            readOnly && (
+              <span className="mt-0.5 truncate text-xs font-semibold text-slate-800" title={title}>
+                {displayTitle}
+              </span>
+            )
+          )}
+        </div>
+
+        <div className="mx-0.5 h-6 w-px shrink-0 bg-slate-200/90" aria-hidden />
+
+        <div className="relative flex min-w-0 flex-1 flex-nowrap items-center gap-0.5">
+          <div
+            className={`flex min-w-0 flex-nowrap items-center gap-0.5 ${
+              viewOnlyBadge ? 'pointer-events-none select-none blur-[2px] opacity-55' : ''
+            }`}
+            aria-hidden={viewOnlyBadge || undefined}
+          >
             <button
               type="button"
-              onClick={onCloseOrBack}
-              className="rounded-xl p-2 text-slate-600 transition-[color,background-color,transform] duration-200 ease-out hover:bg-slate-200/70 hover:text-slate-950 active:scale-[0.96] focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/35"
-              aria-label={useCloseIcon ? 'Close' : 'Back'}
+              ref={fileTriggerRef}
+              className={ribbonMenuTriggerClass}
+              aria-expanded={openMenu === 'file'}
+              aria-haspopup="menu"
+              onClick={() => toggleMenu('file')}
             >
-              {useCloseIcon ? <CloseIcon className="w-5 h-5" /> : <BackIcon className="w-5 h-5" />}
+              File <span className="text-slate-400">▾</span>
             </button>
-            {closeSlotBelow}
-          </div>
-          <div className="flex flex-col min-w-0 max-w-[min(250px,44vw)] sm:max-w-[320px] justify-end pb-0.5">
-            <span className="text-xs font-bold uppercase tracking-[0.12em] text-slate-600 leading-tight">{modeHeading}</span>
-            {showTitleInput ? (
-              editingTitle ? (
-                <input
-                  ref={titleInputRef}
-                  value={localTitle}
-                  onChange={(e) => setLocalTitle(e.target.value)}
-                  onBlur={() => commitTitle()}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      (e.target as HTMLInputElement).blur();
-                    }
-                    if (e.key === 'Escape') {
-                      e.preventDefault();
-                      cancelTitleEdit();
-                    }
-                  }}
-                  className="mt-0.5 w-full rounded-xl border border-slate-300/90 bg-white px-2.5 py-1.5 text-sm font-bold text-slate-900 shadow-[0_1px_2px_rgba(15,23,42,0.06)] focus:border-brand-red/45 focus:outline-none focus:ring-2 focus:ring-brand-red/25"
-                  aria-label="Document title"
-                />
-              ) : (
-                <button
-                  type="button"
-                  onClick={beginTitleEdit}
-                  className="-mx-0.5 mt-0.5 w-full truncate rounded-xl border border-transparent px-2.5 py-1.5 text-left text-sm font-bold text-slate-900 transition-[border-color,background-color,box-shadow] duration-200 ease-out hover:border-slate-300/80 hover:bg-white hover:shadow-md"
-                  title="Click to edit document name"
-                >
-                  {displayTitle}
-                </button>
-              )
-            ) : (
-              !isTemplate &&
-              readOnly && (
-                <span className="mt-0.5 text-sm font-semibold text-slate-800 truncate" title={title}>
-                  {displayTitle}
-                </span>
-              )
-            )}
-          </div>
-        </RibbonGroup>
-
-        <div className="flex min-w-0 flex-1 flex-nowrap items-end gap-0">
-        {/* flex-1 so the view-only overlay centers across the free space between Document and Export */}
-        <div className="relative flex min-w-0 flex-1 flex-nowrap items-end gap-0">
-        <div
-          className={`flex min-w-0 flex-nowrap items-end gap-0 ${
-            viewOnlyBadge ? 'pointer-events-none select-none blur-[3px] opacity-60' : ''
-          }`}
-          aria-hidden={viewOnlyBadge || undefined}
-        >
-        <RibbonGroup label="Clipboard">
-          <RibbonLargeButton icon={<UndoIcon />} label="Undo" onClick={onUndo} disabled={!canUndo} title="Undo (Ctrl+Z)" />
-          <RibbonLargeButton icon={<RedoIcon />} label="Redo" onClick={onRedo} disabled={!canRedo} title="Redo (Ctrl+Y)" />
-        </RibbonGroup>
-
-        {!readOnly && (
-          <RibbonGroup label="Insert">
-            <RibbonLargeButton icon={<TextIcon />} label="Text" onClick={onAddText} title="Insert text box" />
-            <RibbonLargeButton icon={<ImageIcon />} label="Image" onClick={onAddImage} title="Insert image" />
-            <RibbonLargeButton
-              icon={<ImageAreaIcon />}
-              label="Image area"
-              onClick={onAddImagePlaceholder}
-              title="Insert image placeholder"
-            />
-            {onInsertFromFieldReport ? (
-              <RibbonLargeButton
-                icon={<FieldReportIcon />}
-                label="Field report"
-                onClick={onInsertFromFieldReport}
-                title="Insert photos and descriptions from an approved Field Report"
-              />
+            <button
+              type="button"
+              ref={editTriggerRef}
+              className={ribbonMenuTriggerClass}
+              aria-expanded={openMenu === 'edit'}
+              aria-haspopup="menu"
+              onClick={() => toggleMenu('edit')}
+            >
+              Edit <span className="text-slate-400">▾</span>
+            </button>
+            {!readOnly ? (
+              <button
+                type="button"
+                ref={insertTriggerRef}
+                className={ribbonMenuTriggerClass}
+                aria-expanded={openMenu === 'insert'}
+                aria-haspopup="menu"
+                onClick={() => toggleMenu('insert')}
+              >
+                Insert <span className="text-slate-400">▾</span>
+              </button>
             ) : null}
-            {showBlock && onAddBlock && (
-              <RibbonLargeButton icon={<BlockIcon />} label="Block" onClick={onAddBlock} title="Insert block area" />
-            )}
-            {/* Signature fields are for hub/user docs only — not project-scoped builders. */}
-            {!projectId && onAddInitials && (
-              <RibbonLargeButton
-                icon={<InitialsIcon />}
-                label="Initials"
-                keepTextSelection
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={(e) => openRoleChooser('initials', e.currentTarget)}
-                title="Insert initials field — choose who signs"
-              />
-            )}
-            {!projectId && (
-              <>
-                <RibbonLargeButton
-                  icon={<DateFieldIcon />}
-                  label="Date"
-                  keepTextSelection
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={(e) => openRoleChooser('date', e.currentTarget)}
-                  title={
-                    textEditingElementId
-                      ? 'Insert date field at the cursor — choose who fills it'
-                      : 'Edit a text box first, then insert Date at the cursor'
-                  }
-                />
-                <RibbonLargeButton
-                  icon={<SignatureIcon />}
-                  label="Signature"
-                  keepTextSelection
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={(e) => openRoleChooser('signature', e.currentTarget)}
-                  title={
-                    textEditingElementId
-                      ? 'Insert signature field at the cursor — choose who signs'
-                      : 'Edit a text box first, then insert Signature at the cursor'
-                  }
-                />
-              </>
-            )}
-          </RibbonGroup>
-        )}
+            {!readOnly ? (
+              <button
+                type="button"
+                ref={pageTriggerRef}
+                className={ribbonMenuTriggerClass}
+                aria-expanded={openMenu === 'page'}
+                aria-haspopup="menu"
+                onClick={() => toggleMenu('page')}
+              >
+                Page <span className="text-slate-400">▾</span>
+              </button>
+            ) : null}
+          </div>
 
-        {roleMenu &&
-          createPortal(
+          {viewOnlyBadge ? (
+            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-0.5 px-2 text-center">
+              <span className="rounded-full bg-slate-900/80 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-white shadow">
+                View only
+              </span>
+              {viewOnlyNotice ? (
+                <span className="max-w-[min(70vw,360px)] rounded-full bg-slate-900/70 px-2 py-0.5 text-center text-[10px] font-semibold leading-snug text-white/90 shadow">
+                  {viewOnlyNotice}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="ml-auto flex shrink-0 items-center gap-1 border-l border-slate-200/75 pl-2">
+          {!viewOnlyBadge ? (
+            <>
+              <button
+                type="button"
+                className={ribbonIconToolClass}
+                onClick={onUndo}
+                disabled={!canUndo}
+                title="Undo (Ctrl+Z)"
+                aria-label="Undo"
+              >
+                <UndoIcon className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                className={ribbonIconToolClass}
+                onClick={onRedo}
+                disabled={!canRedo}
+                title="Redo (Ctrl+Y)"
+                aria-label="Redo"
+              >
+                <RedoIcon className="h-4 w-4" />
+              </button>
+              <div className="mx-0.5 h-5 w-px shrink-0 bg-slate-200/90" aria-hidden />
+            </>
+          ) : null}
+
+          <div className="flex items-center gap-0.5" role="group" aria-label="Zoom">
+            <button
+              type="button"
+              className={ribbonIconToolClass}
+              onClick={zoomOut}
+              disabled={!canZoomOut}
+              title="Zoom out"
+              aria-label="Zoom out"
+            >
+              <ZoomOutIcon className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              ref={viewTriggerRef}
+              className="inline-flex h-8 min-w-[3rem] items-center justify-center rounded-md px-1.5 text-xs font-semibold tabular-nums text-slate-700 hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/35"
+              title="Zoom level"
+              aria-expanded={openMenu === 'view'}
+              aria-haspopup="menu"
+              onClick={() => toggleMenu('view')}
+            >
+              {Math.round(zoom * 100)}%
+            </button>
+            <button
+              type="button"
+              className={ribbonIconToolClass}
+              onClick={zoomIn}
+              disabled={!canZoomIn}
+              title="Zoom in"
+              aria-label="Zoom in"
+            >
+              <ZoomInIcon className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div className="mx-0.5 h-5 w-px shrink-0 bg-slate-200/90" aria-hidden />
+
+          {showSendForSignature && onSendForSignature ? (
+            <RibbonCompactButton
+              icon={<SignatureIcon className="h-3.5 w-3.5" />}
+              label="Send"
+              onClick={onSendForSignature}
+              title="Send for signature"
+              variant="primary"
+            />
+          ) : null}
+          {showExportPdf ? (
+            <RibbonCompactButton
+              icon={<ExportPdfIcon className="h-3.5 w-3.5" />}
+              label={isExportingPdf ? '…' : 'PDF'}
+              onClick={onExportPdf}
+              disabled={isExportingPdf}
+              title="Export PDF"
+              variant="primary"
+            />
+          ) : null}
+          {mediaLoading ? (
+            <span
+              className="inline-flex h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600"
+              role="status"
+              aria-label="Loading images"
+              title="Loading images…"
+            />
+          ) : null}
+          {saveStatus ? <DocumentSaveStatusBadge status={saveStatus} /> : null}
+          {extraActions ? <div className="flex shrink-0 items-center">{extraActions}</div> : null}
+        </div>
+      </div>
+
+      {openMenu
+        ? createPortal(
             <div
-              ref={roleMenuRef}
-              className={ribbonPortalDropdownPanelClass}
-              style={{ position: 'fixed', top: roleMenu.top, left: roleMenu.left, zIndex: 100060, minWidth: 160 }}
+              ref={menuPanelRef}
               role="menu"
+              className={`${ribbonPortalDropdownPanelClass} ${
+                openMenu === 'page' ? 'w-[min(92vw,360px)]' : openMenu === 'insert' ? 'w-[220px]' : 'w-[200px]'
+              }`}
+              style={{ top: menuPos.top, left: menuPos.left, zIndex: 100060 }}
               data-document-keep-text-selection=""
             >
-              <p className="px-2.5 pt-2 pb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Who signs
-              </p>
-              {(signerRoles.length ? signerRoles : []).map((role) => (
-                <button
-                  key={role.id}
-                  type="button"
-                  role="menuitem"
-                  className="block w-full px-2.5 py-1.5 text-left text-sm text-slate-800 hover:bg-slate-100"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => pickRole(role.id)}
-                >
-                  {role.label}
-                </button>
-              ))}
-              {onRequestOtherSigner ? (
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="block w-full border-t border-slate-100 px-2.5 py-1.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-100"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => {
-                    const kind = roleMenu?.kind;
-                    const textElementId = roleMenu?.textElementId ?? textEditingElementId;
-                    setRoleMenu(null);
-                    if (!kind) return;
-                    onRequestOtherSigner(kind, textElementId);
-                  }}
-                >
-                  Other
-                </button>
+              {openMenu === 'file' ? (
+                <>
+                  {onSave && !readOnly
+                    ? menuItem({
+                        icon: <SaveIcon />,
+                        label: 'Save',
+                        onClick: () => {
+                          void onSave();
+                        },
+                        title: 'Ctrl+S',
+                      })
+                    : null}
+                  {showSaveTemplate
+                    ? menuItem({
+                        icon: <SaveIcon />,
+                        label: 'Save page layout',
+                        onClick: onSaveTemplate,
+                      })
+                    : null}
+                  {showExportPdf
+                    ? menuItem({
+                        icon: <ExportPdfIcon />,
+                        label: isExportingPdf ? 'Exporting…' : 'Export PDF',
+                        onClick: onExportPdf,
+                        disabled: isExportingPdf,
+                      })
+                    : null}
+                  {showSendForSignature && onSendForSignature
+                    ? menuItem({
+                        icon: <SignatureIcon />,
+                        label: 'Send for signature',
+                        onClick: onSendForSignature,
+                      })
+                    : null}
+                  {!onSave && !showExportPdf && !showSendForSignature && !showSaveTemplate ? (
+                    <p className="px-2.5 py-2 text-xs text-slate-500">No file actions</p>
+                  ) : null}
+                </>
+              ) : null}
+
+              {openMenu === 'edit' ? (
+                <>
+                  {menuItem({
+                    icon: <UndoIcon />,
+                    label: 'Undo',
+                    onClick: onUndo,
+                    disabled: !canUndo,
+                    title: 'Ctrl+Z',
+                  })}
+                  {menuItem({
+                    icon: <RedoIcon />,
+                    label: 'Redo',
+                    onClick: onRedo,
+                    disabled: !canRedo,
+                    title: 'Ctrl+Y',
+                  })}
+                </>
+              ) : null}
+
+              {openMenu === 'insert' ? (
+                <>
+                  {menuItem({ icon: <TextIcon />, label: 'Text box', onClick: onAddText })}
+                  {menuItem({ icon: <ImageIcon />, label: 'Image', onClick: onAddImage })}
+                  {menuItem({
+                    icon: <ImageAreaIcon />,
+                    label: 'Image area',
+                    onClick: onAddImagePlaceholder,
+                  })}
+                  {onInsertFromFieldReport
+                    ? menuItem({
+                        icon: <FieldReportIcon />,
+                        label: 'Field report…',
+                        onClick: onInsertFromFieldReport,
+                      })
+                    : null}
+                  {showBlock && onAddBlock
+                    ? menuItem({ icon: <BlockIcon />, label: 'Block', onClick: onAddBlock })
+                    : null}
+                  {!projectId && onAddInitials
+                    ? menuItem({
+                        icon: <InitialsIcon />,
+                        label: 'Initials…',
+                        keepTextSelection: true,
+                        onClick: () => openRoleChooser('initials', insertTriggerRef.current),
+                      })
+                    : null}
+                  {!projectId
+                    ? menuItem({
+                        icon: <DateFieldIcon />,
+                        label: 'Date…',
+                        keepTextSelection: true,
+                        onClick: () => openRoleChooser('date', insertTriggerRef.current),
+                      })
+                    : null}
+                  {!projectId
+                    ? menuItem({
+                        icon: <SignatureIcon />,
+                        label: 'Signature…',
+                        keepTextSelection: true,
+                        onClick: () => openRoleChooser('signature', insertTriggerRef.current),
+                      })
+                    : null}
+                  <div className="my-1 border-t border-slate-100" aria-hidden />
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={ribbonMenuItemClass}
+                    data-document-keep-text-selection=""
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      closeMenus();
+                      // Open after Insert menu closes so position uses the Insert trigger.
+                      window.requestAnimationFrame(() => {
+                        if (!insertTriggerRef.current) return;
+                        const r = insertTriggerRef.current.getBoundingClientRect();
+                        const panelW = 320;
+                        const left = Math.max(8, Math.min(r.left, window.innerWidth - panelW - 8));
+                        setTokensMenuPos({ top: r.bottom + 4, left });
+                        setTokensMenuOpen(true);
+                      });
+                    }}
+                  >
+                    <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center font-mono text-[11px] text-slate-600">
+                      {'{ }'}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">Auto-fill…</span>
+                  </button>
+                </>
+              ) : null}
+
+              {openMenu === 'page' ? (
+                <div className="flex flex-col gap-2 p-1">{layoutPanel}</div>
+              ) : null}
+
+              {openMenu === 'view' ? (
+                <>
+                  {ZOOM_LEVELS.map((z) =>
+                    menuItem({
+                      icon: zoom === z ? <ZoomIcon /> : undefined,
+                      label: `${Math.round(z * 100)}%`,
+                      onClick: () => onZoomChange(z),
+                    }),
+                  )}
+                </>
               ) : null}
             </div>,
             getOverlayRoot(),
-          )}
+          )
+        : null}
 
-        {!readOnly && (
-          <RibbonGroup label="Page">
-            <div className="flex flex-wrap items-end gap-2.5 max-w-[min(100vw-2rem,450px)]">{layoutPanel}</div>
-          </RibbonGroup>
-        )}
-
-        {!readOnly && (
-          <RibbonGroup label="Variables">
-            <div className="inline-flex items-center pb-0.5">
+      {roleMenu &&
+        createPortal(
+          <div
+            ref={roleMenuRef}
+            className={ribbonPortalDropdownPanelClass}
+            style={{ position: 'fixed', top: roleMenu.top, left: roleMenu.left, zIndex: 100060, minWidth: 160 }}
+            role="menu"
+            data-document-keep-text-selection=""
+          >
+            <p className="px-2.5 pt-2 pb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Who signs
+            </p>
+            {(signerRoles.length ? signerRoles : []).map((role) => (
+              <button
+                key={role.id}
+                type="button"
+                role="menuitem"
+                className="block w-full px-2.5 py-1.5 text-left text-sm text-slate-800 hover:bg-slate-100"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => pickRole(role.id)}
+              >
+                {role.label}
+              </button>
+            ))}
+            {onRequestOtherSigner ? (
               <button
                 type="button"
-                ref={tokensTriggerRef}
-                onClick={() => setTokensMenuOpen((v) => !v)}
-                className={ribbonDropdownTriggerClass}
-                title="Auto-fill tokens"
-                aria-expanded={tokensMenuOpen}
-                aria-haspopup="dialog"
+                role="menuitem"
+                className="block w-full border-t border-slate-100 px-2.5 py-1.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  const kind = roleMenu?.kind;
+                  const textElementId = roleMenu?.textElementId ?? textEditingElementId;
+                  setRoleMenu(null);
+                  if (!kind) return;
+                  onRequestOtherSigner(kind, textElementId);
+                }}
               >
-                <span className="font-mono text-sm leading-none text-slate-500">{'{ }'}</span>
-                <span>Auto-fill</span>
+                Other
               </button>
-              {tokensMenuOpen &&
-                createPortal(
-                  <div
-                    ref={tokensDropdownRef}
-                    className="fixed z-[100060]"
-                    style={{ top: tokensMenuPos.top, left: tokensMenuPos.left }}
-                  >
-                    <DocumentAutoFillTokenPicker
-                      tokens={scopedAutoFillTokens}
-                      forceToken={isTemplate}
-                      description={autoFillDescription}
-                      onClose={() => setTokensMenuOpen(false)}
-                      onInsert={(text) => {
-                        if (textEditingElementId) {
-                          insertDocumentTextAtCaret(textEditingElementId, text);
-                        } else {
-                          void navigator.clipboard.writeText(text);
-                          toast.success('Copied to clipboard — click a text box, then Auto-fill to insert at the cursor.');
-                        }
-                        setTokensMenuOpen(false);
-                      }}
-                    />
-                  </div>,
-                  getOverlayRoot()
-                )}
-            </div>
-          </RibbonGroup>
+            ) : null}
+          </div>,
+          getOverlayRoot(),
         )}
 
-        <RibbonGroup label="View">
-          <div className="inline-flex items-center pb-0.5">
-            <button
-              type="button"
-              ref={zoomTriggerRef}
-              onClick={() => setZoomMenuOpen((v) => !v)}
-              className={ribbonDropdownTriggerClass}
-              title="Zoom"
-              aria-expanded={zoomMenuOpen}
-              aria-haspopup="listbox"
-            >
-              <ZoomIcon className="h-4 w-4 shrink-0 text-slate-600" aria-hidden />
-              <span>{Math.round(zoom * 100)}%</span>
-              <span className="text-xs leading-none text-slate-400" aria-hidden>
-                ▾
-              </span>
-            </button>
-            {zoomMenuOpen &&
-              createPortal(
-                <div
-                  ref={zoomDropdownRef}
-                  role="listbox"
-                  aria-label="Zoom level"
-                  className={`${ribbonPortalDropdownPanelClass} w-[200px]`}
-                  style={{ top: zoomMenuPos.top, left: zoomMenuPos.left }}
-                >
-                  {ZOOM_LEVELS.map((z) => {
-                    const selected = zoom === z;
-                    return (
-                      <button
-                        key={z}
-                        type="button"
-                        role="option"
-                        aria-selected={selected}
-                        onClick={() => {
-                          onZoomChange(z);
-                          setZoomMenuOpen(false);
-                        }}
-                        className={`flex w-full items-center rounded-xl px-3 py-2 text-left text-sm transition-colors hover:bg-slate-50 ${
-                          selected
-                            ? 'bg-brand-red/[0.06] font-semibold text-slate-900 ring-1 ring-brand-red/20'
-                            : 'font-semibold text-slate-700'
-                        }`}
-                      >
-                        {Math.round(z * 100)}%
-                      </button>
-                    );
-                  })}
-                </div>,
-                getOverlayRoot()
-              )}
-          </div>
-        </RibbonGroup>
-
-        {showSaveTemplate && (
-          <RibbonGroup label="Template">
-            <button
-              type="button"
-              onClick={onSaveTemplate}
-              className="whitespace-nowrap rounded-xl border border-brand-red/30 bg-brand-red px-3 py-2 text-xs font-bold text-white shadow-[0_2px_8px_rgba(220,38,38,0.35)] transition-[background-color,box-shadow,transform] duration-200 ease-out hover:bg-brand-red/92 hover:shadow-[0_4px_16px_rgba(220,38,38,0.4)] sm:text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/40 active:scale-[0.98]"
-            >
-              Save page layout
-            </button>
-          </RibbonGroup>
+      {tokensMenuOpen &&
+        createPortal(
+          <div
+            ref={tokensDropdownRef}
+            className="fixed z-[100060]"
+            style={{ top: tokensMenuPos.top, left: tokensMenuPos.left }}
+          >
+            <DocumentAutoFillTokenPicker
+              tokens={scopedAutoFillTokens}
+              forceToken={isTemplate}
+              description={autoFillDescription}
+              onClose={() => setTokensMenuOpen(false)}
+              onInsert={(text) => {
+                if (textEditingElementId) {
+                  insertDocumentTextAtCaret(textEditingElementId, text);
+                } else {
+                  void navigator.clipboard.writeText(text);
+                  toast.success(
+                    'Copied to clipboard — click a text box, then Auto-fill to insert at the cursor.',
+                  );
+                }
+                setTokensMenuOpen(false);
+              }}
+            />
+          </div>,
+          getOverlayRoot(),
         )}
 
-        </div>
-        {viewOnlyBadge && (
-          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-1 px-2 text-center">
-            <span className="rounded-full bg-slate-900/80 px-3 py-1 text-xs font-bold uppercase tracking-[0.12em] text-white shadow-lg">
-              View only
-            </span>
-            {viewOnlyNotice && (
-              <span className="max-w-[min(70vw,420px)] rounded-full bg-slate-900/70 px-2.5 py-0.5 text-center text-xs font-semibold leading-snug text-white/90 shadow">
-                {viewOnlyNotice}
-              </span>
-            )}
-          </div>
-        )}
-        </div>
-        {/* Export / save status / extra actions stay outside the view-only blur — Export PDF works while viewing. */}
-        {(showExportPdf || showSendForSignature || saveStatus || mediaLoading || extraActions) && (
-          <div className="ml-auto flex shrink-0 items-end gap-2 border-l border-slate-200/75 pl-2 sm:pl-2.5">
-            {(showExportPdf || showSendForSignature || saveStatus || mediaLoading) && (
-              <div className="flex min-h-[64px] flex-col items-center justify-end gap-1 py-1">
-                <div className="flex items-end gap-1.5">
-                  {showSendForSignature && onSendForSignature ? (
-                    <RibbonCompactButton
-                      icon={<SignatureIcon className="w-4 h-4" />}
-                      label="Send for signature"
-                      onClick={onSendForSignature}
-                      title="Send for signature"
-                      variant="primary"
-                    />
-                  ) : null}
-                  {showExportPdf ? (
-                    <RibbonCompactButton
-                      icon={<ExportPdfIcon className="w-4 h-4" />}
-                      label={isExportingPdf ? 'Exporting…' : 'Export PDF'}
-                      onClick={onExportPdf}
-                      disabled={isExportingPdf}
-                      title="Export PDF"
-                      variant="primary"
-                    />
-                  ) : null}
-                </div>
-                <div className="flex items-center justify-center gap-1.5">
-                  {mediaLoading ? (
-                    <span
-                      className="inline-flex h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600"
-                      role="status"
-                      aria-label="Loading images"
-                      title="Loading images…"
-                    />
-                  ) : null}
-                  {saveStatus ? <DocumentSaveStatusBadge status={saveStatus} /> : null}
-                </div>
-              </div>
-            )}
-            {extraActions ? <div className="flex shrink-0 items-end pb-2.5 pr-1">{extraActions}</div> : null}
-          </div>
-        )}
-        </div>
-      </div>
       {selectionPanel || inspectorPanel ? (
         <div
           data-document-editor-formatting="true"
-          className={`${editorContextStripClass} flex shrink-0 flex-nowrap items-stretch gap-0 overflow-x-auto px-2 py-1 sm:px-3 sm:py-1.5 [scrollbar-width:thin]`}
+          className={`${editorContextStripClass} flex shrink-0 flex-nowrap items-center gap-0 overflow-x-auto px-1.5 py-0.5 sm:px-2 [scrollbar-width:thin]`}
           role="region"
           aria-label="Selection and formatting"
         >
-          {selectionPanel ? <div className="flex shrink-0 items-stretch">{selectionPanel}</div> : null}
+          {selectionPanel ? <div className="flex shrink-0 items-center">{selectionPanel}</div> : null}
           {selectionPanel && inspectorPanel ? (
             // Match editorContextToolbarRowClass divide-x + group px (Done/Delete separators).
-            <div className="w-px shrink-0 self-stretch bg-slate-300/85" aria-hidden />
+            <div className="mx-0.5 h-5 w-px shrink-0 self-center bg-slate-300/85" aria-hidden />
           ) : null}
           {inspectorPanel ? (
-            <div className="flex min-w-0 shrink-0 items-stretch pl-2.5 sm:pl-3">{inspectorPanel}</div>
+            <div className="flex min-w-0 shrink-0 items-center pl-1.5 sm:pl-2">{inspectorPanel}</div>
           ) : null}
         </div>
       ) : null}

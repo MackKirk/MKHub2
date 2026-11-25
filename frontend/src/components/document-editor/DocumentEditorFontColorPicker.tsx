@@ -129,7 +129,7 @@ export default function DocumentEditorFontColorPicker({
             return next;
           });
         }}
-        className={`inline-flex h-8 shrink-0 items-center gap-0.5 rounded-lg border px-1.5 text-xs font-semibold text-slate-900 shadow-sm transition-[border-color,background-color,box-shadow] duration-200 ease-out ${
+        className={`inline-flex h-7 shrink-0 items-center gap-0.5 rounded-md border px-1 text-[11px] font-semibold text-slate-900 shadow-sm transition-[border-color,background-color,box-shadow] duration-200 ease-out ${
           open
             ? 'border-brand-red/45 bg-red-50 ring-2 ring-brand-red/20'
             : 'border-slate-300/95 bg-white hover:border-slate-400 hover:bg-slate-50'

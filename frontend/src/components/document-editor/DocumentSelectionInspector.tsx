@@ -104,7 +104,7 @@ function StackRow({ children, className }: { children: ReactNode; className?: st
 }
 
 const geometryPxInputClass =
-  'h-8 w-[3.75rem] rounded-md border border-slate-200/90 bg-white px-1.5 text-xs font-semibold tabular-nums text-slate-800 shadow-sm focus:border-brand-red/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/30 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400';
+  'h-7 w-[3.25rem] rounded-md border border-slate-200/90 bg-white px-1 text-[11px] font-semibold tabular-nums text-slate-800 shadow-sm focus:border-brand-red/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/30 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400';
 
 function GeometryPxInput({
   label,
@@ -194,7 +194,7 @@ function FontSizeInput({
           (e.currentTarget as HTMLInputElement).blur();
         }
       }}
-      className="h-6 w-11 rounded border-0 bg-transparent p-0 text-center text-xs font-semibold tabular-nums text-slate-900 focus:outline-none focus:ring-0"
+      className="h-5 w-9 rounded border-0 bg-transparent p-0 text-center text-[11px] font-semibold tabular-nums text-slate-900 focus:outline-none focus:ring-0"
       aria-label="Font size"
     />
   );
@@ -581,295 +581,301 @@ export default function DocumentSelectionInspector({
     const atomNear = isEditing ? readAtomNearCaret(id) : null;
 
     return (
-      <div className={editorContextToolbarRowClass} data-document-inspector-keep-selection="">
-        <Stack>
-          <StackRow>
-            <span className={editorToolbarMicroLabelClass}>Pos</span>
-            <GeometryPxInput label="X" valuePx={geo.px.x} disabled={geo.positionLocked} onCommit={(n) => geo.applyField('x', n)} />
-            <GeometryPxInput label="Y" valuePx={geo.px.y} disabled={geo.positionLocked} onCommit={(n) => geo.applyField('y', n)} />
-          </StackRow>
-          {atomNear ? (
+      <div
+        className="flex min-w-0 flex-col gap-0.5"
+        data-document-inspector-keep-selection=""
+      >
+        {/* Row 1 — geometry / list / align (no horizontal scroll) */}
+        <div className={`${editorContextToolbarRowClass} overflow-visible`}>
+          <Stack>
             <StackRow>
-              <span className={editorToolbarMicroLabelClass}>Who</span>
-              <select
-                className={editorContextNativeSelectClass}
-                value={normalizeDocumentAssigneeId(atomNear.role, signerRoles)}
-                onChange={(e) => {
-                  const raw = e.target.value;
-                  const apply = (next: string) => {
-                    const atomId = atomNear.atomId;
-                    onUpdate(id, (el) => {
-                      if (!el.richLines) return el;
-                      return {
-                        ...el,
-                        richLines: el.richLines.map((line) =>
-                          line.map((run) =>
-                            run.atomId === atomId ? { ...run, assignee: next } : run,
-                          ),
-                        ),
-                      };
-                    });
-                  };
-                  if (raw === '__other__') {
-                    void onRequestOtherSigner?.().then((next) => {
-                      if (next) apply(next);
-                    });
-                    return;
-                  }
-                  apply(raw);
-                }}
-              >
-                {signerRoles.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.label}
-                  </option>
-                ))}
-                {onRequestOtherSigner ? <option value="__other__">Other</option> : null}
-              </select>
+              <span className={editorToolbarMicroLabelClass}>Pos</span>
+              <GeometryPxInput label="X" valuePx={geo.px.x} disabled={geo.positionLocked} onCommit={(n) => geo.applyField('x', n)} />
+              <GeometryPxInput label="Y" valuePx={geo.px.y} disabled={geo.positionLocked} onCommit={(n) => geo.applyField('y', n)} />
             </StackRow>
-          ) : null}
-          <StackRow>
-            <span className={editorToolbarMicroLabelClass}>Preset</span>
-            <select
-              value=""
-              onChange={(e) => {
-                const preset = TEXT_STYLE_PRESETS.find((p) => p.id === e.target.value);
-                if (!preset) { e.target.value = ''; return; }
-                const fmt: RunFormat = {
-                  fontFamily: preset.fontFamily,
-                  bold: preset.fontWeight === 'bold',
-                  fontSize: preset.fontSize,
-                  color: preset.color,
-                };
-                if (!dispatchFormatToInlineEditor(id, fmt)) {
-                  onUpdate(id, (el) => applyFormatToEntireTextElement(el, fmt));
-                }
-                e.target.value = '';
-              }}
-              className={`${editorContextNativeSelectClass} w-[min(10rem,36vw)] min-w-[7.5rem]`}
-              title="Apply preset"
-            >
-              <option value="">Choose preset…</option>
-              {TEXT_STYLE_PRESETS.map((p) => (
-                <option key={p.id} value={p.id}>{p.label}</option>
-              ))}
-            </select>
-          </StackRow>
-        </Stack>
+            <StackRow>
+              <span className={editorToolbarMicroLabelClass}>Size</span>
+              <GeometryPxInput label="W" valuePx={geo.px.width} disabled={geo.locked} onCommit={(n) => geo.applyField('width', n)} />
+              <GeometryPxInput label="H" valuePx={geo.px.height} disabled={geo.locked} onCommit={(n) => geo.applyField('height', n)} />
+            </StackRow>
+          </Stack>
 
-        <Stack>
-          <StackRow>
-            <span className={editorToolbarMicroLabelClass}>Size</span>
-            <GeometryPxInput label="W" valuePx={geo.px.width} disabled={geo.locked} onCommit={(n) => geo.applyField('width', n)} />
-            <GeometryPxInput label="H" valuePx={geo.px.height} disabled={geo.locked} onCommit={(n) => geo.applyField('height', n)} />
-          </StackRow>
-          <StackRow>
-            <span className={editorToolbarMicroLabelClass}>List</span>
-            <div className={`${editorSegmentedControlTrackClass} w-[9.5rem] shrink-0 sm:w-[10rem]`}>
-              {(
-                [
-                  { mode: 'none' as const, title: 'Plain text', Icon: ParagraphPlainIcon },
-                  { mode: 'bullet' as const, title: 'Bullets', Icon: ListBulletIcon },
-                  { mode: 'numbered' as const, title: 'Numbering', Icon: ListNumberedIcon },
-                  { mode: 'lettered' as const, title: 'Lettered list (a, b, c)', Icon: ListLetteredIcon },
-                ] as const
-              ).map(({ mode, title, Icon }) => {
-                const current = selectedInlineEditorListMode(element);
-                const selected = current === mode;
-                return (
+          <Stack>
+            <StackRow>
+              <span className={editorToolbarMicroLabelClass}>List</span>
+              <div className={`${editorSegmentedControlTrackClass} w-[8.5rem] shrink-0`}>
+                {(
+                  [
+                    { mode: 'none' as const, title: 'Plain text', Icon: ParagraphPlainIcon },
+                    { mode: 'bullet' as const, title: 'Bullets', Icon: ListBulletIcon },
+                    { mode: 'numbered' as const, title: 'Numbering', Icon: ListNumberedIcon },
+                    { mode: 'lettered' as const, title: 'Lettered list (a, b, c)', Icon: ListLetteredIcon },
+                  ] as const
+                ).map(({ mode, title, Icon }) => {
+                  const current = selectedInlineEditorListMode(element);
+                  const selected = current === mode;
+                  return (
+                    <button
+                      key={mode}
+                      type="button"
+                      onPointerDown={(e) => e.preventDefault()}
+                      onMouseDown={(e) => e.preventDefault()}
+                      title={title}
+                      aria-label={title}
+                      aria-pressed={selected}
+                      onClick={() => {
+                        if (dispatchListStyleToInlineEditor(id, mode)) return;
+                        onUpdate(id, (el) => applyListStyleToSelection(el, mode, selectedInlineEditorLineIndexes(id)));
+                      }}
+                      className={`flex h-full min-h-0 flex-1 items-center justify-center px-1 transition-[background-color,color,box-shadow] duration-150 ${selected ? editorSegmentedSegmentSelectedClass : editorSegmentedSegmentIdleClass}`}
+                    >
+                      <Icon className="h-3.5 w-3.5 shrink-0 text-slate-800" />
+                    </button>
+                  );
+                })}
+              </div>
+            </StackRow>
+            <StackRow>
+              <span className={editorToolbarMicroLabelClass}>H</span>
+              <div className={`${editorSegmentedControlTrackClass} w-[6.5rem]`}>
+                {[
+                  { v: 'left' as const, title: 'Align left', icon: <AlignLeftIcon className="h-3.5 w-3.5 shrink-0 text-slate-800" /> },
+                  { v: 'center' as const, title: 'Align center', icon: <AlignCenterIcon className="h-3.5 w-3.5 shrink-0 text-slate-800" /> },
+                  { v: 'right' as const, title: 'Align right', icon: <AlignRightIcon className="h-3.5 w-3.5 shrink-0 text-slate-800" /> },
+                ].map(({ v, title, icon }) => (
                   <button
-                    key={mode}
+                    key={v}
                     type="button"
                     onPointerDown={(e) => e.preventDefault()}
                     onMouseDown={(e) => e.preventDefault()}
-                    title={title}
-                    aria-label={title}
-                    aria-pressed={selected}
                     onClick={() => {
-                      if (dispatchListStyleToInlineEditor(id, mode)) return;
-                      onUpdate(id, (el) => applyListStyleToSelection(el, mode, selectedInlineEditorLineIndexes(id)));
+                      if (!dispatchLineAlignToInlineEditor(id, v)) {
+                        onUpdate(id, (el) => applyAlignToEntireTextElement(el, v));
+                      }
                     }}
-                    className={`flex h-full min-h-0 flex-1 items-center justify-center px-1 transition-[background-color,color,box-shadow] duration-150 ${selected ? editorSegmentedSegmentSelectedClass : editorSegmentedSegmentIdleClass}`}
+                    className={`flex h-full min-h-0 flex-1 items-center justify-center transition-[background-color,color,box-shadow] duration-150 ${
+                      activeHAlign === v ? editorSegmentedSegmentSelectedClass : editorSegmentedSegmentIdleClass
+                    }`}
+                    title={title}
                   >
-                    <Icon className="h-4 w-4 shrink-0 text-slate-800" />
+                    {icon}
                   </button>
-                );
-              })}
-            </div>
-          </StackRow>
-        </Stack>
+                ))}
+              </div>
+            </StackRow>
+            <StackRow>
+              <span className={editorToolbarMicroLabelClass}>V</span>
+              <div className={`${editorSegmentedControlTrackClass} w-[6.5rem]`}>
+                {[
+                  { v: 'top' as const, title: 'Top', icon: <AlignTopIcon className="h-3.5 w-3.5 shrink-0 text-slate-800" /> },
+                  { v: 'center' as const, title: 'Center', icon: <AlignMiddleIcon className="h-3.5 w-3.5 shrink-0 text-slate-800" /> },
+                  { v: 'bottom' as const, title: 'Bottom', icon: <AlignBottomIcon className="h-3.5 w-3.5 shrink-0 text-slate-800" /> },
+                ].map(({ v, title, icon }) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onPointerDown={(e) => e.preventDefault()}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => onUpdate(id, (el) => ({ ...el, verticalAlign: v }))}
+                    className={`flex h-full min-h-0 flex-1 items-center justify-center transition-[background-color,color,box-shadow] duration-150 ${
+                      (element.verticalAlign ?? 'top') === v ? editorSegmentedSegmentSelectedClass : editorSegmentedSegmentIdleClass
+                    }`}
+                    title={title}
+                  >
+                    {icon}
+                  </button>
+                ))}
+              </div>
+            </StackRow>
+            {atomNear ? (
+              <StackRow>
+                <span className={editorToolbarMicroLabelClass}>Who</span>
+                <select
+                  className={editorContextNativeSelectClass}
+                  value={normalizeDocumentAssigneeId(atomNear.role, signerRoles)}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    const apply = (next: string) => {
+                      const atomId = atomNear.atomId;
+                      onUpdate(id, (el) => {
+                        if (!el.richLines) return el;
+                        return {
+                          ...el,
+                          richLines: el.richLines.map((line) =>
+                            line.map((run) =>
+                              run.atomId === atomId ? { ...run, assignee: next } : run,
+                            ),
+                          ),
+                        };
+                      });
+                    };
+                    if (raw === '__other__') {
+                      void onRequestOtherSigner?.().then((next) => {
+                        if (next) apply(next);
+                      });
+                      return;
+                    }
+                    apply(raw);
+                  }}
+                >
+                  {signerRoles.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.label}
+                    </option>
+                  ))}
+                  {onRequestOtherSigner ? <option value="__other__">Other</option> : null}
+                </select>
+              </StackRow>
+            ) : null}
+            <FieldReportSlotSelect element={element} onUpdate={onUpdate} />
+          </Stack>
+        </div>
 
-        <Stack>
-          <StackRow>
-            <span className={editorToolbarMicroLabelClass}>Font</span>
-            <select
-              value={activeFontFamily}
-              onChange={(e) => {
-                const val = e.target.value as DocElement['fontFamily'];
-                if (!dispatchFormatToInlineEditor(id, { fontFamily: val })) {
-                  onUpdate(id, (el) => applyFormatToEntireTextElement(el, { fontFamily: val }));
-                }
-              }}
-              className={`${editorContextNativeSelectClass} w-[min(9rem,34vw)] min-w-[6.5rem]`}
-            >
-              {DOCUMENT_EDITOR_FONTS.map((f) => (
-                <option key={f} value={f}>{f}</option>
-              ))}
-            </select>
-          </StackRow>
-          <StackRow>
-            <span className={`${editorToolbarMicroLabelClass} mr-0.5`}>Style</span>
-            <button
-              type="button"
-              onPointerDown={(e) => e.preventDefault()}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => {
-                if (!dispatchFormatToInlineEditor(id, { bold: !activeBold }, true)) {
-                  onUpdate(id, (el) => applyFormatToEntireTextElement(el, { bold: !activeBold }));
-                }
-              }}
-              className={`h-8 w-8 shrink-0 rounded-md border text-xs font-bold transition-[background-color,border-color,color,box-shadow] duration-150 ${
-                activeBold
-                  ? 'border-slate-800 bg-slate-800 text-white shadow-sm'
-                  : 'border-slate-300/95 bg-white text-slate-900 shadow-sm hover:border-slate-400 hover:bg-slate-50'
-              }`}
-              title="Bold"
-            >
-              B
-            </button>
-            <button
-              type="button"
-              onPointerDown={(e) => e.preventDefault()}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => {
-                if (!dispatchFormatToInlineEditor(id, { italic: !activeItalic }, true)) {
-                  onUpdate(id, (el) => applyFormatToEntireTextElement(el, { italic: !activeItalic }));
-                }
-              }}
-              className={`h-8 w-8 shrink-0 rounded-md border text-xs italic transition-[background-color,border-color,color,box-shadow] duration-150 ${
-                activeItalic
-                  ? 'border-slate-800 bg-slate-800 text-white shadow-sm'
-                  : 'border-slate-300/95 bg-white text-slate-900 shadow-sm hover:border-slate-400 hover:bg-slate-50'
-              }`}
-              title="Italic"
-            >
-              I
-            </button>
-            <div className="flex h-8 items-center gap-0.5 rounded-md border border-slate-300/90 bg-white px-0.5 shadow-sm">
-              <span className="pl-1 text-xs font-semibold text-slate-600">Size</span>
+        {/* Row 2 — font options */}
+        <div className={`${editorContextToolbarRowClass} overflow-visible`}>
+          <Stack>
+            <StackRow>
+              <span className={editorToolbarMicroLabelClass}>Font</span>
+              <select
+                value={activeFontFamily}
+                onChange={(e) => {
+                  const val = e.target.value as DocElement['fontFamily'];
+                  if (!dispatchFormatToInlineEditor(id, { fontFamily: val })) {
+                    onUpdate(id, (el) => applyFormatToEntireTextElement(el, { fontFamily: val }));
+                  }
+                }}
+                className={`${editorContextNativeSelectClass} w-[8.5rem] shrink-0`}
+              >
+                {DOCUMENT_EDITOR_FONTS.map((f) => (
+                  <option key={f} value={f}>{f}</option>
+                ))}
+              </select>
+            </StackRow>
+            <StackRow>
               <button
                 type="button"
                 onPointerDown={(e) => e.preventDefault()}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => {
-                  const next = Math.max(FONT_SIZE_MIN, activeFontSize - 1);
-                  if (!dispatchFormatToInlineEditor(id, { fontSize: next })) {
-                    onUpdate(id, (el) => applyFormatToEntireTextElement(el, { fontSize: next }));
+                  if (!dispatchFormatToInlineEditor(id, { bold: !activeBold }, true)) {
+                    onUpdate(id, (el) => applyFormatToEntireTextElement(el, { bold: !activeBold }));
                   }
                 }}
-                className="h-6 w-6 shrink-0 rounded text-sm font-semibold text-slate-700 hover:bg-slate-100"
-                title="Smaller"
-                aria-label="Decrease font size"
+                className={`h-7 w-7 shrink-0 rounded-md border text-[11px] font-bold transition-[background-color,border-color,color,box-shadow] duration-150 ${
+                  activeBold
+                    ? 'border-slate-800 bg-slate-800 text-white shadow-sm'
+                    : 'border-slate-300/95 bg-white text-slate-900 shadow-sm hover:border-slate-400 hover:bg-slate-50'
+                }`}
+                title="Bold"
               >
-                −
+                B
               </button>
-              <FontSizeInput
-                value={activeFontSize}
-                onCommit={(next) => {
-                  if (!dispatchFormatToInlineEditor(id, { fontSize: next })) {
-                    onUpdate(id, (el) => applyFormatToEntireTextElement(el, { fontSize: next }));
-                  }
-                }}
-              />
               <button
                 type="button"
                 onPointerDown={(e) => e.preventDefault()}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => {
-                  const next = Math.min(FONT_SIZE_MAX, activeFontSize + 1);
-                  if (!dispatchFormatToInlineEditor(id, { fontSize: next })) {
-                    onUpdate(id, (el) => applyFormatToEntireTextElement(el, { fontSize: next }));
+                  if (!dispatchFormatToInlineEditor(id, { italic: !activeItalic }, true)) {
+                    onUpdate(id, (el) => applyFormatToEntireTextElement(el, { italic: !activeItalic }));
                   }
                 }}
-                className="h-6 w-6 shrink-0 rounded text-sm font-semibold text-slate-700 hover:bg-slate-100"
-                title="Larger"
-                aria-label="Increase font size"
+                className={`h-7 w-7 shrink-0 rounded-md border text-[11px] italic transition-[background-color,border-color,color,box-shadow] duration-150 ${
+                  activeItalic
+                    ? 'border-slate-800 bg-slate-800 text-white shadow-sm'
+                    : 'border-slate-300/95 bg-white text-slate-900 shadow-sm hover:border-slate-400 hover:bg-slate-50'
+                }`}
+                title="Italic"
               >
-                +
+                I
               </button>
-            </div>
-            <DocumentEditorFontColorPicker
-              key={id}
-              value={activeColor}
-              onChange={(c) => {
-                if (!dispatchFormatToInlineEditor(id, { color: c })) {
-                  onUpdate(id, (el) => applyFormatToEntireTextElement(el, { color: c }));
-                }
-              }}
-            />
-          </StackRow>
-        </Stack>
-
-        <Stack>
-          <StackRow>
-            <span className={editorToolbarMicroLabelClass}>H</span>
-            <div className={`${editorSegmentedControlTrackClass} w-[7.25rem]`}>
-              {[
-                { v: 'left' as const, title: 'Align left', icon: <AlignLeftIcon className="h-4 w-4 shrink-0 text-slate-800" /> },
-                { v: 'center' as const, title: 'Align center', icon: <AlignCenterIcon className="h-4 w-4 shrink-0 text-slate-800" /> },
-                { v: 'right' as const, title: 'Align right', icon: <AlignRightIcon className="h-4 w-4 shrink-0 text-slate-800" /> },
-              ].map(({ v, title, icon }) => (
+              <div className="flex h-7 items-center gap-0.5 rounded-md border border-slate-300/90 bg-white px-0.5 shadow-sm">
+                <span className="pl-1 text-[10px] font-semibold text-slate-600">Size</span>
                 <button
-                  key={v}
                   type="button"
                   onPointerDown={(e) => e.preventDefault()}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => {
-                    if (!dispatchLineAlignToInlineEditor(id, v)) {
-                      onUpdate(id, (el) => applyAlignToEntireTextElement(el, v));
+                    const next = Math.max(FONT_SIZE_MIN, activeFontSize - 1);
+                    if (!dispatchFormatToInlineEditor(id, { fontSize: next })) {
+                      onUpdate(id, (el) => applyFormatToEntireTextElement(el, { fontSize: next }));
                     }
                   }}
-                  className={`flex h-full min-h-0 flex-1 items-center justify-center transition-[background-color,color,box-shadow] duration-150 ${
-                    activeHAlign === v ? editorSegmentedSegmentSelectedClass : editorSegmentedSegmentIdleClass
-                  }`}
-                  title={title}
+                  className="h-5 w-5 shrink-0 rounded text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                  title="Smaller"
+                  aria-label="Decrease font size"
                 >
-                  {icon}
+                  −
                 </button>
-              ))}
-            </div>
-          </StackRow>
-          <StackRow>
-            <span className={editorToolbarMicroLabelClass}>V</span>
-            <div className={`${editorSegmentedControlTrackClass} w-[7.25rem]`}>
-              {[
-                { v: 'top' as const, title: 'Top', icon: <AlignTopIcon className="h-4 w-4 shrink-0 text-slate-800" /> },
-                { v: 'center' as const, title: 'Center', icon: <AlignMiddleIcon className="h-4 w-4 shrink-0 text-slate-800" /> },
-                { v: 'bottom' as const, title: 'Bottom', icon: <AlignBottomIcon className="h-4 w-4 shrink-0 text-slate-800" /> },
-              ].map(({ v, title, icon }) => (
+                <FontSizeInput
+                  value={activeFontSize}
+                  onCommit={(next) => {
+                    if (!dispatchFormatToInlineEditor(id, { fontSize: next })) {
+                      onUpdate(id, (el) => applyFormatToEntireTextElement(el, { fontSize: next }));
+                    }
+                  }}
+                />
                 <button
-                  key={v}
                   type="button"
                   onPointerDown={(e) => e.preventDefault()}
                   onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => onUpdate(id, (el) => ({ ...el, verticalAlign: v }))}
-                  className={`flex h-full min-h-0 flex-1 items-center justify-center transition-[background-color,color,box-shadow] duration-150 ${
-                    (element.verticalAlign ?? 'top') === v ? editorSegmentedSegmentSelectedClass : editorSegmentedSegmentIdleClass
-                  }`}
-                  title={title}
+                  onClick={() => {
+                    const next = Math.min(FONT_SIZE_MAX, activeFontSize + 1);
+                    if (!dispatchFormatToInlineEditor(id, { fontSize: next })) {
+                      onUpdate(id, (el) => applyFormatToEntireTextElement(el, { fontSize: next }));
+                    }
+                  }}
+                  className="h-5 w-5 shrink-0 rounded text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                  title="Larger"
+                  aria-label="Increase font size"
                 >
-                  {icon}
+                  +
                 </button>
-              ))}
-            </div>
-          </StackRow>
-          <FieldReportSlotSelect element={element} onUpdate={onUpdate} />
-        </Stack>
+              </div>
+              <DocumentEditorFontColorPicker
+                key={id}
+                value={activeColor}
+                onChange={(c) => {
+                  if (!dispatchFormatToInlineEditor(id, { color: c })) {
+                    onUpdate(id, (el) => applyFormatToEntireTextElement(el, { color: c }));
+                  }
+                }}
+              />
+            </StackRow>
+            <StackRow>
+              <span className={editorToolbarMicroLabelClass}>Preset</span>
+              <select
+                value=""
+                onChange={(e) => {
+                  const preset = TEXT_STYLE_PRESETS.find((p) => p.id === e.target.value);
+                  if (!preset) { e.target.value = ''; return; }
+                  const fmt: RunFormat = {
+                    fontFamily: preset.fontFamily,
+                    bold: preset.fontWeight === 'bold',
+                    fontSize: preset.fontSize,
+                    color: preset.color,
+                  };
+                  if (!dispatchFormatToInlineEditor(id, fmt)) {
+                    onUpdate(id, (el) => applyFormatToEntireTextElement(el, fmt));
+                  }
+                  e.target.value = '';
+                }}
+                className={`${editorContextNativeSelectClass} w-[8.5rem] shrink-0`}
+                title="Apply preset"
+              >
+                <option value="">Choose preset…</option>
+                {TEXT_STYLE_PRESETS.map((p) => (
+                  <option key={p.id} value={p.id}>{p.label}</option>
+                ))}
+              </select>
+            </StackRow>
+          </Stack>
+        </div>
       </div>
     );
   }
 
   if (isImage && hasImage && !isLocked) {
+    const imageFit = element.imageFit ?? 'contain';
     return (
       <div className={editorContextToolbarRowClass} data-document-inspector-keep-selection="">
         <Stack>
@@ -887,26 +893,24 @@ export default function DocumentSelectionInspector({
         <Stack>
           <StackRow>
             <span className={editorToolbarMicroLabelClass}>Fit</span>
-            <div className={editorSegmentedControlTrackClass}>
-              {(['contain', 'cover', 'fill', 'none'] as const).map((fit) => (
-                <button
-                  key={fit}
-                  type="button"
-                  onPointerDown={(e) => e.preventDefault()}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => onUpdate(id, (el) => ({ ...el, imageFit: fit }))}
-                  className={`flex h-full min-h-0 min-w-[3rem] flex-1 items-center justify-center px-2 text-xs font-semibold capitalize transition-[background-color,color,box-shadow] duration-150 ${
-                    (element.imageFit ?? 'contain') === fit ? editorSegmentedSegmentSelectedClass : editorSegmentedSegmentIdleClass
-                  }`}
-                  title={fit}
-                >
-                  {fit}
-                </button>
-              ))}
-            </div>
+            <select
+              className={`${editorContextNativeSelectClass} w-[6.75rem] shrink-0 capitalize`}
+              value={imageFit}
+              title="Image fit"
+              aria-label="Image fit"
+              onChange={(e) => {
+                const fit = e.target.value as NonNullable<DocElement['imageFit']>;
+                onUpdate(id, (el) => ({ ...el, imageFit: fit }));
+              }}
+            >
+              <option value="contain">Contain</option>
+              <option value="cover">Cover</option>
+              <option value="fill">Fill</option>
+              <option value="none">None</option>
+            </select>
           </StackRow>
           <StackRow>
-            <span className={editorToolbarMicroLabelClass}>Pos</span>
+            <span className={editorToolbarMicroLabelClass}>Anchor</span>
             <ImagePositionDropdown
               key={id}
               value={element.imagePosition ?? '50% 50%'}

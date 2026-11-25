@@ -19,8 +19,6 @@ import {
   editorCaptionClass,
   editorContextToolbarGroupClass,
   editorContextToolbarRowClass,
-  editorContextToolbarStackClass,
-  editorContextToolbarStackRowClass,
   editorToolbarMicroLabelClass,
   selectionIconToolButtonClass,
   selectionToolButtonBaseClass,
@@ -38,7 +36,7 @@ function elementTypeLabel(el: DocElement): string {
   return el.content ? 'Image' : 'Image area';
 }
 
-/** Compact selection strip (layout: render inside ribbon below main toolbar, or standalone with a wrapper). */
+/** Compact single-line selection strip under the main ribbon. */
 export default function DocumentSelectionRibbon({
   selectedElementIds,
   elements,
@@ -107,342 +105,295 @@ export default function DocumentSelectionRibbon({
 
   return (
     <div className={editorContextToolbarRowClass}>
-      <div className={`${editorContextToolbarGroupClass} self-center`}>
-        <span className="whitespace-nowrap rounded-md bg-slate-200/70 px-2 py-1 text-xs font-semibold text-slate-800">
+      <div className={editorContextToolbarGroupClass}>
+        <span className="whitespace-nowrap rounded bg-slate-200/70 px-1.5 py-0.5 text-[11px] font-semibold text-slate-800">
           {selectionKindLabel}
         </span>
       </div>
 
       {multi ? (
-        <div className={editorContextToolbarStackClass}>
-          <div className={editorContextToolbarStackRowClass}>
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => selectedEls.forEach((el) => onUpdate(el.id, (e) => ({ ...e, locked: true })))}
-              disabled={allLocked}
-              className={
-                allLocked
-                  ? selectionToolButtonGhostDisabledClass
-                  : `${selectionToolButtonGhostClass} flex items-center gap-1`
-              }
-              title="Lock all"
-            >
-              <LockIcon locked={true} className="w-3 h-3" />
-              Lock all
-            </button>
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => selectedEls.forEach((el) => onUpdate(el.id, (e) => ({ ...e, locked: false })))}
-              disabled={!anyLocked}
-              className={
-                !anyLocked
-                  ? selectionToolButtonGhostDisabledClass
-                  : `${selectionToolButtonGhostClass} flex items-center gap-1 text-amber-900 hover:bg-amber-100/80`
-              }
-              title="Unlock all"
-            >
-              <LockIcon locked={false} className="w-3 h-3" />
-              Unlock all
-            </button>
-          </div>
-          <div className={editorContextToolbarStackRowClass}>
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => selectedEls.forEach((el) => onUpdate(el.id, (e) => ({ ...e, lockPosition: true })))}
-              disabled={allPositionLocked}
-              className={
-                allPositionLocked
-                  ? selectionToolButtonGhostDisabledClass
-                  : `${selectionToolButtonGhostClass} flex items-center gap-1`
-              }
-              title="Block move (still editable)"
-            >
-              <PinIcon className="w-3 h-3" />
-              Block move
-            </button>
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => selectedEls.forEach((el) => onUpdate(el.id, (e) => ({ ...e, lockPosition: false })))}
-              disabled={!anyPositionLocked}
-              className={
-                !anyPositionLocked
-                  ? selectionToolButtonGhostDisabledClass
-                  : `${selectionToolButtonGhostClass} flex items-center gap-1`
-              }
-              title="Allow move"
-            >
-              <PinIcon className="w-3 h-3" />
-              Allow move
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className={editorContextToolbarStackClass}>
-          <div className={editorContextToolbarStackRowClass}>
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => element && onUpdate(id, (el) => ({ ...el, locked: !el.locked }))}
-              disabled={!element}
-              title={isLocked ? 'Unlock (allow move, resize, edit)' : 'Lock (block move, resize, edit)'}
-              className={`${selectionToolButtonBaseClass} flex items-center gap-1 border border-transparent ${
-                !element
-                  ? 'cursor-not-allowed text-slate-500 opacity-80'
-                  : isLocked
-                    ? 'text-amber-950 hover:bg-amber-100'
-                    : 'text-slate-800 hover:bg-slate-100'
-              }`}
-            >
-              <LockIcon locked={isLocked} className="w-3 h-3" />
-              {isLocked ? 'Unlock' : 'Lock'}
-            </button>
-          </div>
-          <div className={editorContextToolbarStackRowClass}>
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => element && onUpdate(id, (el) => ({ ...el, lockPosition: !el.lockPosition }))}
-              disabled={!element}
-              className={`${selectionToolButtonBaseClass} flex items-center gap-1 ${
-                !element
-                  ? 'cursor-not-allowed border-transparent text-slate-500 opacity-80'
-                  : isPositionLocked
-                    ? 'border border-sky-400/50 bg-sky-100 text-sky-950 hover:bg-sky-100'
-                    : 'border-transparent text-slate-800 hover:bg-slate-100'
-              }`}
-              title={isPositionLocked ? 'Allow move' : 'Block move (still edit text/image)'}
-            >
-              <PinIcon className="w-3 h-3" />
-              {isPositionLocked ? 'Allow move' : 'Block move'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {multi && onAlignSelected && (
-        <div className={editorContextToolbarStackClass}>
-          <div className={editorContextToolbarStackRowClass}>
-            <span className={`${editorToolbarMicroLabelClass} mr-0.5 leading-none`}>H</span>
-            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => onAlignSelected('left')} className={selectionIconToolButtonClass} title="Align left">
-              <AlignLeftIcon className="h-4 w-4 shrink-0 text-slate-800" />
-            </button>
-            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => onAlignSelected('centerH')} className={selectionIconToolButtonClass} title="Align center">
-              <AlignCenterIcon className="h-4 w-4 shrink-0 text-slate-800" />
-            </button>
-            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => onAlignSelected('right')} className={selectionIconToolButtonClass} title="Align right">
-              <AlignRightIcon className="h-4 w-4 shrink-0 text-slate-800" />
-            </button>
-          </div>
-          <div className={editorContextToolbarStackRowClass}>
-            <span className={`${editorToolbarMicroLabelClass} mr-0.5 leading-none`}>V</span>
-            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => onAlignSelected('top')} className={selectionIconToolButtonClass} title="Align top">
-              <AlignTopIcon className="h-4 w-4 shrink-0 text-slate-800" />
-            </button>
-            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => onAlignSelected('centerV')} className={selectionIconToolButtonClass} title="Align middle">
-              <AlignMiddleIcon className="h-4 w-4 shrink-0 text-slate-800" />
-            </button>
-            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => onAlignSelected('bottom')} className={selectionIconToolButtonClass} title="Align bottom">
-              <AlignBottomIcon className="h-4 w-4 shrink-0 text-slate-800" />
-            </button>
-          </div>
-        </div>
-      )}
-
-      {element && isImage && (onReplaceImage || onReplaceImageClick) && (
-        <div className={editorContextToolbarStackClass}>
-          {!onReplaceImageClick && (
-            <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleSelectFile} />
-          )}
-          {hasImage && onReplaceImageClick ? (
-            <>
-              <div className={editorContextToolbarStackRowClass}>
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => {
-                    if (isLocked) return;
-                    if (onEditImageClick) onEditImageClick(id);
-                    else onReplaceImageClick(id);
-                  }}
-                  disabled={isLocked}
-                  className={isLocked ? selectionToolButtonGhostDisabledClass : selectionToolButtonGhostClass}
-                >
-                  Edit image
-                </button>
-              </div>
-              <div className={editorContextToolbarStackRowClass}>
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => {
-                    if (isLocked) return;
-                    onReplaceImageClick(id);
-                  }}
-                  disabled={isLocked}
-                  className={isLocked ? selectionToolButtonGhostDisabledClass : selectionToolButtonGhostClass}
-                >
-                  Replace image
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className={editorContextToolbarStackRowClass}>
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => {
-                    if (isLocked) return;
-                    if (onReplaceImageClick) onReplaceImageClick(id);
-                    else fileInputRef.current?.click();
-                  }}
-                  disabled={isLocked}
-                  className={isLocked ? selectionToolButtonGhostDisabledClass : selectionToolButtonGhostClass}
-                >
-                  {hasImage ? 'Replace image' : 'Add image'}
-                </button>
-              </div>
-              <div className={editorContextToolbarStackRowClass} aria-hidden>
-                <span className="h-8" />
-              </div>
-            </>
-          )}
-        </div>
-      )}
-
-      {!multi &&
-        element &&
-        element.type !== 'block' &&
-        (onBringToFront || onSendToBack || onBringForward || onSendBackward) && (
-        <div className={editorContextToolbarStackClass}>
-          <div className={editorContextToolbarStackRowClass}>
-            {onSendBackward && (
-              <button
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={onSendBackward}
-                className={selectionIconToolButtonClass}
-                title="Send backward"
-                aria-label="Send backward"
-              >
-                <LayerBackwardIcon className="h-4 w-4 shrink-0 text-slate-800" />
-              </button>
-            )}
-            {onBringForward && (
-              <button
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={onBringForward}
-                className={selectionIconToolButtonClass}
-                title="Bring forward"
-                aria-label="Bring forward"
-              >
-                <LayerForwardIcon className="h-4 w-4 shrink-0 text-slate-800" />
-              </button>
-            )}
-          </div>
-          <div className={editorContextToolbarStackRowClass}>
-            {onSendToBack && (
-              <button
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={onSendToBack}
-                className={selectionIconToolButtonClass}
-                title="Send to back"
-                aria-label="Send to back"
-              >
-                <LayerToBackIcon className="h-4 w-4 shrink-0 text-slate-800" />
-              </button>
-            )}
-            {onBringToFront && (
-              <button
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={onBringToFront}
-                className={selectionIconToolButtonClass}
-                title="Bring to front"
-                aria-label="Bring to front"
-              >
-                <LayerToFrontIcon className="h-4 w-4 shrink-0 text-slate-800" />
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
-      <div className={editorContextToolbarStackClass}>
-        <div className={editorContextToolbarStackRowClass}>
+        <div className={editorContextToolbarGroupClass}>
           <button
             type="button"
             onMouseDown={(e) => e.preventDefault()}
-            onClick={onDeselect}
-            disabled={!element && !multi}
-            className={
-              element || multi ? selectionToolButtonGhostClass : selectionToolButtonGhostDisabledClass
-            }
+            onClick={() => selectedEls.forEach((el) => onUpdate(el.id, (e) => ({ ...e, locked: true })))}
+            disabled={allLocked}
+            className={allLocked ? selectionToolButtonGhostDisabledClass : selectionIconToolButtonClass}
+            title="Lock all"
+            aria-label="Lock all"
           >
-            Done
+            <LockIcon locked={true} className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => selectedEls.forEach((el) => onUpdate(el.id, (e) => ({ ...e, locked: false })))}
+            disabled={!anyLocked}
+            className={
+              !anyLocked
+                ? selectionToolButtonGhostDisabledClass
+                : `${selectionIconToolButtonClass} text-amber-900 hover:bg-amber-100/80`
+            }
+            title="Unlock all"
+            aria-label="Unlock all"
+          >
+            <LockIcon locked={false} className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => selectedEls.forEach((el) => onUpdate(el.id, (e) => ({ ...e, lockPosition: true })))}
+            disabled={allPositionLocked}
+            className={allPositionLocked ? selectionToolButtonGhostDisabledClass : selectionIconToolButtonClass}
+            title="Block move (still editable)"
+            aria-label="Block move all"
+          >
+            <PinIcon className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => selectedEls.forEach((el) => onUpdate(el.id, (e) => ({ ...e, lockPosition: false })))}
+            disabled={!anyPositionLocked}
+            className={!anyPositionLocked ? selectionToolButtonGhostDisabledClass : selectionIconToolButtonClass}
+            title="Allow move"
+            aria-label="Allow move all"
+          >
+            <PinIcon className="h-3.5 w-3.5" />
           </button>
         </div>
-        <div className={editorContextToolbarStackRowClass}>
+      ) : (
+        <div className={editorContextToolbarGroupClass}>
           <button
             type="button"
             onMouseDown={(e) => e.preventDefault()}
-            onClick={async () => {
-              if (multi) {
-                const toRemove = selectedEls.filter((e) => !e.locked);
-                const n = toRemove.length;
-                if (n === 0) return;
-                const choice = await confirm({
-                  title: 'Delete selected',
-                  message:
-                    n === 1
-                      ? 'Remove this element from the page? This cannot be undone.'
-                      : `Remove ${n} selected elements from the page? This cannot be undone.`,
-                  confirmText: 'Delete',
-                });
-                if (choice !== 'confirm') return;
-                toRemove.forEach((e) => onRemove(e.id));
-                return;
-              }
-              if (!element) return;
+            onClick={() => element && onUpdate(id, (el) => ({ ...el, locked: !el.locked }))}
+            disabled={!element}
+            title={isLocked ? 'Unlock (allow move, resize, edit)' : 'Lock (block move, resize, edit)'}
+            aria-label={isLocked ? 'Unlock' : 'Lock'}
+            className={`${selectionIconToolButtonClass} ${
+              !element
+                ? 'cursor-not-allowed opacity-80'
+                : isLocked
+                  ? 'text-amber-950 hover:bg-amber-100'
+                  : ''
+            }`}
+          >
+            <LockIcon locked={isLocked} className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => element && onUpdate(id, (el) => ({ ...el, lockPosition: !el.lockPosition }))}
+            disabled={!element}
+            title={isPositionLocked ? 'Allow move' : 'Block move (still edit text/image)'}
+            aria-label={isPositionLocked ? 'Allow move' : 'Block move'}
+            className={`${selectionIconToolButtonClass} ${
+              !element
+                ? 'cursor-not-allowed opacity-80'
+                : isPositionLocked
+                  ? 'bg-sky-100 text-sky-950 hover:bg-sky-100'
+                  : ''
+            }`}
+          >
+            <PinIcon className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
+      {multi && onAlignSelected ? (
+        <div className={editorContextToolbarGroupClass}>
+          <span className={`${editorToolbarMicroLabelClass} mr-0.5 leading-none`}>H</span>
+          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => onAlignSelected('left')} className={selectionIconToolButtonClass} title="Align left">
+            <AlignLeftIcon className="h-3.5 w-3.5 shrink-0 text-slate-800" />
+          </button>
+          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => onAlignSelected('centerH')} className={selectionIconToolButtonClass} title="Align center">
+            <AlignCenterIcon className="h-3.5 w-3.5 shrink-0 text-slate-800" />
+          </button>
+          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => onAlignSelected('right')} className={selectionIconToolButtonClass} title="Align right">
+            <AlignRightIcon className="h-3.5 w-3.5 shrink-0 text-slate-800" />
+          </button>
+          <span className={`${editorToolbarMicroLabelClass} ml-1 mr-0.5 leading-none`}>V</span>
+          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => onAlignSelected('top')} className={selectionIconToolButtonClass} title="Align top">
+            <AlignTopIcon className="h-3.5 w-3.5 shrink-0 text-slate-800" />
+          </button>
+          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => onAlignSelected('centerV')} className={selectionIconToolButtonClass} title="Align middle">
+            <AlignMiddleIcon className="h-3.5 w-3.5 shrink-0 text-slate-800" />
+          </button>
+          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => onAlignSelected('bottom')} className={selectionIconToolButtonClass} title="Align bottom">
+            <AlignBottomIcon className="h-3.5 w-3.5 shrink-0 text-slate-800" />
+          </button>
+        </div>
+      ) : null}
+
+      {element && isImage && (onReplaceImage || onReplaceImageClick) ? (
+        <div className={editorContextToolbarGroupClass}>
+          {!onReplaceImageClick ? (
+            <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleSelectFile} />
+          ) : null}
+          {hasImage && onReplaceImageClick ? (
+            <>
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  if (isLocked) return;
+                  if (onEditImageClick) onEditImageClick(id);
+                  else onReplaceImageClick(id);
+                }}
+                disabled={isLocked}
+                className={isLocked ? selectionToolButtonGhostDisabledClass : selectionToolButtonGhostClass}
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  if (isLocked) return;
+                  onReplaceImageClick(id);
+                }}
+                disabled={isLocked}
+                className={isLocked ? selectionToolButtonGhostDisabledClass : selectionToolButtonGhostClass}
+              >
+                Replace
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                if (isLocked) return;
+                if (onReplaceImageClick) onReplaceImageClick(id);
+                else fileInputRef.current?.click();
+              }}
+              disabled={isLocked}
+              className={isLocked ? selectionToolButtonGhostDisabledClass : selectionToolButtonGhostClass}
+            >
+              {hasImage ? 'Replace' : 'Add image'}
+            </button>
+          )}
+        </div>
+      ) : null}
+
+      {!multi &&
+      element &&
+      element.type !== 'block' &&
+      (onBringToFront || onSendToBack || onBringForward || onSendBackward) ? (
+        <div className={editorContextToolbarGroupClass}>
+          {onSendToBack ? (
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={onSendToBack}
+              className={selectionIconToolButtonClass}
+              title="Send to back"
+              aria-label="Send to back"
+            >
+              <LayerToBackIcon className="h-3.5 w-3.5 shrink-0 text-slate-800" />
+            </button>
+          ) : null}
+          {onSendBackward ? (
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={onSendBackward}
+              className={selectionIconToolButtonClass}
+              title="Send backward"
+              aria-label="Send backward"
+            >
+              <LayerBackwardIcon className="h-3.5 w-3.5 shrink-0 text-slate-800" />
+            </button>
+          ) : null}
+          {onBringForward ? (
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={onBringForward}
+              className={selectionIconToolButtonClass}
+              title="Bring forward"
+              aria-label="Bring forward"
+            >
+              <LayerForwardIcon className="h-3.5 w-3.5 shrink-0 text-slate-800" />
+            </button>
+          ) : null}
+          {onBringToFront ? (
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={onBringToFront}
+              className={selectionIconToolButtonClass}
+              title="Bring to front"
+              aria-label="Bring to front"
+            >
+              <LayerToFrontIcon className="h-3.5 w-3.5 shrink-0 text-slate-800" />
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div className={editorContextToolbarGroupClass}>
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={onDeselect}
+          disabled={!element && !multi}
+          className={element || multi ? selectionToolButtonGhostClass : selectionToolButtonGhostDisabledClass}
+        >
+          Done
+        </button>
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={async () => {
+            if (multi) {
+              const toRemove = selectedEls.filter((e) => !e.locked);
+              const n = toRemove.length;
+              if (n === 0) return;
               const choice = await confirm({
-                title: 'Delete element',
-                message: 'Remove this element from the page? This cannot be undone.',
+                title: 'Delete selected',
+                message:
+                  n === 1
+                    ? 'Remove this element from the page? This cannot be undone.'
+                    : `Remove ${n} selected elements from the page? This cannot be undone.`,
                 confirmText: 'Delete',
               });
               if (choice !== 'confirm') return;
-              onRemove(id);
-            }}
-            disabled={!canDelete}
-            title={isLocked ? 'Unlock the element first to delete' : multi ? 'Delete selected' : 'Delete'}
-            className={
-              canDelete
-                ? `${selectionToolButtonBaseClass} border border-transparent text-red-800 hover:bg-red-50/90`
-                : selectionToolButtonGhostDisabledClass
+              toRemove.forEach((e) => onRemove(e.id));
+              return;
             }
-          >
-            Delete
-          </button>
-        </div>
+            if (!element) return;
+            const choice = await confirm({
+              title: 'Delete element',
+              message: 'Remove this element from the page? This cannot be undone.',
+              confirmText: 'Delete',
+            });
+            if (choice !== 'confirm') return;
+            onRemove(id);
+          }}
+          disabled={!canDelete}
+          title={isLocked ? 'Unlock the element first to delete' : multi ? 'Delete selected' : 'Delete'}
+          className={
+            canDelete
+              ? `${selectionToolButtonBaseClass} border border-transparent text-red-800 hover:bg-red-50/90`
+              : selectionToolButtonGhostDisabledClass
+          }
+        >
+          Delete
+        </button>
       </div>
 
-      {!multi && isLocked && (
-        <div className={`${editorContextToolbarGroupClass} self-center`}>
-          <span className={`${editorCaptionClass} font-semibold text-amber-800`}>
-            Locked — unlock to move, resize or edit
-          </span>
+      {!multi && isLocked ? (
+        <div className={editorContextToolbarGroupClass}>
+          <span className={`${editorCaptionClass} text-[11px] font-semibold text-amber-800`}>Locked</span>
         </div>
-      )}
-      {multi && (
-        <div className={`${editorContextToolbarGroupClass} self-center`}>
-          <span className={editorCaptionClass}>Drag to move all. Arrow keys or Delete.</span>
+      ) : null}
+      {multi ? (
+        <div className={editorContextToolbarGroupClass}>
+          <span className={`${editorCaptionClass} text-[11px]`}>Drag · arrows · Delete</span>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

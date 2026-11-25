@@ -112,6 +112,16 @@ type DocumentPreviewProps = {
   onBatchUpdateElements?: (updater: (els: DocElement[]) => DocElement[]) => void;
   /** Fired when a canvas drag/resize gesture starts or ends (for autosave/strip isolation). */
   onGestureChange?: (active: boolean) => void;
+  /**
+   * Continuous multi-page canvas: parent may move elements to another page on drop.
+   * Return true if the parent applied the update (skip same-page position commit).
+   */
+  onElementsDragEnd?: (info: {
+    elementIds: string[];
+    positions: Record<string, { x_pct: number; y_pct: number }>;
+    clientX: number;
+    clientY: number;
+  }) => boolean;
   /** Optional project context for the canvas (unused for side token panel; ribbon handles tokens). */
   projectId?: string | null;
   /** Document signer roles for chip labels/colors. */
@@ -2609,6 +2619,7 @@ export default function DocumentPreview({
   onInsertImages,
   onBatchUpdateElements,
   onGestureChange,
+  onElementsDragEnd,
   projectId = null,
   signerRoles = [],
 }: DocumentPreviewProps) {
@@ -2657,6 +2668,8 @@ export default function DocumentPreview({
     selectOnClickId?: string | null;
     /** Modifiers from pointerdown — needed because commit calls onElementClick without the DOM event. */
     selectModifiers?: { ctrlKey: boolean; metaKey: boolean; shiftKey: boolean };
+    lastClientX: number;
+    lastClientY: number;
   } | null>(null);
   const resizeRef = useRef<{
     elementId: string;
@@ -2692,6 +2705,8 @@ export default function DocumentPreview({
   onBeginUserActionRef.current = onBeginUserAction;
   const onGestureChangeRef = useRef(onGestureChange);
   onGestureChangeRef.current = onGestureChange;
+  const onElementsDragEndRef = useRef(onElementsDragEnd);
+  onElementsDragEndRef.current = onElementsDragEnd;
   const dragGuideLinesRef = useRef<{ v: number[]; h: number[] } | null>(null);
   /** Live geometry during drag/resize so React re-renders (guides) do not snap back to committed props. */
   const [gestureGeom, setGestureGeom] = useState<
@@ -2899,6 +2914,8 @@ export default function DocumentPreview({
           metaKey: e.metaKey,
           shiftKey: e.shiftKey,
         },
+        lastClientX: e.clientX,
+        lastClientY: e.clientY,
       };
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     },
@@ -2983,19 +3000,46 @@ export default function DocumentPreview({
     const selectModifiers = drag.selectModifiers;
     if (drag.hasMoved && Object.keys(drag.livePositions).length > 0) {
       const patches = drag.livePositions;
-      const batch = onBatchUpdateElementsRef.current;
-      const single = onUpdateElementRef.current;
-      if (batch) {
-        batch((prev) =>
-          prev.map((el) => {
-            const p = patches[el.id];
-            return p ? { ...el, x_pct: p.x_pct, y_pct: p.y_pct } : el;
-          }),
-        );
-      } else if (single) {
-        Object.entries(patches).forEach(([id, p]) => {
-          single(id, (el) => ({ ...el, x_pct: p.x_pct, y_pct: p.y_pct }));
-        });
+      const transferred = onElementsDragEndRef.current?.({
+        elementIds: drag.movingIds,
+        positions: patches,
+        clientX: drag.lastClientX,
+        clientY: drag.lastClientY,
+      });
+      if (!transferred) {
+        // Same page: clamp back into content bounds (cross-page drag may have gone off-canvas).
+        const elementsNow = elementsRef.current;
+        const marginsNow = marginsRef.current;
+        const clamped: Record<string, { x_pct: number; y_pct: number }> = {};
+        for (const [id, p] of Object.entries(patches)) {
+          const el = elementsNow.find((x) => x.id === id);
+          if (!el) {
+            clamped[id] = p;
+            continue;
+          }
+          const w = el.width_pct ?? 80;
+          const h = el.height_pct ?? 8;
+          const b =
+            el.type === 'block' ? contentBoundsBlock(w, h) : contentBounds(marginsNow, w, h);
+          clamped[id] = {
+            x_pct: Math.max(b.minX, Math.min(b.maxX, p.x_pct)),
+            y_pct: Math.max(b.minY, Math.min(b.maxY, p.y_pct)),
+          };
+        }
+        const batch = onBatchUpdateElementsRef.current;
+        const single = onUpdateElementRef.current;
+        if (batch) {
+          batch((prev) =>
+            prev.map((el) => {
+              const p = clamped[el.id];
+              return p ? { ...el, x_pct: p.x_pct, y_pct: p.y_pct } : el;
+            }),
+          );
+        } else if (single) {
+          Object.entries(clamped).forEach(([id, p]) => {
+            single(id, (el) => ({ ...el, x_pct: p.x_pct, y_pct: p.y_pct }));
+          });
+        }
       }
       onGestureChangeRef.current?.(false);
     } else if (drag.historyPushed) {
@@ -3090,6 +3134,17 @@ export default function DocumentPreview({
       const drag = dragRef.current;
       if (!drag || !canvasRef.current) return false;
       if (drag.movingIds.length === 0) return true;
+      drag.lastClientX = e.clientX;
+      drag.lastClientY = e.clientY;
+      const allowCrossPage = typeof onElementsDragEndRef.current === 'function';
+      // Auto-scroll continuous canvas while dragging toward another page.
+      if (allowCrossPage && embedded && embedScrollParentRef?.current) {
+        const sc = embedScrollParentRef.current;
+        const sr = sc.getBoundingClientRect();
+        const edge = 56;
+        if (e.clientY < sr.top + edge) sc.scrollTop -= 18;
+        else if (e.clientY > sr.bottom - edge) sc.scrollTop += 18;
+      }
       const elementsNow = elementsRef.current;
       const marginsNow = marginsRef.current;
       const rect = canvasRef.current.getBoundingClientRect();
@@ -3130,20 +3185,25 @@ export default function DocumentPreview({
         const h = el.height_pct ?? 8;
         const b = isBlock ? contentBoundsBlock(w, h) : contentBounds(marginsNow, w, h);
         const desiredX = Math.max(b.minX, Math.min(b.maxX, pos.x_pct + dx));
-        const desiredY = Math.max(b.minY, Math.min(b.maxY, pos.y_pct + dy));
+        // Allow Y past page edges so the gesture can cross into the next/prev page.
+        const desiredY = allowCrossPage
+          ? Math.max(-80, Math.min(180, pos.y_pct + dy))
+          : Math.max(b.minY, Math.min(b.maxY, pos.y_pct + dy));
         const current = drag.livePositions[elementId] ?? pos;
         const resolved = isBlock
           ? { x_pct: desiredX, y_pct: desiredY }
-          : resolveMoveAgainstBlocks(
-              desiredX,
-              desiredY,
-              w,
-              h,
-              blocks,
-              elementId,
-              current.x_pct,
-              current.y_pct,
-            );
+          : allowCrossPage
+            ? { x_pct: desiredX, y_pct: desiredY }
+            : resolveMoveAgainstBlocks(
+                desiredX,
+                desiredY,
+                w,
+                h,
+                blocks,
+                elementId,
+                current.x_pct,
+                current.y_pct,
+              );
         drag.livePositions[elementId] = resolved;
         applyElementBoxToDom(elementId, resolved);
       });
@@ -3452,6 +3512,7 @@ export default function DocumentPreview({
       >
         <div
           ref={canvasRef}
+          data-doc-page-canvas
           className={`relative flex-shrink-0 select-none overflow-visible rounded-xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.12),0_4px_16px_-4px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,1)] ring-1 ring-slate-900/[0.06] ${
             imageDropActive ? 'ring-2 ring-brand-red/45' : ''
           }`}
@@ -3847,15 +3908,19 @@ export default function DocumentPreview({
                   </div>
                 ) : (
                   el.content && (
-                    <QueuedDocumentImage
-                      fileId={el.content}
-                      width={DOCUMENT_DISPLAY_IMAGE_WIDTH}
-                      className="pointer-events-none h-full w-full"
-                      style={{
-                        objectFit: el.imageFit ?? 'contain',
-                        objectPosition: el.imagePosition ?? '50% 50%',
-                      }}
-                    />
+                    // Keep overflow clipped here so contain/cover/fill/none still apply while
+                    // the selected frame uses overflow-visible for resize/rotate handles.
+                    <div className="pointer-events-none h-full w-full overflow-hidden rounded-[inherit]">
+                      <QueuedDocumentImage
+                        fileId={el.content}
+                        width={DOCUMENT_DISPLAY_IMAGE_WIDTH}
+                        className="h-full w-full"
+                        style={{
+                          objectFit: el.imageFit ?? 'contain',
+                          objectPosition: el.imagePosition ?? '50% 50%',
+                        }}
+                      />
+                    </div>
                   )
                 )}
                 {showHandles &&

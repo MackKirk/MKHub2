@@ -345,6 +345,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
   const imagePickerOpenRef = useRef(false);
   /** True while canvas drag/resize is in progress (skip autosave dirtiness + freeze pages strip). */
   const canvasGestureActiveRef = useRef(false);
+  const [canvasGestureActive, setCanvasGestureActive] = useState(false);
   const [frozenStripPages, setFrozenStripPages] = useState<DocumentPage[] | null>(null);
   const [canvasWidthPxForExport, setCanvasWidthPxForExport] = useState<number>(910);
   /** Vertical scroll container when multiple pages are stacked (`DocumentPreview` embedded). */
@@ -885,6 +886,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
   const handleCanvasGestureChange = useCallback(
     (active: boolean) => {
       canvasGestureActiveRef.current = active;
+      setCanvasGestureActive(active);
       if (active) {
         setFrozenStripPages(stateRef.current.pages);
       } else {
@@ -893,6 +895,135 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
       }
     },
     [isTemplate, readOnly, isDocHydrated, notifyEdited],
+  );
+
+  /** Drop dragged elements onto another page in the continuous canvas (returns true when transferred). */
+  const handleElementsDragEnd = useCallback(
+    (
+      fromPageIndex: number,
+      info: {
+        elementIds: string[];
+        positions: Record<string, { x_pct: number; y_pct: number }>;
+        clientX: number;
+        clientY: number;
+      },
+    ): boolean => {
+      const root = canvasScrollRef.current;
+      if (!root || info.elementIds.length === 0) return false;
+
+      const sections = Array.from(root.querySelectorAll<HTMLElement>('[data-page-index]'));
+      type PageHit = { idx: number; canvas: HTMLElement | null; rect: DOMRect };
+      const hits: PageHit[] = [];
+      for (const section of sections) {
+        const idx = Number(section.getAttribute('data-page-index'));
+        if (!Number.isFinite(idx)) continue;
+        const canvas = section.querySelector<HTMLElement>('[data-doc-page-canvas]');
+        const hitEl = canvas ?? section;
+        hits.push({ idx, canvas, rect: hitEl.getBoundingClientRect() });
+      }
+
+      let toPageIndex = fromPageIndex;
+      let targetCanvas: HTMLElement | null = null;
+      let overAnyPage = false;
+      for (const hit of hits) {
+        const r = hit.rect;
+        if (
+          info.clientX >= r.left &&
+          info.clientX <= r.right &&
+          info.clientY >= r.top &&
+          info.clientY <= r.bottom
+        ) {
+          overAnyPage = true;
+          toPageIndex = hit.idx;
+          targetCanvas = hit.canvas;
+          break;
+        }
+      }
+
+      // Pointer in the gutter between pages → nearest page by vertical distance.
+      if (!overAnyPage && hits.length > 1) {
+        let best: { idx: number; dist: number; canvas: HTMLElement | null } | null = null;
+        for (const hit of hits) {
+          const cy = (hit.rect.top + hit.rect.bottom) / 2;
+          const dist = Math.abs(info.clientY - cy);
+          if (!best || dist < best.dist) {
+            best = { idx: hit.idx, dist, canvas: hit.canvas };
+          }
+        }
+        if (best) {
+          toPageIndex = best.idx;
+          targetCanvas = best.canvas;
+        }
+      }
+
+      if (toPageIndex === fromPageIndex || !Number.isFinite(toPageIndex)) return false;
+
+      const sourceCanvas = sections
+        .find((s) => Number(s.getAttribute('data-page-index')) === fromPageIndex)
+        ?.querySelector<HTMLElement>('[data-doc-page-canvas]');
+      if (!sourceCanvas) return false;
+      // Target may still be mounting — fall back to source-sized mapping using section box.
+      if (!targetCanvas) {
+        const section = sections.find((s) => Number(s.getAttribute('data-page-index')) === toPageIndex);
+        targetCanvas = section?.querySelector<HTMLElement>('[data-doc-page-canvas]') ?? null;
+      }
+      if (!targetCanvas) return false;
+
+      const sourceRect = sourceCanvas.getBoundingClientRect();
+      const targetRect = targetCanvas.getBoundingClientRect();
+      if (!sourceRect.width || !sourceRect.height || !targetRect.width || !targetRect.height) {
+        return false;
+      }
+
+      const moving = new Set(info.elementIds);
+      const sourcePage = stateRef.current.pages[fromPageIndex];
+      if (!sourcePage) return false;
+      const movedEls: DocElement[] = [];
+      for (const el of sourcePage.elements ?? []) {
+        if (!moving.has(el.id)) continue;
+        const pos = info.positions[el.id] ?? {
+          x_pct: el.x_pct ?? 0,
+          y_pct: el.y_pct ?? 0,
+        };
+        const w = el.width_pct ?? 10;
+        const h = el.height_pct ?? 8;
+        const clientX = sourceRect.left + (pos.x_pct / 100) * sourceRect.width;
+        const clientY = sourceRect.top + (pos.y_pct / 100) * sourceRect.height;
+        let x_pct = ((clientX - targetRect.left) / targetRect.width) * 100;
+        let y_pct = ((clientY - targetRect.top) / targetRect.height) * 100;
+        x_pct = Math.max(0, Math.min(100 - w, x_pct));
+        y_pct = Math.max(0, Math.min(100 - h, y_pct));
+        movedEls.push({ ...el, x_pct, y_pct });
+      }
+      if (!movedEls.length) return false;
+
+      setPages((prev) => {
+        const next = prev.map((page, i) => {
+          if (i === fromPageIndex) {
+            return {
+              ...page,
+              elements: (page.elements ?? []).filter((el) => !moving.has(el.id)),
+            };
+          }
+          if (i === toPageIndex) {
+            const kept = (page.elements ?? []).filter((el) => !moving.has(el.id));
+            return { ...page, elements: [...kept, ...movedEls] };
+          }
+          return page;
+        });
+        return next;
+      });
+      setCurrentPageIndex(toPageIndex);
+      setSelectedElementIds(movedEls.map((el) => el.id));
+      pasteAnchorRef.current = {
+        x_pct: movedEls[0]?.x_pct ?? 10,
+        y_pct: movedEls[0]?.y_pct ?? 10,
+        pageIndex: toPageIndex,
+        t: Date.now(),
+      };
+      return true;
+    },
+    [],
   );
 
   useImperativeHandle(
@@ -2532,14 +2663,14 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
         type="button"
         ref={bgBackgroundTriggerRef}
         onClick={() => setBgPickerOpen((v) => !v)}
-        className={`inline-flex items-center gap-2 rounded-xl border border-slate-300/90 bg-white px-2.5 py-2 text-sm font-semibold text-slate-800 shadow-[0_1px_3px_rgba(15,23,42,0.08)] transition-[border-color,box-shadow,background-color] duration-200 ease-out hover:border-slate-400 hover:bg-slate-50 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/35`}
+        className="inline-flex h-8 w-full items-center gap-2 rounded-lg border border-slate-300/90 bg-white px-2.5 text-xs font-semibold text-slate-800 shadow-sm transition-[border-color,box-shadow,background-color] duration-200 ease-out hover:border-slate-400 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/35"
         title="Change page background"
         aria-expanded={bgPickerOpen}
         aria-haspopup="listbox"
       >
-        <ImageIcon className="h-4 w-4 shrink-0 text-slate-600" />
-        <span>Change background</span>
-        <span className="text-xs leading-none text-slate-400" aria-hidden>
+        <ImageIcon className="h-3.5 w-3.5 shrink-0 text-slate-600" />
+        <span className="min-w-0 flex-1 truncate text-left">Change background</span>
+        <span className="text-[10px] leading-none text-slate-400" aria-hidden>
           ▾
         </span>
       </button>
@@ -2591,27 +2722,29 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
           getOverlayRoot()
         )}
       {isTemplate && currentPage && (
-        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-300/85 bg-white px-2.5 py-1.5 shadow-[0_1px_3px_rgba(15,23,42,0.06)]">
-          <span className={`${editorGroupLabelClass} whitespace-nowrap text-[10px]`}>Margins %</span>
+        <div className="flex flex-wrap items-center gap-1.5 border-t border-slate-100 pt-2">
+          <span className={`${editorGroupLabelClass} w-full whitespace-nowrap text-[10px]`}>Margins %</span>
           {(['left_pct', 'right_pct', 'top_pct', 'bottom_pct'] as const).map((key) => (
-            <input
-              key={key}
-              type="number"
-              min={0}
-              max={50}
-              value={currentPage.margins?.[key] ?? 0}
-              onChange={(e) =>
-                setCurrentPageMargins({
-                  left_pct: currentPage.margins?.left_pct ?? 0,
-                  right_pct: currentPage.margins?.right_pct ?? 0,
-                  top_pct: currentPage.margins?.top_pct ?? 0,
-                  bottom_pct: currentPage.margins?.bottom_pct ?? 0,
-                  [key]: Number(e.target.value),
-                })
-              }
-              className="h-8 w-11 rounded-lg border border-slate-200 bg-white px-1.5 text-center text-xs font-semibold text-slate-800 shadow-sm focus:border-brand-red/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/25"
-              title={key.replace('_pct', '')}
-            />
+            <label key={key} className="flex items-center gap-1 text-[10px] font-semibold uppercase text-slate-500">
+              <span className="w-3.5">{key.replace('_pct', '')[0]}</span>
+              <input
+                type="number"
+                min={0}
+                max={50}
+                value={currentPage.margins?.[key] ?? 0}
+                onChange={(e) =>
+                  setCurrentPageMargins({
+                    left_pct: currentPage.margins?.left_pct ?? 0,
+                    right_pct: currentPage.margins?.right_pct ?? 0,
+                    top_pct: currentPage.margins?.top_pct ?? 0,
+                    bottom_pct: currentPage.margins?.bottom_pct ?? 0,
+                    [key]: Number(e.target.value),
+                  })
+                }
+                className="h-7 w-11 rounded-md border border-slate-200 bg-white px-1 text-center text-xs font-semibold text-slate-800 shadow-sm focus:border-brand-red/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/25"
+                title={key.replace('_pct', '')}
+              />
+            </label>
           ))}
         </div>
       )}
@@ -2661,6 +2794,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
         showExportPdf={!isTemplate}
         onExportPdf={handleExportPdf}
         isExportingPdf={isExportingPdf}
+        onSave={!isTemplate && !readOnly ? () => flushSave() : undefined}
         showSendForSignature={enableSendForSignature && !readOnly}
         onSendForSignature={() => {
           finishTextEditing();
@@ -2953,7 +3087,9 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
                 ...page.margins,
               };
               const elsForPage = page.elements ?? [];
-              const mountInteractivePreview = Math.abs(pageIndex - currentPageIndex) <= 1;
+              // While dragging, keep every page interactive so drops onto next/prev pages work.
+              const mountInteractivePreview =
+                canvasGestureActive || Math.abs(pageIndex - currentPageIndex) <= 1;
               return (
                 <section
                   key={pageIndex}
@@ -2996,6 +3132,11 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
                     }
                     onBatchUpdateElements={
                       readOnly ? undefined : (updater) => updateElementsAtPageIndex(pageIndex, updater)
+                    }
+                    onElementsDragEnd={
+                      readOnly
+                        ? undefined
+                        : (info) => handleElementsDragEnd(pageIndex, info)
                     }
                     onGestureChange={readOnly ? undefined : handleCanvasGestureChange}
                     onRemoveElement={readOnly ? undefined : (id) => handleRemoveElementAtPage(pageIndex, id)}
