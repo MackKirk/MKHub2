@@ -138,46 +138,9 @@ export default function FormTemplatesPage({
     });
   }, [rows, searchQuery, isHr, isFieldwork]);
 
-  const createMut = useMutation({
-    mutationFn: async () => {
-      const created = await api<{ id: string }>('POST', '/form-templates', {
-        name: isHr
-          ? 'New employee review template'
-          : isFieldwork
-            ? 'New site assessment template'
-            : 'New form template',
-        category: isHr ? 'employee_review' : isFieldwork ? 'site_assessment' : 'inspection',
-        status: 'active',
-      });
-      // Stamp business_lines so Construction templates are not treated as legacy R&M-only.
-      if (isFieldwork && businessLine && created?.id) {
-        try {
-          await api('PUT', `/form-templates/${encodeURIComponent(created.id)}`, {
-            expected_definition_version: 1,
-            definition: {
-              sections: [],
-              signature_policy: { worker: { required: false, mode: 'drawn' } },
-              fieldwork_settings: {
-                require_final_comments: true,
-                require_min_photos: 0,
-                default_pictures_folder: 'Proposal Photos',
-                business_lines: [businessLine],
-              },
-            },
-          });
-        } catch {
-          // Editor can still set lines on first save.
-        }
-      }
-      return created;
-    },
-    onSuccess: (r) => {
-      qc.invalidateQueries({ queryKey: ['formTemplates'] });
-      toast.success('Template created');
-      nav(`${editorBasePath}/${encodeURIComponent(r.id)}`);
-    },
-    onError: () => toast.error('Could not create template'),
-  });
+  const openNewTemplate = () => {
+    nav(`${editorBasePath}/new`);
+  };
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => api<{ ok: boolean }>('DELETE', `/form-templates/${encodeURIComponent(id)}`),
@@ -251,11 +214,10 @@ export default function FormTemplatesPage({
       ) : showEmptyList ? (
         <div className={uiSpacing.cardPadding}>
           <AppListCreateItem
-            label={createMut.isPending ? 'Creating…' : 'New template'}
+            label="New template"
             layout="row"
             className="w-full"
-            disabled={createMut.isPending}
-            onClick={() => createMut.mutate()}
+            onClick={openNewTemplate}
           />
           <AppEmptyState title="No templates yet." className="mt-4" />
         </div>
@@ -263,11 +225,10 @@ export default function FormTemplatesPage({
         <AppSortableEntityList layout="flat">
           <div className={uiSpacing.cardPadding}>
             <AppListCreateItem
-              label={createMut.isPending ? 'Creating…' : 'New template'}
+              label="New template"
               layout="row"
               className="w-full"
-              disabled={createMut.isPending}
-              onClick={() => createMut.mutate()}
+              onClick={openNewTemplate}
             />
           </div>
           <AppSortableEntityListHeader variant="flat" gridCols={listGridCols} minWidth={LIST_MIN_WIDTH}>

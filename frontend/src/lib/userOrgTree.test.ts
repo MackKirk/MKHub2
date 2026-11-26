@@ -5,6 +5,7 @@ import {
   countOrgForestPeople,
   countOrgNodeReports,
   filterOrgForestByQuery,
+  focusOrgForestOnQuery,
   orgAncestorIdsToExpand,
   personMatchesOrgQuery,
   type OrgPerson,
@@ -94,6 +95,24 @@ describe('org search', () => {
   it('marks ancestors for expand', () => {
     const ids = orgAncestorIdsToExpand(forest.teams, 'patel');
     expect([...ids].sort()).toEqual(['ceo', 'lead']);
+  });
+
+  it('keeps the match, everyone below, and only the chain above', () => {
+    const wide = buildUserOrgForest([
+      person('ceo', { name: 'Ada' }),
+      person('adam', { name: 'Adam West', manager_user_id: 'ceo' }),
+      person('sibling', { name: 'Bea', manager_user_id: 'ceo' }),
+      person('rep', { name: 'Riley', manager_user_id: 'adam' }),
+      person('rep2', { name: 'Noah', manager_user_id: 'rep' }),
+      person('solo', { name: 'Adam Solo' }),
+    ]);
+    const focused = focusOrgForestOnQuery(wide, 'adam');
+    expect(focused.teams).toHaveLength(1);
+    expect(focused.teams[0].id).toBe('ceo');
+    expect(focused.teams[0].children.map((node) => node.id)).toEqual(['adam']);
+    expect(focused.teams[0].children[0].children.map((node) => node.id)).toEqual(['rep']);
+    expect(focused.teams[0].children[0].children[0].children.map((node) => node.id)).toEqual(['rep2']);
+    expect(focused.unassigned.map((node) => node.id)).toEqual(['solo']);
   });
 });
 

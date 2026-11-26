@@ -11,6 +11,7 @@ import {
   FilePlus,
   History,
   MessageSquareWarning,
+  Pencil,
   Save,
   Send,
   Trash2,
@@ -147,6 +148,8 @@ export default function ProjectFieldworkTab({
   const [showHistory, setShowHistory] = useState(false);
   const [requestChangesOpen, setRequestChangesOpen] = useState(false);
   const [pdfBusy, setPdfBusy] = useState(false);
+  /** Reviewer amending a submitted (pending review) report without sending it back. */
+  const [reviewerEditing, setReviewerEditing] = useState(false);
   /** When true, detail refetch must not overwrite local form/comments (409 conflict). */
   const [conflictHold, setConflictHold] = useState<{
     localPayload: Record<string, unknown>;
@@ -166,6 +169,7 @@ export default function ProjectFieldworkTab({
   const openRecord = useCallback(
     (id: string | null) => {
       setSelectedId(id);
+      setReviewerEditing(false);
       const next = new URLSearchParams(searchParams);
       if (id) next.set('fieldwork_record', id);
       else next.delete('fieldwork_record');
@@ -292,8 +296,14 @@ export default function ProjectFieldworkTab({
     };
   }, [detail?.settings_snapshot]);
 
-  const editable = !!detail && isEditableStatus(detail.status) && canWrite;
+  const authorEditable = !!detail && isEditableStatus(detail.status) && canWrite;
+  const canReviewerAmend =
+    !!detail && canReview && (detail.status || '').toLowerCase() === 'submitted';
+  const editable = authorEditable || (canReviewerAmend && reviewerEditing);
   const readOnly = !editable;
+  useEffect(() => {
+    if ((detail?.status || '').toLowerCase() !== 'submitted') setReviewerEditing(false);
+  }, [detail?.status]);
   const dirty = useMemo(() => {
     if (!baseline || !detail) return false;
     if (!editable) return false;
@@ -449,7 +459,7 @@ export default function ProjectFieldworkTab({
       });
       setFormPayload(row.form_payload && typeof row.form_payload === 'object' ? { ...row.form_payload } : {});
       setFinalComments(row.final_comments || '');
-      toast.success('Draft saved');
+      toast.success(authorEditable ? 'Draft saved' : 'Changes saved');
     },
     onError: async (err: unknown) => {
       if (await handleConflict(err)) return;
@@ -1020,6 +1030,14 @@ export default function ProjectFieldworkTab({
 
       {editable ? (
         <AppCard bodyClassName={uiSpacing.cardPadding}>
+          {canReviewerAmend && reviewerEditing ? (
+            <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+              <p className="text-sm text-amber-950">
+                Editing submitted report — save your fixes from the bar below, then approve or return if
+                needed.
+              </p>
+            </div>
+          ) : null}
           <DynamicForm
             definition={definition}
             formPayload={formPayload}
@@ -1226,7 +1244,18 @@ export default function ProjectFieldworkTab({
             Create revision
           </AppButton>
         ) : null}
-        {showReviewActions ? (
+        {canReviewerAmend && !reviewerEditing ? (
+          <AppButton
+            type="button"
+            variant="secondary"
+            size="sm"
+            leftIcon={<Pencil className="h-3.5 w-3.5" aria-hidden />}
+            onClick={() => setReviewerEditing(true)}
+          >
+            Edit
+          </AppButton>
+        ) : null}
+        {showReviewActions && !reviewerEditing ? (
           <>
             <AppButton
               type="button"
@@ -1251,7 +1280,7 @@ export default function ProjectFieldworkTab({
             </AppButton>
           </>
         ) : null}
-        {editable ? (
+        {authorEditable ? (
           <>
             <AppButton
               type="button"
@@ -1273,6 +1302,40 @@ export default function ProjectFieldworkTab({
               onClick={() => void askSubmit()}
             >
               Submit for review
+            </AppButton>
+          </>
+        ) : null}
+        {canReviewerAmend && reviewerEditing ? (
+          <>
+            <AppButton
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={saveMut.isPending}
+              onClick={() => {
+                void (async () => {
+                  if (dirty) {
+                    try {
+                      await saveMut.mutateAsync();
+                    } catch {
+                      return;
+                    }
+                  }
+                  setReviewerEditing(false);
+                })();
+              }}
+            >
+              Done
+            </AppButton>
+            <AppButton
+              type="button"
+              size="sm"
+              loading={saveMut.isPending}
+              disabled={!dirty || saveMut.isPending}
+              leftIcon={<Save className="h-3.5 w-3.5" aria-hidden />}
+              onClick={() => saveMut.mutate()}
+            >
+              Save changes
             </AppButton>
           </>
         ) : null}

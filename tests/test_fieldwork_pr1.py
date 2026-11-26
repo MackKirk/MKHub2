@@ -113,6 +113,33 @@ class FieldworkWorkflowInvariantTests(unittest.TestCase):
         db.query.return_value.filter.return_value.all.return_value = []
         fw._validate_photos_for_submit(db, record)
 
+    @patch("app.routes.fieldwork.assert_fieldwork_project")
+    def test_reviewer_can_mutate_submitted(self, mock_assert):
+        row = MagicMock()
+        row.status = "submitted"
+        result = fw._assert_can_mutate_content(MagicMock(), _user(), MagicMock(), row)
+        self.assertEqual(result, "reviewer")
+        mock_assert.assert_called_once()
+        self.assertEqual(mock_assert.call_args.args[3], "review")
+
+    @patch("app.routes.fieldwork.assert_fieldwork_project")
+    def test_author_can_mutate_draft(self, mock_assert):
+        row = MagicMock()
+        row.status = "draft"
+        result = fw._assert_can_mutate_content(MagicMock(), _user(), MagicMock(), row)
+        self.assertEqual(result, "author")
+        mock_assert.assert_called_once()
+        self.assertEqual(mock_assert.call_args.args[3], "write")
+
+    @patch("app.routes.fieldwork.assert_fieldwork_project")
+    def test_approved_cannot_mutate_content(self, mock_assert):
+        row = MagicMock()
+        row.status = "approved"
+        with self.assertRaises(HTTPException) as ctx:
+            fw._assert_can_mutate_content(MagicMock(), _user(), MagicMock(), row)
+        self.assertEqual(ctx.exception.status_code, 409)
+        mock_assert.assert_not_called()
+
 
 class SafetyTemplateIsolationRegressionTests(unittest.TestCase):
     """PR0 regression: Safety list must not surface Fieldwork categories."""

@@ -3,6 +3,15 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
+  CheckCircle2,
+  FileDown,
+  History,
+  MessageSquareWarning,
+  Pencil,
+  Save,
+} from 'lucide-react';
+import DynamicForm from '@/components/DynamicForm';
+import {
   FieldworkSupervisorReportView,
   SUPERVISOR_COMMENTS_KEY,
 } from '@/components/fieldwork/FieldworkSupervisorReportView';
@@ -13,6 +22,7 @@ import {
   AppCard,
   AppFormModal,
   AppPageHeader,
+  AppStickyActionBar,
   AppTextarea,
   uiCx,
   uiLayout,
@@ -25,6 +35,7 @@ import { createQuoteFromFieldReport } from '@/lib/createQuoteFromFieldReport';
 import { formatDateLocal } from '@/lib/dateUtils';
 import { BUSINESS_LINE_CONSTRUCTION, BUSINESS_LINE_REPAIRS_MAINTENANCE } from '@/lib/businessLine';
 import { hasFieldworkReviewPermission, isAdminRole } from '@/lib/projectLinePermissionKeys';
+import { normalizeDefinition } from '@/types/safetyFormTemplate';
 import type { FieldworkRecord } from '@/types/fieldwork';
 
 function kindLabel(kind: string | null | undefined): string {
@@ -70,6 +81,14 @@ export default function FieldReportReviewPage() {
   const [requestChangesOpen, setRequestChangesOpen] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [pdfBusy, setPdfBusy] = useState(false);
+  const [reviewerEditing, setReviewerEditing] = useState(false);
+  const [formPayload, setFormPayload] = useState<Record<string, unknown>>({});
+  const [finalComments, setFinalComments] = useState('');
+  const [editBaseline, setEditBaseline] = useState<{
+    payload: string;
+    comments: string;
+    rowVersion: number;
+  } | null>(null);
   const [supervisorComments, setSupervisorComments] = useState<Record<string, string>>({});
   const supervisorSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const supervisorDraftRef = useRef<Record<string, string>>({});
@@ -105,9 +124,41 @@ export default function FieldReportReviewPage() {
 
   const status = (record?.status || '').toLowerCase();
   const showReviewActions = canReview && status === 'submitted';
+  const canReviewerAmend = showReviewActions;
   const canEditSupervisorComments =
     canReview &&
+    !reviewerEditing &&
     (status === 'submitted' || status === 'changes_requested' || status === 'approved');
+  const definition = useMemo(
+    () => normalizeDefinition(record?.form_definition_snapshot || { sections: [] }),
+    [record?.form_definition_snapshot]
+  );
+  const editDirty = useMemo(() => {
+    if (!editBaseline || !reviewerEditing) return false;
+    return (
+      JSON.stringify(formPayload) !== editBaseline.payload || finalComments !== editBaseline.comments
+    );
+  }, [editBaseline, finalComments, formPayload, reviewerEditing]);
+
+  useEffect(() => {
+    if (status !== 'submitted') setReviewerEditing(false);
+  }, [status]);
+
+  useEffect(() => {
+    if (!record || reviewerEditing) return;
+    const payload =
+      record.form_payload && typeof record.form_payload === 'object'
+        ? { ...record.form_payload }
+        : {};
+    const comments = record.final_comments || '';
+    setFormPayload(payload);
+    setFinalComments(comments);
+    setEditBaseline({
+      payload: JSON.stringify(payload),
+      comments,
+      rowVersion: Number(record.row_version || 1),
+    });
+  }, [record, reviewerEditing]);
 
   useEffect(() => {
     const payload = (record?.form_payload || {}) as Record<string, unknown>;
@@ -202,6 +253,50 @@ export default function FieldReportReviewPage() {
     },
   });
 
+  const saveReportMut = useMutation({
+    mutationFn: async () => {
+      if (!record) throw new Error('No record');
+      return api<FieldworkRecord>(
+        'PATCH',
+        `/projects/${encodeURIComponent(projectId)}/fieldwork-records/${encodeURIComponent(recordId)}`,
+        {
+          form_payload: formPayload,
+          final_comments: finalComments,
+          expected_row_version: editBaseline?.rowVersion ?? record.row_version,
+        }
+      );
+    },
+    onSuccess: async (saved) => {
+      qc.setQueryData(['fieldwork-record', projectId, recordId], saved);
+      const payload =
+        saved.form_payload && typeof saved.form_payload === 'object' ? { ...saved.form_payload } : {};
+      const comments = saved.final_comments || '';
+      setFormPayload(payload);
+      setFinalComments(comments);
+      setEditBaseline({
+        payload: JSON.stringify(payload),
+        comments,
+        rowVersion: Number(saved.row_version || 1),
+      });
+      toast.success('Changes saved');
+      await qc.invalidateQueries({ queryKey: ['fieldwork-inbox'] });
+    },
+    onError: (err) => {
+      toast.error(formatApiErrorDetail((err as ApiError)?.detail) || 'Could not save changes');
+    },
+  });
+
+  const finishReviewerEditing = async () => {
+    if (editDirty) {
+      try {
+        await saveReportMut.mutateAsync();
+      } catch {
+        return;
+      }
+    }
+    setReviewerEditing(false);
+  };
+
   const handleSupervisorCommentChange = (fieldKey: string, text: string) => {
     setSupervisorComments((prev) => {
       const next = { ...prev, [fieldKey]: text };
@@ -245,8 +340,29 @@ export default function FieldReportReviewPage() {
     );
   }
 
+  const downloadPdf = async () => {
+    try {
+      setPdfBusy(true);
+      const buf = await fetchAuthorizedBinary(
+        `/projects/${encodeURIComponent(projectId)}/fieldwork-records/${encodeURIComponent(recordId)}/pdf`
+      );
+      const blob = new Blob([buf], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${title.replace(/\s+/g, '-').toLowerCase()}-${recordId.slice(0, 8)}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('PDF downloaded');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not generate PDF');
+    } finally {
+      setPdfBusy(false);
+    }
+  };
+
   return (
-    <div className={uiCx(uiSpacing.pageStack, 'min-h-full bg-gray-50 pb-10')}>
+    <div className={uiCx(uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
       <AppPageHeader
         title={title}
         subtitle={
@@ -260,114 +376,12 @@ export default function FieldReportReviewPage() {
         }
         onBack={navigateBack}
         actions={
-          <div className={uiCx(uiLayout.actionsRow, 'flex-wrap justify-end')}>
-            <Link
-              to={projectHref}
-              className="inline-flex items-center rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-            >
-              Open in project
-            </Link>
-            <AppButton
-              type="button"
-              variant="secondary"
-              size="sm"
-              loading={pdfBusy}
-              onClick={async () => {
-                try {
-                  setPdfBusy(true);
-                  const buf = await fetchAuthorizedBinary(
-                    `/projects/${encodeURIComponent(projectId)}/fieldwork-records/${encodeURIComponent(recordId)}/pdf`
-                  );
-                  const blob = new Blob([buf], { type: 'application/pdf' });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = `${title.replace(/\s+/g, '-').toLowerCase()}-${recordId.slice(0, 8)}.pdf`;
-                  a.click();
-                  URL.revokeObjectURL(url);
-                  toast.success('PDF downloaded');
-                } catch (err) {
-                  toast.error(err instanceof Error ? err.message : 'Could not generate PDF');
-                } finally {
-                  setPdfBusy(false);
-                }
-              }}
-            >
-              Download PDF
-            </AppButton>
-            {status === 'approved' ? (
-              <AppButton
-                type="button"
-                size="sm"
-                loading={quoteBusy}
-                onClick={async () => {
-                  try {
-                    setQuoteBusy(true);
-                    const { path } = await createQuoteFromFieldReport({
-                      project: {
-                        id: projectId,
-                        business_line: projectBusinessLine,
-                        is_bidding: projectMeta?.is_bidding,
-                      },
-                      recordId,
-                      recordKind: record.kind,
-                      projectName: projectMeta?.name,
-                    });
-                    toast.success('Quote document created — pick photos to insert');
-                    navigate(path);
-                  } catch (err) {
-                    toast.error(
-                      err instanceof ApiError
-                        ? formatApiErrorDetail(err) || err.message
-                        : err instanceof Error
-                          ? err.message
-                          : 'Could not create quote'
-                    );
-                  } finally {
-                    setQuoteBusy(false);
-                  }
-                }}
-              >
-                Create quote
-              </AppButton>
-            ) : null}
-            <AppButton type="button" variant="secondary" size="sm" onClick={() => setShowHistory((v) => !v)}>
-              {showHistory ? 'Hide history' : 'History'}
-            </AppButton>
-            {showReviewActions ? (
-              <>
-                <AppButton
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => {
-                    setReviewNote('');
-                    setRequestChangesOpen(true);
-                  }}
-                >
-                  Deny / request changes
-                </AppButton>
-                <AppButton
-                  type="button"
-                  size="sm"
-                  loading={approveMut.isPending}
-                  onClick={async () => {
-                    const res = await confirm({
-                      title: 'Approve this report?',
-                      message:
-                        'The report becomes locked evidence. Create a revision later if something must change.',
-                      confirmText: 'Approve',
-                      cancelText: 'Cancel',
-                    });
-                    if (res !== 'confirm') return;
-                    approveMut.mutate();
-                  }}
-                >
-                  Approve
-                </AppButton>
-              </>
-            ) : null}
-          </div>
+          <Link
+            to={projectHref}
+            className="inline-flex items-center rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            Open in project
+          </Link>
         }
       />
 
@@ -428,15 +442,90 @@ export default function FieldReportReviewPage() {
         </AppCard>
       ) : null}
 
-      <FieldworkSupervisorReportView
-        record={record}
-        supervisorComments={supervisorComments}
-        showSupervisorNotes={canReview}
-        canEditSupervisorComments={canEditSupervisorComments}
-        onSupervisorCommentChange={
-          canEditSupervisorComments ? handleSupervisorCommentChange : undefined
-        }
-      />
+      {reviewerEditing ? (
+        <AppCard bodyClassName={uiSpacing.cardPadding}>
+          <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+            <p className="text-sm text-amber-950">
+              Editing submitted report — fix answers or photo captions, then save from the bar below.
+              You can still approve or return for changes after.
+            </p>
+          </div>
+          <DynamicForm
+            definition={definition}
+            formPayload={formPayload}
+            setFormPayload={setFormPayload}
+            canWrite
+            projectId={projectId}
+            enableFieldworkPhraseInsert
+            fieldworkRecordId={record.id}
+            fieldworkRowVersion={editBaseline?.rowVersion ?? record.row_version}
+            onFieldworkPhotosSynced={async (info) => {
+              const nextRv =
+                typeof info.recordRowVersion === 'number'
+                  ? info.recordRowVersion
+                  : Number(editBaseline?.rowVersion || record.row_version || 1);
+              setEditBaseline((prev) => (prev ? { ...prev, rowVersion: nextRv } : prev));
+              qc.setQueryData(
+                ['fieldwork-record', projectId, recordId],
+                (old: FieldworkRecord | undefined) =>
+                  old ? { ...old, row_version: nextRv } : old
+              );
+              await qc.invalidateQueries({ queryKey: ['fieldwork-inbox'] });
+            }}
+            onFieldworkPhotoRemoved={async (fileObjectId) => {
+              try {
+                const photos = await api<{ id: string; file_object_id?: string | null }[]>(
+                  'GET',
+                  `/projects/${encodeURIComponent(projectId)}/fieldwork-records/${encodeURIComponent(recordId)}/photos`
+                );
+                const match = (photos || []).find(
+                  (p) => String(p.file_object_id || '') === String(fileObjectId)
+                );
+                if (!match?.id) return;
+                await api(
+                  'DELETE',
+                  `/projects/${encodeURIComponent(projectId)}/fieldwork-records/${encodeURIComponent(recordId)}/photos/${encodeURIComponent(match.id)}`
+                );
+                setEditBaseline((prev) =>
+                  prev ? { ...prev, rowVersion: prev.rowVersion + 1 } : prev
+                );
+                qc.setQueryData(
+                  ['fieldwork-record', projectId, recordId],
+                  (old: FieldworkRecord | undefined) =>
+                    old
+                      ? {
+                          ...old,
+                          row_version: Number(old.row_version || 1) + 1,
+                          photo_count: Math.max(0, Number(old.photo_count || 0) - 1),
+                        }
+                      : old
+                );
+              } catch {
+                throw new Error('unlink failed');
+              }
+            }}
+          />
+          <div className="mt-4">
+            <AppTextarea
+              id="fw-review-final-comments"
+              label="Additional comments"
+              value={finalComments}
+              onChange={(e) => setFinalComments(e.target.value)}
+              rows={3}
+            />
+          </div>
+        </AppCard>
+      ) : (
+        <FieldworkSupervisorReportView
+          record={record}
+          supervisorComments={supervisorComments}
+          showSupervisorNotes={canReview}
+          canEditSupervisorComments={canEditSupervisorComments}
+          onSupervisorCommentChange={
+            canEditSupervisorComments ? handleSupervisorCommentChange : undefined
+          }
+        />
+      )}
 
       <AppFormModal
         open={requestChangesOpen}
@@ -469,6 +558,134 @@ export default function FieldReportReviewPage() {
           rows={4}
         />
       </AppFormModal>
+
+      <AppStickyActionBar status={reviewerEditing ? (editDirty ? 'dirty' : 'saved') : 'idle'}>
+        <AppButton
+          type="button"
+          variant="secondary"
+          size="sm"
+          leftIcon={<History className="h-3.5 w-3.5" aria-hidden />}
+          onClick={() => setShowHistory((v) => !v)}
+        >
+          {showHistory ? 'Hide history' : 'History'}
+        </AppButton>
+        <AppButton
+          type="button"
+          variant="secondary"
+          size="sm"
+          loading={pdfBusy}
+          leftIcon={<FileDown className="h-3.5 w-3.5" aria-hidden />}
+          onClick={() => void downloadPdf()}
+        >
+          PDF
+        </AppButton>
+        {status === 'approved' ? (
+          <AppButton
+            type="button"
+            variant="secondary"
+            size="sm"
+            loading={quoteBusy}
+            onClick={async () => {
+              try {
+                setQuoteBusy(true);
+                const { path } = await createQuoteFromFieldReport({
+                  project: {
+                    id: projectId,
+                    business_line: projectBusinessLine,
+                    is_bidding: projectMeta?.is_bidding,
+                  },
+                  recordId,
+                  recordKind: record.kind,
+                  projectName: projectMeta?.name,
+                });
+                toast.success('Quote document created — pick photos to insert');
+                navigate(path);
+              } catch (err) {
+                toast.error(
+                  err instanceof ApiError
+                    ? formatApiErrorDetail(err) || err.message
+                    : err instanceof Error
+                      ? err.message
+                      : 'Could not create quote'
+                );
+              } finally {
+                setQuoteBusy(false);
+              }
+            }}
+          >
+            Create quote
+          </AppButton>
+        ) : null}
+        {canReviewerAmend && !reviewerEditing ? (
+          <AppButton
+            type="button"
+            variant="secondary"
+            size="sm"
+            leftIcon={<Pencil className="h-3.5 w-3.5" aria-hidden />}
+            onClick={() => setReviewerEditing(true)}
+          >
+            Edit
+          </AppButton>
+        ) : null}
+        {showReviewActions && !reviewerEditing ? (
+          <>
+            <AppButton
+              type="button"
+              variant="secondary"
+              size="sm"
+              leftIcon={<MessageSquareWarning className="h-3.5 w-3.5" aria-hidden />}
+              onClick={() => {
+                setReviewNote('');
+                setRequestChangesOpen(true);
+              }}
+            >
+              Deny / request changes
+            </AppButton>
+            <AppButton
+              type="button"
+              size="sm"
+              loading={approveMut.isPending}
+              leftIcon={<CheckCircle2 className="h-3.5 w-3.5" aria-hidden />}
+              onClick={async () => {
+                const res = await confirm({
+                  title: 'Approve this report?',
+                  message:
+                    'The report becomes locked evidence. Create a revision later if something must change.',
+                  confirmText: 'Approve',
+                  cancelText: 'Cancel',
+                });
+                if (res !== 'confirm') return;
+                approveMut.mutate();
+              }}
+            >
+              Approve
+            </AppButton>
+          </>
+        ) : null}
+        {canReviewerAmend && reviewerEditing ? (
+          <>
+            <AppButton
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={saveReportMut.isPending}
+              onClick={() => void finishReviewerEditing()}
+            >
+              Done
+            </AppButton>
+            <AppButton
+              type="button"
+              size="sm"
+              loading={saveReportMut.isPending}
+              disabled={!editDirty || saveReportMut.isPending}
+              leftIcon={<Save className="h-3.5 w-3.5" aria-hidden />}
+              onClick={() => saveReportMut.mutate()}
+            >
+              Save changes
+            </AppButton>
+          </>
+        ) : null}
+      </AppStickyActionBar>
     </div>
   );
 }

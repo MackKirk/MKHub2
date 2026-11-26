@@ -269,6 +269,26 @@ def _assert_editable(row: FieldworkRecord) -> None:
         raise HTTPException(status_code=409, detail=f"Record status '{row.status}' is not editable")
 
 
+def _assert_can_mutate_content(
+    db: Session,
+    user: User,
+    proj: Project,
+    row: FieldworkRecord,
+) -> str:
+    """Author may edit draft/changes_requested; reviewer may amend while submitted (pending review)."""
+    st = (row.status or "").strip().lower()
+    if st in EDITABLE_STATUSES:
+        assert_fieldwork_project(db, user, proj, "write")
+        return "author"
+    if st == STATUS_SUBMITTED:
+        assert_fieldwork_project(db, user, proj, "review")
+        return "reviewer"
+    raise HTTPException(
+        status_code=409,
+        detail=f"Record status '{row.status}' is not editable",
+    )
+
+
 def _bump_row_version(row: FieldworkRecord, expected: Optional[int]) -> None:
     current = int(row.row_version or 1)
     if expected is not None and int(expected) != current:
@@ -713,9 +733,8 @@ def patch_fieldwork_record(
     user: User = Depends(get_current_user),
 ):
     proj = _load_project(db, project_id)
-    assert_fieldwork_project(db, user, proj, "write")
     row = _load_record(db, proj.id, record_id, for_update=True)
-    _assert_editable(row)
+    mutator = _assert_can_mutate_content(db, user, proj, row)
     _bump_row_version(row, body.expected_row_version)
     if body.form_payload is not None:
         if not isinstance(body.form_payload, dict):
@@ -725,7 +744,15 @@ def patch_fieldwork_record(
         row.final_comments = body.final_comments
     row.updated_at = _utcnow()
     row.updated_by = user.id
-    _add_event(db, row, event_type="updated", user=user, from_status=row.status, to_status=row.status)
+    _add_event(
+        db,
+        row,
+        event_type="reviewer_amended" if mutator == "reviewer" else "updated",
+        user=user,
+        from_status=row.status,
+        to_status=row.status,
+        message="Reviewer adjusted report content" if mutator == "reviewer" else None,
+    )
     db.commit()
     db.refresh(row)
     return _record_to_dict(db, row, include_photos=True, include_events=True)
@@ -1066,9 +1093,8 @@ def create_fieldwork_photo(
     user: User = Depends(get_current_user),
 ):
     proj = _load_project(db, project_id)
-    assert_fieldwork_project(db, user, proj, "write")
     row = _load_record(db, proj.id, record_id, for_update=True)
-    _assert_editable(row)
+    _assert_can_mutate_content(db, user, proj, row)
     _bump_row_version(row, body.expected_row_version)
 
     mutation = (body.client_mutation_id or "").strip() or None
@@ -1214,9 +1240,8 @@ def patch_fieldwork_photo(
     user: User = Depends(get_current_user),
 ):
     proj = _load_project(db, project_id)
-    assert_fieldwork_project(db, user, proj, "write")
     row = _load_record(db, proj.id, record_id, for_update=True)
-    _assert_editable(row)
+    _assert_can_mutate_content(db, user, proj, row)
     _bump_row_version(row, body.expected_row_version)
     try:
         pid = uuid.UUID(str(photo_id))
@@ -1295,9 +1320,8 @@ def delete_fieldwork_photo(
     user: User = Depends(get_current_user),
 ):
     proj = _load_project(db, project_id)
-    assert_fieldwork_project(db, user, proj, "write")
     row = _load_record(db, proj.id, record_id, for_update=True)
-    _assert_editable(row)
+    _assert_can_mutate_content(db, user, proj, row)
     # Bump parent version so concurrent submit sees a conflict if expected_row_version is used
     _bump_row_version(row, None)
     try:

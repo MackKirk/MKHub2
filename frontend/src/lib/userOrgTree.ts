@@ -134,6 +134,30 @@ export function filterOrgForestByQuery(forest: OrgForest, query: string): OrgFor
   };
 }
 
+/**
+ * Search focus: each match keeps the full team below them, and only the
+ * manager chain above (siblings off that chain are dropped). Several matches
+ * become separate branches, sharing an ancestor only when they actually report up to the same person.
+ */
+export function focusOrgNodeOnQuery(node: OrgTreeNode, query: string): OrgTreeNode | null {
+  if (!query.trim()) return node;
+  if (personMatchesOrgQuery(node, query)) return node;
+  const children = node.children
+    .map((child) => focusOrgNodeOnQuery(child, query))
+    .filter((child): child is OrgTreeNode => child !== null);
+  if (children.length === 0) return null;
+  return { ...node, children };
+}
+
+export function focusOrgForestOnQuery(forest: OrgForest, query: string): OrgForest {
+  if (!query.trim()) return forest;
+  const keep = (node: OrgTreeNode) => focusOrgNodeOnQuery(node, query);
+  return {
+    teams: forest.teams.map(keep).filter((node): node is OrgTreeNode => node !== null),
+    unassigned: forest.unassigned.map(keep).filter((node): node is OrgTreeNode => node !== null),
+  };
+}
+
 /** Node ids that have a matching descendant (should stay expanded during search). */
 export function orgAncestorIdsToExpand(nodes: OrgTreeNode[], query: string): Set<string> {
   const ids = new Set<string>();

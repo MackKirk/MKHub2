@@ -1,31 +1,25 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject, type PointerEvent as ReactPointerEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronDown, Maximize2, Star, Users, ZoomIn, ZoomOut } from 'lucide-react';
+import { ChevronDown, FoldVertical, Hand, Maximize2, Mouse, Search, Star, UnfoldVertical, UserRound, ZoomIn, ZoomOut } from 'lucide-react';
 import { withFileAccessToken } from '@/lib/api';
 import {
   buildUserOrgForest,
   collectOrgNodeIdsWithChildren,
   countOrgForestPeople,
   countOrgNodeReports,
-  filterOrgForestByQuery,
-  orgAncestorIdsToExpand,
+  focusOrgForestOnQuery,
   personMatchesOrgQuery,
   type OrgPerson,
   type OrgTreeNode,
 } from '@/lib/userOrgTree';
 import {
-  AppBadge,
   AppButton,
   AppEmptyState,
-  AppSectionHeader,
   AppTooltip,
   uiBorders,
-  uiColors,
   uiCx,
-  uiLayout,
   uiRadius,
   uiShadows,
-  uiSpacing,
   uiTypography,
 } from '@/components/ui';
 
@@ -33,6 +27,46 @@ const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 2;
 const ZOOM_STEP = 0.12;
 const PAN_CLICK_SLOP_PX = 6;
+/** Leaves past this count wrap onto extra rows so a wide team stays on screen. */
+const LEAF_ROW_SIZE = 4;
+const ROW_GAP_PX = 16;
+const SLOT_PAD_X_PX = 8;
+/** w-28 name card. The side bus meets the center of the first card. */
+const NAMES_CARD_PX = 112;
+/** h-10 initials mark. */
+const INITIALS_CARD_PX = 40;
+/** Space kept inside a wrapped team so its side line cannot run under the sibling on the left. */
+const BUS_GUTTER_PX = 18;
+const LINE = 'bg-slate-500';
+const LINE_BORDER = 'border-slate-500';
+const DENSITY_STORAGE_KEY = 'users-org-card-density';
+
+const ORG_LEGEND = [
+  { icon: Hand, label: 'Drag to pan' },
+  { icon: Mouse, label: 'Scroll to zoom' },
+  { icon: UnfoldVertical, label: 'Click a number to expand' },
+  { icon: UserRound, label: 'Click a person to open' },
+  { icon: Search, label: 'Search shows the chain' },
+] as const;
+
+const canvasChrome = uiCx(
+  'bg-white shadow-sm',
+  uiRadius.control,
+  uiBorders.subtle,
+);
+
+type OrgDensity = 'names' | 'initials';
+
+function cardAnchorPx(density: OrgDensity) {
+  const width = density === 'initials' ? INITIALS_CARD_PX : NAMES_CARD_PX;
+  return SLOT_PAD_X_PX + width / 2;
+}
+
+function initialsFromName(name: string) {
+  const parts = name.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+  return (name.slice(0, 2) || '?').toUpperCase();
+}
 
 type Camera = { x: number; y: number; zoom: number };
 
@@ -44,143 +78,329 @@ function OrgPersonCard({
   node,
   canViewUserDetails,
   searchQuery,
-  expanded,
-  ignoreCardClickRef,
-  onToggle,
+  density,
 }: {
   node: OrgTreeNode;
   canViewUserDetails: boolean;
   searchQuery: string;
-  expanded: boolean;
-  ignoreCardClickRef: MutableRefObject<boolean>;
-  onToggle: (id: string) => void;
+  density: OrgDensity;
 }) {
   const navigate = useNavigate();
-  const hasChildren = node.children.length > 0;
   const isAdmin = (node.roles || []).some((role) => String(role || '').toLowerCase() === 'admin');
   const isMatch = Boolean(searchQuery.trim()) && personMatchesOrgQuery(node, searchQuery);
   const isInactive = node.is_active === false;
-  const teamSize = countOrgNodeReports(node);
   const detailPath = `/users/${encodeURIComponent(node.id)}`;
   const name = node.name || node.username;
-  const reportsLabel =
-    node.children.length === 1 ? '1 report' : `${node.children.length} reports`;
-  const teamLabel =
-    teamSize > node.children.length ? `${reportsLabel} · ${teamSize} total` : reportsLabel;
-
+  const initials = initialsFromName(name);
   const openDetail = () => {
-    if (ignoreCardClickRef.current) return;
     if (canViewUserDetails) navigate(detailPath);
   };
 
-  return (
-    <div className="relative flex w-56 flex-col items-center">
-      <div
-        data-org-card="true"
+  const photo = node.profile_photo_file_id ? (
+    <img
+      src={withFileAccessToken(`/files/${node.profile_photo_file_id}/thumbnail?w=96`)}
+      className={uiCx('h-9 w-9 object-cover', uiRadius.badge, isInactive && 'grayscale')}
+      loading="lazy"
+      alt=""
+      draggable={false}
+    />
+  ) : (
+    <img
+      src="/ui/assets/placeholders/user.png"
+      className={uiCx('h-9 w-9 object-cover', uiRadius.badge)}
+      loading="lazy"
+      alt=""
+      draggable={false}
+    />
+  );
+
+  const status = (
+    <>
+      {isAdmin ? (
+        <AppTooltip content="Administrator">
+          <span className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full border border-white bg-yellow-400">
+            <Star className="h-2 w-2 fill-yellow-800 text-yellow-800" />
+          </span>
+        </AppTooltip>
+      ) : null}
+      <span
         className={uiCx(
-          uiRadius.card,
-          uiBorders.subtle,
-          uiShadows.card,
-          uiColors.surface,
-          'w-full overflow-hidden text-center transition-shadow',
-          canViewUserDetails && 'cursor-pointer hover:border-gray-300 hover:shadow-md',
-          isMatch && 'border-brand-red bg-red-50 ring-2 ring-brand-red/15',
-          isInactive && 'opacity-80',
+          'absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border border-white',
+          isInactive ? 'bg-gray-400' : 'bg-emerald-500',
         )}
-        role={canViewUserDetails ? 'button' : undefined}
-        tabIndex={canViewUserDetails ? 0 : undefined}
-        onClick={canViewUserDetails ? openDetail : undefined}
-        onKeyDown={
-          canViewUserDetails
-            ? (e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  openDetail();
-                }
-              }
-            : undefined
+        title={isInactive ? 'Inactive' : 'Active'}
+      />
+    </>
+  );
+
+  const cardProps = {
+    'data-org-card': 'true' as const,
+    'data-org-person': node.id,
+    role: canViewUserDetails ? ('button' as const) : undefined,
+    tabIndex: canViewUserDetails ? 0 : undefined,
+    onKeyDown: canViewUserDetails
+      ? (event: ReactKeyboardEvent) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            openDetail();
+          }
+        }
+      : undefined,
+  };
+
+  if (density === 'initials') {
+    return (
+      <AppTooltip
+        wrap
+        placement="top"
+        content={
+          <span className="flex items-center gap-2">
+            {photo}
+            <span className="block min-w-0 text-left">
+              <span className="block font-semibold">{name}</span>
+              <span className="mt-0.5 block text-xs font-normal text-gray-200">{node.job_title || '—'}</span>
+            </span>
+          </span>
         }
       >
-        <div className="flex flex-col items-center px-3 pb-3 pt-4">
-          <div className="relative shrink-0">
-            {node.profile_photo_file_id ? (
-              <img
-                src={withFileAccessToken(`/files/${node.profile_photo_file_id}/thumbnail?w=128`)}
-                className={uiCx(
-                  'h-14 w-14 object-cover ring-2 ring-white',
-                  uiRadius.badge,
-                  uiShadows.card,
-                  isInactive && 'grayscale',
-                )}
-                loading="lazy"
-                alt=""
-                draggable={false}
-              />
-            ) : (
-              <img
-                src="/ui/assets/placeholders/user.png"
-                className={uiCx('h-14 w-14 object-cover ring-2 ring-white', uiRadius.badge, uiShadows.card)}
-                loading="lazy"
-                alt=""
-                draggable={false}
-              />
-            )}
-            {isAdmin ? (
-              <AppTooltip content="Administrator">
-                <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-yellow-400">
-                  <Star className="h-2.5 w-2.5 fill-yellow-800 text-yellow-800" />
-                </span>
-              </AppTooltip>
-            ) : null}
-            <span
-              className={uiCx(
-                'absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white',
-                isInactive ? 'bg-gray-400' : 'bg-emerald-500',
-              )}
-              title={isInactive ? 'Inactive' : 'Active'}
-            />
-          </div>
-          <div className={uiCx(uiTypography.sectionTitle, 'mt-2.5 w-full truncate px-1 text-sm')} title={name}>
-            {name}
-          </div>
-          <div className={uiCx(uiTypography.helper, 'mt-0.5 min-h-[1rem] w-full truncate px-1')} title={node.job_title || ''}>
-            {node.job_title || '—'}
-          </div>
-          {hasChildren ? (
-            <div className="mt-2 flex items-center justify-center gap-1 text-[10px] font-semibold text-gray-600">
-              <Users className="h-3 w-3" aria-hidden />
-              <span>{teamLabel}</span>
-            </div>
-          ) : isInactive ? (
-            <div className="mt-2">
-              <AppBadge variant="danger" className="normal-case !tracking-normal">
-                Inactive
-              </AppBadge>
-            </div>
-          ) : null}
-        </div>
-      </div>
-      {hasChildren ? (
-        <button
-          type="button"
+        <div
+          {...cardProps}
           className={uiCx(
-            'relative z-10 -mb-2 mt-1 inline-flex h-7 w-7 items-center justify-center rounded-full border bg-white text-gray-600 shadow-sm transition-colors hover:border-gray-300 hover:bg-gray-50',
-            expanded ? 'border-brand-red text-brand-red' : 'border-gray-200',
+            'relative flex h-10 w-10 items-center justify-center rounded-full border bg-white text-[11px] font-semibold text-gray-800 shadow-sm',
+            canViewUserDetails && 'cursor-pointer hover:border-gray-400',
+            isMatch ? 'border-brand-red bg-red-50 text-brand-red ring-2 ring-brand-red/20' : 'border-gray-300',
+            isInactive && 'opacity-80',
           )}
-          aria-label={expanded ? `Hide reports of ${name}` : `Show reports of ${name}`}
-          aria-expanded={expanded}
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggle(node.id);
-          }}
-          onPointerDown={(e) => e.stopPropagation()}
+          aria-label={name}
         >
-          <ChevronDown
-            className={uiCx('h-4 w-4 transition-transform duration-200', expanded && 'rotate-180')}
+          {initials}
+          {status}
+        </div>
+      </AppTooltip>
+    );
+  }
+
+  return (
+    <div
+      {...cardProps}
+      className={uiCx(
+        uiRadius.control,
+        uiShadows.card,
+        'relative z-10 flex w-28 shrink-0 flex-col items-center border bg-white px-1.5 py-2 text-center transition-shadow',
+        canViewUserDetails && 'cursor-pointer hover:border-gray-400 hover:shadow-md',
+        isMatch ? 'border-brand-red bg-red-50 ring-2 ring-brand-red/15' : 'border-gray-300',
+        isInactive && 'opacity-80',
+      )}
+      title={[name, node.job_title].filter(Boolean).join(' · ')}
+    >
+      <div className="relative">
+        {photo}
+        {status}
+      </div>
+      <div className="mt-1.5 w-full truncate text-xs font-semibold leading-tight text-gray-900">{name}</div>
+      <div className="w-full truncate text-[10px] leading-tight text-gray-500">{node.job_title || '—'}</div>
+    </div>
+  );
+}
+
+function OrgElbow({ index, count }: { index: number; count: number }) {
+  const isFirst = index === 0;
+  const isLast = index === count - 1;
+  const isEnd = isFirst || isLast;
+
+  return (
+    <>
+      {!isEnd ? <span className={uiCx('pointer-events-none absolute left-0 top-0 z-0 h-0.5 w-full', LINE)} aria-hidden /> : null}
+      {isFirst ? (
+        <>
+          <span
+            className={uiCx('pointer-events-none absolute top-0 z-0 h-0.5', LINE)}
+            style={{ left: 'calc(50% + 8px)', width: 'calc(50% - 8px)' }}
             aria-hidden
           />
-        </button>
+          <span
+            className={uiCx('pointer-events-none absolute top-0 z-0 h-2.5 w-2.5 rounded-tl-lg border-l-2 border-t-2', LINE_BORDER)}
+            style={{ left: 'calc(50% - 1px)' }}
+            aria-hidden
+          />
+        </>
       ) : null}
+      {isLast ? (
+        <>
+          <span
+            className={uiCx('pointer-events-none absolute left-0 top-0 z-0 h-0.5', LINE)}
+            style={{ width: 'calc(50% - 8px)' }}
+            aria-hidden
+          />
+          <span
+            className={uiCx('pointer-events-none absolute top-0 z-0 h-2.5 w-2.5 rounded-tr-lg border-r-2 border-t-2', LINE_BORDER)}
+            style={{ left: 'calc(50% - 9px)' }}
+            aria-hidden
+          />
+        </>
+      ) : null}
+      <span
+        className={uiCx('pointer-events-none absolute left-1/2 z-0 w-0.5 -translate-x-1/2', LINE)}
+        style={isEnd ? { top: 8, height: 11 } : { top: 0, height: 19 }}
+        aria-hidden
+      />
+    </>
+  );
+}
+
+function OrgToggle({
+  expanded,
+  node,
+  onToggle,
+}: {
+  expanded: boolean;
+  node: OrgTreeNode;
+  onToggle: (id: string) => void;
+}) {
+  const direct = node.children.length;
+  const teamSize = countOrgNodeReports(node);
+  const name = node.name || node.username;
+  const title =
+    teamSize > direct
+      ? `${direct} direct ${direct === 1 ? 'report' : 'reports'}, ${teamSize} in the team`
+      : direct === 1
+        ? '1 direct report'
+        : `${direct} direct reports`;
+
+  return (
+    <div className="flex flex-col items-center">
+      <span className={uiCx('h-3 w-0.5', LINE)} aria-hidden />
+      <button
+        type="button"
+        className={uiCx(
+          'relative z-20 -mt-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full border bg-white px-1 text-[10px] font-semibold leading-none shadow-sm',
+          expanded ? 'border-brand-red text-brand-red' : 'border-slate-300 text-slate-600 hover:border-slate-400',
+        )}
+        aria-label={expanded ? `Hide reports of ${name}` : `Show reports of ${name}`}
+        aria-expanded={expanded}
+        title={title}
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggle(node.id);
+        }}
+        onPointerDown={(e) => e.stopPropagation()}
+      >
+        {expanded ? (
+          <ChevronDown className="h-3 w-3 rotate-180" aria-hidden />
+        ) : (
+          <span>{direct > 99 ? '99+' : direct}</span>
+        )}
+      </button>
+      {expanded ? <span className={uiCx('relative z-0 -mt-1.5 mb-[-2px] h-3 w-0.5', LINE)} aria-hidden /> : null}
+    </div>
+  );
+}
+
+type OrgBranchProps = {
+  node: OrgTreeNode;
+  canViewUserDetails: boolean;
+  expandedIds: Set<string>;
+  searchQuery: string;
+  onToggle: (id: string) => void;
+  density: OrgDensity;
+};
+
+/** Split a wide leaf row into balanced rows, widest first so the parent stays centered. */
+function wrapLeafRows(nodes: OrgTreeNode[]): OrgTreeNode[][] {
+  const rowCount = Math.ceil(nodes.length / LEAF_ROW_SIZE);
+  const base = Math.floor(nodes.length / rowCount);
+  const extra = nodes.length % rowCount;
+  const rows: OrgTreeNode[][] = [];
+  let index = 0;
+  for (let row = 0; row < rowCount; row += 1) {
+    const size = base + (row < extra ? 1 : 0);
+    rows.push(nodes.slice(index, index + size));
+    index += size;
+  }
+  return rows;
+}
+
+function shouldWrapLeaves(nodes: OrgTreeNode[]): boolean {
+  return nodes.length > LEAF_ROW_SIZE && nodes.every((node) => node.children.length === 0);
+}
+
+function OrgRowBus({ isLast, anchorPx }: { isLast: boolean; anchorPx: number }) {
+  return (
+    <>
+      <span
+        className={uiCx('pointer-events-none absolute top-0 z-0 h-0.5', LINE)}
+        style={{ left: -BUS_GUTTER_PX, width: BUS_GUTTER_PX + anchorPx }}
+        aria-hidden
+      />
+      {isLast ? null : (
+        <span
+          className={uiCx('pointer-events-none absolute z-0 w-0.5', LINE)}
+          style={{ left: -BUS_GUTTER_PX, top: 0, height: `calc(100% + ${ROW_GAP_PX + 2}px)` }}
+          aria-hidden
+        />
+      )}
+    </>
+  );
+}
+
+function OrgLevel({
+  nodes,
+  forceDrop = false,
+  canViewUserDetails,
+  expandedIds,
+  searchQuery,
+  onToggle,
+  density,
+}: {
+  nodes: OrgTreeNode[];
+  forceDrop?: boolean;
+} & Omit<OrgBranchProps, 'node'>) {
+  const count = nodes.length;
+  const showRail = count > 1;
+  const showDrop = showRail || forceDrop;
+
+  return (
+    <div className="flex items-start">
+      {nodes.map((node, index) => (
+        <div
+          key={node.id}
+          className={uiCx('relative flex w-max flex-col items-center px-2', showDrop && 'pt-[18px]')}
+        >
+          {showRail ? <OrgElbow index={index} count={count} /> : null}
+          {forceDrop && count === 1 ? (
+            <span className={uiCx('pointer-events-none absolute left-1/2 top-0 z-0 h-[19px] w-0.5 -translate-x-1/2', LINE)} aria-hidden />
+          ) : null}
+          <OrgBranch
+            node={node}
+            canViewUserDetails={canViewUserDetails}
+            expandedIds={expandedIds}
+            searchQuery={searchQuery}
+            onToggle={onToggle}
+            density={density}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function OrgChildren(props: { nodes: OrgTreeNode[] } & Omit<OrgBranchProps, 'node'>) {
+  const { nodes, ...branchProps } = props;
+  if (!shouldWrapLeaves(nodes)) return <OrgLevel nodes={nodes} {...branchProps} />;
+
+  const rows = wrapLeafRows(nodes);
+  const anchorPx = cardAnchorPx(branchProps.density);
+  return (
+    <div
+      className="flex flex-col items-start"
+      style={{ gap: ROW_GAP_PX, paddingLeft: BUS_GUTTER_PX, paddingRight: BUS_GUTTER_PX }}
+    >
+      {rows.map((row, index) => (
+        <div key={row[0].id} className="relative">
+          <OrgRowBus isLast={index === rows.length - 1} anchorPx={anchorPx} />
+          <OrgLevel nodes={row} forceDrop={row.length === 1} {...branchProps} />
+        </div>
+      ))}
     </div>
   );
 }
@@ -190,48 +410,30 @@ function OrgBranch({
   canViewUserDetails,
   expandedIds,
   searchQuery,
-  ignoreCardClickRef,
   onToggle,
-}: {
-  node: OrgTreeNode;
-  canViewUserDetails: boolean;
-  expandedIds: Set<string>;
-  searchQuery: string;
-  ignoreCardClickRef: MutableRefObject<boolean>;
-  onToggle: (id: string) => void;
-}) {
+  density,
+}: OrgBranchProps) {
   const hasChildren = node.children.length > 0;
   const expanded = hasChildren && expandedIds.has(node.id);
 
   return (
-    <div className="flex min-w-[14.5rem] flex-col items-center">
+    <div className="flex w-max flex-col items-center">
       <OrgPersonCard
         node={node}
         canViewUserDetails={canViewUserDetails}
         searchQuery={searchQuery}
-        expanded={expanded}
-        ignoreCardClickRef={ignoreCardClickRef}
-        onToggle={onToggle}
+        density={density}
       />
+      {hasChildren ? <OrgToggle expanded={expanded} node={node} onToggle={onToggle} /> : null}
       {expanded ? (
-        <div className="flex w-full flex-col items-center">
-          <div className="h-5 w-px bg-gray-300" aria-hidden />
-          <ul className="flex flex-nowrap justify-center gap-x-5">
-            {node.children.map((child) => (
-              <li key={child.id} className="flex flex-col items-center">
-                <div className="h-4 w-px bg-gray-300" aria-hidden />
-                <OrgBranch
-                  node={child}
-                  canViewUserDetails={canViewUserDetails}
-                  expandedIds={expandedIds}
-                  searchQuery={searchQuery}
-                  ignoreCardClickRef={ignoreCardClickRef}
-                  onToggle={onToggle}
-                />
-              </li>
-            ))}
-          </ul>
-        </div>
+        <OrgChildren
+          nodes={node.children}
+          canViewUserDetails={canViewUserDetails}
+          expandedIds={expandedIds}
+          searchQuery={searchQuery}
+          onToggle={onToggle}
+          density={density}
+        />
       ) : null}
     </div>
   );
@@ -258,7 +460,7 @@ export function UserOrgTreeView({
   canViewUserDetails: boolean;
 }) {
   const forest = useMemo(() => buildUserOrgForest(people), [people]);
-  const visible = useMemo(() => filterOrgForestByQuery(forest, searchQuery), [forest, searchQuery]);
+  const visible = useMemo(() => focusOrgForestOnQuery(forest, searchQuery), [forest, searchQuery]);
   const visibleCount = countOrgForestPeople(visible);
   const peopleKey = useMemo(
     () => people.map((person) => `${person.id}:${person.manager_user_id || ''}`).join(','),
@@ -266,11 +468,17 @@ export function UserOrgTreeView({
   );
 
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
+  const [density, setDensity] = useState<OrgDensity>(() => {
+    const saved = localStorage.getItem(DENSITY_STORAGE_KEY);
+    return saved === 'initials' ? 'initials' : 'names';
+  });
+  const prevSearchRef = useRef('');
   const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, zoom: 1 });
   const [isDragging, setIsDragging] = useState(false);
+  const navigate = useNavigate();
   const viewportRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-  const ignoreCardClickRef = useRef(false);
+  const pressPersonIdRef = useRef<string | null>(null);
   const dragRef = useRef<{
     pointerId: number;
     startX: number;
@@ -321,6 +529,10 @@ export function UserOrgTreeView({
   }, []);
 
   useLayoutEffect(() => {
+    shouldCenterRef.current = true;
+  }, [density]);
+
+  useLayoutEffect(() => {
     if (!shouldCenterRef.current) return;
     let cancelled = false;
     const frame = requestAnimationFrame(() => {
@@ -334,18 +546,25 @@ export function UserOrgTreeView({
       cancelled = true;
       cancelAnimationFrame(frame);
     };
-  }, [peopleKey, expandedIds, centerContent]);
+  }, [peopleKey, expandedIds, density, centerContent]);
 
   useEffect(() => {
-    if (!searchQuery.trim()) return;
-    const ancestorIds = orgAncestorIdsToExpand([...visible.teams, ...visible.unassigned], searchQuery);
-    if (ancestorIds.size === 0) return;
-    setExpandedIds((prev) => {
-      const next = new Set(prev);
-      ancestorIds.forEach((id) => next.add(id));
-      return next;
-    });
-  }, [searchQuery, visible]);
+    localStorage.setItem(DENSITY_STORAGE_KEY, density);
+  }, [density]);
+
+  useEffect(() => {
+    const query = searchQuery.trim();
+    const previous = prevSearchRef.current;
+    prevSearchRef.current = query;
+    if (!query) {
+      if (!previous) return;
+      setExpandedIds(new Set(forest.teams.map((node) => node.id)));
+      shouldCenterRef.current = true;
+      return;
+    }
+    setExpandedIds(new Set(collectOrgNodeIdsWithChildren([...visible.teams, ...visible.unassigned])));
+    shouldCenterRef.current = true;
+  }, [searchQuery, visible, forest.teams]);
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -394,6 +613,8 @@ export function UserOrgTreeView({
     if (event.button !== 0) return;
     const target = event.target as HTMLElement;
     if (target.closest('[data-org-zoom], button')) return;
+    const person = target.closest('[data-org-person]');
+    pressPersonIdRef.current = person?.getAttribute('data-org-person') ?? null;
     event.currentTarget.setPointerCapture(event.pointerId);
     dragRef.current = {
       pointerId: event.pointerId,
@@ -403,7 +624,6 @@ export function UserOrgTreeView({
       originY: cameraRef.current.y,
       moved: false,
     };
-    setIsDragging(true);
   };
 
   const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -412,27 +632,27 @@ export function UserOrgTreeView({
     const dx = event.clientX - drag.startX;
     const dy = event.clientY - drag.startY;
     if (!drag.moved && dx * dx + dy * dy < PAN_CLICK_SLOP_PX * PAN_CLICK_SLOP_PX) return;
+    if (!drag.moved) setIsDragging(true);
     drag.moved = true;
-    ignoreCardClickRef.current = true;
+    pressPersonIdRef.current = null;
     setCamera((prev) => ({ ...prev, x: drag.originX + dx, y: drag.originY + dy }));
   };
 
-  const endPan = (event: ReactPointerEvent<HTMLDivElement>) => {
+  const endPan = (event: ReactPointerEvent<HTMLDivElement>, openPerson: boolean) => {
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
+    const personId = pressPersonIdRef.current;
     const moved = drag.moved;
     dragRef.current = null;
+    pressPersonIdRef.current = null;
     setIsDragging(false);
-    if (moved) {
-      ignoreCardClickRef.current = true;
-      window.setTimeout(() => {
-        ignoreCardClickRef.current = false;
-      }, 0);
-    }
     try {
       event.currentTarget.releasePointerCapture(event.pointerId);
     } catch {
       // already released
+    }
+    if (openPerson && !moved && personId && canViewUserDetails) {
+      navigate(`/users/${encodeURIComponent(personId)}`);
     }
   };
 
@@ -447,28 +667,12 @@ export function UserOrgTreeView({
   }
 
   return (
-    <div>
-      <div className={uiCx(uiSpacing.cardPadding, 'flex flex-wrap items-start justify-between gap-3 border-b border-gray-100')}>
-        <AppSectionHeader
-          title="Organization"
-          description="Drag to pan the chart, scroll to zoom. Expand a person to see who reports to them."
-        />
-        <div className={uiLayout.actionsRow}>
-          <AppButton type="button" variant="ghost" size="sm" onClick={expandAll}>
-            Expand all
-          </AppButton>
-          <AppButton type="button" variant="ghost" size="sm" onClick={collapseAll}>
-            Collapse all
-          </AppButton>
-        </div>
-      </div>
-
-      <div
+    <div
         ref={viewportRef}
         className={uiCx(
           'relative h-[min(72vh,760px)] overflow-hidden select-none',
           'bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] bg-[size:18px_18px] bg-gray-50',
-          isDragging ? 'cursor-grabbing' : 'cursor-grab',
+          isDragging ? 'cursor-grabbing [&_*]:cursor-grabbing' : 'cursor-grab',
         )}
         style={{ touchAction: 'none' }}
         tabIndex={0}
@@ -476,8 +680,8 @@ export function UserOrgTreeView({
         aria-label="Organization chart canvas. Drag to pan, scroll to zoom."
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
-        onPointerUp={endPan}
-        onPointerCancel={endPan}
+        onPointerUp={(event) => endPan(event, true)}
+        onPointerCancel={(event) => endPan(event, false)}
         onDragStart={(event) => event.preventDefault()}
         onKeyDown={(event) => {
           if (event.key === '+' || event.key === '=') {
@@ -496,6 +700,64 @@ export function UserOrgTreeView({
         }}
       >
         <div
+          data-org-zoom="true"
+          className={uiCx('absolute left-3 top-3 z-20 px-2.5 py-2', canvasChrome)}
+          aria-label="Chart actions"
+        >
+          <ul className="flex flex-col gap-1.5">
+            {ORG_LEGEND.map(({ icon: Icon, label }) => (
+              <li key={label} className="flex items-center gap-2 text-[11px] font-medium leading-none text-gray-600">
+                <Icon className="h-3.5 w-3.5 shrink-0 text-gray-500" aria-hidden />
+                <span>{label}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div data-org-zoom="true" className="absolute right-3 top-3 z-20 flex items-center gap-2">
+          <div className={uiCx('flex overflow-hidden', canvasChrome)} role="group" aria-label="Expand or collapse the chart">
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-gray-600 hover:bg-gray-50"
+              onClick={expandAll}
+            >
+              <UnfoldVertical className="h-3.5 w-3.5" aria-hidden />
+              Expand all
+            </button>
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 border-l border-gray-200 px-2.5 py-1 text-xs font-semibold text-gray-600 hover:bg-gray-50"
+              onClick={collapseAll}
+            >
+              <FoldVertical className="h-3.5 w-3.5" aria-hidden />
+              Collapse all
+            </button>
+          </div>
+          <div className={uiCx('flex overflow-hidden', canvasChrome)} role="group" aria-label="How much to show on each person">
+            {(
+              [
+                ['names', 'Names'],
+                ['initials', 'Initials'],
+              ] as const
+            ).map(([value, label]) => {
+              const active = density === value;
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  className={uiCx(
+                    'px-2.5 py-1 text-xs font-semibold',
+                    active ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-50',
+                  )}
+                  aria-pressed={active}
+                  onClick={() => setDensity(value)}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div
           ref={contentRef}
           className="absolute left-0 top-0 inline-flex flex-col items-center gap-10 px-8 py-6 will-change-transform"
           style={{
@@ -504,7 +766,7 @@ export function UserOrgTreeView({
           }}
         >
           {visible.teams.length > 0 ? (
-            <div className="flex flex-nowrap items-start justify-center gap-x-10">
+            <div className="flex flex-nowrap items-start justify-center gap-x-6">
               {visible.teams.map((node) => (
                 <OrgBranch
                   key={node.id}
@@ -512,8 +774,8 @@ export function UserOrgTreeView({
                   canViewUserDetails={canViewUserDetails}
                   expandedIds={expandedIds}
                   searchQuery={searchQuery}
-                  ignoreCardClickRef={ignoreCardClickRef}
                   onToggle={toggleNode}
+                  density={density}
                 />
               ))}
             </div>
@@ -525,16 +787,14 @@ export function UserOrgTreeView({
                 <h3 className={uiTypography.sectionTitle}>No supervisor</h3>
                 <p className={uiTypography.helper}>People without a supervisor and with no direct reports.</p>
               </div>
-              <div className="flex flex-wrap justify-center gap-4">
+              <div className="flex flex-wrap justify-center gap-2">
                 {visible.unassigned.map((node) => (
                   <OrgPersonCard
                     key={node.id}
                     node={node}
                     canViewUserDetails={canViewUserDetails}
                     searchQuery={searchQuery}
-                    expanded={false}
-                    ignoreCardClickRef={ignoreCardClickRef}
-                    onToggle={toggleNode}
+                    density={density}
                   />
                 ))}
               </div>
@@ -544,11 +804,7 @@ export function UserOrgTreeView({
 
         <div
           data-org-zoom="true"
-          className={uiCx(
-            'absolute bottom-3 right-3 flex overflow-hidden bg-white shadow-sm',
-            uiRadius.control,
-            uiBorders.subtle,
-          )}
+          className={uiCx('absolute bottom-3 right-3 flex overflow-hidden', canvasChrome)}
         >
           <AppTooltip content="Zoom out">
             <AppButton
@@ -601,7 +857,6 @@ export function UserOrgTreeView({
             </AppButton>
           </AppTooltip>
         </div>
-      </div>
     </div>
   );
 }

@@ -40,6 +40,7 @@ import {
   uiTypography,
 } from '@/components/ui';
 import DynamicSafetyForm from '@/components/DynamicSafetyForm';
+import FormCustomListPickerModal from '@/components/form/FormCustomListPickerModal';
 import {
   DEFAULT_DEFINITION,
   FIELD_TYPE_OPTIONS,
@@ -345,6 +346,7 @@ export default function FormTemplateEditorPage() {
   const { id: templateId } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
+  const isNew = templateId === 'new';
   const isEmployeeReviewEditor = location.pathname.startsWith('/reviews/form-templates');
   const isConstructionFieldworkEditor = location.pathname.startsWith('/fieldwork/form-templates');
   const isRmFieldworkEditor = location.pathname.startsWith('/rm-fieldwork/form-templates');
@@ -364,6 +366,16 @@ export default function FormTemplateEditorPage() {
     : isRmFieldworkEditor
       ? '/rm-fieldwork/form-custom-lists'
       : '/documents/form-custom-lists';
+  const defaultNewName = isEmployeeReviewEditor
+    ? 'New employee review template'
+    : isFieldworkEditor
+      ? 'New site assessment template'
+      : 'New form template';
+  const defaultNewCategory = isEmployeeReviewEditor
+    ? 'employee_review'
+    : isFieldworkEditor
+      ? 'site_assessment'
+      : 'inspection';
   const qc = useQueryClient();
   const confirm = useConfirm();
   const [localName, setLocalName] = useState('');
@@ -377,6 +389,9 @@ export default function FormTemplateEditorPage() {
     defaultFieldworkSettings('site_assessment', fieldworkDefaultLine)
   );
   const [versionLabel, setVersionLabel] = useState('');
+  /** Snapshot of pristine local draft for `/new` — leave without edits skips confirm. */
+  const [newBaseline, setNewBaseline] = useState<string | null>(null);
+  const newDraftInitializedRef = useRef(false);
   const [previewPayload, setPreviewPayload] = useState<Record<string, unknown>>({});
   const [tab, setTab] = useState<'build' | 'preview'>('build');
   const [showTypeModal, setShowTypeModal] = useState(false);
@@ -385,8 +400,12 @@ export default function FormTemplateEditorPage() {
   const [modalItemName, setModalItemName] = useState('');
   const [modalCustomListId, setModalCustomListId] = useState('');
   const [sigRequired, setSigRequired] = useState(false);
-  const [customListEdit, setCustomListEdit] = useState<{ sectionId: string; fieldId: string } | null>(null);
-  const [customListEditDraft, setCustomListEditDraft] = useState('');
+  const [customListEdit, setCustomListEdit] = useState<{
+    sectionId: string;
+    fieldId: string;
+    fieldLabel?: string;
+  } | null>(null);
+  const [pickListForNewField, setPickListForNewField] = useState(false);
   const [imageViewEdit, setImageViewEdit] = useState<{ sectionId: string; fieldId: string } | null>(null);
   const [imageViewDraftMulti, setImageViewDraftMulti] = useState(true);
   const [imageViewDraftMax, setImageViewDraftMax] = useState(8);
@@ -408,8 +427,37 @@ export default function FormTemplateEditorPage() {
   const { data: tmpl, isLoading } = useQuery({
     queryKey: ['formTemplate', templateId],
     queryFn: () => api<TemplateDetail>('GET', `/form-templates/${encodeURIComponent(templateId!)}`),
-    enabled: !!templateId,
+    enabled: !!templateId && !isNew,
   });
+
+  useEffect(() => {
+    if (!isNew || newDraftInitializedRef.current) return;
+    newDraftInitializedRef.current = true;
+    const name = defaultNewName;
+    const cat = defaultNewCategory;
+    const def = { ...DEFAULT_DEFINITION, sections: [] };
+    const fw = defaultFieldworkSettings(cat, fieldworkDefaultLine);
+    setLocalName(name);
+    setDescription('');
+    setCategory(cat);
+    setStatus('active');
+    setVersionLabel('');
+    setDefinition(def);
+    setSigRequired(false);
+    setFieldworkSettings(fw);
+    setNewBaseline(
+      serializePersistedFormState(
+        def,
+        false,
+        name,
+        '',
+        cat,
+        'active',
+        '',
+        isFieldworkEditor ? fw : null
+      )
+    );
+  }, [isNew, defaultNewName, defaultNewCategory, fieldworkDefaultLine, isFieldworkEditor]);
 
   const { data: customListsForPicker = [] } = useQuery({
     queryKey: ['formCustomLists', isFieldworkEditor ? 'fieldwork-picker' : 'default'],
@@ -429,14 +477,6 @@ export default function FormTemplateEditorPage() {
         return true;
       }),
     [customListsForPicker, isFieldworkEditor]
-  );
-
-  const customListSelectOptions = useMemo(
-    () => [
-      { value: '', label: 'None (clear)' },
-      ...activeCustomLists.map((L) => ({ value: L.id, label: L.name })),
-    ],
-    [activeCustomLists]
   );
 
   useEffect(() => {
@@ -483,60 +523,97 @@ export default function FormTemplateEditorPage() {
         : 'site_assessment'
       : category.trim() || 'inspection';
 
+  const buildDefinitionForSave = useCallback((): SafetyFormDefinition => {
+    return {
+      ...definition,
+      signature_policy: {
+        ...definition.signature_policy,
+        worker: {
+          ...definition.signature_policy?.worker,
+          required: sigRequired,
+          mode: 'drawn',
+        },
+      },
+      ...(isFieldworkEditor
+        ? {
+            fieldwork_settings: {
+              require_final_comments: Boolean(fieldworkSettings.require_final_comments),
+              require_min_photos: Math.max(0, Number(fieldworkSettings.require_min_photos) || 0),
+              default_pictures_folder:
+                fieldworkSettings.default_pictures_folder ||
+                defaultFieldworkSettings(categoryForSave, fieldworkDefaultLine).default_pictures_folder,
+              business_lines:
+                Array.isArray(fieldworkSettings.business_lines) && fieldworkSettings.business_lines.length
+                  ? fieldworkSettings.business_lines
+                  : [fieldworkDefaultLine],
+            },
+          }
+        : {}),
+    };
+  }, [
+    definition,
+    sigRequired,
+    isFieldworkEditor,
+    fieldworkSettings,
+    categoryForSave,
+    fieldworkDefaultLine,
+  ]);
+
   const saveFormMut = useMutation({
     mutationFn: async () => {
       if (!templateId) throw new Error('No template');
-      const def: SafetyFormDefinition = {
-        ...definition,
-        signature_policy: {
-          ...definition.signature_policy,
-          worker: {
-            ...definition.signature_policy?.worker,
-            required: sigRequired,
-            mode: 'drawn',
-          },
-        },
-        ...(isFieldworkEditor
-          ? {
-              fieldwork_settings: {
-                require_final_comments: Boolean(fieldworkSettings.require_final_comments),
-                require_min_photos: Math.max(0, Number(fieldworkSettings.require_min_photos) || 0),
-                default_pictures_folder:
-                  fieldworkSettings.default_pictures_folder ||
-                  defaultFieldworkSettings(categoryForSave, fieldworkDefaultLine).default_pictures_folder,
-                business_lines:
-                  Array.isArray(fieldworkSettings.business_lines) && fieldworkSettings.business_lines.length
-                    ? fieldworkSettings.business_lines
-                    : [fieldworkDefaultLine],
-              },
-            }
-          : {}),
-      };
-      return api<TemplateDetail>('PUT', `/form-templates/${encodeURIComponent(templateId)}`, {
+      const name = localName.trim() || 'Untitled';
+      const def = buildDefinitionForSave();
+      if (isNew) {
+        const created = await api<TemplateDetail>('POST', '/form-templates', {
+          name,
+          description: description.trim() || null,
+          category: categoryForSave,
+          status,
+        });
+        const saved = await api<TemplateDetail>('PUT', `/form-templates/${encodeURIComponent(created.id)}`, {
+          definition: def,
+          version_label: versionLabel.trim(),
+          name,
+          description: description.trim() || null,
+          category: categoryForSave,
+          status,
+          expected_definition_version:
+            typeof created.definition_version === 'number' ? created.definition_version : 1,
+        });
+        return { saved, createdId: created.id, wasNew: true as const };
+      }
+      const saved = await api<TemplateDetail>('PUT', `/form-templates/${encodeURIComponent(templateId)}`, {
         definition: def,
         version_label: versionLabel.trim(),
-        name: localName.trim() || 'Untitled',
+        name,
         description: description.trim() || null,
         category: categoryForSave,
         status,
         expected_definition_version:
           typeof tmpl?.definition_version === 'number' ? tmpl.definition_version : undefined,
       });
+      return { saved, createdId: templateId, wasNew: false as const };
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['formTemplate', templateId] });
+    onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ['formTemplates'] });
+      if (result.wasNew) {
+        toast.success('Template created');
+        navigate(`${listPath}/${encodeURIComponent(result.createdId)}`, { replace: true });
+        return;
+      }
+      qc.invalidateQueries({ queryKey: ['formTemplate', templateId] });
       toast.success('Saved');
     },
     onError: (err: unknown) => {
       const statusCode = (err as { status?: number; response?: { status?: number } })?.status
         ?? (err as { response?: { status?: number } })?.response?.status;
-      if (statusCode === 409) {
+      if (statusCode === 409 && !isNew) {
         qc.invalidateQueries({ queryKey: ['formTemplate', templateId] });
         toast.error('This template was changed elsewhere. Reloaded — review and save again.');
         return;
       }
-      toast.error('Could not save');
+      toast.error(isNew ? 'Could not create template' : 'Could not save');
     },
   });
 
@@ -604,7 +681,7 @@ export default function FormTemplateEditorPage() {
     const trimmed = localName.trim();
     if (!trimmed) {
       toast.error('Template name cannot be empty');
-      setLocalName(tmpl?.name || '');
+      setLocalName(tmpl?.name || defaultNewName);
       window.setTimeout(() => {
         templateNameInputRef.current?.focus();
         templateNameInputRef.current?.select();
@@ -612,14 +689,14 @@ export default function FormTemplateEditorPage() {
       return;
     }
     setEditingTemplateName(false);
-    if (tmpl && trimmed !== (tmpl.name || '').trim()) {
+    if (!isNew && tmpl && trimmed !== (tmpl.name || '').trim()) {
       saveMetaMut.mutate({ name: trimmed });
     }
   };
 
   const cancelTemplateNameEdit = () => {
     skipTemplateNameCommitRef.current = true;
-    setLocalName(tmpl?.name || '');
+    setLocalName(tmpl?.name || defaultNewName);
     setEditingTemplateName(false);
   };
 
@@ -630,7 +707,7 @@ export default function FormTemplateEditorPage() {
     }
     setEditingVersionLabel(false);
     const trimmed = versionLabel.trim();
-    if (tmpl && trimmed !== (tmpl.version_label || '').trim()) {
+    if (!isNew && tmpl && trimmed !== (tmpl.version_label || '').trim()) {
       saveMetaMut.mutate({ version_label: trimmed });
     }
   };
@@ -674,9 +751,6 @@ export default function FormTemplateEditorPage() {
   };
 
   const hasUnsavedChanges = useMemo(() => {
-    if (!tmpl?.definition) return false;
-    const remote = snapshotFormFromTmpl(tmpl, isFieldworkEditor);
-    if (remote === null) return false;
     const local = serializePersistedFormState(
       definition,
       sigRequired,
@@ -687,19 +761,54 @@ export default function FormTemplateEditorPage() {
       versionLabel,
       isFieldworkEditor ? fieldworkSettings : null
     );
+    if (isNew) {
+      if (!newBaseline) return false;
+      return local !== newBaseline;
+    }
+    if (!tmpl?.definition) return false;
+    const remote = snapshotFormFromTmpl(tmpl, isFieldworkEditor);
+    if (remote === null) return false;
     return local !== remote;
-  }, [tmpl, definition, sigRequired, localName, description, categoryForSave, status, versionLabel, isFieldworkEditor, fieldworkSettings]);
+  }, [
+    isNew,
+    newBaseline,
+    tmpl,
+    definition,
+    sigRequired,
+    localName,
+    description,
+    categoryForSave,
+    status,
+    versionLabel,
+    isFieldworkEditor,
+    fieldworkSettings,
+  ]);
 
   const flushSaveAll = useCallback(async () => {
     if (!templateId) throw new Error('Cannot save');
-    await saveFormMut.mutateAsync();
-    await qc.refetchQueries({ queryKey: ['formTemplate', templateId] });
+    const result = await saveFormMut.mutateAsync();
+    if (!result.wasNew) {
+      await qc.refetchQueries({ queryKey: ['formTemplate', templateId] });
+    }
   }, [templateId, qc, saveFormMut]);
 
   const handleGuardDiscard = useCallback(() => {
-    if (!tmpl?.definition) return;
     setEditingTemplateName(false);
     setEditingVersionLabel(false);
+    if (isNew) {
+      const def = { ...DEFAULT_DEFINITION, sections: [] };
+      const fw = defaultFieldworkSettings(defaultNewCategory, fieldworkDefaultLine);
+      setLocalName(defaultNewName);
+      setVersionLabel('');
+      setDescription('');
+      setCategory(defaultNewCategory);
+      setStatus('active');
+      setDefinition(def);
+      setSigRequired(false);
+      setFieldworkSettings(fw);
+      return;
+    }
+    if (!tmpl?.definition) return;
     setLocalName(tmpl.name || '');
     setVersionLabel(tmpl.version_label || '');
     const td = tmpl.description;
@@ -725,7 +834,14 @@ export default function FormTemplateEditorPage() {
             : defaults.business_lines,
       });
     }
-  }, [tmpl, isFieldworkEditor, fieldworkDefaultLine]);
+  }, [
+    isNew,
+    defaultNewName,
+    defaultNewCategory,
+    tmpl,
+    isFieldworkEditor,
+    fieldworkDefaultLine,
+  ]);
 
   useUnsavedChangesGuard(hasUnsavedChanges, flushSaveAll, handleGuardDiscard);
 
@@ -913,7 +1029,10 @@ export default function FormTemplateEditorPage() {
     }));
   };
 
-  const closeCustomListModal = () => setCustomListEdit(null);
+  const closeCustomListPicker = () => {
+    setCustomListEdit(null);
+    setPickListForNewField(false);
+  };
 
   const closeImageViewModal = useCallback(() => setImageViewEdit(null), []);
 
@@ -1025,21 +1144,27 @@ export default function FormTemplateEditorPage() {
     return () => window.removeEventListener('keydown', onKey);
   }, [pdfViewEdit, pdfBuilderPreview, closePdfViewModal]);
 
-  const saveCustomListModal = () => {
-    if (!customListEdit) return;
-    const id = customListEditDraft.trim();
-    if (!id) {
-      updateField(customListEdit.sectionId, customListEdit.fieldId, {
-        optionsSource: undefined,
-        options: undefined,
-      });
-    } else {
-      updateField(customListEdit.sectionId, customListEdit.fieldId, {
-        optionsSource: { type: 'custom_list', customListId: id },
-        options: undefined,
-      });
+  const applyCustomListPicker = (id: string) => {
+    const trimmed = id.trim();
+    if (customListEdit) {
+      if (!trimmed) {
+        updateField(customListEdit.sectionId, customListEdit.fieldId, {
+          optionsSource: undefined,
+          options: undefined,
+        });
+      } else {
+        updateField(customListEdit.sectionId, customListEdit.fieldId, {
+          optionsSource: { type: 'custom_list', customListId: trimmed },
+          options: undefined,
+        });
+      }
+      setCustomListEdit(null);
+      return;
     }
-    setCustomListEdit(null);
+    if (pickListForNewField) {
+      setModalCustomListId(trimmed);
+      setPickListForNewField(false);
+    }
   };
 
   const sorted = useMemo(() => {
@@ -1101,7 +1226,7 @@ export default function FormTemplateEditorPage() {
 
   return (
     <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50 pb-24')}>
-      {isLoading || !tmpl ? (
+      {!isNew && (isLoading || !tmpl) ? (
         <AppCard>
           <p className={uiCx(uiTypography.body, 'text-center text-gray-600 py-6')}>Loading…</p>
         </AppCard>
@@ -1272,9 +1397,9 @@ export default function FormTemplateEditorPage() {
                                         ? 'Invoice Photos'
                                         : 'Proposal Photos',
                                 }));
-                                saveMetaMut.mutate({ category: next });
+                                if (!isNew) saveMetaMut.mutate({ category: next });
                               }}
-                              disabled={saveMetaMut.isPending}
+                              disabled={!isNew && saveMetaMut.isPending}
                               aria-label="Template type"
                               className="min-w-[11rem]"
                               options={[
@@ -1288,9 +1413,9 @@ export default function FormTemplateEditorPage() {
                               onChange={(e) => {
                                 const next = e.target.value === 'follow_up' ? 'follow_up' : 'inspection';
                                 setCategory(next);
-                                saveMetaMut.mutate({ category: next });
+                                if (!isNew) saveMetaMut.mutate({ category: next });
                               }}
-                              disabled={saveMetaMut.isPending}
+                              disabled={!isNew && saveMetaMut.isPending}
                               aria-label="Template type"
                               className="min-w-[9rem]"
                               options={[
@@ -1305,11 +1430,11 @@ export default function FormTemplateEditorPage() {
                         className="flex items-center gap-2.5 cursor-pointer select-none"
                         onClick={(e) => {
                           if ((e.target as HTMLElement).closest('button')) return;
-                          if (saveMetaMut.isPending) return;
+                          if (!isNew && saveMetaMut.isPending) return;
                           const st = (status || '').toLowerCase();
                           const next = st === 'active' ? 'inactive' : 'active';
                           setStatus(next);
-                          saveMetaMut.mutate({ status: next });
+                          if (!isNew) saveMetaMut.mutate({ status: next });
                         }}
                       >
                         <span className="text-sm text-gray-700">{status === 'active' ? 'Active' : 'Inactive'}</span>
@@ -1317,7 +1442,7 @@ export default function FormTemplateEditorPage() {
                           type="button"
                           role="switch"
                           aria-checked={status === 'active'}
-                          disabled={saveMetaMut.isPending}
+                          disabled={!isNew && saveMetaMut.isPending}
                           title={status === 'active' ? 'Active' : 'Inactive'}
                           aria-label={
                             status === 'active' ? 'Template is active. Click to deactivate.' : 'Template is inactive. Click to activate.'
@@ -1326,7 +1451,7 @@ export default function FormTemplateEditorPage() {
                             const st = (status || '').toLowerCase();
                             const next = st === 'active' ? 'inactive' : 'active';
                             setStatus(next);
-                            saveMetaMut.mutate({ status: next });
+                            if (!isNew) saveMetaMut.mutate({ status: next });
                           }}
                           className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-gray-300 focus:ring-offset-1 disabled:opacity-50 ${
                             status === 'active' ? 'bg-gray-900 border-gray-900' : 'bg-gray-200 border-gray-300'
@@ -1701,8 +1826,11 @@ export default function FormTemplateEditorPage() {
                                                   : 'Choose custom list'
                                               }
                                               onClick={() => {
-                                                setCustomListEdit({ sectionId: sec.id, fieldId: field.id });
-                                                setCustomListEditDraft(field.optionsSource?.customListId || '');
+                                                setCustomListEdit({
+                                                  sectionId: sec.id,
+                                                  fieldId: field.id,
+                                                  fieldLabel: field.label,
+                                                });
                                               }}
                                               className="shrink-0 h-9 w-9 inline-flex items-center justify-center text-gray-400 hover:text-blue-600 rounded-lg bg-transparent border-0 cursor-pointer transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/25"
                                             >
@@ -1844,45 +1972,40 @@ export default function FormTemplateEditorPage() {
             )}
           >
             <AppButton type="button" disabled={saveFormMut.isPending} onClick={() => saveFormMut.mutate()}>
-              {saveFormMut.isPending ? 'Saving…' : 'Save form'}
+              {saveFormMut.isPending
+                ? isNew
+                  ? 'Creating…'
+                  : 'Saving…'
+                : isNew
+                  ? 'Create template'
+                  : 'Save form'}
             </AppButton>
           </div>
         </>
       )}
 
-      <AppFormModal
-        open={Boolean(customListEdit)}
-        onClose={closeCustomListModal}
-        title="Custom list"
-        description="Choose which reusable list supplies options for this dropdown."
-        footer={
-          <>
-            <AppButton type="button" variant="secondary" onClick={closeCustomListModal}>
-              Cancel
-            </AppButton>
-            <AppButton type="button" onClick={saveCustomListModal}>
-              Save
-            </AppButton>
-          </>
+      <FormCustomListPickerModal
+        open={Boolean(customListEdit) || pickListForNewField}
+        onClose={closeCustomListPicker}
+        value={
+          customListEdit
+            ? (() => {
+                const sec = definition.sections.find((s) => s.id === customListEdit.sectionId);
+                const f = sec?.fields.find((fld) => fld.id === customListEdit.fieldId);
+                return f?.optionsSource?.customListId || '';
+              })()
+            : modalCustomListId
         }
-      >
-        <div className={uiSpacing.sectionStack}>
-          <AppSelect
-            label="List"
-            searchable
-            value={customListEditDraft}
-            onChange={(e) => setCustomListEditDraft(e.target.value)}
-            options={customListSelectOptions}
-          />
-          <p className={uiTypography.helper}>
-            Create or edit lists under{' '}
-            <Link to={customListsPath} className="text-brand-red hover:underline" onClick={(e) => e.stopPropagation()}>
-              Form Custom Lists
-            </Link>
-            .
-          </p>
-        </div>
-      </AppFormModal>
+        onSave={applyCustomListPicker}
+        domain={isFieldworkEditor ? 'fieldwork' : 'safety'}
+        fieldLabel={
+          customListEdit?.fieldLabel ||
+          (pickListForNewField ? modalItemName : undefined)
+        }
+        allowClear={Boolean(customListEdit)}
+        requireSelection={pickListForNewField}
+        overlayClassName={pickListForNewField ? 'z-[200]' : undefined}
+      />
 
       <AppFormModal
         open={Boolean(imageViewEdit)}
@@ -2122,21 +2245,21 @@ export default function FormTemplateEditorPage() {
                   </div>
                   {(opt.type === 'dropdown_single' || opt.type === 'dropdown_multi') && (
                     <div className={uiCx('flex flex-col gap-2 min-w-0 pl-12 w-full', uiSpacing.sectionStack)}>
-                      <AppSelect
-                        label="Custom list *"
-                        searchable
-                        value={modalCustomListId}
-                        onChange={(e) => setModalCustomListId(e.target.value)}
-                        options={activeCustomLists.map((L) => ({ value: L.id, label: L.name }))}
-                        placeholder={activeCustomLists.length === 0 ? 'No active lists yet' : 'Select custom list…'}
-                      />
-                      <p className={uiTypography.helper}>
-                        Create lists under{' '}
-                        <Link to={customListsPath} className="text-brand-red hover:underline" onClick={(e) => e.stopPropagation()}>
-                          Form Custom Lists
-                        </Link>{' '}
-                        if none appear here.
-                      </p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className={uiCx(uiTypography.helper, 'min-w-0 flex-1')}>
+                          {modalCustomListId
+                            ? `List: ${activeCustomLists.find((l) => l.id === modalCustomListId)?.name || 'Selected'}`
+                            : 'Choose a custom list for this dropdown.'}
+                        </p>
+                        <AppButton
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => setPickListForNewField(true)}
+                        >
+                          {modalCustomListId ? 'Change list' : 'Choose list'}
+                        </AppButton>
+                      </div>
                     </div>
                   )}
                 </div>

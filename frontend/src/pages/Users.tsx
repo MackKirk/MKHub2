@@ -805,7 +805,7 @@ export default function Users(){
           viewMode === 'hierarchy' && (orgTree?.total || 0) > 0 ? (
             <p className={uiTypography.helper}>
               {searchQuery.trim()
-                ? 'Search keeps the reporting path so you can see who sits above a match.'
+                ? 'Search shows each match, everyone who reports to them, and the managers above.'
                 : `${orgTree?.total || 0} people in this org chart`}
               {orgTree?.truncated ? ' (showing the first 5,000)' : ''}
             </p>
@@ -862,23 +862,11 @@ export default function Users(){
             </div>
           )
         ) : viewMode === 'hierarchy' ? (
-          <div className="flex flex-col">
-            {canInviteUser ? (
-              <div className={uiSpacing.cardPadding}>
-                <AppListCreateItem
-                  label="Invite User"
-                  layout="row"
-                  className="w-full"
-                  onClick={() => setShowInviteModal(true)}
-                />
-              </div>
-            ) : null}
-            <UserOrgTreeView
-              people={orgTree?.items || []}
-              searchQuery={searchQuery}
-              canViewUserDetails={canViewUserDetails}
-            />
-          </div>
+          <UserOrgTreeView
+            people={orgTree?.items || []}
+            searchQuery={searchQuery}
+            canViewUserDetails={canViewUserDetails}
+          />
         ) : users.length === 0 ? (
           <div className={uiSpacing.sectionStack}>
             {canInviteUser ? (
