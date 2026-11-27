@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { ChevronDown, FoldVertical, Hand, Maximize2, Mouse, Search, Star, UnfoldVertical, UserRound, ZoomIn, ZoomOut } from 'lucide-react';
+import { ChevronDown, FoldVertical, Hand, Maximize2, Mouse, Printer, Search, Star, UnfoldVertical, UserRound, ZoomIn, ZoomOut } from 'lucide-react';
 import { withFileAccessToken } from '@/lib/api';
 import {
   buildUserOrgForest,
@@ -40,6 +41,31 @@ const BUS_GUTTER_PX = 18;
 const LINE = 'bg-slate-500';
 const LINE_BORDER = 'border-slate-500';
 const DENSITY_STORAGE_KEY = 'users-org-card-density';
+/** Landscape letter/A4 content box, after page margin and the print header. */
+const PRINT_CHART_MAX_W = 980;
+const PRINT_CHART_MAX_H = 640;
+const ORG_PRINT_CSS = `
+@media print {
+  @page { size: landscape; margin: 8mm; }
+  html, body { background: #fff !important; height: auto !important; }
+  body > *:not(#org-print-root) { display: none !important; }
+  #org-print-root {
+    display: block !important;
+    position: static !important;
+    opacity: 1 !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  #org-print-root * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+`;
 
 const ORG_LEGEND = [
   { icon: Hand, label: 'Drag to pan' },
@@ -79,11 +105,13 @@ function OrgPersonCard({
   canViewUserDetails,
   searchQuery,
   density,
+  forPrint = false,
 }: {
   node: OrgTreeNode;
   canViewUserDetails: boolean;
   searchQuery: string;
   density: OrgDensity;
+  forPrint?: boolean;
 }) {
   const navigate = useNavigate();
   const isAdmin = (node.roles || []).some((role) => String(role || '').toLowerCase() === 'admin');
@@ -149,6 +177,22 @@ function OrgPersonCard({
   };
 
   if (density === 'initials') {
+    const mark = (
+      <div
+        {...cardProps}
+        className={uiCx(
+          'relative flex h-10 w-10 items-center justify-center rounded-full border bg-white text-[11px] font-semibold text-gray-800 shadow-sm',
+          canViewUserDetails && !forPrint && 'cursor-pointer hover:border-gray-400',
+          isMatch ? 'border-brand-red bg-red-50 text-brand-red ring-2 ring-brand-red/20' : 'border-gray-300',
+          isInactive && 'opacity-80',
+        )}
+        aria-label={name}
+      >
+        {initials}
+        {status}
+      </div>
+    );
+    if (forPrint) return mark;
     return (
       <AppTooltip
         wrap
@@ -163,19 +207,7 @@ function OrgPersonCard({
           </span>
         }
       >
-        <div
-          {...cardProps}
-          className={uiCx(
-            'relative flex h-10 w-10 items-center justify-center rounded-full border bg-white text-[11px] font-semibold text-gray-800 shadow-sm',
-            canViewUserDetails && 'cursor-pointer hover:border-gray-400',
-            isMatch ? 'border-brand-red bg-red-50 text-brand-red ring-2 ring-brand-red/20' : 'border-gray-300',
-            isInactive && 'opacity-80',
-          )}
-          aria-label={name}
-        >
-          {initials}
-          {status}
-        </div>
+        {mark}
       </AppTooltip>
     );
   }
@@ -303,6 +335,7 @@ type OrgBranchProps = {
   searchQuery: string;
   onToggle: (id: string) => void;
   density: OrgDensity;
+  forPrint?: boolean;
 };
 
 /** Split a wide leaf row into balanced rows, widest first so the parent stays centered. */
@@ -351,6 +384,7 @@ function OrgLevel({
   searchQuery,
   onToggle,
   density,
+  forPrint = false,
 }: {
   nodes: OrgTreeNode[];
   forceDrop?: boolean;
@@ -377,6 +411,7 @@ function OrgLevel({
             searchQuery={searchQuery}
             onToggle={onToggle}
             density={density}
+            forPrint={forPrint}
           />
         </div>
       ))}
@@ -412,6 +447,7 @@ function OrgBranch({
   searchQuery,
   onToggle,
   density,
+  forPrint = false,
 }: OrgBranchProps) {
   const hasChildren = node.children.length > 0;
   const expanded = hasChildren && expandedIds.has(node.id);
@@ -420,11 +456,18 @@ function OrgBranch({
     <div className="flex w-max flex-col items-center">
       <OrgPersonCard
         node={node}
-        canViewUserDetails={canViewUserDetails}
+        canViewUserDetails={forPrint ? false : canViewUserDetails}
         searchQuery={searchQuery}
         density={density}
+        forPrint={forPrint}
       />
-      {hasChildren ? <OrgToggle expanded={expanded} node={node} onToggle={onToggle} /> : null}
+      {hasChildren ? (
+        forPrint ? (
+          <span className={uiCx('h-6 w-0.5', LINE)} aria-hidden />
+        ) : (
+          <OrgToggle expanded={expanded} node={node} onToggle={onToggle} />
+        )
+      ) : null}
       {expanded ? (
         <OrgChildren
           nodes={node.children}
@@ -433,10 +476,100 @@ function OrgBranch({
           searchQuery={searchQuery}
           onToggle={onToggle}
           density={density}
+          forPrint={forPrint}
         />
       ) : null}
     </div>
   );
+}
+
+function OrgForestLayout({
+  teams,
+  unassigned,
+  canViewUserDetails,
+  expandedIds,
+  searchQuery,
+  onToggle,
+  density,
+  forPrint = false,
+}: {
+  teams: OrgTreeNode[];
+  unassigned: OrgTreeNode[];
+  canViewUserDetails: boolean;
+  expandedIds: Set<string>;
+  searchQuery: string;
+  onToggle: (id: string) => void;
+  density: OrgDensity;
+  forPrint?: boolean;
+}) {
+  return (
+    <>
+      {teams.length > 0 ? (
+        <div className="flex flex-nowrap items-start justify-center gap-x-6">
+          {teams.map((node) => (
+            <OrgBranch
+              key={node.id}
+              node={node}
+              canViewUserDetails={canViewUserDetails}
+              expandedIds={expandedIds}
+              searchQuery={searchQuery}
+              onToggle={onToggle}
+              density={density}
+              forPrint={forPrint}
+            />
+          ))}
+        </div>
+      ) : null}
+      {unassigned.length > 0 ? (
+        <div className="w-full border-t border-gray-200 pt-6">
+          <div className="mb-4 text-center">
+            <h3 className={uiTypography.sectionTitle}>No supervisor</h3>
+            <p className={uiTypography.helper}>People without a supervisor and with no direct reports.</p>
+          </div>
+          <div className="flex flex-wrap justify-center gap-2">
+            {unassigned.map((node) => (
+              <OrgPersonCard
+                key={node.id}
+                node={node}
+                canViewUserDetails={forPrint ? false : canViewUserDetails}
+                searchQuery={searchQuery}
+                density={density}
+                forPrint={forPrint}
+              />
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+function printSheetSubtitle(searchQuery: string, count: number) {
+  const date = new Date().toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
+  const people = `${count} ${count === 1 ? 'person' : 'people'}`;
+  const query = searchQuery.trim();
+  return query ? `${date} · Search “${query}” · ${people}` : `${date} · ${people}`;
+}
+
+function waitForPrintImages(root: HTMLElement) {
+  const imgs = [...root.querySelectorAll('img')];
+  const pending = imgs.map(
+    (img) =>
+      new Promise<void>((resolve) => {
+        if (img.complete) {
+          resolve();
+          return;
+        }
+        img.addEventListener('load', () => resolve(), { once: true });
+        img.addEventListener('error', () => resolve(), { once: true });
+      }),
+  );
+  return Promise.race([
+    Promise.all(pending),
+    new Promise<void>((resolve) => {
+      window.setTimeout(resolve, 1500);
+    }),
+  ]);
 }
 
 function zoomAroundPoint(camera: Camera, nextZoom: number, originX: number, originY: number): Camera {
@@ -475,9 +608,15 @@ export function UserOrgTreeView({
   const prevSearchRef = useRef('');
   const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, zoom: 1 });
   const [isDragging, setIsDragging] = useState(false);
+  const [printOpen, setPrintOpen] = useState(false);
   const navigate = useNavigate();
   const viewportRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const printRootRef = useRef<HTMLDivElement>(null);
+  const printExpandedIds = useMemo(
+    () => new Set(collectOrgNodeIdsWithChildren([...visible.teams, ...visible.unassigned])),
+    [visible],
+  );
   const pressPersonIdRef = useRef<string | null>(null);
   const dragRef = useRef<{
     pointerId: number;
@@ -489,6 +628,40 @@ export function UserOrgTreeView({
   } | null>(null);
   const cameraRef = useRef(camera);
   cameraRef.current = camera;
+
+  useEffect(() => {
+    if (!printOpen) return;
+    let cancelled = false;
+    const onDone = () => {
+      window.removeEventListener('afterprint', onDone);
+      if (!cancelled) setPrintOpen(false);
+    };
+    const run = async () => {
+      await new Promise<void>((resolve) => {
+        window.requestAnimationFrame(() => resolve());
+      });
+      const root = printRootRef.current;
+      if (cancelled || !root) return;
+      await waitForPrintImages(root);
+      if (cancelled) return;
+      const chart = root.querySelector<HTMLElement>('[data-org-print-chart]');
+      const frame = root.querySelector<HTMLElement>('[data-org-print-frame]');
+      if (!chart || !frame) return;
+      const width = chart.offsetWidth;
+      const height = chart.offsetHeight;
+      const scale = Math.min(1, PRINT_CHART_MAX_W / Math.max(width, 1), PRINT_CHART_MAX_H / Math.max(height, 1));
+      chart.style.transform = `scale(${scale})`;
+      frame.style.width = `${Math.ceil(width * scale)}px`;
+      frame.style.height = `${Math.ceil(height * scale)}px`;
+      window.addEventListener('afterprint', onDone);
+      window.print();
+    };
+    void run();
+    return () => {
+      cancelled = true;
+      window.removeEventListener('afterprint', onDone);
+    };
+  }, [printOpen]);
 
   const shouldCenterRef = useRef(true);
 
@@ -667,6 +840,7 @@ export function UserOrgTreeView({
   }
 
   return (
+    <>
     <div
         ref={viewportRef}
         className={uiCx(
@@ -714,6 +888,16 @@ export function UserOrgTreeView({
           </ul>
         </div>
         <div data-org-zoom="true" className="absolute right-3 top-3 z-20 flex items-center gap-2">
+          <div className={uiCx('flex overflow-hidden', canvasChrome)}>
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-gray-600 hover:bg-gray-50"
+              onClick={() => setPrintOpen(true)}
+            >
+              <Printer className="h-3.5 w-3.5" aria-hidden />
+              Print
+            </button>
+          </div>
           <div className={uiCx('flex overflow-hidden', canvasChrome)} role="group" aria-label="Expand or collapse the chart">
             <button
               type="button"
@@ -765,41 +949,15 @@ export function UserOrgTreeView({
             transformOrigin: '0 0',
           }}
         >
-          {visible.teams.length > 0 ? (
-            <div className="flex flex-nowrap items-start justify-center gap-x-6">
-              {visible.teams.map((node) => (
-                <OrgBranch
-                  key={node.id}
-                  node={node}
-                  canViewUserDetails={canViewUserDetails}
-                  expandedIds={expandedIds}
-                  searchQuery={searchQuery}
-                  onToggle={toggleNode}
-                  density={density}
-                />
-              ))}
-            </div>
-          ) : null}
-
-          {visible.unassigned.length > 0 ? (
-            <div className="w-full border-t border-gray-200 pt-6">
-              <div className="mb-4 text-center">
-                <h3 className={uiTypography.sectionTitle}>No supervisor</h3>
-                <p className={uiTypography.helper}>People without a supervisor and with no direct reports.</p>
-              </div>
-              <div className="flex flex-wrap justify-center gap-2">
-                {visible.unassigned.map((node) => (
-                  <OrgPersonCard
-                    key={node.id}
-                    node={node}
-                    canViewUserDetails={canViewUserDetails}
-                    searchQuery={searchQuery}
-                    density={density}
-                  />
-                ))}
-              </div>
-            </div>
-          ) : null}
+          <OrgForestLayout
+            teams={visible.teams}
+            unassigned={visible.unassigned}
+            canViewUserDetails={canViewUserDetails}
+            expandedIds={expandedIds}
+            searchQuery={searchQuery}
+            onToggle={toggleNode}
+            density={density}
+          />
         </div>
 
         <div
@@ -858,5 +1016,42 @@ export function UserOrgTreeView({
           </AppTooltip>
         </div>
     </div>
+    {printOpen
+      ? createPortal(
+          <div
+            id="org-print-root"
+            ref={printRootRef}
+            className="pointer-events-none fixed top-0 z-[70] opacity-0"
+            style={{ left: -100000, width: 'max-content' }}
+            aria-hidden
+          >
+            <style>{ORG_PRINT_CSS}</style>
+            <div className="px-4 pb-3 pt-1 text-center">
+              <h1 className="text-base font-semibold tracking-tight text-gray-900">Organization</h1>
+              <p className="mt-0.5 text-[11px] text-gray-500">{printSheetSubtitle(searchQuery, visibleCount)}</p>
+            </div>
+            <div data-org-print-frame className="mx-auto overflow-hidden" style={{ width: 'max-content' }}>
+              <div
+                data-org-print-chart
+                className="inline-flex w-max flex-col items-center gap-10 bg-white px-4 py-2"
+                style={{ transformOrigin: 'top left' }}
+              >
+                <OrgForestLayout
+                  teams={visible.teams}
+                  unassigned={visible.unassigned}
+                  canViewUserDetails={false}
+                  expandedIds={printExpandedIds}
+                  searchQuery={searchQuery}
+                  onToggle={toggleNode}
+                  density={density}
+                  forPrint
+                />
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )
+      : null}
+    </>
   );
 }
